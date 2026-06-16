@@ -4,6 +4,8 @@ import {
   Bell,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   Cloud,
   Code2,
@@ -323,6 +325,7 @@ function App() {
   const [active, setActive] = useState<NavKey>("overview");
   const [theme, setTheme] = useState<Theme>("light");
   const [query, setQuery] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const selectedNode = nodes[0];
   const onlineCount = nodes.filter((node) => node.state === "online").length;
@@ -344,17 +347,35 @@ function App() {
   }, [query]);
 
   return (
-    <div className="app" data-theme={theme}>
+    <div
+      className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}
+      data-theme={theme}
+    >
       <aside className="sidebar" aria-label="主导航">
         <div className="brand">
           <div className="brand-mark" aria-hidden="true">
             <Cloud size={22} />
           </div>
-          <div>
+          <div className="brand-copy">
             <strong>StackPilot</strong>
             <span>服务器运维</span>
           </div>
         </div>
+
+        <button
+          className="collapse-button"
+          type="button"
+          aria-label={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+          aria-pressed={sidebarCollapsed}
+          title={sidebarCollapsed ? "展开" : "收起"}
+          onClick={() => setSidebarCollapsed((value) => !value)}
+        >
+          {sidebarCollapsed ? (
+            <ChevronRight size={17} />
+          ) : (
+            <ChevronLeft size={17} />
+          )}
+        </button>
 
         <nav className="nav-list">
           {navItems.map((item) => {
@@ -364,6 +385,7 @@ function App() {
                 key={item.key}
                 className={`nav-item ${active === item.key ? "active" : ""}`}
                 type="button"
+                title={sidebarCollapsed ? item.label : undefined}
                 onClick={() => setActive(item.key)}
               >
                 <Icon size={18} />
