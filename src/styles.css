@@ -218,6 +218,22 @@ button {
   padding-inline: 0;
 }
 
+.app.sidebar-collapsed .collapse-button {
+  position: static;
+  width: 40px;
+  height: 34px;
+  margin: 0 auto 3px;
+  color: #c6d0d8;
+  border-color: transparent;
+  background: transparent;
+}
+
+.app.sidebar-collapsed .collapse-button:hover {
+  color: #ffffff;
+  border-color: rgb(255 255 255 / 12%);
+  background: rgb(255 255 255 / 7%);
+}
+
 .app.sidebar-collapsed .brand-copy,
 .app.sidebar-collapsed .nav-item span,
 .app.sidebar-collapsed .sidebar-card {
