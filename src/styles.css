@@ -6,21 +6,22 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --bg: #eef1f4;
+  --bg: #f4f8fb;
   --surface: #ffffff;
-  --surface-2: #f6f7f9;
-  --surface-3: #eef2f5;
-  --text: #1f2933;
-  --muted: #687582;
-  --subtle: #8a96a3;
-  --border: #d8dee5;
-  --border-strong: #c4ccd5;
-  --primary: #1677b3;
-  --primary-strong: #0f5f90;
-  --green: #138a43;
-  --orange: #b96d00;
-  --red: #c43d3d;
-  --shadow: none;
+  --surface-2: #f7fafc;
+  --surface-3: #edf5f9;
+  --text: #1d2d38;
+  --muted: #627381;
+  --subtle: #8da0ac;
+  --border: #d9e5ec;
+  --border-strong: #c7d6df;
+  --primary: #1498c7;
+  --primary-strong: #0d789f;
+  --green: #16885a;
+  --orange: #b86f08;
+  --red: #c84a4a;
+  --shadow: 0 8px 24px rgb(30 64 91 / 6%);
+  --shadow-hover: 0 10px 26px rgb(20 96 130 / 10%);
   background: var(--bg);
   color: var(--text);
 }
@@ -48,20 +49,22 @@ button {
 
 .app[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #101418;
-  --surface: #161b20;
-  --surface-2: #1e252b;
-  --surface-3: #242c33;
-  --text: #eef3f7;
-  --muted: #bac4ce;
-  --subtle: #8c98a3;
-  --border: #303942;
-  --border-strong: #47515c;
-  --primary: #55a7d8;
-  --primary-strong: #7fc1eb;
-  --green: #5cc878;
-  --orange: #e0a33c;
-  --red: #ee7373;
+  --bg: #0f171d;
+  --surface: #151f26;
+  --surface-2: #1d2a32;
+  --surface-3: #253640;
+  --text: #eef6fa;
+  --muted: #b4c4cf;
+  --subtle: #8fa2ad;
+  --border: #2c3e49;
+  --border-strong: #3c515e;
+  --primary: #56c0e4;
+  --primary-strong: #86d6ef;
+  --green: #67cf95;
+  --orange: #e4aa4a;
+  --red: #ef7878;
+  --shadow: 0 10px 28px rgb(0 0 0 / 18%);
+  --shadow-hover: 0 12px 30px rgb(0 0 0 / 22%);
 }
 
 .app {
@@ -81,10 +84,11 @@ button {
   position: sticky;
   top: 0;
   height: 100vh;
+  min-width: 0;
   padding: 12px 10px;
   border-right: 1px solid var(--border-strong);
-  background: #27313a;
-  color: #dbe3ea;
+  background: #213741;
+  color: #dceaf0;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -92,7 +96,7 @@ button {
 }
 
 .app[data-theme="dark"] .sidebar {
-  background: #11181e;
+  background: #13242c;
 }
 
 .brand {
@@ -101,18 +105,18 @@ button {
   gap: 10px;
   min-height: 42px;
   padding: 0 6px 8px;
-  border-bottom: 1px solid rgb(255 255 255 / 10%);
+  border-bottom: 1px solid rgb(177 222 238 / 14%);
 }
 
 .brand-mark {
   width: 34px;
   height: 34px;
-  border: 1px solid rgb(255 255 255 / 16%);
-  border-radius: 4px;
+  border: 1px solid rgb(118 208 235 / 24%);
+  border-radius: 8px;
   display: grid;
   place-items: center;
-  color: #9bd2f2;
-  background: rgb(255 255 255 / 6%);
+  color: #91d8ee;
+  background: rgb(83 185 217 / 12%);
 }
 
 .brand strong {
@@ -147,7 +151,7 @@ button {
   width: 28px;
   height: 28px;
   border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: 7px;
   display: grid;
   place-items: center;
   color: var(--muted);
@@ -161,25 +165,31 @@ button {
 .collapse-button:hover {
   color: var(--primary);
   border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
 }
 
 .nav-list {
   display: grid;
-  gap: 1px;
+  min-width: 0;
+  gap: 3px;
 }
 
 .nav-item {
   position: relative;
   min-height: 34px;
   border: 0;
-  border-radius: 3px;
+  border-radius: 7px;
   padding: 0 10px;
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #c6d0d8;
+  color: #c5d6de;
   background: transparent;
   text-align: left;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .nav-item::before {
@@ -189,22 +199,23 @@ button {
   top: 7px;
   bottom: 7px;
   left: 0;
-  border-radius: 2px;
+  border-radius: 999px;
   background: transparent;
 }
 
 .nav-item:hover {
   color: #ffffff;
-  background: rgb(255 255 255 / 7%);
+  background: rgb(124 206 231 / 10%);
 }
 
 .nav-item.active {
   color: #ffffff;
-  background: rgb(255 255 255 / 10%);
+  background: rgb(80 183 217 / 16%);
+  box-shadow: inset 0 0 0 1px rgb(136 219 244 / 8%);
 }
 
 .nav-item.active::before {
-  background: #67b7e3;
+  background: #72d3ec;
 }
 
 .app.sidebar-collapsed .sidebar {
@@ -230,8 +241,8 @@ button {
 
 .app.sidebar-collapsed .collapse-button:hover {
   color: #ffffff;
-  border-color: rgb(255 255 255 / 12%);
-  background: rgb(255 255 255 / 7%);
+  border-color: rgb(127 214 240 / 16%);
+  background: rgb(124 206 231 / 10%);
 }
 
 .app.sidebar-collapsed .brand-copy,
@@ -260,7 +271,7 @@ button {
   justify-content: center;
   gap: 0;
   padding: 0;
-  border-radius: 4px;
+  border-radius: 8px;
 }
 
 .app.sidebar-collapsed .nav-item::before {
@@ -278,7 +289,9 @@ button {
 }
 
 .app.sidebar-collapsed .nav-item.active {
-  box-shadow: inset 3px 0 0 #67b7e3;
+  box-shadow:
+    inset 3px 0 0 #72d3ec,
+    inset 0 0 0 1px rgb(136 219 244 / 8%);
 }
 
 .sidebar-card {
@@ -286,9 +299,9 @@ button {
   margin-top: auto;
   padding: 10px;
   border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 4px;
+  border-radius: 8px;
   color: #dce5ed;
-  background: rgb(255 255 255 / 5%);
+  background: rgb(93 180 207 / 8%);
   text-align: left;
 }
 
@@ -361,7 +374,7 @@ h2 {
 .panel,
 .chart-card {
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 8px;
   background: var(--surface);
   box-shadow: var(--shadow);
 }
@@ -370,6 +383,9 @@ h2 {
   min-width: 0;
   padding: 0;
   overflow: hidden;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .panel-header {
@@ -380,7 +396,7 @@ h2 {
   min-height: 48px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface-2) 74%, var(--surface));
 }
 
 .panel-header p {
@@ -419,6 +435,7 @@ h2 {
   gap: 12px;
   color: var(--muted);
   font-size: 12px;
+  background: color-mix(in srgb, var(--surface-2) 70%, var(--surface));
 }
 
 .status-line-left,
@@ -437,12 +454,12 @@ h2 {
   min-height: 42px;
   padding: 9px 12px;
   border: 1px solid color-mix(in srgb, var(--orange) 28%, var(--border));
-  border-radius: 4px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   gap: 9px;
   color: var(--orange);
-  background: color-mix(in srgb, var(--orange) 8%, var(--surface));
+  background: color-mix(in srgb, var(--orange) 9%, var(--surface));
   font-size: 13px;
 }
 
@@ -469,6 +486,10 @@ h2 {
   color: var(--text);
   background: var(--surface);
   text-align: left;
+  transition:
+    background-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
 }
 
 .shortcut-card:nth-child(4n) {
@@ -480,11 +501,12 @@ h2 {
 }
 
 .shortcut-card:hover {
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--primary) 5%, var(--surface));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--primary) 60%, transparent);
 }
 
 .shortcut-card svg {
-  color: var(--muted);
+  color: color-mix(in srgb, var(--primary) 42%, var(--muted));
 }
 
 .shortcut-card span {
@@ -511,9 +533,19 @@ h2 {
   color: var(--orange);
 }
 
+.shortcut-card.warning:hover {
+  background: color-mix(in srgb, var(--orange) 7%, var(--surface));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--orange) 70%, transparent);
+}
+
 .shortcut-card.danger strong,
 .shortcut-card.danger em {
   color: var(--red);
+}
+
+.shortcut-card.danger:hover {
+  background: color-mix(in srgb, var(--red) 7%, var(--surface));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--red) 70%, transparent);
 }
 
 .meter-grid {
@@ -528,6 +560,7 @@ h2 {
   display: flex;
   align-items: center;
   gap: 12px;
+  background: var(--surface);
 }
 
 .resource-meter:last-child {
@@ -594,6 +627,7 @@ h2 {
 .metric {
   padding: 10px 12px;
   border-right: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .metric:last-child {
@@ -608,7 +642,7 @@ h2 {
   gap: 7px;
   padding: 0 10px;
   border: 1px solid var(--border-strong);
-  border-radius: 3px;
+  border-radius: 7px;
   background: var(--surface-2);
   color: var(--muted);
 }
@@ -633,7 +667,7 @@ h2 {
   margin-top: 5px;
   padding: 0 9px;
   border: 1px solid var(--border-strong);
-  border-radius: 3px;
+  border-radius: 7px;
   background: var(--surface-2);
 }
 
@@ -642,7 +676,7 @@ h2 {
 .theme-button,
 .icon-button {
   min-height: 32px;
-  border-radius: 3px;
+  border-radius: 7px;
   border: 1px solid transparent;
   display: inline-flex;
   align-items: center;
@@ -650,15 +684,22 @@ h2 {
   gap: 6px;
   padding: 0 10px;
   white-space: nowrap;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .primary-button {
   color: #ffffff;
   background: var(--primary);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 .primary-button:hover {
   background: var(--primary-strong);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--primary) 22%, transparent);
 }
 
 .tool-button,
@@ -666,7 +707,7 @@ h2 {
 .icon-button {
   color: var(--text);
   border-color: var(--border-strong);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 84%, var(--surface-2));
 }
 
 .tool-button:hover,
@@ -674,6 +715,7 @@ h2 {
 .icon-button:hover {
   border-color: var(--primary);
   color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 6%, var(--surface));
 }
 
 .danger-text {
@@ -761,7 +803,7 @@ th {
 }
 
 tbody tr:hover {
-  background: color-mix(in srgb, var(--primary) 4%, transparent);
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
 }
 
 td strong {
@@ -803,6 +845,7 @@ td:nth-child(8) {
   height: 8px;
   border-radius: 50%;
   background: var(--muted);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--muted) 12%, transparent);
 }
 
 .node-status.online i,
@@ -871,13 +914,37 @@ td:nth-child(8) {
   color: var(--muted);
 }
 
+.text-status,
 .audit-badge,
 .rule-action,
 .status-pill {
   min-height: 26px;
-  border-radius: 3px;
+  border: 1px solid transparent;
+  border-radius: 999px;
   padding: 0 7px;
   background: var(--surface-2);
+}
+
+.text-status.running,
+.text-status.success,
+.audit-badge.success,
+.status-pill.good,
+.rule-action.allow {
+  background: color-mix(in srgb, var(--green) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--green) 22%, transparent);
+}
+
+.text-status.queued,
+.audit-badge.pending {
+  background: color-mix(in srgb, var(--orange) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--orange) 22%, transparent);
+}
+
+.text-status.failed,
+.audit-badge.failed,
+.rule-action.deny {
+  background: color-mix(in srgb, var(--red) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--red) 22%, transparent);
 }
 
 .rule-action.allow {
@@ -903,7 +970,7 @@ td:nth-child(8) {
   height: 5px;
   border-radius: 20px;
   overflow: hidden;
-  background: var(--surface-3);
+  background: color-mix(in srgb, var(--surface-3) 82%, var(--border));
 }
 
 .usage-track i {
@@ -981,6 +1048,7 @@ td:nth-child(8) {
   margin-top: 6px;
   border-radius: 50%;
   background: var(--muted);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--muted) 12%, transparent);
 }
 
 .state-dot.running {
@@ -1021,7 +1089,7 @@ td:nth-child(8) {
 }
 
 .software-row svg {
-  color: var(--muted);
+  color: color-mix(in srgb, var(--primary) 36%, var(--muted));
 }
 
 .software-row span {
@@ -1035,7 +1103,7 @@ td:nth-child(8) {
   margin: 12px;
   padding: 12px;
   border: 1px dashed var(--border-strong);
-  border-radius: 3px;
+  border-radius: 8px;
   overflow-x: auto;
   background: var(--surface-2);
 }
@@ -1060,7 +1128,7 @@ code,
 
 .chart-card {
   padding: 12px;
-  box-shadow: none;
+  box-shadow: var(--shadow);
 }
 
 .chart-title {
@@ -1079,10 +1147,10 @@ code,
   width: 100%;
   height: 120px;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 8px;
   background:
-    linear-gradient(var(--border) 1px, transparent 1px),
-    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    linear-gradient(color-mix(in srgb, var(--border) 72%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--border) 72%, transparent) 1px, transparent 1px);
   background-size: 25% 25%;
 }
 
@@ -1106,7 +1174,7 @@ code,
   min-height: 32px;
   padding: 2px;
   border: 1px solid var(--border-strong);
-  border-radius: 3px;
+  border-radius: 8px;
   display: inline-flex;
   gap: 2px;
   background: var(--surface-2);
@@ -1115,7 +1183,7 @@ code,
 .segmented button {
   min-height: 26px;
   border: 0;
-  border-radius: 2px;
+  border-radius: 6px;
   padding: 0 9px;
   color: var(--muted);
   background: transparent;
@@ -1124,7 +1192,7 @@ code,
 .segmented button.selected {
   color: var(--text);
   background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--border);
+  box-shadow: inset 0 0 0 1px var(--border), 0 3px 10px rgb(30 64 91 / 5%);
 }
 
 .tabs-line {
@@ -1134,7 +1202,7 @@ code,
   display: flex;
   align-items: end;
   gap: 18px;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface-2) 64%, var(--surface));
 }
 
 .tabs-line button {
@@ -1160,7 +1228,7 @@ code,
 
 .warning-callout {
   min-height: 42px;
-  border-radius: 3px;
+  border-radius: 8px;
   padding: 10px;
   display: flex;
   align-items: center;
@@ -1174,10 +1242,10 @@ code,
   min-height: 260px;
   margin: 12px;
   padding: 12px;
-  border-radius: 3px;
+  border-radius: 8px;
   overflow: auto;
   color: #d8f3df;
-  background: #071016;
+  background: #07141a;
   font-size: 13px;
   line-height: 1.6;
 }
@@ -1266,7 +1334,7 @@ code,
   min-width: 26px;
   min-height: 26px;
   border: 1px solid var(--border-strong);
-  border-radius: 3px;
+  border-radius: 7px;
   display: inline-grid;
   place-items: center;
   color: var(--text);
@@ -1310,9 +1378,12 @@ code,
     grid-template-columns: 1fr;
   }
 
-  .sidebar,
+.sidebar,
   .app.sidebar-collapsed .sidebar {
     position: static;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     height: auto;
     padding: 10px;
     border-right: 0;
@@ -1343,6 +1414,9 @@ code,
 
   .nav-list,
   .app.sidebar-collapsed .nav-list {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     display: flex;
     gap: 4px;
     justify-items: stretch;
@@ -1359,7 +1433,7 @@ code,
     gap: 10px;
     padding: 0 10px;
     justify-content: flex-start;
-    border-radius: 3px;
+    border-radius: 7px;
   }
 
   .nav-item span,
@@ -1372,7 +1446,7 @@ code,
   }
 
   .app.sidebar-collapsed .nav-item.active {
-    box-shadow: none;
+    box-shadow: inset 3px 0 0 #72d3ec;
   }
 
   .sidebar-card {
@@ -1380,6 +1454,8 @@ code,
   }
 
   .workspace {
+    width: 100%;
+    max-width: 100%;
     padding: 12px;
   }
 
