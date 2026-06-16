@@ -1,34 +1,40 @@
 import { useMemo, useState } from "react";
 import {
   Activity,
+  AlertTriangle,
   Bell,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Clock3,
   Cloud,
-  Code2,
   Copy,
+  Cpu,
   Database,
+  FileTerminal,
+  FolderOpen,
   GitBranch,
+  Globe2,
   HardDrive,
   LayoutDashboard,
   Lock,
-  Moon,
+  MemoryStick,
   MoreHorizontal,
-  Play,
+  Moon,
+  Package,
   Plus,
+  Power,
   RefreshCw,
-  RotateCcw,
   Search,
   Server,
   Settings,
   Shield,
-  Square,
   Sun,
   TerminalSquare,
   UploadCloud,
+  Wrench,
 } from "lucide-react";
 
 type Theme = "light" | "dark";
@@ -36,15 +42,22 @@ type NavKey =
   | "overview"
   | "servers"
   | "monitor"
+  | "websites"
+  | "databases"
+  | "files"
+  | "terminal"
   | "services"
   | "firewall"
   | "deployments"
   | "audit"
+  | "schedules"
   | "settings";
 type NodeState = "online" | "offline" | "warning" | "initializing";
 type ServiceState = "running" | "failed" | "inactive";
 type ReleaseState = "success" | "running" | "failed" | "queued";
 type AuditResult = "成功" | "失败" | "等待确认";
+type TaskState = "running" | "waiting" | "failed";
+type ToolTone = "default" | "warning" | "danger";
 
 type ServerNode = {
   id: string;
@@ -52,6 +65,7 @@ type ServerNode = {
   host: string;
   os: string;
   state: NodeState;
+  load: string;
   cpu: number;
   memory: number;
   disk: number;
@@ -84,7 +98,7 @@ type Deployment = {
   node: string;
   repo: string;
   branch: string;
-  profile: "Static" | "Node pnpm";
+  profile: "静态站点" | "Node pnpm";
   state: ReleaseState;
   commit: string;
   duration: string;
@@ -100,19 +114,42 @@ type AuditEntry = {
   detail: string;
 };
 
+type QueueTask = {
+  id: string;
+  state: TaskState;
+  title: string;
+  node: string;
+  detail: string;
+  time: string;
+};
+
+type QuickEntry = {
+  label: string;
+  value: string;
+  detail: string;
+  icon: typeof LayoutDashboard;
+  target: NavKey;
+  tone?: ToolTone;
+};
+
 const navItems: Array<{
   key: NavKey;
   label: string;
   icon: typeof LayoutDashboard;
 }> = [
-  { key: "overview", label: "总览", icon: LayoutDashboard },
-  { key: "servers", label: "服务器", icon: Server },
+  { key: "overview", label: "首页", icon: LayoutDashboard },
+  { key: "servers", label: "主机", icon: Server },
   { key: "monitor", label: "监控", icon: Activity },
+  { key: "websites", label: "网站", icon: Globe2 },
+  { key: "databases", label: "数据库", icon: Database },
+  { key: "files", label: "文件", icon: FolderOpen },
+  { key: "terminal", label: "终端", icon: FileTerminal },
   { key: "services", label: "服务", icon: TerminalSquare },
   { key: "firewall", label: "防火墙", icon: Shield },
-  { key: "deployments", label: "发布", icon: GitBranch },
-  { key: "audit", label: "操作记录", icon: ClipboardList },
-  { key: "settings", label: "设置", icon: Settings },
+  { key: "deployments", label: "项目发布", icon: GitBranch },
+  { key: "audit", label: "审计日志", icon: ClipboardList },
+  { key: "schedules", label: "计划任务", icon: Clock3 },
+  { key: "settings", label: "面板设置", icon: Settings },
 ];
 
 const nodes: ServerNode[] = [
@@ -122,10 +159,11 @@ const nodes: ServerNode[] = [
     host: "203.0.113.10",
     os: "Ubuntu 24.04 LTS",
     state: "online",
+    load: "0.42",
     cpu: 34,
     memory: 61,
     disk: 73,
-    network: "18.4 Mbps",
+    network: "↑ 2.1 / ↓ 16.3 Mbps",
     heartbeat: "12 秒前",
     agent: "v0.1.0",
     risk: "磁盘偏高",
@@ -136,10 +174,11 @@ const nodes: ServerNode[] = [
     host: "10.10.8.24",
     os: "Debian 12",
     state: "online",
+    load: "0.18",
     cpu: 18,
     memory: 42,
     disk: 39,
-    network: "6.8 Mbps",
+    network: "↑ 0.7 / ↓ 6.1 Mbps",
     heartbeat: "19 秒前",
     agent: "v0.1.0",
     risk: "正常",
@@ -150,13 +189,14 @@ const nodes: ServerNode[] = [
     host: "172.18.0.13",
     os: "Ubuntu 22.04 LTS",
     state: "warning",
+    load: "1.86",
     cpu: 72,
     memory: 66,
     disk: 58,
-    network: "31.2 Mbps",
+    network: "↑ 8.4 / ↓ 22.8 Mbps",
     heartbeat: "44 秒前",
     agent: "v0.1.0",
-    risk: "nginx failed",
+    risk: "nginx 失败",
   },
   {
     id: "lab-node-04",
@@ -164,6 +204,7 @@ const nodes: ServerNode[] = [
     host: "192.168.1.42",
     os: "Debian 12",
     state: "offline",
+    load: "-",
     cpu: 0,
     memory: 0,
     disk: 0,
@@ -180,7 +221,7 @@ const services: SystemService[] = [
     node: "新加坡生产 01",
     state: "running",
     description: "反向代理",
-    lastAction: "12 分钟前 restart",
+    lastAction: "12 分钟前重启",
   },
   {
     name: "stackpilot-agent.service",
@@ -194,7 +235,7 @@ const services: SystemService[] = [
     node: "香港 Web 02",
     state: "running",
     description: "PostgreSQL",
-    lastAction: "09:12 start",
+    lastAction: "09:12 启动",
   },
   {
     name: "app-web.service",
@@ -246,9 +287,9 @@ const deployments: Deployment[] = [
   {
     project: "docs-web",
     node: "新加坡生产 01",
-    repo: "github.com/acme/docs-web",
+    repo: "git@github.com:stackpilot/docs-web.git",
     branch: "main",
-    profile: "Static",
+    profile: "静态站点",
     state: "success",
     commit: "8f3a91c",
     duration: "46s",
@@ -257,7 +298,7 @@ const deployments: Deployment[] = [
   {
     project: "customer-portal",
     node: "香港 Web 02",
-    repo: "gitlab.com/acme/customer-portal",
+    repo: "git@gitlab.com:ops/customer-portal.git",
     branch: "release",
     profile: "Node pnpm",
     state: "running",
@@ -268,9 +309,9 @@ const deployments: Deployment[] = [
   {
     project: "status-page",
     node: "东京边缘 03",
-    repo: "github.com/acme/status-page",
+    repo: "git@github.com:stackpilot/status-page.git",
     branch: "main",
-    profile: "Static",
+    profile: "静态站点",
     state: "failed",
     commit: "b7192fd",
     duration: "22s",
@@ -313,12 +354,135 @@ const audits: AuditEntry[] = [
   },
 ];
 
+const queueTasks: QueueTask[] = [
+  {
+    id: "task-4821",
+    state: "running",
+    title: "发布 customer-portal",
+    node: "香港 Web 02",
+    detail: "pnpm build",
+    time: "已运行 01:18",
+  },
+  {
+    id: "task-4819",
+    state: "waiting",
+    title: "确认重启 app-web.service",
+    node: "东京边缘 03",
+    detail: "等待二次确认",
+    time: "4 分钟前",
+  },
+  {
+    id: "task-4816",
+    state: "failed",
+    title: "拉取 status-page",
+    node: "东京边缘 03",
+    detail: "Git 退出码 128",
+    time: "36 分钟前",
+  },
+];
+
 const releaseLogs = [
-  "10:42:19  webhook accepted · GitLab push release",
-  "10:42:20  checkout 31de8a0",
+  "10:42:19  收到 GitLab push: release",
+  "10:42:20  拉取代码 31de8a0",
   "10:42:31  pnpm install --frozen-lockfile",
   "10:43:02  pnpm build",
-  "10:43:09  health check /health",
+  "10:43:09  检查 /health",
+];
+
+const quickEntries: QuickEntry[] = [
+  {
+    label: "网站",
+    value: "12",
+    detail: "2 个证书需续期",
+    icon: Globe2,
+    target: "websites",
+    tone: "warning",
+  },
+  {
+    label: "数据库",
+    value: "5",
+    detail: "昨晚备份成功",
+    icon: Database,
+    target: "databases",
+  },
+  {
+    label: "文件",
+    value: "/srv",
+    detail: "打开文件管理",
+    icon: FolderOpen,
+    target: "files",
+  },
+  {
+    label: "终端",
+    value: "SSH",
+    detail: "连接生产节点",
+    icon: FileTerminal,
+    target: "terminal",
+  },
+  {
+    label: "服务",
+    value: "5",
+    detail: "1 个失败",
+    icon: TerminalSquare,
+    target: "services",
+    tone: "danger",
+  },
+  {
+    label: "项目",
+    value: "3",
+    detail: "1 个发布中",
+    icon: GitBranch,
+    target: "deployments",
+    tone: "warning",
+  },
+  {
+    label: "计划任务",
+    value: "4",
+    detail: "备份 23:00",
+    icon: Clock3,
+    target: "schedules",
+  },
+  {
+    label: "防火墙",
+    value: "UFW",
+    detail: "22 端口已保护",
+    icon: Shield,
+    target: "firewall",
+  },
+];
+
+const softwareList = [
+  ["Nginx", "1.24.0", "运行中", "80/443"],
+  ["PostgreSQL", "16.2", "运行中", "5432"],
+  ["Docker", "26.1", "运行中", "-"],
+  ["Redis", "7.2", "未安装", "-"],
+  ["Node.js", "22.11", "运行中", "3000"],
+];
+
+const websites = [
+  ["admin.stackpilot.local", "新加坡生产 01", "/srv/www/admin", "有效 26 天", "运行中"],
+  ["docs.stackpilot.local", "新加坡生产 01", "/srv/www/docs", "有效 89 天", "运行中"],
+  ["status.stackpilot.local", "东京边缘 03", "/srv/www/status", "未配置", "异常"],
+];
+
+const databases = [
+  ["stackpilot", "PostgreSQL 16", "香港 Web 02", "1.8 GB", "今天 02:10"],
+  ["audit_log", "PostgreSQL 16", "香港 Web 02", "420 MB", "今天 02:10"],
+  ["cache", "Redis 7.2", "新加坡生产 01", "126 MB", "未开启"],
+];
+
+const files = [
+  ["www", "/srv/www", "目录", "今天 10:20"],
+  ["stackpilot", "/opt/demo-app", "目录", "今天 09:44"],
+  ["nginx.conf", "/etc/nginx/nginx.conf", "4.8 KB", "昨天 18:21"],
+  ["backup", "/data/demo-backup", "目录", "今天 02:10"],
+];
+
+const schedules = [
+  ["数据库备份", "0 2 * * *", "香港 Web 02", "成功", "今天 02:10"],
+  ["日志清理", "30 3 * * 0", "新加坡生产 01", "成功", "周日 03:30"],
+  ["证书检查", "0 */6 * * *", "全部主机", "等待", "12:00"],
+  ["同步 release", "手动触发", "香港 Web 02", "执行中", "01:18"],
 ];
 
 function App() {
@@ -358,7 +522,7 @@ function App() {
           </div>
           <div className="brand-copy">
             <strong>StackPilot</strong>
-            <span>服务器运维</span>
+            <span>运维面板</span>
           </div>
         </div>
 
@@ -395,26 +559,37 @@ function App() {
           })}
         </nav>
 
-        <div className="sidebar-card">
+        <button className="sidebar-card" type="button" onClick={() => setActive("audit")}>
           <div className="sidebar-card-title">
-            <Shield size={17} />
-            操作保护
+            <ClipboardList size={17} />
+            待处理
           </div>
-          <p>2 个待确认动作。最近一次变更来自 10:36。</p>
-        </div>
+          <p>发布确认 1 条，失败任务 1 条。</p>
+        </button>
       </aside>
 
       <main className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">demo-sg-01 · 10:44:12 UTC+8</p>
+            <p className="eyebrow">demo-sg-01 · Ubuntu 24.04 · 运行 18 天</p>
             <h1>{pageTitle(active)}</h1>
           </div>
           <div className="topbar-actions">
-            <div className="status-pill good">
+            <span className="status-pill good">
               <CheckCircle2 size={16} />
               {onlineCount}/{nodes.length} 在线
-            </div>
+            </span>
+            <button className="top-link" type="button">
+              v0.1.0
+            </button>
+            <button className="tool-button" type="button">
+              <Wrench size={16} />
+              修复
+            </button>
+            <button className="tool-button danger-text" type="button">
+              <Power size={16} />
+              重启
+            </button>
             <button className="icon-button" type="button" aria-label="通知">
               <Bell size={18} />
             </button>
@@ -436,14 +611,20 @@ function App() {
               query={query}
               setQuery={setQuery}
               filteredNodes={filteredNodes}
+              onNavigate={setActive}
             />
           )}
           {active === "servers" && <Servers nodes={filteredNodes} />}
+          {active === "websites" && <Websites />}
+          {active === "databases" && <Databases />}
+          {active === "files" && <Files />}
+          {active === "terminal" && <TerminalView node={selectedNode} />}
           {active === "monitor" && <Monitor node={selectedNode} />}
           {active === "services" && <Services />}
           {active === "firewall" && <Firewall />}
           {active === "deployments" && <Deployments />}
           {active === "audit" && <AuditLog />}
+          {active === "schedules" && <Schedules />}
           {active === "settings" && <SettingsPage theme={theme} />}
         </section>
       </main>
@@ -456,89 +637,173 @@ function Overview({
   query,
   setQuery,
   filteredNodes,
+  onNavigate,
 }: {
   issueCount: number;
   query: string;
   setQuery: (query: string) => void;
   filteredNodes: ServerNode[];
+  onNavigate: (target: NavKey) => void;
 }) {
   return (
     <>
-      <section className="metric-grid" aria-label="服务器状态">
-        <MetricCard
-          icon={Server}
-          label="服务器"
-          value={`${nodes.length} 台`}
-          trend="3 online · 1 offline"
-        />
-        <MetricCard
-          icon={Activity}
-          label="CPU 平均"
-          value="31%"
-          trend="avg · 15m"
-        />
-        <MetricCard
-          icon={HardDrive}
-          label="磁盘最高"
-          value="73%"
-          trend="sg-prod-01"
-        />
-        <MetricCard
-          icon={Shield}
-          label="事件"
-          value={`${issueCount} 项`}
-          trend="1 failed · 1 offline"
-          tone="warning"
-        />
+      <section className="panel status-line" aria-label="面板状态">
+        <div className="status-line-left">
+          <span>账号：admin</span>
+          <span>系统：Ubuntu 24.04 LTS</span>
+          <span>面板：v0.1.0</span>
+          <span>入口：10.0.0.5:9443</span>
+        </div>
+        <div className="status-line-right">
+          <button className="table-link" type="button">
+            检查更新
+          </button>
+          <button className="table-link" type="button">
+            绑定账号
+          </button>
+          <button className="table-link danger" type="button">
+            重启面板
+          </button>
+        </div>
       </section>
 
-      <section className="split-layout">
-        <Panel
-          title="服务器列表"
-          description="按最近心跳排序。"
-          actions={
-            <>
-              <div className="search-box">
-                <Search size={17} />
-                <input
-                  aria-label="搜索服务器"
-                placeholder="搜索服务器、IP、状态"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </div>
-              <button className="primary-button" type="button">
-                <Plus size={17} />
-                接入服务器
-              </button>
-            </>
-          }
-        >
-          <ServerTable nodes={filteredNodes} compact />
-        </Panel>
+      <div className="notice-line" role="status">
+        <AlertTriangle size={17} />
+        <span>东京边缘 03 的 app-web.service 失败，customer-portal 发布仍在等待健康检查。</span>
+        <button className="table-link" type="button" onClick={() => onNavigate("services")}>
+          查看服务
+        </button>
+      </div>
 
-        <aside className="stack">
-          <Panel title="事件" description="按影响范围排序。">
-            <div className="todo-list">
-              <TodoItem
+      <section className="home-layout">
+        <div className="home-main stack">
+          <Panel title="快捷入口" actions={<PanelTool label="管理入口" />}>
+            <div className="shortcut-grid">
+              {quickEntries.map((entry) => {
+                const Icon = entry.icon;
+                return (
+                  <button
+                    className={`shortcut-card ${entry.tone ?? ""}`}
+                    key={entry.label}
+                    type="button"
+                    onClick={() => onNavigate(entry.target)}
+                  >
+                    <Icon size={18} />
+                    <span>{entry.label}</span>
+                    <strong>{entry.value}</strong>
+                    <em>{entry.detail}</em>
+                  </button>
+                );
+              })}
+            </div>
+          </Panel>
+
+          <Panel title="状态" actions={<PanelTool label="刷新" icon={RefreshCw} />}>
+            <div className="meter-grid">
+              <ResourceMeter
+                icon={Activity}
+                label="负载"
+                value="0.42"
+                detail="运行流畅"
+                percent={42}
+              />
+              <ResourceMeter
+                icon={Cpu}
+                label="CPU"
+                value="34%"
+                detail="4 核"
+                percent={34}
+              />
+              <ResourceMeter
+                icon={MemoryStick}
+                label="内存"
+                value="61%"
+                detail="4.9 / 8 GB"
+                percent={61}
+              />
+              <ResourceMeter
+                icon={HardDrive}
+                label="磁盘"
+                value="73%"
+                detail="/data"
+                percent={73}
                 tone="warning"
-                title="app-web.service 异常"
-                detail="jp-edge-03 · /health 502 · 4 分钟前"
-              />
-              <TodoItem
-                tone="danger"
-                title="测试节点 Agent 失联"
-                detail="lab-node-04 · last seen 17 分钟前"
-              />
-              <TodoItem
-                tone="info"
-                title="磁盘 73%"
-                detail="sg-prod-01 · releases 占用 18.6 GB"
               />
             </div>
           </Panel>
 
-          <Panel title="最近操作" description="今天 4 条记录。">
+          <Panel
+            title="监控"
+            actions={<SegmentedControl options={["流量", "磁盘 IO"]} />}
+          >
+            <div className="traffic-summary">
+              <Metric label="上行" value="2.1 Mbps" />
+              <Metric label="下行" value="16.3 Mbps" />
+              <Metric label="总发送" value="18.4 GB" />
+              <Metric label="总接收" value="142.8 GB" />
+            </div>
+            <div className="chart-grid tight">
+              <ChartCard
+                title="eth0"
+                color="blue"
+                unit="Mbps"
+                values={[8, 11, 6, 18, 22, 16]}
+              />
+              <ChartCard
+                title="sda IO"
+                color="green"
+                unit="MB/s"
+                values={[3, 8, 6, 10, 7, 9]}
+              />
+            </div>
+          </Panel>
+
+          <Panel
+            title="主机"
+            description={`${filteredNodes.length} 台，${issueCount} 个需要处理`}
+            actions={
+              <>
+                <div className="search-box compact">
+                  <Search size={16} />
+                  <input
+                    aria-label="搜索主机"
+                    placeholder="名称 / IP"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                </div>
+                <button className="tool-button" type="button">
+                  <RefreshCw size={16} />
+                  刷新
+                </button>
+                <button className="primary-button" type="button">
+                  <Plus size={16} />
+                  添加主机
+                </button>
+              </>
+            }
+          >
+            <ServerTable nodes={filteredNodes} compact />
+            <TableFooter total={filteredNodes.length} />
+          </Panel>
+        </div>
+
+        <aside className="home-side stack">
+          <Panel title="软件" actions={<PanelTool label="软件商店" />}>
+            <SoftwareList />
+          </Panel>
+          <Panel title="任务" description="需要人工确认的任务排在前面">
+            <TaskList />
+          </Panel>
+          <Panel title="系统信息" actions={<PanelTool label="复制" icon={Copy} />}>
+            <div className="settings-list compact">
+              <SettingRow label="主机名" value="demo-sg-01" />
+              <SettingRow label="公网 IP" value="203.0.113.10" />
+              <SettingRow label="数据目录" value="/opt/demo-app" />
+              <SettingRow label="启动时间" value="2026-05-30 18:12" />
+            </div>
+          </Panel>
+          <Panel title="最近操作">
             <AuditMiniList />
           </Panel>
         </aside>
@@ -551,28 +816,199 @@ function Servers({ nodes }: { nodes: ServerNode[] }) {
   return (
     <div className="stack">
       <Panel
-        title="接入服务器"
-        description="复制命令到目标服务器执行。"
+        title="安装 Agent"
+        description="在目标服务器执行后会出现在主机列表。"
         actions={
           <button className="primary-button" type="button">
-            <Copy size={17} />
+            <Copy size={16} />
             复制命令
           </button>
         }
       >
         <div className="install-box">
           <code>
-            curl -fsSL https://panel.example.com/install.sh | sudo bash -s --
-            --token sp_once_xxxx
+            curl -fsSL https://panel.stackpilot.local/install.sh | sudo bash -s --
+            --token sp_once_8f3a
           </code>
         </div>
       </Panel>
 
       <Panel
-        title="服务器"
-        description="4 台服务器 · 2 个异常状态。"
+        title="主机"
+        description="离线 Agent 不允许执行危险操作。"
+        actions={
+          <>
+            <button className="tool-button" type="button">
+              <RefreshCw size={16} />
+              刷新
+            </button>
+            <button className="primary-button" type="button">
+              <Plus size={16} />
+              添加主机
+            </button>
+          </>
+        }
       >
         <ServerTable nodes={nodes} />
+        <TableFooter total={nodes.length} />
+      </Panel>
+    </div>
+  );
+}
+
+function Websites() {
+  return (
+    <Panel
+      title="网站"
+      description="证书、根目录、反向代理在这里集中处理。"
+      actions={
+        <>
+          <button className="tool-button" type="button">
+            <RefreshCw size={16} />
+            刷新
+          </button>
+          <button className="primary-button" type="button">
+            <Plus size={16} />
+            添加站点
+          </button>
+        </>
+      }
+    >
+      <SimpleTable
+        headers={["域名", "主机", "根目录", "SSL", "状态", "操作"]}
+        rows={websites.map((site) => [
+          <strong>{site[0]}</strong>,
+          site[1],
+          site[2],
+          site[3],
+          <TextStatus state={site[4] === "异常" ? "failed" : "running"}>
+            {site[4]}
+          </TextStatus>,
+          <ActionLinks labels={["设置", "日志", "证书", "更多"]} />,
+        ])}
+      />
+      <TableFooter total={websites.length} />
+    </Panel>
+  );
+}
+
+function Databases() {
+  return (
+    <Panel
+      title="数据库"
+      description="公网访问默认关闭，备份状态单独显示。"
+      actions={
+        <>
+          <button className="tool-button" type="button">
+            导入
+          </button>
+          <button className="primary-button" type="button">
+            <Plus size={16} />
+            创建数据库
+          </button>
+        </>
+      }
+    >
+      <SimpleTable
+        headers={["名称", "类型", "主机", "大小", "备份", "操作"]}
+        rows={databases.map((db) => [
+          <strong>{db[0]}</strong>,
+          db[1],
+          db[2],
+          db[3],
+          db[4],
+          <ActionLinks labels={["管理", "备份", "权限", "更多"]} />,
+        ])}
+      />
+      <TableFooter total={databases.length} />
+    </Panel>
+  );
+}
+
+function Files() {
+  return (
+    <Panel
+      title="文件"
+      description="当前路径：/srv"
+      actions={
+        <>
+          <button className="tool-button" type="button">
+            上传
+          </button>
+          <button className="tool-button" type="button">
+            远程下载
+          </button>
+          <button className="primary-button" type="button">
+            <Plus size={16} />
+            新建
+          </button>
+        </>
+      }
+    >
+      <div className="file-toolbar">
+        <button className="table-link" type="button">
+          /srv
+        </button>
+        <span>/</span>
+        <button className="table-link" type="button">
+          www
+        </button>
+        <div className="search-box compact">
+          <Search size={16} />
+          <input aria-label="搜索文件" placeholder="搜索文件名" />
+        </div>
+      </div>
+      <SimpleTable
+        headers={["名称", "路径", "大小/类型", "修改时间", "操作"]}
+        rows={files.map((file) => [
+          <span className="file-name">
+            <FolderOpen size={16} />
+            <strong>{file[0]}</strong>
+          </span>,
+          file[1],
+          file[2],
+          file[3],
+          <ActionLinks labels={["打开", "权限", "压缩", "删除"]} dangerLast />,
+        ])}
+      />
+      <TableFooter total={files.length} />
+    </Panel>
+  );
+}
+
+function TerminalView({ node }: { node: ServerNode }) {
+  return (
+    <div className="split-layout equal">
+      <Panel
+        title="终端"
+        description={`${node.name} · ${node.host}`}
+        actions={
+          <>
+            <button className="tool-button" type="button">
+              断开
+            </button>
+            <button className="primary-button" type="button">
+              新建会话
+            </button>
+          </>
+        }
+      >
+        <div className="terminal-window" aria-label="终端输出">
+          <p>Last login: Wed Jun 17 10:43:20 from 10.0.0.5</p>
+          <p>root@sg-prod-01:~# systemctl status nginx --no-pager</p>
+          <p className="terminal-ok">active (running) since Wed 2026-06-17 09:31:05 CST</p>
+          <p>root@sg-prod-01:~# tail -f /var/log/stackpilot/agent.log</p>
+          <p className="terminal-cursor">等待输出...</p>
+        </div>
+      </Panel>
+
+      <Panel title="会话" description="危险命令需要二次确认。">
+        <div className="settings-list">
+          <SettingRow label="当前用户" value="root" />
+          <SettingRow label="Shell" value="/bin/bash" />
+          <SettingRow label="审计 ID" value="AUD-2051" />
+          <SettingRow label="空闲断开" value="30 分钟" />
+        </div>
       </Panel>
     </div>
   );
@@ -585,9 +1021,21 @@ function Monitor({ node }: { node: ServerNode }) {
         title={`${node.name} 监控`}
         description="采样间隔 15 秒。"
         actions={
-          <SegmentedControl options={["近 1 小时", "6 小时", "24 小时"]} />
+          <>
+            <SegmentedControl options={["近 1 小时", "6 小时", "24 小时"]} />
+            <button className="tool-button" type="button">
+              <ChevronDown size={16} />
+              eth0
+            </button>
+          </>
         }
       >
+        <div className="traffic-summary">
+          <Metric label="负载" value={node.load} />
+          <Metric label="CPU" value={`${node.cpu}%`} />
+          <Metric label="内存" value={`${node.memory}%`} />
+          <Metric label="磁盘" value={`${node.disk}%`} />
+        </div>
         <div className="chart-grid">
           <ChartCard title="CPU" color="blue" values={[22, 30, 28, 36, 34, 42]} />
           <ChartCard
@@ -602,7 +1050,8 @@ function Monitor({ node }: { node: ServerNode }) {
           />
           <ChartCard
             title="网络"
-            color="violet"
+            color="blue"
+            unit="Mbps"
             values={[18, 12, 24, 20, 31, 18]}
           />
         </div>
@@ -615,118 +1064,104 @@ function Services() {
   return (
     <Panel
       title="systemd 服务"
-      description="5 个已登记 unit。"
+      description="失败服务优先处理，停止和重启会记录审计 ID。"
       actions={
         <>
-          <button className="secondary-button" type="button">
-            <RefreshCw size={17} />
+          <div className="search-box compact">
+            <Search size={16} />
+            <input aria-label="搜索服务" placeholder="服务名 / 主机" />
+          </div>
+          <button className="tool-button" type="button">
+            <RefreshCw size={16} />
             刷新
           </button>
           <button className="primary-button" type="button">
-            <Plus size={17} />
+            <Plus size={16} />
             添加 unit
           </button>
         </>
       }
     >
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>服务</th>
-              <th>服务器</th>
-              <th>状态</th>
-              <th>类型</th>
-              <th>最近动作</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {services.map((service) => (
-              <tr key={`${service.node}-${service.name}`}>
-                <td>
-                  <strong>{service.name}</strong>
-                </td>
-                <td>{service.node}</td>
-                <td>
-                  <StateBadge state={service.state} />
-                </td>
-                <td>{service.description}</td>
-                <td>{service.lastAction}</td>
-                <td>
-                  <div className="row-actions">
-                    <button className="ghost-button" type="button">
-                      <Play size={15} />
-                      start
-                    </button>
-                    <button className="ghost-button" type="button">
-                      <RotateCcw size={15} />
-                      restart
-                    </button>
-                    <button className="danger-button" type="button">
-                      <Square size={14} />
-                      stop
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <SimpleTable
+        headers={["服务", "服务器", "状态", "类型", "最近动作", "操作"]}
+        rows={services.map((service) => [
+          <strong>{service.name}</strong>,
+          service.node,
+          <StateBadge state={service.state} />,
+          service.description,
+          service.lastAction,
+          <ActionLinks
+            labels={
+              service.state === "running"
+                ? ["重启", "日志", "停止", "更多"]
+                : ["启动", "日志", "更多"]
+            }
+            dangerIndex={service.state === "running" ? 2 : undefined}
+          />,
+        ])}
+      />
+      <TableFooter total={services.length} />
     </Panel>
   );
 }
 
 function Firewall() {
   return (
-    <div className="split-layout equal">
+    <div className="split-layout firewall-layout">
       <Panel
-        title="ufw 规则"
-        description="3 条活动规则。"
+        title="防火墙"
+        description="只开放必要端口，SSH 入口单独保护。"
+        actions={
+          <>
+            <button className="tool-button" type="button">
+              导入
+            </button>
+            <button className="tool-button" type="button">
+              导出
+            </button>
+            <button className="primary-button" type="button">
+              <Plus size={16} />
+              添加端口
+            </button>
+          </>
+        }
       >
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>服务器</th>
-                <th>动作</th>
-                <th>端口</th>
-                <th>协议</th>
-                <th>来源</th>
-                <th>备注</th>
-              </tr>
-            </thead>
-            <tbody>
-              {firewallRules.map((rule) => (
-                <tr key={rule.id}>
-                  <td>{rule.node}</td>
-                  <td>
-                    <span className={`rule-action ${rule.action}`}>
-                      {rule.action}
-                    </span>
-                  </td>
-                  <td>{rule.port}</td>
-                  <td>{rule.protocol}</td>
-                  <td>{rule.from}</td>
-                  <td>{rule.note}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="tabs-line" role="tablist" aria-label="防火墙分类">
+          <button className="active" type="button">
+            系统防火墙
+          </button>
+          <button type="button">SSH 管理</button>
+          <button type="button">端口规则</button>
+          <button type="button">日志</button>
         </div>
+        <div className="safety-bar">
+          <Metric label="防火墙" value="开启" />
+          <Metric label="SSH 端口" value="22" />
+          <Metric label="放行规则" value="2" />
+          <Metric label="拒绝规则" value="1" />
+        </div>
+        <SimpleTable
+          headers={["服务器", "动作", "端口", "协议", "来源", "备注", "操作"]}
+          rows={firewallRules.map((rule) => [
+            rule.node,
+            <RuleAction action={rule.action} />,
+            rule.port,
+            rule.protocol,
+            rule.from,
+            rule.note,
+            <ActionLinks labels={["编辑", "删除"]} dangerLast />,
+          ])}
+        />
+        <TableFooter total={firewallRules.length} />
       </Panel>
 
-      <Panel
-        title="添加规则"
-        description="变更会进入操作记录。"
-      >
+      <Panel title="添加端口" description="22/tcp 已锁定，避免误断 SSH。">
         <form className="rule-form">
           <label>
             动作
             <select defaultValue="allow">
-              <option>allow</option>
-              <option>deny</option>
+              <option value="allow">放行</option>
+              <option value="deny">拒绝</option>
             </select>
           </label>
           <label>
@@ -746,7 +1181,7 @@ function Firewall() {
           </label>
           <div className="warning-callout">
             <Lock size={17} />
-            22/tcp 已锁定。先保留当前 SSH 入口。
+            保存后生成审计 ID，可在日志页追踪。
           </div>
           <button className="primary-button" type="button">
             添加规则
@@ -761,57 +1196,24 @@ function Deployments() {
   return (
     <div className="split-layout equal">
       <Panel
-      title="项目发布"
-      description="2 个仓库正常，1 个失败。"
+        title="项目"
+        description="发布前拉取代码，失败会保留完整日志。"
         actions={
           <button className="primary-button" type="button">
-            <UploadCloud size={17} />
+            <UploadCloud size={16} />
             新建项目
           </button>
         }
       >
-        <div className="deployment-list">
-          {deployments.map((deployment) => (
-            <article className="deployment-card" key={deployment.project}>
-              <div>
-                <div className="deployment-title">
-                  <Code2 size={18} />
-                  <strong>{deployment.project}</strong>
-                  <StateBadge state={deployment.state} />
-                </div>
-                <p>{deployment.repo}</p>
-              </div>
-              <div className="deployment-meta">
-                <span>{deployment.node}</span>
-                <span>{deployment.branch}</span>
-                <span>{deployment.profile}</span>
-                <span>{deployment.commit}</span>
-              </div>
-              <div className="row-actions">
-                <button className="ghost-button" type="button">
-                  发布
-                </button>
-                <button className="ghost-button" type="button">
-                  回滚
-                </button>
-                <button className="icon-button small" type="button" aria-label="更多">
-                  <MoreHorizontal size={16} />
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
+        <DeploymentTable />
       </Panel>
 
-      <Panel
-        title="发布日志"
-        description="customer-portal · release"
-      >
+      <Panel title="发布日志" description="customer-portal · release">
         <div className="log-window" aria-label="发布日志">
           {releaseLogs.map((log) => (
             <p key={log}>{log}</p>
           ))}
-          <p className="log-cursor">10:43:15  waiting...</p>
+          <p className="log-cursor">10:43:15  等待健康检查返回...</p>
         </div>
       </Panel>
     </div>
@@ -821,48 +1223,66 @@ function Deployments() {
 function AuditLog() {
   return (
     <Panel
-      title="操作记录"
+      title="审计日志"
       description="按服务器、动作、结果筛选。"
       actions={<SegmentedControl options={["今天", "7 天", "30 天"]} />}
     >
       <div className="filter-row">
-        <div className="search-box">
-          <Search size={17} />
-          <input aria-label="搜索操作记录" placeholder="搜索动作、服务器、ID" />
+        <div className="search-box compact">
+          <Search size={16} />
+          <input aria-label="搜索操作记录" placeholder="动作 / 服务器 / ID" />
         </div>
-        <button className="secondary-button" type="button">
-          <ChevronDown size={17} />
-          结果筛选
+        <button className="tool-button" type="button">
+          <ChevronDown size={16} />
+          结果
+        </button>
+        <button className="tool-button" type="button">
+          <ChevronDown size={16} />
+          主机
         </button>
       </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th>账号</th>
-              <th>服务器</th>
-              <th>动作</th>
-              <th>结果</th>
-              <th>详情</th>
-            </tr>
-          </thead>
-          <tbody>
-            {audits.map((audit) => (
-              <tr key={`${audit.time}-${audit.action}`}>
-                <td>{audit.time}</td>
-                <td>{audit.user}</td>
-                <td>{audit.node}</td>
-                <td>{audit.action}</td>
-                <td>
-                  <AuditBadge result={audit.result} />
-                </td>
-                <td>{audit.detail}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <SimpleTable
+        headers={["时间", "账号", "服务器", "动作", "结果", "详情"]}
+        rows={audits.map((audit) => [
+          audit.time,
+          audit.user,
+          audit.node,
+          audit.action,
+          <AuditBadge result={audit.result} />,
+          audit.detail,
+        ])}
+      />
+      <TableFooter total={audits.length} />
+    </Panel>
+  );
+}
+
+function Schedules() {
+  return (
+    <Panel
+      title="计划任务"
+      description="备份、清理、证书检查和发布同步。"
+      actions={
+        <button className="primary-button" type="button">
+          <Plus size={16} />
+          添加任务
+        </button>
+      }
+    >
+      <SimpleTable
+        headers={["任务", "周期", "主机", "结果", "最近执行", "操作"]}
+        rows={schedules.map((schedule) => [
+          <strong>{schedule[0]}</strong>,
+          schedule[1],
+          schedule[2],
+          <TextStatus state={schedule[3] === "成功" ? "running" : "queued"}>
+            {schedule[3]}
+          </TextStatus>,
+          schedule[4],
+          <ActionLinks labels={["执行", "日志", "编辑", "删除"]} dangerLast />,
+        ])}
+      />
+      <TableFooter total={schedules.length} />
     </Panel>
   );
 }
@@ -870,28 +1290,28 @@ function AuditLog() {
 function SettingsPage({ theme }: { theme: Theme }) {
   return (
     <div className="settings-grid">
-      <Panel title="中心端" description="demo-sg-01">
+      <Panel title="面板入口" description="中心端 demo-sg-01">
         <div className="settings-list">
-          <SettingRow label="中心地址" value="https://panel.example.com" />
-          <SettingRow label="注册 token" value="30 分钟过期" />
-          <SettingRow label="指标数据" value="保留 30 天" />
+          <SettingRow label="访问地址" value="https://panel.stackpilot.local" />
+          <SettingRow label="绑定账号" value="admin" />
+          <SettingRow label="登录保护" value="开启" />
+          <SettingRow label="当前主题" value={theme === "light" ? "浅色" : "暗色"} />
+        </div>
+      </Panel>
+      <Panel title="Agent 注册" description="一次性 token 默认 30 分钟过期。">
+        <div className="settings-list">
+          <SettingRow label="注册通道" value="stable" />
+          <SettingRow label="最新 Agent" value="v0.1.0" />
+          <SettingRow label="心跳超时" value="90 秒" />
+          <SettingRow label="命令审计" value="开启" />
+        </div>
+      </Panel>
+      <Panel title="数据与备份" description="不保留无用历史。">
+        <div className="settings-list">
+          <SettingRow label="指标数据" value="30 天" />
           <SettingRow label="发布记录" value="20 次/项目" />
-        </div>
-      </Panel>
-      <Panel title="版本" description="当前通道 stable。">
-        <div className="version-box">
-          <Database size={22} />
-          <div>
-            <strong>中心端 v0.1.0</strong>
-            <p>Agent v0.1.0 · 已是最新</p>
-          </div>
-        </div>
-      </Panel>
-      <Panel title="界面" description="本地偏好。">
-        <div className="theme-preview">
-          <div className="preview-surface">
-            <span>{theme === "light" ? "浅色模式已启用" : "暗色模式已启用"}</span>
-          </div>
+          <SettingRow label="备份目录" value="/data/demo-backup" />
+          <SettingRow label="升级通道" value="stable" />
         </div>
       </Panel>
     </div>
@@ -923,28 +1343,18 @@ function Panel({
   );
 }
 
-function MetricCard({
-  icon: Icon,
+function PanelTool({
   label,
-  value,
-  trend,
-  tone = "default",
+  icon: Icon,
 }: {
-  icon: typeof Server;
   label: string;
-  value: string;
-  trend: string;
-  tone?: "default" | "warning";
+  icon?: typeof LayoutDashboard;
 }) {
   return (
-    <article className={`metric-card ${tone}`}>
-      <div className="metric-icon">
-        <Icon size={20} />
-      </div>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <p>{trend}</p>
-    </article>
+    <button className="tool-button" type="button">
+      {Icon && <Icon size={16} />}
+      {label}
+    </button>
   );
 }
 
@@ -960,13 +1370,17 @@ function ServerTable({
       <table className={compact ? "server-table compact" : "server-table"}>
         <thead>
           <tr>
-            <th>服务器</th>
+            <th>
+              <input aria-label="选择全部主机" type="checkbox" />
+            </th>
+            <th>名称 / IP</th>
             <th>状态</th>
-            <th>CPU</th>
-            <th>内存</th>
+            <th>系统</th>
+            <th>负载</th>
+            <th>资源</th>
             <th>磁盘</th>
-            <th>网络</th>
-            <th>心跳</th>
+            <th>Agent</th>
+            <th>最后连接</th>
             <th>操作</th>
           </tr>
         </thead>
@@ -974,41 +1388,130 @@ function ServerTable({
           {nodes.map((node) => (
             <tr key={node.id}>
               <td>
+                <input aria-label={`选择 ${node.name}`} type="checkbox" />
+              </td>
+              <td>
                 <div className="node-cell">
                   <strong>{node.name}</strong>
-                  <span>
-                    {node.host} · {node.os}
-                  </span>
+                  <span>{node.host}</span>
                 </div>
               </td>
               <td>
                 <NodeBadge state={node.state} label={node.risk} />
               </td>
+              <td>{node.os}</td>
+              <td className="numeric">{node.load}</td>
               <td>
-                <Usage value={node.cpu} />
-              </td>
-              <td>
-                <Usage value={node.memory} />
+                <ResourceStack cpu={node.cpu} memory={node.memory} />
               </td>
               <td>
                 <Usage value={node.disk} />
               </td>
-              <td>{node.network}</td>
+              <td>{node.agent}</td>
               <td>{node.heartbeat}</td>
               <td>
-                <div className="row-actions">
-                  <button className="ghost-button" type="button">
-                    详情
-                  </button>
-                  <button className="ghost-button" type="button">
-                    服务
-                  </button>
-                </div>
+                <ActionLinks labels={["终端", "文件", "监控", "更多"]} />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function DeploymentTable() {
+  return (
+    <>
+      <SimpleTable
+        headers={["项目", "主机", "仓库", "分支", "类型", "状态", "提交", "耗时", "更新时间", "操作"]}
+        rows={deployments.map((deployment) => [
+          <strong>{deployment.project}</strong>,
+          deployment.node,
+          deployment.repo,
+          deployment.branch,
+          deployment.profile,
+          <StateBadge state={deployment.state} />,
+          deployment.commit,
+          deployment.duration,
+          deployment.updatedAt,
+          <ActionLinks labels={["发布", "日志", "回滚", "更多"]} dangerIndex={2} />,
+        ])}
+      />
+      <TableFooter total={deployments.length} />
+    </>
+  );
+}
+
+function SimpleTable({
+  headers,
+  rows,
+}: {
+  headers: string[];
+  rows: React.ReactNode[][];
+}) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            {headers.map((header) => (
+              <th key={header}>{header}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={rowIndex}>
+              {row.map((cell, cellIndex) => (
+                <td key={`${rowIndex}-${cellIndex}`}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TableFooter({ total }: { total: number }) {
+  return (
+    <div className="table-footer">
+      <span>共 {total} 条</span>
+      <div>
+        <span>10 条/页</span>
+        <strong>1</strong>
+      </div>
+    </div>
+  );
+}
+
+function ActionLinks({
+  labels,
+  dangerLast = false,
+  dangerIndex,
+}: {
+  labels: string[];
+  dangerLast?: boolean;
+  dangerIndex?: number;
+}) {
+  return (
+    <div className="action-links">
+      {labels.map((label, index) => {
+        const isDanger = dangerLast
+          ? index === labels.length - 1
+          : dangerIndex === index;
+        return (
+          <span key={label} className="action-link-wrap">
+            <button
+              className={`table-link ${isDanger ? "danger" : ""}`}
+              type="button"
+            >
+              {label === "更多" ? <MoreHorizontal size={15} /> : label}
+            </button>
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -1024,14 +1527,68 @@ function Usage({ value }: { value: number }) {
   );
 }
 
+function ResourceStack({ cpu, memory }: { cpu: number; memory: number }) {
+  return (
+    <div className="resource-stack">
+      <Usage value={cpu} />
+      <Usage value={memory} />
+    </div>
+  );
+}
+
+function ResourceMeter({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  percent,
+  tone = "default",
+}: {
+  icon: typeof LayoutDashboard;
+  label: string;
+  value: string;
+  detail: string;
+  percent: number;
+  tone?: "default" | "warning";
+}) {
+  return (
+    <article
+      className={`resource-meter ${tone}`}
+      style={{ "--value": `${percent * 3.6}deg` } as React.CSSProperties}
+    >
+      <div className="meter-ring" aria-hidden="true">
+        <span>
+          <Icon size={18} />
+        </span>
+      </div>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <em>{detail}</em>
+      </div>
+    </article>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 function ChartCard({
   title,
   values,
   color,
+  unit = "%",
 }: {
   title: string;
   values: number[];
   color: string;
+  unit?: string;
 }) {
   const points = values
     .map((value, index) => {
@@ -1045,7 +1602,10 @@ function ChartCard({
     <article className="chart-card">
       <div className="chart-title">
         <strong>{title}</strong>
-        <span>{values.at(-1)}%</span>
+        <span>
+          {values.at(-1)}
+          {unit}
+        </span>
       </div>
       <svg
         className={`line-chart ${color}`}
@@ -1060,23 +1620,55 @@ function ChartCard({
   );
 }
 
-function TodoItem({
-  tone,
-  title,
-  detail,
-}: {
-  tone: "warning" | "danger" | "info";
-  title: string;
-  detail: string;
-}) {
+function SoftwareList() {
   return (
-    <article className={`todo-item ${tone}`}>
-      <span />
-      <div>
-        <strong>{title}</strong>
-        <p>{detail}</p>
-      </div>
-    </article>
+    <div className="software-list">
+      {softwareList.map(([name, version, state, port]) => (
+        <article className="software-row" key={name}>
+          <Package size={17} />
+          <div>
+            <strong>{name}</strong>
+            <span>
+              {version} · {port}
+            </span>
+          </div>
+          <TextStatus state={state === "未安装" ? "inactive" : "running"}>
+            {state}
+          </TextStatus>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function TaskList() {
+  return (
+    <div className="task-list">
+      {queueTasks.map((task) => (
+        <article className="task-item" key={task.id}>
+          <StateDot state={task.state} />
+          <div>
+            <strong>{task.title}</strong>
+            <p>
+              {task.node} · {task.detail}
+            </p>
+          </div>
+          <span>{task.time}</span>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function StateDot({ state }: { state: TaskState }) {
+  return (
+    <span
+      className={`state-dot ${state}`}
+      aria-label={
+        state === "running" ? "执行中" : state === "waiting" ? "等待" : "失败"
+      }
+      role="img"
+    />
   );
 }
 
@@ -1119,9 +1711,10 @@ function NodeBadge({ state, label }: { state: NodeState; label: string }) {
   }[state];
 
   return (
-    <span className={`badge ${state}`}>
-      {text}
-      <em>{label}</em>
+    <span className={`node-status ${state}`}>
+      <i aria-hidden="true" />
+      <span>{text}</span>
+      {label !== "正常" && <em>{label}</em>}
     </span>
   );
 }
@@ -1135,7 +1728,25 @@ function StateBadge({ state }: { state: ServiceState | ReleaseState }) {
     queued: "排队中",
   };
 
-  return <span className={`state-badge ${state}`}>{map[state]}</span>;
+  return <TextStatus state={state}>{map[state]}</TextStatus>;
+}
+
+function TextStatus({
+  state,
+  children,
+}: {
+  state: ServiceState | ReleaseState;
+  children: React.ReactNode;
+}) {
+  return <span className={`text-status ${state}`}>{children}</span>;
+}
+
+function RuleAction({ action }: { action: "allow" | "deny" }) {
+  return (
+    <span className={`rule-action ${action}`}>
+      {action === "allow" ? "放行" : "拒绝"}
+    </span>
+  );
 }
 
 function AuditBadge({ result }: { result: AuditResult }) {
@@ -1155,7 +1766,7 @@ function SettingRow({ label, value }: { label: string; value: string }) {
 }
 
 function pageTitle(active: NavKey) {
-  return navItems.find((item) => item.key === active)?.label ?? "总览";
+  return navItems.find((item) => item.key === active)?.label ?? "首页";
 }
 
 export default App;
