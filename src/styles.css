@@ -249,11 +249,36 @@ button {
 
 .app.sidebar-collapsed .nav-list {
   width: 100%;
+  gap: 6px;
+  justify-items: center;
 }
 
 .app.sidebar-collapsed .nav-item {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
   justify-content: center;
+  gap: 0;
   padding: 0;
+  border-radius: 4px;
+}
+
+.app.sidebar-collapsed .nav-item::before {
+  display: none;
+}
+
+.app.sidebar-collapsed .nav-item span {
+  display: none;
+}
+
+.app.sidebar-collapsed .nav-item svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.app.sidebar-collapsed .nav-item.active {
+  box-shadow: inset 3px 0 0 #67b7e3;
 }
 
 .sidebar-card {
@@ -1316,20 +1341,38 @@ code,
     pointer-events: auto;
   }
 
-  .nav-list {
+  .nav-list,
+  .app.sidebar-collapsed .nav-list {
     display: flex;
     gap: 4px;
+    justify-items: stretch;
     overflow-x: auto;
     padding-bottom: 2px;
   }
 
-  .nav-item {
+  .nav-item,
+  .app.sidebar-collapsed .nav-item {
+    width: auto;
+    height: auto;
     min-width: max-content;
     min-height: 34px;
+    gap: 10px;
+    padding: 0 10px;
+    justify-content: flex-start;
+    border-radius: 3px;
   }
 
-  .nav-item span {
+  .nav-item span,
+  .app.sidebar-collapsed .nav-item span {
     display: inline;
+  }
+
+  .app.sidebar-collapsed .nav-item::before {
+    display: block;
+  }
+
+  .app.sidebar-collapsed .nav-item.active {
+    box-shadow: none;
   }
 
   .sidebar-card {
