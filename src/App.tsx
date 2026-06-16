@@ -109,7 +109,7 @@ const navItems: Array<{
   { key: "services", label: "服务", icon: TerminalSquare },
   { key: "firewall", label: "防火墙", icon: Shield },
   { key: "deployments", label: "发布", icon: GitBranch },
-  { key: "audit", label: "审计日志", icon: ClipboardList },
+  { key: "audit", label: "操作记录", icon: ClipboardList },
   { key: "settings", label: "设置", icon: Settings },
 ];
 
@@ -140,7 +140,7 @@ const nodes: ServerNode[] = [
     network: "6.8 Mbps",
     heartbeat: "19 秒前",
     agent: "v0.1.0",
-    risk: "健康",
+    risk: "正常",
   },
   {
     id: "jp-edge-03",
@@ -177,36 +177,36 @@ const services: SystemService[] = [
     name: "nginx.service",
     node: "新加坡生产 01",
     state: "running",
-    description: "反向代理与静态资源服务",
-    lastAction: "12 分钟前 restart 成功",
+    description: "反向代理",
+    lastAction: "12 分钟前 restart",
   },
   {
     name: "stackpilot-agent.service",
     node: "新加坡生产 01",
     state: "running",
-    description: "StackPilot Agent",
-    lastAction: "2 小时前自动重连",
+    description: "节点连接",
+    lastAction: "2 小时前重连",
   },
   {
     name: "postgresql.service",
     node: "香港 Web 02",
     state: "running",
-    description: "PostgreSQL 数据库",
-    lastAction: "今天 09:12 start 成功",
+    description: "PostgreSQL",
+    lastAction: "09:12 start",
   },
   {
     name: "app-web.service",
     node: "东京边缘 03",
     state: "failed",
-    description: "Node 前端服务",
-    lastAction: "4 分钟前健康检查失败",
+    description: "Node 服务",
+    lastAction: "4 分钟前失败",
   },
   {
     name: "backup.timer",
     node: "香港 Web 02",
     state: "inactive",
-    description: "每日备份计划",
-    lastAction: "昨天 23:00 执行完成",
+    description: "每日备份",
+    lastAction: "昨天 23:00",
   },
 ];
 
@@ -283,7 +283,7 @@ const audits: AuditEntry[] = [
     node: "香港 Web 02",
     action: "发布 customer-portal",
     result: "等待确认",
-    detail: "Webhook 触发，commit 31de8a0",
+    detail: "GitLab push · 31de8a0",
   },
   {
     time: "10:36:03",
@@ -291,7 +291,7 @@ const audits: AuditEntry[] = [
     node: "新加坡生产 01",
     action: "重启 nginx.service",
     result: "成功",
-    detail: "审计 ID AUD-2048",
+    detail: "AUD-2048",
   },
   {
     time: "10:12:44",
@@ -299,7 +299,7 @@ const audits: AuditEntry[] = [
     node: "东京边缘 03",
     action: "发布 status-page",
     result: "失败",
-    detail: "健康检查 /health 返回 502",
+    detail: "/health 502",
   },
   {
     time: "09:58:21",
@@ -312,11 +312,11 @@ const audits: AuditEntry[] = [
 ];
 
 const releaseLogs = [
-  "[10:42:19] webhook verified: GitLab push refs/heads/release",
-  "[10:42:20] checkout 31de8a0 into releases/31de8a0",
-  "[10:42:31] pnpm install --frozen-lockfile completed",
-  "[10:43:02] pnpm build completed",
-  "[10:43:09] waiting for health check /health",
+  "10:42:19  webhook accepted · GitLab push release",
+  "10:42:20  checkout 31de8a0",
+  "10:42:31  pnpm install --frozen-lockfile",
+  "10:43:02  pnpm build",
+  "10:43:09  health check /health",
 ];
 
 function App() {
@@ -352,7 +352,7 @@ function App() {
           </div>
           <div>
             <strong>StackPilot</strong>
-            <span>服务器总控台</span>
+            <span>服务器运维</span>
           </div>
         </div>
 
@@ -376,16 +376,16 @@ function App() {
         <div className="sidebar-card">
           <div className="sidebar-card-title">
             <Shield size={17} />
-            安全策略
+            操作保护
           </div>
-          <p>危险操作默认二次确认，所有写操作进入审计日志。</p>
+          <p>2 个待确认动作。最近一次变更来自 10:36。</p>
         </div>
       </aside>
 
       <main className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">中心端在线 · gRPC Agent 通道正常</p>
+            <p className="eyebrow">panel-sg-01 · 10:44:12 UTC+8</p>
             <h1>{pageTitle(active)}</h1>
           </div>
           <div className="topbar-actions">
@@ -442,30 +442,30 @@ function Overview({
 }) {
   return (
     <>
-      <section className="metric-grid" aria-label="服务器健康摘要">
+      <section className="metric-grid" aria-label="服务器状态">
         <MetricCard
           icon={Server}
-          label="托管服务器"
+          label="服务器"
           value={`${nodes.length} 台`}
-          trend="3 台已完成初始化"
+          trend="3 online · 1 offline"
         />
         <MetricCard
           icon={Activity}
-          label="平均 CPU"
+          label="CPU 平均"
           value="31%"
-          trend="近 15 分钟稳定"
+          trend="avg · 15m"
         />
         <MetricCard
           icon={HardDrive}
-          label="磁盘最高占用"
+          label="磁盘最高"
           value="73%"
-          trend="建议关注新加坡生产 01"
+          trend="sg-prod-01"
         />
         <MetricCard
           icon={Shield}
-          label="待处理事项"
+          label="事件"
           value={`${issueCount} 项`}
-          trend="服务异常与 Agent 失联"
+          trend="1 failed · 1 offline"
           tone="warning"
         />
       </section>
@@ -473,21 +473,21 @@ function Overview({
       <section className="split-layout">
         <Panel
           title="服务器列表"
-          description="参考多节点面板的信息组织，保留常用安全操作入口。"
+          description="按最近心跳排序。"
           actions={
             <>
               <div className="search-box">
                 <Search size={17} />
                 <input
                   aria-label="搜索服务器"
-                  placeholder="搜索名称、IP、系统或风险"
+                placeholder="搜索服务器、IP、状态"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                 />
               </div>
               <button className="primary-button" type="button">
                 <Plus size={17} />
-                添加服务器
+                接入服务器
               </button>
             </>
           }
@@ -496,27 +496,27 @@ function Overview({
         </Panel>
 
         <aside className="stack">
-          <Panel title="需要处理" description="新手优先看到影响最大的状态。">
+          <Panel title="事件" description="按影响范围排序。">
             <div className="todo-list">
               <TodoItem
                 tone="warning"
                 title="app-web.service 异常"
-                detail="东京边缘 03 健康检查失败，建议查看日志后重启。"
+                detail="jp-edge-03 · /health 502 · 4 分钟前"
               />
               <TodoItem
                 tone="danger"
                 title="测试节点 Agent 失联"
-                detail="最后心跳 17 分钟前，检查网络和 systemd 状态。"
+                detail="lab-node-04 · last seen 17 分钟前"
               />
               <TodoItem
                 tone="info"
-                title="磁盘接近阈值"
-                detail="新加坡生产 01 已达 73%，建议清理旧发布版本。"
+                title="磁盘 73%"
+                detail="sg-prod-01 · releases 占用 18.6 GB"
               />
             </div>
           </Panel>
 
-          <Panel title="最近审计" description="所有关键动作可追踪。">
+          <Panel title="最近操作" description="今天 4 条记录。">
             <AuditMiniList />
           </Panel>
         </aside>
@@ -529,12 +529,12 @@ function Servers({ nodes }: { nodes: ServerNode[] }) {
   return (
     <div className="stack">
       <Panel
-        title="添加服务器"
-        description="中心生成一次性安装命令，Agent 安装后主动连接中心。"
+        title="接入服务器"
+        description="复制命令到目标服务器执行。"
         actions={
           <button className="primary-button" type="button">
             <Copy size={17} />
-            复制安装命令
+            复制命令
           </button>
         }
       >
@@ -548,7 +548,7 @@ function Servers({ nodes }: { nodes: ServerNode[] }) {
 
       <Panel
         title="服务器"
-        description="状态、资源、Agent 版本和常用操作集中呈现。"
+        description="4 台服务器 · 2 个异常状态。"
       >
         <ServerTable nodes={nodes} />
       </Panel>
@@ -560,8 +560,8 @@ function Monitor({ node }: { node: ServerNode }) {
   return (
     <div className="stack">
       <Panel
-        title={`${node.name} 资源监控`}
-        description="折线图保持清晰，不做复杂大屏效果。"
+        title={`${node.name} 监控`}
+        description="采样间隔 15 秒。"
         actions={
           <SegmentedControl options={["近 1 小时", "6 小时", "24 小时"]} />
         }
@@ -593,7 +593,7 @@ function Services() {
   return (
     <Panel
       title="systemd 服务"
-      description="只允许对白名单服务执行 start、stop、restart，并写入审计。"
+      description="5 个已登记 unit。"
       actions={
         <>
           <button className="secondary-button" type="button">
@@ -602,7 +602,7 @@ function Services() {
           </button>
           <button className="primary-button" type="button">
             <Plus size={17} />
-            登记服务
+            添加 unit
           </button>
         </>
       }
@@ -614,7 +614,7 @@ function Services() {
               <th>服务</th>
               <th>服务器</th>
               <th>状态</th>
-              <th>说明</th>
+              <th>类型</th>
               <th>最近动作</th>
               <th>操作</th>
             </tr>
@@ -661,7 +661,7 @@ function Firewall() {
     <div className="split-layout equal">
       <Panel
         title="ufw 规则"
-        description="只做单条 allow/deny 规则，不覆盖整套防火墙配置。"
+        description="3 条活动规则。"
       >
         <div className="table-wrap">
           <table>
@@ -696,8 +696,8 @@ function Firewall() {
       </Panel>
 
       <Panel
-        title="添加单条规则"
-        description="危险端口会显示强提示，并要求二次确认。"
+        title="添加规则"
+        description="变更会进入操作记录。"
       >
         <form className="rule-form">
           <label>
@@ -724,7 +724,7 @@ function Firewall() {
           </label>
           <div className="warning-callout">
             <Lock size={17} />
-            SSH 相关规则受保护，变更前会检查当前连接入口。
+            22/tcp 已锁定。先保留当前 SSH 入口。
           </div>
           <button className="primary-button" type="button">
             添加规则
@@ -739,8 +739,8 @@ function Deployments() {
   return (
     <div className="split-layout equal">
       <Panel
-        title="项目发布"
-        description="GitHub/GitLab Webhook 触发声明式发布，禁止任意 shell。"
+      title="项目发布"
+      description="2 个仓库正常，1 个失败。"
         actions={
           <button className="primary-button" type="button">
             <UploadCloud size={17} />
@@ -782,14 +782,14 @@ function Deployments() {
       </Panel>
 
       <Panel
-        title="实时发布日志"
-        description="MCSM 式阶段反馈，但仅显示结构化发布任务。"
+        title="发布日志"
+        description="customer-portal · release"
       >
         <div className="log-window" aria-label="发布日志">
           {releaseLogs.map((log) => (
             <p key={log}>{log}</p>
           ))}
-          <p className="log-cursor">[10:43:15] waiting...</p>
+          <p className="log-cursor">10:43:15  waiting...</p>
         </div>
       </Panel>
     </div>
@@ -799,14 +799,14 @@ function Deployments() {
 function AuditLog() {
   return (
     <Panel
-      title="审计日志"
-      description="按时间、服务器、动作、结果筛选，所有关键操作可解释。"
+      title="操作记录"
+      description="按服务器、动作、结果筛选。"
       actions={<SegmentedControl options={["今天", "7 天", "30 天"]} />}
     >
       <div className="filter-row">
         <div className="search-box">
           <Search size={17} />
-          <input aria-label="搜索审计日志" placeholder="搜索动作、服务器或详情" />
+          <input aria-label="搜索操作记录" placeholder="搜索动作、服务器、ID" />
         </div>
         <button className="secondary-button" type="button">
           <ChevronDown size={17} />
@@ -818,7 +818,7 @@ function AuditLog() {
           <thead>
             <tr>
               <th>时间</th>
-              <th>用户</th>
+              <th>账号</th>
               <th>服务器</th>
               <th>动作</th>
               <th>结果</th>
@@ -848,24 +848,24 @@ function AuditLog() {
 function SettingsPage({ theme }: { theme: Theme }) {
   return (
     <div className="settings-grid">
-      <Panel title="中心端设置" description="MVP 保持最小配置面。">
+      <Panel title="中心端" description="panel-sg-01">
         <div className="settings-list">
           <SettingRow label="中心地址" value="https://panel.example.com" />
-          <SettingRow label="Agent 注册 token" value="一次性 · 30 分钟过期" />
-          <SettingRow label="指标保留" value="30 天" />
-          <SettingRow label="发布记录" value="最近 20 次/项目" />
+          <SettingRow label="注册 token" value="30 分钟过期" />
+          <SettingRow label="指标数据" value="保留 30 天" />
+          <SettingRow label="发布记录" value="20 次/项目" />
         </div>
       </Panel>
-      <Panel title="版本检查" description="首版只提示新版本和手动升级命令。">
+      <Panel title="版本" description="当前通道 stable。">
         <div className="version-box">
           <Database size={22} />
           <div>
             <strong>中心端 v0.1.0</strong>
-            <p>Agent v0.1.0 · 暂无可用更新</p>
+            <p>Agent v0.1.0 · 已是最新</p>
           </div>
         </div>
       </Panel>
-      <Panel title="界面主题" description="浅色优先，暗色可选。">
+      <Panel title="界面" description="本地偏好。">
         <div className="theme-preview">
           <div className="preview-surface">
             <span>{theme === "light" ? "浅色模式已启用" : "暗色模式已启用"}</span>
