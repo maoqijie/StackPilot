@@ -1686,6 +1686,119 @@ a {
   }
 }
 
+@media (max-width: 920px) {
+  .overview-page {
+    padding: 14px 14px 54px;
+    overflow: auto;
+  }
+
+  .cluster-bar {
+    overflow-x: auto;
+    gap: 14px;
+  }
+
+  .cluster-actions {
+    flex: 0 0 auto;
+  }
+
+  .metric-row {
+    height: 116px;
+    grid-template-columns: repeat(6, minmax(148px, 1fr));
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+    scroll-snap-type: x proximity;
+  }
+
+  .metric-card {
+    min-width: 148px;
+    scroll-snap-align: start;
+  }
+
+  .metric-card span,
+  .metric-card p {
+    white-space: nowrap;
+  }
+
+  .metric-card strong {
+    white-space: nowrap;
+  }
+
+  .overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .left-stack,
+  .right-stack {
+    grid-auto-rows: max-content;
+    align-content: start;
+    gap: 14px;
+  }
+
+  .left-stack {
+    grid-template-rows: none;
+  }
+
+  .right-stack {
+    grid-template-rows: none;
+  }
+
+  .two-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .host-table {
+    min-width: 860px;
+  }
+
+  .panel-card {
+    min-height: 0;
+  }
+
+  .overview-page .panel-card {
+    min-height: max-content;
+    overflow: visible;
+  }
+
+  .risk-list div {
+    height: auto;
+    min-height: 30px;
+  }
+
+  .quick-grid {
+    grid-template-columns: repeat(4, minmax(104px, 1fr));
+    overflow-x: auto;
+  }
+
+  .quick-grid button {
+    min-width: 104px;
+  }
+}
+
+@media (max-width: 760px) {
+  .overview-page {
+    padding: 14px 12px 54px;
+  }
+
+  .metric-row {
+    grid-template-columns: repeat(6, 152px);
+  }
+
+  .metric-card {
+    grid-template-columns: 38px 1fr;
+    padding: 14px 12px 10px;
+  }
+
+  .metric-card strong {
+    font-size: 26px;
+  }
+
+  .metric-card strong em {
+    font-size: 15px;
+  }
+}
+
 .page-head {
   min-height: 68px;
   display: flex;
