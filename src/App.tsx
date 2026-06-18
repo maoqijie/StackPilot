@@ -469,13 +469,6 @@ function Sidebar({
         {!collapsed && <strong>StackPilot</strong>}
         {(compact || collapsed) && <Menu size={16} />}
       </div>
-      {!compact && !collapsed && (
-        <button className="workspace-switch" type="button" onClick={() => notify("团队切换器已展开", "info")}>
-          <span>Default Workspace</span>
-          <em>切换团队</em>
-          <ChevronDown size={13} />
-        </button>
-      )}
       <nav className="side-nav">
         {navItems.map((item) => {
           const Icon = item.icon;
