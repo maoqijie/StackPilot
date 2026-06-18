@@ -2030,12 +2030,23 @@ a {
   }
 
   .module-filter-line {
-    min-height: 47px;
-    align-content: center;
+    min-height: max-content;
+    height: max-content;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    align-content: start;
   }
 
   .module-search {
-    flex-basis: 100%;
+    width: 100%;
+    grid-column: 1 / -1;
+  }
+
+  .module-filter-line .field-select {
+    min-width: 0;
+    width: 100%;
+    flex: none;
   }
 }
 
@@ -2105,6 +2116,10 @@ a {
   }
 
   .module-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .module-filter-line {
     grid-template-columns: 1fr;
   }
 
