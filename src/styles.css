@@ -241,7 +241,35 @@ a {
   display: grid;
   align-content: start;
   gap: 4px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(139 189 214 / 42%) transparent;
+}
+
+.side-nav::-webkit-scrollbar,
+.host-groups::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.side-nav::-webkit-scrollbar-track,
+.host-groups::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.side-nav::-webkit-scrollbar-thumb,
+.host-groups::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgb(139 189 214 / 34%);
+  background-clip: content-box;
+}
+
+.side-nav::-webkit-scrollbar-thumb:hover,
+.host-groups::-webkit-scrollbar-thumb:hover {
+  background: rgb(160 211 235 / 54%);
+  background-clip: content-box;
 }
 
 .side-nav button {
@@ -307,7 +335,10 @@ a {
   padding-top: 10px;
   border-top: 1px solid rgb(255 255 255 / 10%);
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(139 189 214 / 42%) transparent;
 }
 
 .host-groups > div {
