@@ -37,11 +37,29 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-type PageKey = "overview" | "databases" | "settings" | "mobile";
+const pageKeys = [
+  "overview",
+  "hosts",
+  "sites",
+  "databases",
+  "files",
+  "terminal",
+  "systemd",
+  "firewall",
+  "deploy",
+  "schedule",
+  "audit",
+  "acl",
+  "settings",
+  "mobile",
+] as const;
+
+type PageKey = (typeof pageKeys)[number];
 type Tone = "green" | "blue" | "orange" | "red" | "gray" | "purple";
 type ToastTone = "success" | "info" | "warning" | "danger";
 type ToastState = { message: string; tone: ToastTone };
 type Notify = (message: string, tone?: ToastTone) => void;
+type PageMeta = { title: string; breadcrumb: string; search: string };
 
 function currentClock() {
   return new Date().toLocaleTimeString("zh-CN", {
@@ -57,7 +75,24 @@ function activateOnKeyboard(event: React.KeyboardEvent<HTMLElement>, action: () 
   action();
 }
 
-const navItems: Array<{ key: PageKey | string; label: string; icon: LucideIcon; badge?: string }> = [
+const pageMeta: Record<PageKey, PageMeta> = {
+  overview: { title: "首页总览", breadcrumb: "控制台", search: "搜索主机、网站、数据库、任务..." },
+  hosts: { title: "主机", breadcrumb: "资源管理", search: "搜索主机名、IP、环境..." },
+  sites: { title: "网站", breadcrumb: "应用管理", search: "搜索域名、运行时、证书..." },
+  databases: { title: "数据库管理", breadcrumb: "资源管理", search: "搜索数据库名称" },
+  files: { title: "文件", breadcrumb: "资源管理", search: "搜索文件名、路径、类型..." },
+  terminal: { title: "终端", breadcrumb: "运维工具", search: "搜索会话主机或命令..." },
+  systemd: { title: "systemd 服务", breadcrumb: "系统管理", search: "搜索服务、主机、状态..." },
+  firewall: { title: "防火墙", breadcrumb: "安全管理", search: "搜索端口、协议、来源..." },
+  deploy: { title: "部署", breadcrumb: "发布管理", search: "搜索应用、版本、提交..." },
+  schedule: { title: "定时任务", breadcrumb: "自动化", search: "搜索任务名、cron、命令..." },
+  audit: { title: "审计日志", breadcrumb: "安全管理", search: "搜索用户、对象、trace id..." },
+  acl: { title: "权限", breadcrumb: "安全管理", search: "搜索用户、角色、权限..." },
+  settings: { title: "面板设置", breadcrumb: "设置", search: "搜索主机、网站、数据库、文件..." },
+  mobile: { title: "移动端", breadcrumb: "预览", search: "搜索移动端模块..." },
+};
+
+const navItems: Array<{ key: Exclude<PageKey, "mobile">; label: string; icon: LucideIcon; badge?: string }> = [
   { key: "overview", label: "首页总览", icon: Home },
   { key: "hosts", label: "主机", icon: Server },
   { key: "sites", label: "网站", icon: Globe2 },
@@ -141,12 +176,195 @@ const settingsChanges = [
   ["2025-08-12 03:01:22", "系统任务", "备份策略", "验证", "备份验证成功：backup-20250812-0230", "127.0.0.1"],
 ];
 
+type HostRecord = {
+  id: string;
+  name: string;
+  ip: string;
+  env: string;
+  health: "健康" | "警告" | "离线";
+  cpu: string;
+  memory: string;
+  disk: string;
+  os: string;
+  uptime: string;
+  backup: string;
+  update: string;
+  services: string[];
+};
+
+type SiteRecord = {
+  id: string;
+  domain: string;
+  status: "运行中" | "已停止" | "告警";
+  runtime: string;
+  host: string;
+  certDays: number;
+  traffic: string;
+  owner: string;
+};
+
+type FileRecord = {
+  id: string;
+  name: string;
+  type: "文件夹" | "文件";
+  path: string;
+  size: string;
+  modified: string;
+  owner: string;
+};
+
+type ServiceRecord = {
+  id: string;
+  name: string;
+  host: string;
+  status: "active" | "failed" | "inactive";
+  restarts: number;
+  memory: string;
+  updated: string;
+  handled?: boolean;
+};
+
+type FirewallRule = {
+  id: string;
+  name: string;
+  port: string;
+  protocol: string;
+  source: string;
+  target: string;
+  enabled: boolean;
+};
+
+type DeployJob = {
+  id: string;
+  app: string;
+  env: string;
+  version: string;
+  status: "成功" | "运行中" | "失败" | "待发布";
+  operator: string;
+  duration: string;
+};
+
+type ScheduleJob = {
+  id: string;
+  name: string;
+  cron: string;
+  command: string;
+  enabled: boolean;
+  lastRun: string;
+  result: "成功" | "失败" | "未运行";
+};
+
+type AuditRecord = {
+  id: string;
+  time: string;
+  ip: string;
+  user: string;
+  action: string;
+  object: string;
+  result: "成功" | "失败";
+  traceId: string;
+  summary: string;
+};
+
+type AclUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  enabled: boolean;
+  mfa: "已启用" | "未启用" | "需重置";
+  lastLogin: string;
+};
+
+type AclRole = {
+  id: string;
+  name: string;
+  desc: string;
+  permissions: string[];
+};
+
+const initialHostRecords: HostRecord[] = [
+  { id: "host-1", name: "panel-se-01", ip: "10.0.0.11", env: "生产", health: "健康", cpu: "18%", memory: "42%", disk: "35%", os: "Ubuntu 22.04", uptime: "23 天", backup: "今天 02:15", update: "已是最新", services: ["nginx", "postgresql", "redis"] },
+  { id: "host-2", name: "panel-bj-02", ip: "10.0.1.22", env: "预发", health: "健康", cpu: "27%", memory: "55%", disk: "62%", os: "Debian 12", uptime: "18 天", backup: "今天 02:20", update: "可更新 1", services: ["nginx", "worker", "systemd-resolved"] },
+  { id: "host-3", name: "panel-hk-03", ip: "10.0.2.33", env: "生产", health: "警告", cpu: "63%", memory: "78%", disk: "83%", os: "Ubuntu 20.04", uptime: "9 天", backup: "昨天 02:18", update: "可更新 1", services: ["nginx", "mysql", "queue"] },
+  { id: "host-4", name: "panel-dev-04", ip: "10.0.3.44", env: "开发", health: "离线", cpu: "0%", memory: "0%", disk: "47%", os: "Rocky Linux 9", uptime: "离线", backup: "3 天前", update: "待检查", services: ["docker", "node", "cron"] },
+];
+
+const initialSiteRecords: SiteRecord[] = [
+  { id: "site-1", domain: "api.stackpilot.local", status: "运行中", runtime: "Node 20", host: "panel-se-01", certDays: 68, traffic: "128 GB", owner: "后端" },
+  { id: "site-2", domain: "shop.example.com", status: "运行中", runtime: "PHP 8.3", host: "panel-bj-02", certDays: 12, traffic: "420 GB", owner: "电商" },
+  { id: "site-3", domain: "admin.example.com", status: "告警", runtime: "Nginx 静态", host: "panel-hk-03", certDays: 4, traffic: "86 GB", owner: "运营" },
+  { id: "site-4", domain: "docs.example.com", status: "已停止", runtime: "Static", host: "panel-dev-04", certDays: 90, traffic: "14 GB", owner: "文档" },
+];
+
+const initialFileRecords: FileRecord[] = [
+  { id: "file-1", name: "releases", type: "文件夹", path: "/var/www/html", size: "-", modified: "今天 10:12", owner: "deploy" },
+  { id: "file-2", name: "uploads", type: "文件夹", path: "/var/www/html", size: "-", modified: "昨天 18:44", owner: "www-data" },
+  { id: "file-3", name: "index.html", type: "文件", path: "/var/www/html", size: "18 KB", modified: "今天 09:31", owner: "deploy" },
+  { id: "file-4", name: "nginx.conf", type: "文件", path: "/var/www/html", size: "4 KB", modified: "昨天 22:10", owner: "root" },
+  { id: "file-5", name: "v2.8.1", type: "文件夹", path: "/var/www/html/releases", size: "-", modified: "今天 08:40", owner: "deploy" },
+  { id: "file-6", name: "bundle.js", type: "文件", path: "/var/www/html/releases/v2.8.1", size: "418 KB", modified: "今天 08:42", owner: "deploy" },
+];
+
+const initialServiceRecords: ServiceRecord[] = [
+  { id: "svc-1", name: "nginx.service", host: "panel-se-01", status: "active", restarts: 0, memory: "84 MB", updated: "3 分钟前" },
+  { id: "svc-2", name: "mysql.service", host: "panel-hk-03", status: "failed", restarts: 6, memory: "1.2 GB", updated: "8 分钟前" },
+  { id: "svc-3", name: "worker.service", host: "panel-bj-02", status: "active", restarts: 1, memory: "256 MB", updated: "21 分钟前" },
+  { id: "svc-4", name: "backup.timer", host: "panel-dev-04", status: "inactive", restarts: 0, memory: "0 MB", updated: "2 小时前" },
+];
+
+const initialFirewallRules: FirewallRule[] = [
+  { id: "fw-1", name: "HTTPS 公网访问", port: "443", protocol: "TCP", source: "0.0.0.0/0", target: "全部主机", enabled: true },
+  { id: "fw-2", name: "SSH 运维入口", port: "22", protocol: "TCP", source: "10.0.0.0/8", target: "生产环境", enabled: true },
+  { id: "fw-3", name: "MySQL 内网", port: "3306", protocol: "TCP", source: "10.0.12.0/24", target: "数据库", enabled: true },
+  { id: "fw-4", name: "UDP 探测", port: "9100", protocol: "UDP", source: "监控网段", target: "全部主机", enabled: false },
+];
+
+const initialDeployJobs: DeployJob[] = [
+  { id: "dep-1", app: "stackpilot-api", env: "生产", version: "v2.8.1", status: "成功", operator: "张工", duration: "1分24秒" },
+  { id: "dep-2", app: "shop-web", env: "生产", version: "2026.06.18", status: "待发布", operator: "李敏", duration: "-" },
+  { id: "dep-3", app: "admin-console", env: "预发", version: "rc-18", status: "成功", operator: "王工", duration: "46秒" },
+  { id: "dep-4", app: "worker", env: "开发", version: "dev-42", status: "失败", operator: "系统", duration: "18秒" },
+];
+
+const initialScheduleJobs: ScheduleJob[] = [
+  { id: "sch-1", name: "每日数据备份", cron: "0 2 * * *", command: "backup:run --daily", enabled: true, lastRun: "今天 02:00", result: "成功" },
+  { id: "sch-2", name: "证书续期检查", cron: "15 3 * * 1", command: "certbot renew --dry-run", enabled: true, lastRun: "周一 03:15", result: "成功" },
+  { id: "sch-3", name: "日志清理", cron: "30 1 * * 0", command: "logs:prune --days=30", enabled: false, lastRun: "未运行", result: "未运行" },
+  { id: "sch-4", name: "服务健康探测", cron: "*/10 * * * *", command: "health:check", enabled: true, lastRun: "10 分钟前", result: "失败" },
+];
+
+const initialAuditRecords: AuditRecord[] = auditRows.map((row) => ({
+  id: row[6],
+  time: row[0],
+  ip: row[1],
+  user: row[2],
+  action: row[3],
+  object: row[4],
+  result: row[5] as "成功" | "失败",
+  traceId: row[6],
+  summary: `${row[2]} 对 ${row[4]} 执行 ${row[3]}，结果为 ${row[5]}`,
+}));
+
+const permissionOptions = ["主机读写", "网站发布", "数据库管理", "文件管理", "终端访问", "防火墙管理", "审计导出", "权限管理"];
+
+const initialAclUsers: AclUser[] = [
+  { id: "usr-1", name: "张工", email: "zhang@example.com", role: "管理员", enabled: true, mfa: "已启用", lastLogin: "今天 10:24" },
+  { id: "usr-2", name: "李敏", email: "li@example.com", role: "发布经理", enabled: true, mfa: "已启用", lastLogin: "今天 09:52" },
+  { id: "usr-3", name: "王工", email: "wang@example.com", role: "只读审计", enabled: true, mfa: "未启用", lastLogin: "昨天 18:33" },
+  { id: "usr-4", name: "外包 CI", email: "ci@example.com", role: "发布机器人", enabled: false, mfa: "需重置", lastLogin: "7 天前" },
+];
+
+const initialAclRoles: AclRole[] = [
+  { id: "role-1", name: "管理员", desc: "拥有全部控制台权限", permissions: permissionOptions },
+  { id: "role-2", name: "发布经理", desc: "负责网站发布和部署回滚", permissions: ["主机读写", "网站发布", "文件管理", "审计导出"] },
+  { id: "role-3", name: "只读审计", desc: "只查看日志与状态，不可变更", permissions: ["审计导出"] },
+  { id: "role-4", name: "发布机器人", desc: "供 CI/CD 自动发布使用", permissions: ["网站发布", "文件管理"] },
+];
+
 function readPageFromHash(): PageKey {
   const key = window.location.hash.replace("#", "");
-  if (key === "databases" || key === "settings" || key === "mobile") {
-    return key;
-  }
-  return "overview";
+  return pageKeys.find((pageKey) => pageKey === key) ?? "overview";
 }
 
 function App() {
@@ -202,9 +420,19 @@ function DesktopShell({
       <Sidebar page={page} setPage={setPage} notify={notify} compact={page === "settings"} />
       <div className="desktop-main">
         <TopBar page={page} white={whiteTop} notify={notify} />
-        {page === "databases" && <DatabasesPage notify={notify} />}
-        {page === "settings" && <SettingsPage notify={notify} />}
         {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
+        {page === "hosts" && <HostsPage notify={notify} />}
+        {page === "sites" && <SitesPage notify={notify} />}
+        {page === "databases" && <DatabasesPage notify={notify} />}
+        {page === "files" && <FilesPage notify={notify} />}
+        {page === "terminal" && <TerminalPage notify={notify} />}
+        {page === "systemd" && <SystemdPage notify={notify} />}
+        {page === "firewall" && <FirewallPage notify={notify} />}
+        {page === "deploy" && <DeployPage notify={notify} />}
+        {page === "schedule" && <SchedulePage notify={notify} />}
+        {page === "audit" && <AuditPage notify={notify} />}
+        {page === "acl" && <AclPage notify={notify} />}
+        {page === "settings" && <SettingsPage notify={notify} />}
       </div>
       {page === "overview" && <DesktopFooter />}
     </section>
@@ -245,13 +473,7 @@ function Sidebar({
               key={item.key}
               className={active ? "active" : ""}
               type="button"
-              onClick={() => {
-                if (item.key === "overview" || item.key === "databases" || item.key === "settings") {
-                  setPage(item.key);
-                  return;
-                }
-                notify(`${item.label} 模块正在接入，已保留导航状态`, "info");
-              }}
+              onClick={() => setPage(item.key)}
             >
               <Icon size={17} />
               <span>{compact && item.key === "overview" ? "仪表盘" : item.label}</span>
@@ -288,39 +510,33 @@ function Sidebar({
 
 function TopBar({ page, white, notify }: { page: PageKey; white: boolean; notify: Notify }) {
   const [query, setQuery] = useState("");
+  const meta = pageMeta[page];
 
   return (
     <header className={`topbar-mock ${white ? "white" : ""}`}>
-      {page === "databases" && (
+      {page !== "overview" && (
         <div className="breadcrumb-title">
-          <Menu size={16} />
-          <span>数据库管理</span>
-        </div>
-      )}
-      {page === "settings" && (
-        <div className="breadcrumb-title">
-          <span>设置</span>
+          {page !== "settings" && <Menu size={16} />}
+          <span>{meta.breadcrumb}</span>
           <em>/</em>
-          <strong>面板设置</strong>
+          <strong>{meta.title}</strong>
         </div>
       )}
-      {(page === "overview" || page === "settings") && (
-        <label className="mock-search">
-          <Search size={13} />
-          <input
-            value={query}
-            placeholder={page === "overview" ? "搜索主机、网站、数据库、任务..." : "搜索主机、网站、数据库、文件..."}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && query.trim()) {
-                notify(`已搜索：${query.trim()}`, "info");
-              }
-            }}
-          />
-          <kbd>⌘K</kbd>
-        </label>
-      )}
-      {page === "databases" && <div className="top-spacer" />}
+      <label className="mock-search">
+        <Search size={13} />
+        <input
+          value={query}
+          placeholder={meta.search}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && query.trim()) {
+              notify(`已搜索：${query.trim()}`, "info");
+            }
+          }}
+        />
+        <kbd>⌘K</kbd>
+      </label>
+      {page !== "overview" && <div className="top-spacer" />}
       <div className="top-actions">
         {page === "settings" && <StatusDot text="面板运行正常" />}
         <button type="button" className="icon-action" onClick={() => notify("暂无新的未读通知", "info")} aria-label="通知">
@@ -397,7 +613,7 @@ function OverviewPage({ setPage, notify }: { setPage: (page: PageKey) => void; n
       <section className="overview-grid">
         <div className="left-stack">
           <PanelCard title="集群状态" action="查看全部">
-            <HostTable />
+            <HostTable notify={notify} />
           </PanelCard>
           <div className="two-panels">
             <PanelCard title="任务流" tabs={["最近任务", "队列中的任务 (7)"]} activeTab={taskTab} onTabChange={setTaskTab} action="查看全部" onAction={() => notify("已展开完整任务流", "info")}>
@@ -454,38 +670,55 @@ function MetricCard({
   );
 }
 
-function HostTable() {
+function HostTable({ notify }: { notify: Notify }) {
+  const [selectedHost, setSelectedHost] = useState<string | null>(null);
+
   return (
-    <table className="mini-table host-table">
-      <thead>
-        <tr>
-          <th>主机名</th>
-          <th>IP 地址</th>
-          <th>CPU</th>
-          <th>内存</th>
-          <th>磁盘</th>
-          <th>服务健康</th>
-          <th>备份状态</th>
-          <th>更新状态</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {hosts.map((host, index) => (
-          <tr key={host[0]}>
-            <td><StatusLight tone={index === 2 ? "orange" : "green"} /> {host[0]}</td>
-            <td>{host[1]}</td>
-            <td><Bar value={host[2]} tone={index === 2 ? "orange" : "green"} /></td>
-            <td><Bar value={host[3]} tone={index === 2 ? "red" : index === 1 ? "orange" : "green"} /></td>
-            <td><Bar value={host[4]} tone={index === 2 ? "red" : index === 1 ? "orange" : "green"} /></td>
-            <td><StatusLight tone={index === 2 ? "orange" : "green"} /> {host[5]}</td>
-            <td><StatusLight tone="green" /> {host[6]}</td>
-            <td className={index === 0 ? "" : "orange-text"}>{host[7]}</td>
-            <td><MoreVertical size={17} /></td>
+    <>
+      <table className="mini-table host-table">
+        <thead>
+          <tr>
+            <th>主机名</th>
+            <th>IP 地址</th>
+            <th>CPU</th>
+            <th>内存</th>
+            <th>磁盘</th>
+            <th>服务健康</th>
+            <th>备份状态</th>
+            <th>更新状态</th>
+            <th>操作</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {hosts.map((host, index) => (
+            <tr className={selectedHost === host[0] ? "is-selected" : ""} key={host[0]}>
+              <td><StatusLight tone={index === 2 ? "orange" : "green"} /> {host[0]}</td>
+              <td>{host[1]}</td>
+              <td><Bar value={host[2]} tone={index === 2 ? "orange" : "green"} /></td>
+              <td><Bar value={host[3]} tone={index === 2 ? "red" : index === 1 ? "orange" : "green"} /></td>
+              <td><Bar value={host[4]} tone={index === 2 ? "red" : index === 1 ? "orange" : "green"} /></td>
+              <td><StatusLight tone={index === 2 ? "orange" : "green"} /> {host[5]}</td>
+              <td><StatusLight tone="green" /> {host[6]}</td>
+              <td className={index === 0 ? "" : "orange-text"}>{host[7]}</td>
+              <td>
+                <button
+                  className="icon-action inline"
+                  type="button"
+                  onClick={() => {
+                    setSelectedHost(host[0]);
+                    notify(`${host[0]} 详情已选中`, "info");
+                  }}
+                  aria-label={`${host[0]} 更多操作`}
+                >
+                  <MoreVertical size={17} />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {selectedHost && <div className="overview-inline-detail"><StatusLight tone="blue" /> {selectedHost}：CPU、内存、磁盘与服务列表已准备查看。</div>}
+    </>
   );
 }
 
@@ -600,6 +833,731 @@ function ResourceOverview({ activeTab }: { activeTab: string }) {
         </article>
       ))}
     </div>
+  );
+}
+
+type TableColumn<T> = {
+  key: string;
+  label: string;
+  width?: string;
+  render: (row: T) => React.ReactNode;
+};
+
+function ModulePageShell({
+  title,
+  subtitle,
+  actions,
+  filters,
+  metrics,
+  side,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  actions?: React.ReactNode;
+  filters?: React.ReactNode;
+  metrics?: React.ReactNode;
+  side?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="module-page">
+      <div className="page-head module-head">
+        <div>
+          <h1>{title}</h1>
+          <p>{subtitle}</p>
+        </div>
+        {actions && <div>{actions}</div>}
+      </div>
+      <div className={`module-layout ${side ? "has-side" : ""}`}>
+        <section className="module-main">
+          {filters && <div className="module-filter-line">{filters}</div>}
+          {metrics && <div className="module-metrics">{metrics}</div>}
+          {children}
+        </section>
+        {side}
+      </div>
+    </div>
+  );
+}
+
+function DataTable<T>({
+  columns,
+  rows,
+  emptyText,
+  getRowKey,
+}: {
+  columns: Array<TableColumn<T>>;
+  rows: T[];
+  emptyText: string;
+  getRowKey: (row: T) => string;
+}) {
+  return (
+    <table className="mini-table module-table">
+      <colgroup>
+        {columns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
+      </colgroup>
+      <thead>
+        <tr>{columns.map((column) => <th key={column.key}>{column.label}</th>)}</tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={getRowKey(row)}>{columns.map((column) => <td key={column.key}>{column.render(row)}</td>)}</tr>
+        ))}
+        {rows.length === 0 && (
+          <tr>
+            <td colSpan={columns.length} className="empty-row">{emptyText}</td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+}
+
+function DetailDrawer({
+  title,
+  subtitle,
+  onClose,
+  children,
+  actions,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <aside className="detail-drawer">
+      <div className="drawer-head">
+        <div>
+          <strong>{title}</strong>
+          {subtitle && <span>{subtitle}</span>}
+        </div>
+        <button type="button" className="icon-action" onClick={onClose} aria-label="关闭详情"><X size={16} /></button>
+      </div>
+      <div className="drawer-body">{children}</div>
+      {actions && <div className="drawer-actions inline">{actions}</div>}
+    </aside>
+  );
+}
+
+function ModuleSearch({ value, placeholder, onChange }: { value: string; placeholder: string; onChange: (value: string) => void }) {
+  return (
+    <label className="module-search">
+      <Search size={14} />
+      <input value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function MetricTile({ icon: Icon, label, value, tone }: { icon: LucideIcon; label: string; value: string; tone: Tone | string }) {
+  return (
+    <article>
+      <Icon className={tone} size={26} />
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </article>
+  );
+}
+
+function HostsPage({ notify }: { notify: Notify }) {
+  const [rows, setRows] = useState(initialHostRecords);
+  const [search, setSearch] = useState("");
+  const [envFilter, setEnvFilter] = useState("全部");
+  const [healthFilter, setHealthFilter] = useState("全部");
+  const [drawer, setDrawer] = useState<{ type: "detail" | "create"; host?: HostRecord } | null>(null);
+  const [draft, setDraft] = useState({ name: "panel-new-05", ip: "10.0.4.55", env: "开发" });
+  const filteredRows = rows.filter((row) => {
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || row.name.toLowerCase().includes(query) || row.ip.includes(query);
+    const matchEnv = envFilter === "全部" || row.env === envFilter;
+    const matchHealth = healthFilter === "全部" || row.health === healthFilter;
+    return matchSearch && matchEnv && matchHealth;
+  });
+
+  const updateHost = (id: string, patch: Partial<HostRecord>) => {
+    setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+  };
+
+  const addHost = () => {
+    if (!draft.name.trim() || !draft.ip.trim()) {
+      notify("主机名和 IP 不能为空", "danger");
+      return;
+    }
+    const next: HostRecord = {
+      id: `host-${Date.now()}`,
+      name: draft.name.trim(),
+      ip: draft.ip.trim(),
+      env: draft.env,
+      health: "健康",
+      cpu: "9%",
+      memory: "28%",
+      disk: "18%",
+      os: "Ubuntu 24.04",
+      uptime: "刚刚接入",
+      backup: "等待首次备份",
+      update: "已是最新",
+      services: ["nginx", "docker", "node"],
+    };
+    setRows((current) => [next, ...current]);
+    setDrawer({ type: "detail", host: next });
+    notify(`主机 ${next.name} 已新增`);
+  };
+
+  return (
+    <ModulePageShell
+      title="主机"
+      subtitle="统一查看各环境主机健康、资源负载、备份和系统更新状态。"
+      actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 台主机`, "info")}><Download size={15} /> 导出</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 新增主机</button></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索主机名或 IP" onChange={setSearch} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={setEnvFilter} /><FieldSelect label="健康" value={healthFilter} options={["全部", "健康", "警告", "离线"]} onChange={setHealthFilter} /></>}
+      metrics={<><MetricTile icon={Server} label="主机总数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="健康" value={`${rows.filter((row) => row.health === "健康").length}`} tone="green" /><MetricTile icon={Shield} label="需关注" value={`${rows.filter((row) => row.health !== "健康").length}`} tone="orange" /></>}
+      side={drawer?.type === "detail" && drawer.host ? (
+        <DetailDrawer title={drawer.host.name} subtitle={`${drawer.host.ip} · ${drawer.host.env}`} onClose={() => setDrawer(null)}>
+          <div className="detail-kv">
+            <p><span>系统</span><b>{drawer.host.os}</b></p>
+            <p><span>运行时间</span><b>{drawer.host.uptime}</b></p>
+            <p><span>备份</span><b>{drawer.host.backup}</b></p>
+            <p><span>更新</span><b>{drawer.host.update}</b></p>
+          </div>
+          <div className="resource-bars">
+            <p><span>CPU</span><Bar value={drawer.host.cpu} tone={drawer.host.health === "警告" ? "orange" : "green"} /></p>
+            <p><span>内存</span><Bar value={drawer.host.memory} tone={Number(drawer.host.memory.replace("%", "")) > 70 ? "red" : "green"} /></p>
+            <p><span>磁盘</span><Bar value={drawer.host.disk} tone={Number(drawer.host.disk.replace("%", "")) > 80 ? "red" : "green"} /></p>
+          </div>
+          <div className="drawer-list">
+            <strong>服务列表</strong>
+            {drawer.host.services.map((service) => <p key={service}><StatusLight tone="green" /> {service}<span>active</span></p>)}
+          </div>
+        </DetailDrawer>
+      ) : drawer?.type === "create" ? (
+        <DetailDrawer
+          title="新增主机"
+          subtitle="本地原型会把主机插入列表"
+          onClose={() => setDrawer(null)}
+          actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={addHost}>保存主机</button></>}
+        >
+          <FormLine label="主机名" required value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
+          <FormLine label="IP 地址" required value={draft.ip} onChange={(value) => setDraft((current) => ({ ...current, ip: value }))} />
+          <FormSelectLine label="环境" required value={draft.env} options={["生产", "预发", "开发"]} onChange={(value) => setDraft((current) => ({ ...current, env: value }))} />
+        </DetailDrawer>
+      ) : null}
+    >
+      <DataTable
+        columns={[
+          { key: "name", label: "主机名", width: "170px", render: (row) => <><StatusLight tone={row.health === "健康" ? "green" : row.health === "警告" ? "orange" : "red"} /> <b className="blue-text">{row.name}</b></> },
+          { key: "ip", label: "IP 地址", width: "128px", render: (row) => row.ip },
+          { key: "env", label: "环境", width: "78px", render: (row) => <span className="pill blue">{row.env}</span> },
+          { key: "cpu", label: "CPU", render: (row) => <Bar value={row.cpu} tone={row.health === "警告" ? "orange" : "green"} /> },
+          { key: "memory", label: "内存", render: (row) => <Bar value={row.memory} tone={Number(row.memory.replace("%", "")) > 70 ? "red" : "green"} /> },
+          { key: "disk", label: "磁盘", render: (row) => <Bar value={row.disk} tone={Number(row.disk.replace("%", "")) > 80 ? "red" : "green"} /> },
+          { key: "status", label: "健康", width: "92px", render: (row) => <><StatusLight tone={row.health === "健康" ? "green" : row.health === "警告" ? "orange" : "red"} /> {row.health}</> },
+          { key: "ops", label: "操作", width: "210px", render: (row) => <span className="table-actions"><button type="button" onClick={() => setDrawer({ type: "detail", host: row })}>查看</button><button type="button" onClick={() => { updateHost(row.id, { health: "健康", uptime: "刚刚重启" }); notify(`${row.name} 已重启`); }}>重启</button><button type="button" onClick={() => { updateHost(row.id, { backup: currentClock() }); notify(`${row.name} 已创建备份`); }}>备份</button><button type="button" onClick={() => { updateHost(row.id, { update: "已是最新" }); notify(`${row.name} 已更新`); }}>更新</button></span> },
+        ]}
+        rows={filteredRows}
+        emptyText="没有匹配的主机"
+        getRowKey={(row) => row.id}
+      />
+    </ModulePageShell>
+  );
+}
+
+function SitesPage({ notify }: { notify: Notify }) {
+  const [rows, setRows] = useState(initialSiteRecords);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("全部");
+  const [runtimeFilter, setRuntimeFilter] = useState("全部");
+  const [drawer, setDrawer] = useState<{ type: "create" | "logs"; site?: SiteRecord } | null>(null);
+  const [draft, setDraft] = useState({ domain: "new.example.com", runtime: "Node 20", host: "panel-se-01" });
+  const runtimeOptions = ["全部", ...Array.from(new Set(rows.map((row) => row.runtime)))];
+  const filteredRows = rows.filter((row) => {
+    const query = search.trim().toLowerCase();
+    return (!query || row.domain.toLowerCase().includes(query)) && (statusFilter === "全部" || row.status === statusFilter) && (runtimeFilter === "全部" || row.runtime === runtimeFilter);
+  });
+  const updateSite = (id: string, patch: Partial<SiteRecord>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+  const addSite = () => {
+    if (!draft.domain.trim()) {
+      notify("域名不能为空", "danger");
+      return;
+    }
+    const next: SiteRecord = { id: `site-${Date.now()}`, domain: draft.domain.trim(), runtime: draft.runtime, host: draft.host, status: "运行中", certDays: 90, traffic: "0 GB", owner: "未分配" };
+    setRows((current) => [next, ...current]);
+    setDrawer(null);
+    notify(`网站 ${next.domain} 已添加`);
+  };
+
+  return (
+    <ModulePageShell
+      title="网站"
+      subtitle="管理域名、运行时、证书有效期和站点启停状态。"
+      actions={<><button className="ghost" type="button" onClick={() => notify("站点列表已刷新", "info")}><RefreshCw size={15} /> 刷新</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 添加网站</button></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索域名" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={["全部", "运行中", "已停止", "告警"]} onChange={setStatusFilter} /><FieldSelect label="运行时" value={runtimeFilter} options={runtimeOptions} onChange={setRuntimeFilter} /></>}
+      metrics={<><MetricTile icon={Globe2} label="站点" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="green" /><MetricTile icon={Shield} label="证书告警" value={`${rows.filter((row) => row.certDays < 14).length}`} tone="orange" /></>}
+      side={drawer?.type === "create" ? (
+        <DetailDrawer title="添加网站" subtitle="创建本地站点记录" onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={addSite}>添加网站</button></>}>
+          <FormLine label="域名" required value={draft.domain} onChange={(value) => setDraft((current) => ({ ...current, domain: value }))} />
+          <FormSelectLine label="运行时" required value={draft.runtime} options={["Node 20", "PHP 8.3", "Static", "Nginx 静态"]} onChange={(value) => setDraft((current) => ({ ...current, runtime: value }))} />
+          <FormSelectLine label="绑定主机" required value={draft.host} options={initialHostRecords.map((host) => host.name)} onChange={(value) => setDraft((current) => ({ ...current, host: value }))} />
+        </DetailDrawer>
+      ) : drawer?.type === "logs" && drawer.site ? (
+        <DetailDrawer title="访问日志" subtitle={drawer.site.domain} onClose={() => setDrawer(null)}>
+          <div className="terminal-log compact-log">
+            <p>200 GET /api/health 38ms</p>
+            <p>200 GET /assets/app.js 12ms</p>
+            <p>304 GET /dashboard 8ms</p>
+            <p>{drawer.site.status === "告警" ? "502 upstream response timeout" : "200 GET /login 24ms"}</p>
+          </div>
+        </DetailDrawer>
+      ) : null}
+    >
+      <DataTable
+        columns={[
+          { key: "domain", label: "域名", width: "220px", render: (row) => <><StatusLight tone={row.status === "运行中" ? "green" : row.status === "告警" ? "orange" : "gray"} /> <b className="blue-text">{row.domain}</b></> },
+          { key: "status", label: "状态", width: "90px", render: (row) => <span className={`pill ${row.status === "运行中" ? "green" : row.status === "告警" ? "red" : "blue"}`}>{row.status}</span> },
+          { key: "runtime", label: "运行时", render: (row) => row.runtime },
+          { key: "host", label: "主机", render: (row) => row.host },
+          { key: "cert", label: "证书", render: (row) => <span className={row.certDays < 14 ? "orange-text" : "green-text"}>{row.certDays} 天</span> },
+          { key: "traffic", label: "流量", render: (row) => row.traffic },
+          { key: "ops", label: "操作", width: "220px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { updateSite(row.id, { status: row.status === "已停止" ? "运行中" : "已停止" }); notify(`${row.domain} 已${row.status === "已停止" ? "启动" : "停止"}`); }}>{row.status === "已停止" ? "启动" : "停止"}</button><button type="button" onClick={() => { updateSite(row.id, { certDays: 90 }); notify(`${row.domain} 证书已续期`); }}>续期</button><button type="button" onClick={() => setDrawer({ type: "logs", site: row })}>日志</button></span> },
+        ]}
+        rows={filteredRows}
+        emptyText="没有匹配的网站"
+        getRowKey={(row) => row.id}
+      />
+    </ModulePageShell>
+  );
+}
+
+function FilesPage({ notify }: { notify: Notify }) {
+  const [rows, setRows] = useState(initialFileRecords);
+  const [currentPath, setCurrentPath] = useState("/var/www/html");
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("全部");
+  const [drawer, setDrawer] = useState<{ type: "folder" | "rename"; file?: FileRecord } | null>(null);
+  const [draftName, setDraftName] = useState("new-folder");
+  const crumbs = currentPath.split("/").filter(Boolean);
+  const visibleRows = rows.filter((row) => row.path === currentPath && (typeFilter === "全部" || row.type === typeFilter) && (!search.trim() || row.name.toLowerCase().includes(search.trim().toLowerCase())));
+  const parentPath = crumbs.length > 1 ? `/${crumbs.slice(0, -1).join("/")}` : "/";
+  const createFolder = () => {
+    if (!draftName.trim()) {
+      notify("文件夹名称不能为空", "danger");
+      return;
+    }
+    setRows((current) => [{ id: `file-${Date.now()}`, name: draftName.trim(), type: "文件夹", path: currentPath, size: "-", modified: currentClock(), owner: "admin" }, ...current]);
+    setDrawer(null);
+    notify(`文件夹 ${draftName.trim()} 已创建`);
+  };
+  const renameFile = () => {
+    if (!drawer?.file || !draftName.trim()) return;
+    setRows((current) => current.map((row) => row.id === drawer.file?.id ? { ...row, name: draftName.trim(), modified: currentClock() } : row));
+    setDrawer(null);
+    notify("已重命名文件项");
+  };
+
+  return (
+    <ModulePageShell
+      title="文件"
+      subtitle="模拟文件管理器，支持路径面包屑、进入文件夹、本地上传和重命名删除。"
+      actions={<><button className="ghost" type="button" onClick={() => { setRows((current) => [{ id: `file-${Date.now()}`, name: `upload-${current.length + 1}.log`, type: "文件", path: currentPath, size: "12 KB", modified: currentClock(), owner: "admin" }, ...current]); notify("文件已上传到当前路径"); }}><CloudUpload size={15} /> 上传</button><button className="primary" type="button" onClick={() => { setDraftName("new-folder"); setDrawer({ type: "folder" }); }}><Plus size={15} /> 创建文件夹</button></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索文件名" onChange={setSearch} /><FieldSelect label="类型" value={typeFilter} options={["全部", "文件夹", "文件"]} onChange={setTypeFilter} /></>}
+      side={drawer?.type === "folder" ? (
+        <DetailDrawer title="创建文件夹" subtitle={currentPath} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={createFolder}>创建</button></>}>
+          <FormLine label="文件夹名" required value={draftName} onChange={setDraftName} />
+        </DetailDrawer>
+      ) : drawer?.type === "rename" && drawer.file ? (
+        <DetailDrawer title="重命名" subtitle={drawer.file.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={renameFile}>保存</button></>}>
+          <FormLine label="新名称" required value={draftName} onChange={setDraftName} />
+        </DetailDrawer>
+      ) : null}
+    >
+      <div className="file-breadcrumbs">
+        <button type="button" disabled={currentPath === "/"} onClick={() => setCurrentPath(parentPath)}>上级</button>
+        <button type="button" onClick={() => setCurrentPath("/")}>root</button>
+        {crumbs.map((crumb, index) => {
+          const nextPath = `/${crumbs.slice(0, index + 1).join("/")}`;
+          return <button key={nextPath} type="button" className={nextPath === currentPath ? "active" : ""} onClick={() => setCurrentPath(nextPath)}>{crumb}</button>;
+        })}
+      </div>
+      <DataTable
+        columns={[
+          { key: "name", label: "名称", width: "260px", render: (row) => row.type === "文件夹" ? <button className="file-link" type="button" onClick={() => setCurrentPath(`${currentPath === "/" ? "" : currentPath}/${row.name}`)}><Folder size={15} /> {row.name}</button> : <span><FileBox size={15} /> {row.name}</span> },
+          { key: "type", label: "类型", width: "86px", render: (row) => <span className="pill blue">{row.type}</span> },
+          { key: "size", label: "大小", render: (row) => row.size },
+          { key: "modified", label: "修改时间", render: (row) => row.modified },
+          { key: "owner", label: "所有者", render: (row) => row.owner },
+          { key: "ops", label: "操作", width: "170px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { setDraftName(row.name); setDrawer({ type: "rename", file: row }); }}>重命名</button><button type="button" onClick={() => { setRows((current) => current.filter((item) => item.id !== row.id)); notify(`${row.name} 已删除`, "warning"); }}>删除</button></span> },
+        ]}
+        rows={visibleRows}
+        emptyText="当前路径没有匹配文件"
+        getRowKey={(row) => row.id}
+      />
+    </ModulePageShell>
+  );
+}
+
+function TerminalPage({ notify }: { notify: Notify }) {
+  const [host, setHost] = useState(initialHostRecords[0].name);
+  const [connected, setConnected] = useState(true);
+  const [command, setCommand] = useState("");
+  const [logs, setLogs] = useState<string[]>([`connected to ${initialHostRecords[0].name}`, "Last login: Thu Jun 18 10:21:03"]);
+  const runCommand = () => {
+    const next = command.trim();
+    if (!next) return;
+    if (!connected) {
+      notify("终端未连接，请先连接主机", "danger");
+      return;
+    }
+    const output = next.includes("systemctl") ? "nginx.service active (running)" : next.includes("df") ? "/dev/vda1  62G  21G  41G  35% /" : next.includes("top") ? "load average: 0.38, 0.42, 0.41" : `command '${next}' executed`;
+    setLogs((current) => [...current, `$ ${next}`, output]);
+    setCommand("");
+  };
+
+  return (
+    <ModulePageShell
+      title="终端"
+      subtitle="本地模拟 SSH 会话，命令输入会追加到终端输出。"
+      actions={<><button className="ghost" type="button" onClick={() => { setConnected(false); notify("终端会话已断开", "warning"); }}>断开</button><button className="primary" type="button" onClick={() => { setConnected(true); setLogs((current) => [...current, `reconnected to ${host}`]); notify(`已连接 ${host}`); }}>连接</button></>}
+      filters={<><FieldSelect label="主机" value={host} options={initialHostRecords.map((item) => item.name)} onChange={(value) => { setHost(value); setLogs((current) => [...current, `switch host to ${value}`]); }} /><StatusDot text={connected ? "已连接" : "未连接"} /></>}
+      metrics={<><MetricTile icon={TerminalSquare} label="当前主机" value={host} tone="blue" /><MetricTile icon={Clock3} label="会话行数" value={`${logs.length}`} tone="green" /><MetricTile icon={Shield} label="权限" value="sudo" tone="orange" /></>}
+    >
+      <div className="terminal-panel">
+        <div className="terminal-toolbar">
+          <span><StatusLight tone={connected ? "green" : "red"} /> {connected ? "connected" : "disconnected"}</span>
+          <div>
+            <button type="button" onClick={() => { setLogs([]); notify("终端已清屏", "info"); }}>清屏</button>
+            <button type="button" onClick={() => { void navigator.clipboard?.writeText(logs.join("\n")); notify("会话内容已复制", "info"); }}>复制会话</button>
+            <button type="button" onClick={() => { setConnected(true); setLogs((current) => [...current, `reconnected to ${host}`]); notify("终端已重连"); }}>重连</button>
+          </div>
+        </div>
+        <div className="terminal-log">
+          {logs.length === 0 ? <p>terminal cleared</p> : logs.map((line, index) => <p key={`${line}-${index}`}>{line}</p>)}
+        </div>
+        <label className="terminal-input">
+          <span>{host}:~$</span>
+          <input value={command} disabled={!connected} placeholder={connected ? "输入命令后按 Enter" : "请先连接主机"} onChange={(event) => setCommand(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runCommand(); }} />
+        </label>
+      </div>
+    </ModulePageShell>
+  );
+}
+
+function SystemdPage({ notify }: { notify: Notify }) {
+  const [rows, setRows] = useState(initialServiceRecords);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("全部");
+  const [drawer, setDrawer] = useState<ServiceRecord | null>(null);
+  const filteredRows = rows.filter((row) => (!search.trim() || `${row.name} ${row.host}`.toLowerCase().includes(search.trim().toLowerCase())) && (statusFilter === "全部" || row.status === statusFilter));
+  const updateService = (id: string, patch: Partial<ServiceRecord>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+
+  return (
+    <ModulePageShell
+      title="systemd 服务"
+      subtitle="查看服务 active/failed/inactive 状态，并在本地模拟启停、重启和处理失败服务。"
+      actions={<button className="ghost" type="button" onClick={() => notify("服务状态已刷新", "info")}><RefreshCw size={15} /> 刷新</button>}
+      filters={<><ModuleSearch value={search} placeholder="搜索服务或主机" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={["全部", "active", "failed", "inactive"]} onChange={setStatusFilter} /></>}
+      metrics={<><MetricTile icon={CheckCircle2} label="active" value={`${rows.filter((row) => row.status === "active").length}`} tone="green" /><MetricTile icon={Shield} label="failed" value={`${rows.filter((row) => row.status === "failed").length}`} tone="red" /><MetricTile icon={Clock3} label="inactive" value={`${rows.filter((row) => row.status === "inactive").length}`} tone="gray" /></>}
+      side={drawer && (
+        <DetailDrawer title="服务日志" subtitle={drawer.name} onClose={() => setDrawer(null)}>
+          <div className="terminal-log compact-log">
+            <p>systemd[1]: Started {drawer.name}</p>
+            <p>{drawer.status === "failed" ? "exit-code=1 failed with result 'timeout'" : "status=0/SUCCESS"}</p>
+            <p>memory current: {drawer.memory}</p>
+          </div>
+        </DetailDrawer>
+      )}
+    >
+      <DataTable
+        columns={[
+          { key: "service", label: "服务", width: "220px", render: (row) => <><StatusLight tone={row.status === "active" ? "green" : row.status === "failed" ? "red" : "gray"} /> <b>{row.name}</b></> },
+          { key: "host", label: "主机", render: (row) => row.host },
+          { key: "status", label: "状态", render: (row) => <span className={`pill ${row.status === "active" ? "green" : row.status === "failed" ? "red" : "blue"}`}>{row.handled ? "已处理" : row.status}</span> },
+          { key: "restarts", label: "重启次数", render: (row) => row.restarts },
+          { key: "memory", label: "内存", render: (row) => row.memory },
+          { key: "updated", label: "最近更新", render: (row) => row.updated },
+          { key: "ops", label: "操作", width: "280px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { updateService(row.id, { status: "active", handled: false }); notify(`${row.name} 已启动`); }}>启动</button><button type="button" onClick={() => { updateService(row.id, { status: "inactive" }); notify(`${row.name} 已停止`, "warning"); }}>停止</button><button type="button" onClick={() => { updateService(row.id, { status: "active", restarts: row.restarts + 1, handled: false }); notify(`${row.name} 已重启`); }}>重启</button><button type="button" onClick={() => setDrawer(row)}>日志</button>{row.status === "failed" && <button type="button" onClick={() => { updateService(row.id, { handled: true, status: "inactive" }); notify(`${row.name} 已标记处理`); }}>处理</button>}</span> },
+        ]}
+        rows={filteredRows}
+        emptyText="没有匹配的服务"
+        getRowKey={(row) => row.id}
+      />
+    </ModulePageShell>
+  );
+}
+
+function FirewallPage({ notify }: { notify: Notify }) {
+  const [rows, setRows] = useState(initialFirewallRules);
+  const [search, setSearch] = useState("");
+  const [protocolFilter, setProtocolFilter] = useState("全部");
+  const [sourceFilter, setSourceFilter] = useState("全部");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [draft, setDraft] = useState({ name: "临时调试端口", port: "", protocol: "TCP", source: "10.0.0.0/8" });
+  const filteredRows = rows.filter((row) => {
+    const query = search.trim().toLowerCase();
+    return (!query || `${row.name} ${row.port}`.toLowerCase().includes(query)) && (protocolFilter === "全部" || row.protocol === protocolFilter) && (sourceFilter === "全部" || row.source === sourceFilter);
+  });
+  const addRule = () => {
+    if (!draft.port.trim()) {
+      notify("端口不能为空", "danger");
+      return;
+    }
+    setRows((current) => [{ id: `fw-${Date.now()}`, name: draft.name.trim() || `端口 ${draft.port}`, port: draft.port.trim(), protocol: draft.protocol, source: draft.source, target: "全部主机", enabled: true }, ...current]);
+    setDrawerOpen(false);
+    notify(`防火墙规则 ${draft.port}/${draft.protocol} 已新增`);
+  };
+
+  return (
+    <ModulePageShell
+      title="防火墙"
+      subtitle="本地维护规则列表，支持端口、协议、来源筛选和启用删除。"
+      actions={<button className="primary" type="button" onClick={() => setDrawerOpen(true)}><Plus size={15} /> 新增规则</button>}
+      filters={<><ModuleSearch value={search} placeholder="搜索规则名或端口" onChange={setSearch} /><FieldSelect label="协议" value={protocolFilter} options={["全部", "TCP", "UDP"]} onChange={setProtocolFilter} /><FieldSelect label="来源" value={sourceFilter} options={["全部", ...Array.from(new Set(rows.map((row) => row.source)))]} onChange={setSourceFilter} /></>}
+      metrics={<><MetricTile icon={Shield} label="规则数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Lock} label="停用" value={`${rows.filter((row) => !row.enabled).length}`} tone="orange" /></>}
+      side={drawerOpen && (
+        <DetailDrawer title="新增规则" subtitle="空端口会被阻止提交" onClose={() => setDrawerOpen(false)} actions={<><button className="ghost" type="button" onClick={() => setDrawerOpen(false)}>取消</button><button className="primary" type="button" onClick={addRule}>保存规则</button></>}>
+          <FormLine label="规则名" value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
+          <FormLine label="端口" required value={draft.port} onChange={(value) => setDraft((current) => ({ ...current, port: value }))} />
+          <FormSelectLine label="协议" value={draft.protocol} options={["TCP", "UDP"]} onChange={(value) => setDraft((current) => ({ ...current, protocol: value }))} />
+          <FormLine label="来源" required value={draft.source} onChange={(value) => setDraft((current) => ({ ...current, source: value }))} />
+        </DetailDrawer>
+      )}
+    >
+      <DataTable
+        columns={[
+          { key: "name", label: "规则", width: "220px", render: (row) => <><StatusLight tone={row.enabled ? "green" : "gray"} /> <b>{row.name}</b></> },
+          { key: "port", label: "端口", render: (row) => row.port },
+          { key: "protocol", label: "协议", render: (row) => <span className="pill blue">{row.protocol}</span> },
+          { key: "source", label: "来源", render: (row) => row.source },
+          { key: "target", label: "目标", render: (row) => row.target },
+          { key: "enabled", label: "状态", render: (row) => <span className={`pill ${row.enabled ? "green" : "blue"}`}>{row.enabled ? "启用" : "停用"}</span> },
+          { key: "ops", label: "操作", width: "170px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { setRows((current) => current.map((item) => item.id === row.id ? { ...item, enabled: !item.enabled } : item)); notify(`${row.name} 已${row.enabled ? "禁用" : "启用"}`); }}>{row.enabled ? "禁用" : "启用"}</button><button type="button" onClick={() => { setRows((current) => current.filter((item) => item.id !== row.id)); notify(`${row.name} 已删除`, "warning"); }}>删除</button></span> },
+        ]}
+        rows={filteredRows}
+        emptyText="没有匹配的防火墙规则"
+        getRowKey={(row) => row.id}
+      />
+    </ModulePageShell>
+  );
+}
+
+function DeployPage({ notify }: { notify: Notify }) {
+  const [rows, setRows] = useState(initialDeployJobs);
+  const [env, setEnv] = useState("生产");
+  const [drawer, setDrawer] = useState<DeployJob | null>(null);
+  const filteredRows = rows.filter((row) => row.env === env);
+  const updateDeploy = (id: string, patch: Partial<DeployJob>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+  const createDeploy = () => {
+    const next: DeployJob = { id: `dep-${Date.now()}`, app: env === "生产" ? "shop-web" : "feature-service", env, version: `build-${rows.length + 1}`, status: "运行中", operator: "管理员", duration: "运行中" };
+    setRows((current) => [next, ...current]);
+    notify(`${env} 部署任务已创建`, "info");
+  };
+
+  return (
+    <ModulePageShell
+      title="部署"
+      subtitle="按环境查看发布任务，支持创建、完成、回滚、查看日志和重新部署。"
+      actions={<button className="primary" type="button" onClick={createDeploy}><Plus size={15} /> 创建部署任务</button>}
+      filters={<div className="deploy-tabs">{["生产", "预发", "开发"].map((item) => <button key={item} className={item === env ? "active" : ""} type="button" onClick={() => setEnv(item)}>{item}</button>)}</div>}
+      metrics={<><MetricTile icon={CloudUpload} label="当前环境" value={env} tone="blue" /><MetricTile icon={Activity} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="成功" value={`${rows.filter((row) => row.status === "成功").length}`} tone="green" /></>}
+      side={drawer && (
+        <DetailDrawer title="部署日志" subtitle={`${drawer.app} ${drawer.version}`} onClose={() => setDrawer(null)}>
+          <div className="terminal-log compact-log">
+            <p>checkout {drawer.version}</p>
+            <p>install dependencies</p>
+            <p>build artifacts</p>
+            <p>{drawer.status === "失败" ? "deploy failed: health check timeout" : "deploy finished"}</p>
+          </div>
+        </DetailDrawer>
+      )}
+    >
+      <DataTable
+        columns={[
+          { key: "app", label: "应用", width: "210px", render: (row) => <b className="blue-text">{row.app}</b> },
+          { key: "env", label: "环境", render: (row) => <span className="pill blue">{row.env}</span> },
+          { key: "version", label: "版本", render: (row) => row.version },
+          { key: "status", label: "状态", render: (row) => <span className={`pill ${row.status === "成功" ? "green" : row.status === "失败" ? "red" : "blue"}`}>{row.status}</span> },
+          { key: "operator", label: "操作人", render: (row) => row.operator },
+          { key: "duration", label: "耗时", render: (row) => row.duration },
+          { key: "ops", label: "操作", width: "260px", render: (row) => <span className="table-actions">{row.status === "运行中" && <button type="button" onClick={() => { updateDeploy(row.id, { status: "成功", duration: "1分02秒" }); notify(`${row.app} 部署已完成`); }}>完成</button>}<button type="button" onClick={() => { updateDeploy(row.id, { status: "运行中", duration: "回滚中" }); notify(`${row.app} 已开始回滚`, "warning"); }}>回滚</button><button type="button" onClick={() => setDrawer(row)}>日志</button><button type="button" onClick={() => { updateDeploy(row.id, { status: "运行中", duration: "运行中" }); notify(`${row.app} 已重新部署`, "info"); }}>重部署</button></span> },
+        ]}
+        rows={filteredRows}
+        emptyText="当前环境没有部署任务"
+        getRowKey={(row) => row.id}
+      />
+    </ModulePageShell>
+  );
+}
+
+function SchedulePage({ notify }: { notify: Notify }) {
+  const [rows, setRows] = useState(initialScheduleJobs);
+  const [search, setSearch] = useState("");
+  const [stateFilter, setStateFilter] = useState("全部");
+  const [drawer, setDrawer] = useState<{ type: "create" | "edit"; job?: ScheduleJob } | null>(null);
+  const [draft, setDraft] = useState({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" });
+  const filteredRows = rows.filter((row) => {
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || `${row.name} ${row.cron} ${row.command}`.toLowerCase().includes(query);
+    const matchState = stateFilter === "全部" || (stateFilter === "已启用" ? row.enabled : !row.enabled);
+    return matchSearch && matchState;
+  });
+  const updateJob = (id: string, patch: Partial<ScheduleJob>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+  const saveJob = () => {
+    if (!draft.name.trim() || !draft.cron.trim()) {
+      notify("任务名和 cron 不能为空", "danger");
+      return;
+    }
+    if (drawer?.type === "edit" && drawer.job) {
+      updateJob(drawer.job.id, { cron: draft.cron, command: draft.command });
+      notify(`${drawer.job.name} 已保存`);
+    } else {
+      setRows((current) => [{ id: `sch-${Date.now()}`, name: draft.name.trim(), cron: draft.cron.trim(), command: draft.command.trim(), enabled: true, lastRun: "未运行", result: "未运行" }, ...current]);
+      notify("定时任务已新建");
+    }
+    setDrawer(null);
+  };
+
+  return (
+    <ModulePageShell
+      title="定时任务"
+      subtitle="管理 cron 自动化，支持启停、立即执行、编辑和新增。"
+      actions={<button className="primary" type="button" onClick={() => { setDraft({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" }); setDrawer({ type: "create" }); }}><Plus size={15} /> 新建任务</button>}
+      filters={<><ModuleSearch value={search} placeholder="搜索任务、cron 或命令" onChange={setSearch} /><FieldSelect label="状态" value={stateFilter} options={["全部", "已启用", "已停用"]} onChange={setStateFilter} /></>}
+      metrics={<><MetricTile icon={CalendarDays} label="任务数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.result === "失败").length}`} tone="red" /></>}
+      side={drawer && (
+        <DetailDrawer title={drawer.type === "edit" ? "编辑 cron" : "新建任务"} subtitle={drawer.job?.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={saveJob}>保存</button></>}>
+          <FormLine label="任务名" required value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
+          <FormLine label="cron" required value={draft.cron} onChange={(value) => setDraft((current) => ({ ...current, cron: value }))} />
+          <FormLine label="命令" value={draft.command} onChange={(value) => setDraft((current) => ({ ...current, command: value }))} />
+        </DetailDrawer>
+      )}
+    >
+      <DataTable
+        columns={[
+          { key: "name", label: "任务", width: "190px", render: (row) => <b>{row.name}</b> },
+          { key: "cron", label: "cron", render: (row) => <code>{row.cron}</code> },
+          { key: "command", label: "命令", render: (row) => row.command },
+          { key: "enabled", label: "启用", render: (row) => <span className={`pill ${row.enabled ? "green" : "blue"}`}>{row.enabled ? "启用" : "停用"}</span> },
+          { key: "last", label: "最近执行", render: (row) => row.lastRun },
+          { key: "result", label: "结果", render: (row) => <span className={`pill ${row.result === "成功" ? "green" : row.result === "失败" ? "red" : "blue"}`}>{row.result}</span> },
+          { key: "ops", label: "操作", width: "250px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { updateJob(row.id, { enabled: !row.enabled }); notify(`${row.name} 已${row.enabled ? "停用" : "启用"}`); }}>{row.enabled ? "停用" : "启用"}</button><button type="button" onClick={() => { updateJob(row.id, { lastRun: currentClock(), result: "成功" }); notify(`${row.name} 已立即执行`); }}>执行</button><button type="button" onClick={() => { setDraft({ name: row.name, cron: row.cron, command: row.command }); setDrawer({ type: "edit", job: row }); }}>编辑</button></span> },
+        ]}
+        rows={filteredRows}
+        emptyText="没有匹配的定时任务"
+        getRowKey={(row) => row.id}
+      />
+    </ModulePageShell>
+  );
+}
+
+function AuditPage({ notify }: { notify: Notify }) {
+  const [search, setSearch] = useState("");
+  const [userFilter, setUserFilter] = useState("全部");
+  const [resultFilter, setResultFilter] = useState("全部");
+  const [selected, setSelected] = useState<AuditRecord | null>(null);
+  const users = ["全部", ...Array.from(new Set(initialAuditRecords.map((row) => row.user)))];
+  const filteredRows = initialAuditRecords.filter((row) => {
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || `${row.user} ${row.action} ${row.object} ${row.result} ${row.traceId} ${row.ip}`.toLowerCase().includes(query);
+    return matchSearch && (userFilter === "全部" || row.user === userFilter) && (resultFilter === "全部" || row.result === resultFilter);
+  });
+
+  return (
+    <ModulePageShell
+      title="审计日志"
+      subtitle="只读审计视图，支持关键字、用户和结果过滤。"
+      actions={<button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 条审计日志`, "info")}><Download size={15} /> 导出</button>}
+      filters={<><ModuleSearch value={search} placeholder="搜索关键字、对象或 trace id" onChange={setSearch} /><FieldSelect label="用户" value={userFilter} options={users} onChange={setUserFilter} /><FieldSelect label="结果" value={resultFilter} options={["全部", "成功", "失败"]} onChange={setResultFilter} /></>}
+      metrics={<><MetricTile icon={FileText} label="日志" value={`${initialAuditRecords.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="成功" value={`${initialAuditRecords.filter((row) => row.result === "成功").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${initialAuditRecords.filter((row) => row.result === "失败").length}`} tone="red" /></>}
+      side={selected && (
+        <DetailDrawer title="审计详情" subtitle={selected.traceId} onClose={() => setSelected(null)}>
+          <div className="detail-kv">
+            <p><span>时间</span><b>{selected.time}</b></p>
+            <p><span>用户</span><b>{selected.user}</b></p>
+            <p><span>IP</span><b>{selected.ip}</b></p>
+            <p><span>对象</span><b>{selected.object}</b></p>
+            <p><span>摘要</span><b>{selected.summary}</b></p>
+          </div>
+        </DetailDrawer>
+      )}
+    >
+      <DataTable
+        columns={[
+          { key: "time", label: "时间", width: "130px", render: (row) => row.time },
+          { key: "ip", label: "IP", render: (row) => row.ip },
+          { key: "user", label: "用户", render: (row) => row.user },
+          { key: "action", label: "动作", render: (row) => row.action },
+          { key: "object", label: "对象", render: (row) => row.object },
+          { key: "result", label: "结果", render: (row) => <span className={`pill ${row.result === "成功" ? "green" : "red"}`}>{row.result}</span> },
+          { key: "trace", label: "trace id", render: (row) => row.traceId },
+          { key: "ops", label: "操作", width: "78px", render: (row) => <span className="table-actions"><button type="button" onClick={() => setSelected(row)}>详情</button></span> },
+        ]}
+        rows={filteredRows}
+        emptyText="没有匹配的审计日志"
+        getRowKey={(row) => row.id}
+      />
+    </ModulePageShell>
+  );
+}
+
+function AclPage({ notify }: { notify: Notify }) {
+  const [tab, setTab] = useState<"users" | "roles">("users");
+  const [users, setUsers] = useState(initialAclUsers);
+  const [roles, setRoles] = useState(initialAclRoles);
+  const [search, setSearch] = useState("");
+  const [roleId, setRoleId] = useState(initialAclRoles[0].id);
+  const selectedRole = roles.find((role) => role.id === roleId) ?? roles[0];
+  const filteredUsers = users.filter((user) => !search.trim() || `${user.name} ${user.email} ${user.role}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const togglePermission = (permission: string) => {
+    setRoles((current) => current.map((role) => {
+      if (role.id !== selectedRole.id) return role;
+      return role.permissions.includes(permission)
+        ? { ...role, permissions: role.permissions.filter((item) => item !== permission) }
+        : { ...role, permissions: [...role.permissions, permission] };
+    }));
+  };
+
+  return (
+    <ModulePageShell
+      title="权限"
+      subtitle="管理用户启用状态、MFA 和角色权限勾选。"
+      actions={<button className="ghost" type="button" onClick={() => notify("权限变更已保存")}>保存权限</button>}
+      filters={<><div className="deploy-tabs"><button className={tab === "users" ? "active" : ""} type="button" onClick={() => setTab("users")}>用户</button><button className={tab === "roles" ? "active" : ""} type="button" onClick={() => setTab("roles")}>角色</button></div>{tab === "users" && <ModuleSearch value={search} placeholder="搜索用户、邮箱或角色" onChange={setSearch} />}</>}
+      metrics={<><MetricTile icon={UserRound} label="用户" value={`${users.length}`} tone="blue" /><MetricTile icon={Lock} label="角色" value={`${roles.length}`} tone="purple" /><MetricTile icon={Shield} label="MFA 异常" value={`${users.filter((user) => user.mfa !== "已启用").length}`} tone="orange" /></>}
+    >
+      {tab === "users" ? (
+        <DataTable
+          columns={[
+            { key: "name", label: "用户", width: "180px", render: (row) => <b>{row.name}</b> },
+            { key: "email", label: "邮箱", render: (row) => row.email },
+            { key: "role", label: "角色", render: (row) => <span className="pill blue">{row.role}</span> },
+            { key: "enabled", label: "状态", render: (row) => <span className={`pill ${row.enabled ? "green" : "red"}`}>{row.enabled ? "启用" : "禁用"}</span> },
+            { key: "mfa", label: "MFA", render: (row) => <span className={row.mfa === "已启用" ? "green-text" : "orange-text"}>{row.mfa}</span> },
+            { key: "last", label: "最近登录", render: (row) => row.lastLogin },
+            { key: "ops", label: "操作", width: "180px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { setUsers((current) => current.map((item) => item.id === row.id ? { ...item, enabled: !item.enabled } : item)); notify(`${row.name} 已${row.enabled ? "禁用" : "启用"}`); }}>{row.enabled ? "禁用" : "启用"}</button><button type="button" onClick={() => { setUsers((current) => current.map((item) => item.id === row.id ? { ...item, mfa: "需重置" } : item)); notify(`${row.name} MFA 已重置`, "warning"); }}>重置 MFA</button></span> },
+          ]}
+          rows={filteredUsers}
+          emptyText="没有匹配的用户"
+          getRowKey={(row) => row.id}
+        />
+      ) : (
+        <div className="acl-role-layout">
+          <PanelCard title="角色列表">
+            <div className="role-list">
+              {roles.map((role) => <button key={role.id} className={role.id === roleId ? "active" : ""} type="button" onClick={() => setRoleId(role.id)}><strong>{role.name}</strong><span>{role.desc}</span></button>)}
+            </div>
+          </PanelCard>
+          <PanelCard title={`${selectedRole.name} 权限项`} action="保存" onAction={() => notify(`${selectedRole.name} 权限已保存`)}>
+            <div className="permission-grid">
+              {permissionOptions.map((permission) => (
+                <button key={permission} className={selectedRole.permissions.includes(permission) ? "checked" : ""} type="button" onClick={() => togglePermission(permission)}>
+                  <span>{permission}</span>
+                  <i>{selectedRole.permissions.includes(permission) ? "已允许" : "未允许"}</i>
+                </button>
+              ))}
+            </div>
+          </PanelCard>
+        </div>
+      )}
+    </ModulePageShell>
   );
 }
 
