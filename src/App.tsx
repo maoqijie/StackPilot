@@ -59,7 +59,16 @@ type Tone = "green" | "blue" | "orange" | "red" | "gray" | "purple";
 type ToastTone = "success" | "info" | "warning" | "danger";
 type ToastState = { message: string; tone: ToastTone };
 type Notify = (message: string, tone?: ToastTone) => void;
+type SetPage = (page: PageKey, toast?: ToastState) => void;
 type PageMeta = { title: string; breadcrumb: string; search: string };
+type NavChild = { id: string; label: string; meta: string; badge?: string };
+type NavItem = {
+  key: Exclude<PageKey, "mobile">;
+  label: string;
+  icon: LucideIcon;
+  badge?: string;
+  children: NavChild[];
+};
 
 function currentClock() {
   return new Date().toLocaleTimeString("zh-CN", {
@@ -92,20 +101,137 @@ const pageMeta: Record<PageKey, PageMeta> = {
   mobile: { title: "移动端", breadcrumb: "预览", search: "搜索移动端模块..." },
 };
 
-const navItems: Array<{ key: Exclude<PageKey, "mobile">; label: string; icon: LucideIcon; badge?: string }> = [
-  { key: "overview", label: "首页总览", icon: Home },
-  { key: "hosts", label: "主机", icon: Server },
-  { key: "sites", label: "网站", icon: Globe2 },
-  { key: "databases", label: "数据库", icon: Database },
-  { key: "files", label: "文件", icon: Folder },
-  { key: "terminal", label: "终端", icon: TerminalSquare },
-  { key: "systemd", label: "systemd 服务", icon: Settings },
-  { key: "firewall", label: "防火墙", icon: Shield },
-  { key: "deploy", label: "部署", icon: CloudUpload },
-  { key: "schedule", label: "定时任务", icon: CalendarDays },
-  { key: "audit", label: "审计日志", icon: FileText },
-  { key: "acl", label: "权限", icon: Lock },
-  { key: "settings", label: "设置", icon: Settings },
+const navItems: NavItem[] = [
+  {
+    key: "overview",
+    label: "首页总览",
+    icon: Home,
+    children: [
+      { id: "overview-health", label: "集群状态", meta: "健康 / 延迟" },
+      { id: "overview-tasks", label: "任务流", meta: "7 待执行", badge: "7" },
+      { id: "overview-risks", label: "风险中心", meta: "3 风险", badge: "3" },
+    ],
+  },
+  {
+    key: "hosts",
+    label: "主机",
+    icon: Server,
+    children: [
+      { id: "hosts-all", label: "全部主机", meta: "23 台", badge: "23" },
+      { id: "hosts-prod", label: "生产环境", meta: "8 台在线" },
+      { id: "hosts-alert", label: "健康告警", meta: "3 个待处理", badge: "3" },
+    ],
+  },
+  {
+    key: "sites",
+    label: "网站",
+    icon: Globe2,
+    children: [
+      { id: "sites-running", label: "运行中站点", meta: "48 个" },
+      { id: "sites-cert", label: "证书续期", meta: "5 天内", badge: "3" },
+      { id: "sites-runtime", label: "运行时分组", meta: "Node / PHP" },
+    ],
+  },
+  {
+    key: "databases",
+    label: "数据库",
+    icon: Database,
+    children: [
+      { id: "databases-instances", label: "实例列表", meta: "19 个" },
+      { id: "databases-backups", label: "备份计划", meta: "02:00 执行" },
+      { id: "databases-slow", label: "慢查询", meta: "23 条", badge: "23" },
+    ],
+  },
+  {
+    key: "files",
+    label: "文件",
+    icon: Folder,
+    children: [
+      { id: "files-www", label: "站点目录", meta: "/var/www" },
+      { id: "files-upload", label: "上传队列", meta: "2 项" },
+      { id: "files-trash", label: "回收站", meta: "7 天保留" },
+    ],
+  },
+  {
+    key: "terminal",
+    label: "终端",
+    icon: TerminalSquare,
+    children: [
+      { id: "terminal-sessions", label: "会话列表", meta: "3 在线", badge: "3" },
+      { id: "terminal-snippets", label: "常用命令", meta: "12 条" },
+      { id: "terminal-history", label: "执行历史", meta: "今日 18 次" },
+    ],
+  },
+  {
+    key: "systemd",
+    label: "systemd 服务",
+    icon: Settings,
+    children: [
+      { id: "systemd-active", label: "Active 服务", meta: "36 个" },
+      { id: "systemd-failed", label: "Failed 服务", meta: "1 个", badge: "1" },
+      { id: "systemd-logs", label: "服务日志", meta: "实时追踪" },
+    ],
+  },
+  {
+    key: "firewall",
+    label: "防火墙",
+    icon: Shield,
+    children: [
+      { id: "firewall-rules", label: "规则列表", meta: "42 条" },
+      { id: "firewall-open", label: "开放端口", meta: "8 个" },
+      { id: "firewall-deny", label: "拦截记录", meta: "今日 12 次" },
+    ],
+  },
+  {
+    key: "deploy",
+    label: "部署",
+    icon: CloudUpload,
+    children: [
+      { id: "deploy-prod", label: "生产发布", meta: "2 待确认", badge: "2" },
+      { id: "deploy-staging", label: "预发环境", meta: "v2.8.1" },
+      { id: "deploy-rollbacks", label: "回滚记录", meta: "近 30 天" },
+    ],
+  },
+  {
+    key: "schedule",
+    label: "定时任务",
+    icon: CalendarDays,
+    children: [
+      { id: "schedule-enabled", label: "启用任务", meta: "7 个" },
+      { id: "schedule-failed", label: "失败任务", meta: "1 个", badge: "1" },
+      { id: "schedule-calendar", label: "执行日历", meta: "今日 5 次" },
+    ],
+  },
+  {
+    key: "audit",
+    label: "审计日志",
+    icon: FileText,
+    children: [
+      { id: "audit-all", label: "全部日志", meta: "只读" },
+      { id: "audit-failed", label: "失败操作", meta: "4 条", badge: "4" },
+      { id: "audit-export", label: "导出记录", meta: "CSV / JSON" },
+    ],
+  },
+  {
+    key: "acl",
+    label: "权限",
+    icon: Lock,
+    children: [
+      { id: "acl-users", label: "用户", meta: "12 人" },
+      { id: "acl-roles", label: "角色", meta: "6 组" },
+      { id: "acl-policies", label: "权限项", meta: "34 项" },
+    ],
+  },
+  {
+    key: "settings",
+    label: "设置",
+    icon: Settings,
+    children: [
+      { id: "settings-general", label: "基础设置", meta: "面板偏好" },
+      { id: "settings-security", label: "安全策略", meta: "MFA / 白名单" },
+      { id: "settings-backup", label: "备份策略", meta: "S3 / MinIO" },
+    ],
+  },
 ];
 
 const groupItems = [
@@ -387,9 +513,14 @@ function App() {
     setToast({ message, tone });
   };
 
-  const setPage = (next: PageKey) => {
+  const setPage: SetPage = (next, nextToast) => {
     setPageState(next);
-    window.location.hash = next;
+    if (nextToast) {
+      setToast(nextToast);
+    }
+    if (window.location.hash !== `#${next}`) {
+      window.location.hash = next;
+    }
   };
 
   return (
@@ -410,7 +541,7 @@ function DesktopShell({
   notify,
 }: {
   page: PageKey;
-  setPage: (page: PageKey) => void;
+  setPage: SetPage;
   notify: Notify;
 }) {
   const whiteTop = page !== "overview";
@@ -467,12 +598,35 @@ function Sidebar({
   onToggleCollapsed,
 }: {
   page: PageKey;
-  setPage: (page: PageKey) => void;
+  setPage: SetPage;
   notify: Notify;
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }) {
-  const expandableItems = ["hosts", "sites", "databases", "files", "terminal", "systemd", "firewall", "deploy", "schedule", "audit", "acl", "settings"];
+  const [openGroups, setOpenGroups] = useState<Partial<Record<NavItem["key"], boolean>>>(() => ({
+    overview: true,
+  }));
+  const [activeChild, setActiveChild] = useState<string>("overview-health");
+
+  const toggleGroup = (key: NavItem["key"], label: string) => {
+    setOpenGroups((current) => {
+      const currentOpen = current[key] ?? key === page;
+      const nextOpen = !currentOpen;
+      notify(`${label} 下拉项目已${nextOpen ? "展开" : "收起"}`, "info");
+      return { ...current, [key]: nextOpen };
+    });
+  };
+
+  const openNavPage = (key: NavItem["key"], label: string) => {
+    setPage(key, { message: `已进入${label}`, tone: "info" });
+    setOpenGroups((current) => ({ ...current, [key]: true }));
+    setActiveChild(navItems.find((item) => item.key === key)?.children[0]?.id ?? activeChild);
+  };
+
+  const openNavChild = (parent: NavItem, child: NavChild) => {
+    setPage(parent.key, { message: `已打开${parent.label} / ${child.label}`, tone: "info" });
+    setActiveChild(child.id);
+  };
 
   return (
     <aside className={`sidebar-mock ${collapsed ? "collapsed" : ""}`}>
@@ -484,17 +638,55 @@ function Sidebar({
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = item.key === page || (page === "overview" && item.key === "overview");
+          const open = (openGroups[item.key] ?? active) && !collapsed;
           return (
-            <button
+            <section
               key={item.key}
-              className={active ? "active" : ""}
-              type="button"
-              onClick={() => setPage(item.key)}
+              className={`side-nav-group ${active ? "active" : ""} ${open ? "open" : ""}`}
             >
-              <Icon size={17} />
-              <span>{item.label}</span>
-              {expandableItems.includes(item.key) && <ChevronDown className="side-chevron" size={13} />}
-            </button>
+              <div className="side-nav-row">
+                <button
+                  className="side-main-button"
+                  type="button"
+                  onClick={() => openNavPage(item.key, item.label)}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <Icon size={17} />
+                  <span>{item.label}</span>
+                  {item.badge && <b>{item.badge}</b>}
+                </button>
+                <button
+                  className="side-toggle-button"
+                  type="button"
+                  onClick={() => toggleGroup(item.key, item.label)}
+                  aria-label={`${open ? "收起" : "展开"}${item.label}下拉项目`}
+                  aria-expanded={open}
+                  aria-controls={`side-submenu-${item.key}`}
+                >
+                  <ChevronDown className="side-chevron" size={13} />
+                </button>
+              </div>
+              <div
+                className="side-submenu"
+                id={`side-submenu-${item.key}`}
+                aria-hidden={!open}
+              >
+                {item.children.map((child) => (
+                  <button
+                    key={child.id}
+                    className={activeChild === child.id ? "is-child-active" : ""}
+                    type="button"
+                    tabIndex={open ? 0 : -1}
+                    aria-current={activeChild === child.id ? "true" : undefined}
+                    onClick={() => openNavChild(item, child)}
+                  >
+                    <i />
+                    <span>{child.label}</span>
+                    <em>{child.badge ?? child.meta}</em>
+                  </button>
+                ))}
+              </div>
+            </section>
           );
         })}
       </nav>
@@ -581,7 +773,7 @@ function TopBar({ page, white, notify }: { page: PageKey; white: boolean; notify
   );
 }
 
-function OverviewPage({ setPage, notify }: { setPage: (page: PageKey) => void; notify: Notify }) {
+function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify }) {
   const [cluster, setCluster] = useState("panel-sg-01");
   const [taskTab, setTaskTab] = useState("最近任务");
   const [resourceTab, setResourceTab] = useState("今天");
@@ -815,7 +1007,7 @@ function RiskList({ notify }: { notify: Notify }) {
   );
 }
 
-function QuickActions({ setPage, notify }: { setPage: (page: PageKey) => void; notify: Notify }) {
+function QuickActions({ setPage, notify }: { setPage: SetPage; notify: Notify }) {
   const actions = [
     [Globe2, "添加网站", () => notify("添加网站向导已打开", "info")],
     [TerminalSquare, "开启终端", () => notify("终端会话已准备就绪", "info")],
