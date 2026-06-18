@@ -726,106 +726,108 @@ function SettingsPage() {
 function MobileMock() {
   return (
     <section className="mobile-frame-stage">
-      <div className="phone-shell">
-        <div className="phone-side left top" />
-        <div className="phone-side left mid" />
-        <div className="phone-side right mid" />
-        <div className="phone-screen">
-          <div className="ios-status">
-            <strong>9:41</strong>
-            <span />
-            <em>●●●</em>
-          </div>
-          <div className="mobile-top">
-            <Menu size={20} />
-            <div className="mobile-brand"><div className="brand-gem small" /><strong>StackPilot</strong></div>
-            <div className="mobile-icons"><Bell size={18} /><i>3</i><b>U</b></div>
-          </div>
-          <div className="mobile-content">
-            <h2>上午好，管理员</h2>
-            <p>今天是 2025年6月2日 星期一</p>
-            <div className="mobile-stats">
-              {[
-                [Server, "主机", "5", "全部在线", "green"],
-                [Globe2, "网站", "12", "正常运行", "green"],
-                [Database, "数据库", "8", "运行中", "green"],
-                [Shield, "告警", "2", "需要处理", "orange"],
-              ].map(([Icon, label, value, desc, tone]) => (
-                <article key={label as string}>
-                  <Icon className={tone as string} size={20} />
-                  <span>{label as string}</span>
-                  <strong>{value as string}</strong>
-                  <em><StatusLight tone={tone as Tone} />{desc as string}</em>
-                </article>
-              ))}
+      <div className="phone-scale-box">
+        <div className="phone-shell">
+          <div className="phone-side left top" />
+          <div className="phone-side left mid" />
+          <div className="phone-side right mid" />
+          <div className="phone-screen">
+            <div className="ios-status">
+              <strong>9:41</strong>
+              <span />
+              <em>●●●</em>
             </div>
-            <MobileCard title="系统状态" action="查看详情">
-              <div className="mobile-resource">
+            <div className="mobile-top">
+              <Menu size={20} />
+              <div className="mobile-brand"><div className="brand-gem small" /><strong>StackPilot</strong></div>
+              <div className="mobile-icons"><Bell size={18} /><i>3</i><b>U</b></div>
+            </div>
+            <div className="mobile-content">
+              <h2>上午好，管理员</h2>
+              <p>今天是 2025年6月2日 星期一</p>
+              <div className="mobile-stats">
                 {[
-                  ["CPU", "18%", "负载 0.38", [18, 14, 23, 16, 28, 18, 22]],
-                  ["内存", "42%", "3.2 / 7.6 GB", [38, 42, 39, 46, 41, 43, 45]],
-                  ["磁盘", "37%", "180 / 480 GB", [35, 39, 37, 42, 36, 41, 38]],
-                ].map(([label, value, desc, values]) => (
+                  [Server, "主机", "5", "全部在线", "green"],
+                  [Globe2, "网站", "12", "正常运行", "green"],
+                  [Database, "数据库", "8", "运行中", "green"],
+                  [Shield, "告警", "2", "需要处理", "orange"],
+                ].map(([Icon, label, value, desc, tone]) => (
                   <article key={label as string}>
+                    <Icon className={tone as string} size={20} />
                     <span>{label as string}</span>
                     <strong>{value as string}</strong>
-                    <Sparkline values={values as number[]} tone="blue" />
-                    <em>{desc as string}</em>
+                    <em><StatusLight tone={tone as Tone} />{desc as string}</em>
                   </article>
                 ))}
               </div>
-            </MobileCard>
-            <MobileCard title="最近任务" action="查看全部">
-              <div className="mobile-task-list">
-                {[
-                  ["部署 Laravel 应用到 web-01", "admin 触发", "成功", "2 分钟前"],
-                  ["备份数据库 shop_db", "system 自动", "成功", "15 分钟前"],
-                  ["更新系统组件 /web-02", "admin 触发", "警告", "32 分钟前"],
-                  ["重启 Nginx 服务（web-01）", "自动监控", "成功", "1 小时前"],
-                  ["登录到 203.0.113.10", "admin 登录", "信息", "1 小时前"],
-                ].map((row, index) => (
-                  <div key={row[0]}>
-                    <span className="mobile-task-icon">{["★", "▣", "↻", "↺", "♙"][index]}</span>
-                    <p><strong>{row[0]}</strong><em>{row[1]}</em></p>
-                    <StatusLight tone={row[2] === "警告" ? "orange" : row[2] === "信息" ? "blue" : "green"} />
-                    <b>{row[2]}</b>
-                    <small>{row[3]}</small>
-                  </div>
-                ))}
-              </div>
-            </MobileCard>
-            <MobileCard title="快捷操作">
-              <div className="mobile-quick">
-                {["添加主机", "创建网站", "新建数据库", "上传文件", "终端连接", "系统服务", "计划任务", "防火墙规则"].map((item) => (
-                  <button key={item} type="button">{item}</button>
-                ))}
-              </div>
-            </MobileCard>
-            <MobileCard title="主机状态" action="查看全部">
-              <div className="mobile-hosts">
-                {[
-                  ["web-01", "生产环境", "203.0.113.10", "Ubuntu 22.04", "12%", "38%", "2 天"],
-                  ["web-02", "生产环境", "203.0.113.11", "Ubuntu 22.04", "22%", "45%", "5 天"],
-                  ["db-01", "数据库", "203.0.113.20", "Ubuntu 22.04", "35%", "62%", "12 天"],
-                ].map((row) => (
-                  <div key={row[0]}>
-                    <StatusLight tone={row[0] === "db-01" ? "orange" : "green"} />
-                    <p><strong>{row[0]}</strong><span>{row[1]}</span><em>{row[2]} | {row[3]}</em></p>
-                    <b>CPU {row[4]}<br />内存 {row[5]}</b>
-                    <small>{row[6]}</small>
-                  </div>
-                ))}
-              </div>
-            </MobileCard>
+              <MobileCard title="系统状态" action="查看详情">
+                <div className="mobile-resource">
+                  {[
+                    ["CPU", "18%", "负载 0.38", [18, 14, 23, 16, 28, 18, 22]],
+                    ["内存", "42%", "3.2 / 7.6 GB", [38, 42, 39, 46, 41, 43, 45]],
+                    ["磁盘", "37%", "180 / 480 GB", [35, 39, 37, 42, 36, 41, 38]],
+                  ].map(([label, value, desc, values]) => (
+                    <article key={label as string}>
+                      <span>{label as string}</span>
+                      <strong>{value as string}</strong>
+                      <Sparkline values={values as number[]} tone="blue" />
+                      <em>{desc as string}</em>
+                    </article>
+                  ))}
+                </div>
+              </MobileCard>
+              <MobileCard title="最近任务" action="查看全部">
+                <div className="mobile-task-list">
+                  {[
+                    ["部署 Laravel 应用到 web-01", "admin 触发", "成功", "2 分钟前"],
+                    ["备份数据库 shop_db", "system 自动", "成功", "15 分钟前"],
+                    ["更新系统组件 /web-02", "admin 触发", "警告", "32 分钟前"],
+                    ["重启 Nginx 服务（web-01）", "自动监控", "成功", "1 小时前"],
+                    ["登录到 203.0.113.10", "admin 登录", "信息", "1 小时前"],
+                  ].map((row, index) => (
+                    <div key={row[0]}>
+                      <span className="mobile-task-icon">{["★", "▣", "↻", "↺", "♙"][index]}</span>
+                      <p><strong>{row[0]}</strong><em>{row[1]}</em></p>
+                      <StatusLight tone={row[2] === "警告" ? "orange" : row[2] === "信息" ? "blue" : "green"} />
+                      <b>{row[2]}</b>
+                      <small>{row[3]}</small>
+                    </div>
+                  ))}
+                </div>
+              </MobileCard>
+              <MobileCard title="快捷操作">
+                <div className="mobile-quick">
+                  {["添加主机", "创建网站", "新建数据库", "上传文件", "终端连接", "系统服务", "计划任务", "防火墙规则"].map((item) => (
+                    <button key={item} type="button">{item}</button>
+                  ))}
+                </div>
+              </MobileCard>
+              <MobileCard title="主机状态" action="查看全部">
+                <div className="mobile-hosts">
+                  {[
+                    ["web-01", "生产环境", "203.0.113.10", "Ubuntu 22.04", "12%", "38%", "2 天"],
+                    ["web-02", "生产环境", "203.0.113.11", "Ubuntu 22.04", "22%", "45%", "5 天"],
+                    ["db-01", "数据库", "203.0.113.20", "Ubuntu 22.04", "35%", "62%", "12 天"],
+                  ].map((row) => (
+                    <div key={row[0]}>
+                      <StatusLight tone={row[0] === "db-01" ? "orange" : "green"} />
+                      <p><strong>{row[0]}</strong><span>{row[1]}</span><em>{row[2]} | {row[3]}</em></p>
+                      <b>CPU {row[4]}<br />内存 {row[5]}</b>
+                      <small>{row[6]}</small>
+                    </div>
+                  ))}
+                </div>
+              </MobileCard>
+            </div>
+            <nav className="mobile-tabbar">
+              {[[Home, "首页"], [Server, "主机"], [Globe2, "网站"], [ClipboardIcon, "任务"], [UserRound, "我的"]].map(([Icon, label], index) => (
+                <button className={index === 0 ? "active" : ""} key={label as string} type="button">
+                  <Icon size={22} />
+                  <span>{label as string}</span>
+                </button>
+              ))}
+            </nav>
           </div>
-          <nav className="mobile-tabbar">
-            {[[Home, "首页"], [Server, "主机"], [Globe2, "网站"], [ClipboardIcon, "任务"], [UserRound, "我的"]].map(([Icon, label], index) => (
-              <button className={index === 0 ? "active" : ""} key={label as string} type="button">
-                <Icon size={22} />
-                <span>{label as string}</span>
-              </button>
-            ))}
-          </nav>
         </div>
       </div>
     </section>
