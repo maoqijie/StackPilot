@@ -120,6 +120,7 @@ a {
 .desktop-frame {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);
+  transition: grid-template-columns 280ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 .desktop-frame.sidebar-collapsed {
@@ -139,6 +140,7 @@ a {
 }
 
 .sidebar-mock {
+  width: 230px;
   min-height: 0;
   padding: 14px 12px;
   display: flex;
@@ -150,6 +152,14 @@ a {
     linear-gradient(180deg, #08202f 0%, #061824 100%);
   border-right: 1px solid rgb(255 255 255 / 8%);
   overflow: hidden;
+  transition:
+    width 280ms cubic-bezier(0.2, 0, 0, 1),
+    transform 280ms cubic-bezier(0.2, 0, 0, 1),
+    clip-path 280ms cubic-bezier(0.2, 0, 0, 1),
+    padding 280ms cubic-bezier(0.2, 0, 0, 1),
+    box-shadow 240ms ease,
+    background-position 240ms ease;
+  will-change: width, transform, clip-path;
 }
 
 .sidebar-mock.collapsed {
@@ -165,6 +175,9 @@ a {
   align-items: center;
   gap: 10px;
   border-bottom: 1px solid rgb(219 238 250 / 12%);
+  transition:
+    padding 200ms ease,
+    gap 200ms ease;
 }
 
 .sidebar-mock.collapsed .side-brand {
@@ -173,16 +186,26 @@ a {
   gap: 0;
 }
 
-.sidebar-mock.collapsed .side-brand svg {
-  display: none;
-}
-
 .side-brand strong {
   flex: 1;
   color: #ffffff;
   font-size: 18px;
   line-height: 1;
   letter-spacing: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 132px;
+  transition:
+    max-width 220ms cubic-bezier(0.2, 0, 0, 1) 45ms,
+    opacity 170ms ease 55ms,
+    transform 220ms ease 45ms;
+}
+
+.sidebar-mock.collapsed .side-brand strong {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition-delay: 0ms;
 }
 
 .brand-gem {
@@ -282,6 +305,13 @@ a {
   color: #c8d9e4;
   background: transparent;
   text-align: left;
+  transition:
+    width 190ms cubic-bezier(0.2, 0, 0, 1),
+    padding 190ms cubic-bezier(0.2, 0, 0, 1),
+    gap 190ms ease,
+    color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .sidebar-mock.collapsed .side-nav button {
@@ -315,6 +345,37 @@ a {
   font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
+  max-width: 128px;
+  transition:
+    opacity 170ms ease 55ms,
+    transform 220ms ease 45ms,
+    max-width 220ms cubic-bezier(0.2, 0, 0, 1) 45ms;
+}
+
+.side-chevron {
+  flex: 0 0 auto;
+  width: 13px;
+  transition:
+    width 220ms cubic-bezier(0.2, 0, 0, 1) 45ms,
+    opacity 170ms ease 55ms,
+    transform 220ms ease 45ms;
+}
+
+.sidebar-mock.collapsed .side-nav span,
+.sidebar-mock.collapsed .side-nav b {
+  max-width: 0;
+  min-width: 0;
+  padding: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition-delay: 0ms;
+}
+
+.sidebar-mock.collapsed .side-chevron {
+  width: 0;
+  opacity: 0;
+  transform: translateX(-6px) rotate(-90deg);
+  transition-delay: 0ms;
 }
 
 .side-nav b {
@@ -339,6 +400,25 @@ a {
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgb(139 189 214 / 42%) transparent;
+  max-height: 190px;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    max-height 240ms cubic-bezier(0.2, 0, 0, 1) 45ms,
+    padding 220ms ease 45ms,
+    border-color 220ms ease 45ms,
+    opacity 180ms ease 70ms,
+    transform 220ms ease 45ms;
+}
+
+.sidebar-mock.collapsed .host-groups {
+  max-height: 0;
+  padding-top: 0;
+  border-color: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
+  transition-delay: 0ms;
 }
 
 .host-groups > div {
@@ -390,6 +470,13 @@ a {
   color: #aebfca;
   background: transparent;
   text-align: left;
+  transition:
+    width 190ms cubic-bezier(0.2, 0, 0, 1),
+    padding 190ms cubic-bezier(0.2, 0, 0, 1),
+    gap 190ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
 }
 
 .sidebar-mock.collapsed .collapse-side {
@@ -398,9 +485,71 @@ a {
   justify-content: center;
 }
 
+.collapse-icon {
+  flex: 0 0 auto;
+  overflow: hidden;
+  transition:
+    width 190ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 150ms ease,
+    transform 190ms ease;
+}
+
+.collapse-icon-close {
+  width: 15px;
+}
+
+.collapse-icon-open {
+  width: 0;
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.82);
+}
+
+.sidebar-mock.collapsed .collapse-icon-close {
+  width: 0;
+  opacity: 0;
+  transform: rotate(90deg) scale(0.82);
+}
+
+.sidebar-mock.collapsed .collapse-icon-open {
+  width: 15px;
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+
 .collapse-side span {
   flex: 1;
   font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 96px;
+  transition:
+    max-width 220ms cubic-bezier(0.2, 0, 0, 1) 45ms,
+    opacity 170ms ease 55ms,
+    transform 220ms ease 45ms;
+}
+
+.sidebar-mock.collapsed .collapse-side span {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition-delay: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-frame,
+  .sidebar-mock,
+  .side-brand,
+  .side-brand strong,
+  .side-nav button,
+  .side-nav span,
+  .side-chevron,
+  .host-groups,
+  .collapse-side,
+  .collapse-icon,
+  .collapse-side span {
+    transition-duration: 1ms;
+    transition-delay: 0ms;
+  }
 }
 
 .topbar-mock {
@@ -1605,6 +1754,10 @@ a {
     grid-template-columns: 218px minmax(0, 1fr);
   }
 
+  .sidebar-mock {
+    width: 218px;
+  }
+
   .desktop-frame.sidebar-collapsed {
     grid-template-columns: 64px minmax(0, 1fr);
   }
@@ -1682,34 +1835,27 @@ a {
     position: absolute;
     z-index: 40;
     inset: 0 auto 0 0;
-    width: min(230px, calc(100vw - 64px));
+    width: 230px;
+    max-width: calc(100vw - 64px);
     padding: 14px 12px;
     align-items: stretch;
     box-shadow: 16px 0 34px rgb(7 24 36 / 22%);
+    transform: translateX(0);
+    clip-path: inset(0 0 0 0);
   }
 
   .sidebar-mock.collapsed {
-    position: relative;
-    z-index: auto;
-    inset: auto;
-    width: 64px;
+    width: 230px;
     padding: 14px 8px;
     box-shadow: none;
+    transform: translateX(0);
+    clip-path: inset(0 166px 0 0);
   }
 
   .sidebar-mock.collapsed .side-brand {
     padding: 0 0 10px;
     justify-content: center;
     gap: 0;
-  }
-
-  .sidebar-mock.collapsed .side-brand strong,
-  .sidebar-mock.collapsed .side-brand svg,
-  .sidebar-mock.collapsed .host-groups,
-  .sidebar-mock.collapsed .side-nav span,
-  .sidebar-mock.collapsed .side-nav b,
-  .sidebar-mock.collapsed .side-nav button > svg + span + svg {
-    display: none;
   }
 
   .sidebar-mock.collapsed .side-nav button,
@@ -1719,10 +1865,6 @@ a {
     padding: 0;
     justify-content: center;
     gap: 0;
-  }
-
-  .sidebar-mock.collapsed .collapse-side span {
-    display: none;
   }
 
   .topbar-mock.white .mock-search {
