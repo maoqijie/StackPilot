@@ -1977,15 +1977,56 @@ a {
 @media (max-width: 760px) {
   .overview-page {
     padding: 14px 12px 54px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .cluster-bar {
+    height: auto;
+    min-height: 46px;
+    padding: 8px 10px;
+    flex-wrap: wrap;
+    align-content: center;
+    overflow: hidden;
+    white-space: normal;
+  }
+
+  .cluster-select {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .cluster-actions {
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+
+  .cluster-actions .small {
+    flex: 1 1 110px;
+  }
+
+  .overview-grid,
+  .left-stack,
+  .right-stack,
+  .overview-page .panel-card {
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   .metric-row {
-    grid-template-columns: repeat(6, 152px);
+    height: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+    padding-bottom: 0;
+    scroll-snap-type: none;
   }
 
   .metric-card {
+    min-width: 0;
     grid-template-columns: 38px 1fr;
     padding: 14px 12px 10px;
+    scroll-snap-align: none;
   }
 
   .metric-card strong {
@@ -1994,6 +2035,58 @@ a {
 
   .metric-card strong em {
     font-size: 15px;
+  }
+
+  .overview-page .host-table {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .overview-page .host-table th:nth-child(2),
+  .overview-page .host-table td:nth-child(2),
+  .overview-page .host-table th:nth-child(5),
+  .overview-page .host-table td:nth-child(5),
+  .overview-page .host-table th:nth-child(7),
+  .overview-page .host-table td:nth-child(7),
+  .overview-page .host-table th:nth-child(8),
+  .overview-page .host-table td:nth-child(8) {
+    display: none;
+  }
+
+  .overview-page .host-table th:nth-child(1),
+  .overview-page .host-table td:nth-child(1) {
+    width: 34%;
+  }
+
+  .overview-page .host-table th:nth-child(3),
+  .overview-page .host-table td:nth-child(3),
+  .overview-page .host-table th:nth-child(4),
+  .overview-page .host-table td:nth-child(4) {
+    width: 18%;
+  }
+
+  .overview-page .host-table th:nth-child(6),
+  .overview-page .host-table td:nth-child(6) {
+    width: 18%;
+  }
+
+  .overview-page .host-table th:nth-child(9),
+  .overview-page .host-table td:nth-child(9) {
+    width: 44px;
+  }
+
+  .overview-page .host-table .bar-cell {
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .overview-page .quick-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: hidden;
+  }
+
+  .overview-page .quick-grid button {
+    min-width: 0;
   }
 }
 
