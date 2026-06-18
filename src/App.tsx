@@ -472,12 +472,13 @@ function Sidebar({
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }) {
+  const expandableItems = ["hosts", "sites", "databases", "files", "terminal", "systemd", "firewall", "deploy", "schedule", "audit", "acl", "settings"];
+
   return (
     <aside className={`sidebar-mock ${collapsed ? "collapsed" : ""}`}>
       <div className="side-brand">
         <div className="brand-gem" />
-        {!collapsed && <strong>StackPilot</strong>}
-        {collapsed && <Menu size={16} />}
+        <strong>StackPilot</strong>
       </div>
       <nav className="side-nav">
         {navItems.map((item) => {
@@ -491,27 +492,25 @@ function Sidebar({
               onClick={() => setPage(item.key)}
             >
               <Icon size={17} />
-              {!collapsed && <span>{item.label}</span>}
-              {!collapsed && ["hosts", "sites", "databases", "files", "terminal", "systemd", "firewall", "deploy", "schedule", "audit", "acl", "settings"].includes(item.key) && <ChevronDown size={13} />}
+              <span>{item.label}</span>
+              {expandableItems.includes(item.key) && <ChevronDown className="side-chevron" size={13} />}
             </button>
           );
         })}
       </nav>
-      {!collapsed && (
-        <div className="host-groups">
-          <div>
-            <span>主机分组</span>
-            <Plus size={13} />
-          </div>
-          {groupItems.map(([name, count, tone]) => (
-            <p key={name}>
-              <i className={tone} />
-              <span>{name}</span>
-              <em>{count}</em>
-            </p>
-          ))}
+      <div className="host-groups" aria-hidden={collapsed}>
+        <div>
+          <span>主机分组</span>
+          <Plus size={13} />
         </div>
-      )}
+        {groupItems.map(([name, count, tone]) => (
+          <p key={name}>
+            <i className={tone} />
+            <span>{name}</span>
+            <em>{count}</em>
+          </p>
+        ))}
+      </div>
       <button
         className="collapse-side"
         type="button"
@@ -521,8 +520,9 @@ function Sidebar({
         }}
         aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
       >
-        {collapsed ? <Menu size={15} /> : <ChevronLeft size={15} />}
-        {!collapsed && <span>收起侧栏</span>}
+        <ChevronLeft className="collapse-icon collapse-icon-close" size={15} />
+        <Menu className="collapse-icon collapse-icon-open" size={15} />
+        <span>收起侧栏</span>
       </button>
     </aside>
   );
