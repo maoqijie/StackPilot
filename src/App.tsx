@@ -39,6 +39,23 @@ import type { LucideIcon } from "lucide-react";
 
 type PageKey = "overview" | "databases" | "settings" | "mobile";
 type Tone = "green" | "blue" | "orange" | "red" | "gray" | "purple";
+type ToastTone = "success" | "info" | "warning" | "danger";
+type ToastState = { message: string; tone: ToastTone };
+type Notify = (message: string, tone?: ToastTone) => void;
+
+function currentClock() {
+  return new Date().toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function activateOnKeyboard(event: React.KeyboardEvent<HTMLElement>, action: () => void) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  action();
+}
 
 const navItems: Array<{ key: PageKey | string; label: string; icon: LucideIcon; badge?: string }> = [
   { key: "overview", label: "首页总览", icon: Home },
@@ -134,12 +151,23 @@ function readPageFromHash(): PageKey {
 
 function App() {
   const [page, setPageState] = useState<PageKey>(readPageFromHash);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   useEffect(() => {
     const onHashChange = () => setPageState(readPageFromHash());
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  const notify: Notify = (message, tone = "success") => {
+    setToast({ message, tone });
+  };
 
   const setPage = (next: PageKey) => {
     setPageState(next);
@@ -149,10 +177,11 @@ function App() {
   return (
     <main className="shot-canvas">
       {page === "mobile" ? (
-        <MobileMock />
+        <MobileMock notify={notify} />
       ) : (
-        <DesktopShell page={page} setPage={setPage} />
+        <DesktopShell page={page} setPage={setPage} notify={notify} />
       )}
+      {toast && <ActionToast toast={toast} />}
     </main>
   );
 }
@@ -160,20 +189,22 @@ function App() {
 function DesktopShell({
   page,
   setPage,
+  notify,
 }: {
   page: PageKey;
   setPage: (page: PageKey) => void;
+  notify: Notify;
 }) {
   const whiteTop = page !== "overview";
 
   return (
     <section className={`desktop-frame ${whiteTop ? "white-top" : "dark-top"}`}>
-      <Sidebar page={page} setPage={setPage} compact={page === "settings"} />
+      <Sidebar page={page} setPage={setPage} notify={notify} compact={page === "settings"} />
       <div className="desktop-main">
-        <TopBar page={page} white={whiteTop} />
-        {page === "databases" && <DatabasesPage />}
-        {page === "settings" && <SettingsPage />}
-        {page === "overview" && <OverviewPage />}
+        <TopBar page={page} white={whiteTop} notify={notify} />
+        {page === "databases" && <DatabasesPage notify={notify} />}
+        {page === "settings" && <SettingsPage notify={notify} />}
+        {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
       </div>
       {page === "overview" && <DesktopFooter />}
     </section>
@@ -183,10 +214,12 @@ function DesktopShell({
 function Sidebar({
   page,
   setPage,
+  notify,
   compact,
 }: {
   page: PageKey;
   setPage: (page: PageKey) => void;
+  notify: Notify;
   compact?: boolean;
 }) {
   return (
@@ -197,7 +230,7 @@ function Sidebar({
         {compact && <Menu size={16} />}
       </div>
       {!compact && (
-        <button className="workspace-switch" type="button">
+        <button className="workspace-switch" type="button" onClick={() => notify("团队切换器已展开", "info")}>
           <span>Default Workspace</span>
           <em>切换团队</em>
           <ChevronDown size={13} />
@@ -215,7 +248,9 @@ function Sidebar({
               onClick={() => {
                 if (item.key === "overview" || item.key === "databases" || item.key === "settings") {
                   setPage(item.key);
+                  return;
                 }
+                notify(`${item.label} 模块正在接入，已保留导航状态`, "info");
               }}
             >
               <Icon size={17} />
@@ -243,7 +278,7 @@ function Sidebar({
           ))}
         </div>
       )}
-      <button className="collapse-side" type="button">
+      <button className="collapse-side" type="button" onClick={() => notify(compact ? "已打开版本更新详情" : "侧栏保持展开，已记录收起偏好", "info")}>
         {compact ? <Settings size={15} /> : <ChevronLeft size={15} />}
         <span>{compact ? "更新可用 v1.8.3" : "收起侧栏"}</span>
       </button>
@@ -251,7 +286,9 @@ function Sidebar({
   );
 }
 
-function TopBar({ page, white }: { page: PageKey; white: boolean }) {
+function TopBar({ page, white, notify }: { page: PageKey; white: boolean; notify: Notify }) {
+  const [query, setQuery] = useState("");
+
   return (
     <header className={`topbar-mock ${white ? "white" : ""}`}>
       {page === "databases" && (
@@ -270,18 +307,37 @@ function TopBar({ page, white }: { page: PageKey; white: boolean }) {
       {(page === "overview" || page === "settings") && (
         <label className="mock-search">
           <Search size={13} />
-          <input placeholder={page === "overview" ? "搜索主机、网站、数据库、任务..." : "搜索主机、网站、数据库、文件..."} />
+          <input
+            value={query}
+            placeholder={page === "overview" ? "搜索主机、网站、数据库、任务..." : "搜索主机、网站、数据库、文件..."}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && query.trim()) {
+                notify(`已搜索：${query.trim()}`, "info");
+              }
+            }}
+          />
           <kbd>⌘K</kbd>
         </label>
       )}
       {page === "databases" && <div className="top-spacer" />}
       <div className="top-actions">
         {page === "settings" && <StatusDot text="面板运行正常" />}
-        <Bell size={18} />
+        <button type="button" className="icon-action" onClick={() => notify("暂无新的未读通知", "info")} aria-label="通知">
+          <Bell size={18} />
+        </button>
         <span className="red-badge">{page === "overview" ? "3" : page === "settings" ? "5" : "2"}</span>
-        {page !== "overview" && <FileText size={17} />}
-        <CircleHelp size={17} />
-        <div className="avatar-mini">{page === "overview" ? <UserRound size={18} /> : "张"}</div>
+        {page !== "overview" && (
+          <button type="button" className="icon-action" onClick={() => notify("已打开当前页操作记录", "info")} aria-label="操作记录">
+            <FileText size={17} />
+          </button>
+        )}
+        <button type="button" className="icon-action" onClick={() => notify("帮助中心已准备好", "info")} aria-label="帮助">
+          <CircleHelp size={17} />
+        </button>
+        <button type="button" className="avatar-mini" onClick={() => notify("已打开用户菜单", "info")} aria-label="用户菜单">
+          {page === "overview" ? <UserRound size={18} /> : "张"}
+        </button>
         <strong>{page === "overview" ? "admin" : page === "databases" ? "张工" : "管理员"}</strong>
         <ChevronDown size={13} />
       </div>
@@ -289,26 +345,48 @@ function TopBar({ page, white }: { page: PageKey; white: boolean }) {
   );
 }
 
-function OverviewPage() {
+function OverviewPage({ setPage, notify }: { setPage: (page: PageKey) => void; notify: Notify }) {
+  const [cluster, setCluster] = useState("demo-sg-01");
+  const [taskTab, setTaskTab] = useState("最近任务");
+  const [resourceTab, setResourceTab] = useState("今天");
+  const [lastRefresh, setLastRefresh] = useState("2025-05-22 02:15");
+  const nextCluster = cluster === "demo-sg-01" ? "panel-bj-02" : cluster === "panel-bj-02" ? "panel-hk-03" : "demo-sg-01";
+
   return (
     <div className="overview-page">
       <div className="cluster-bar">
-        <button type="button" className="cluster-select">
+        <button
+          type="button"
+          className="cluster-select"
+          onClick={() => {
+            setCluster(nextCluster);
+            notify(`已切换到 ${nextCluster}`, "info");
+          }}
+        >
           <StatusLight tone="green" />
-          demo-sg-01
+          {cluster}
           <ChevronDown size={14} />
         </button>
         <span>集群状态：<b className="green-text">健康</b></span>
         <span>延迟：<b className="green-text">38ms</b></span>
         <span>版本：v2.8.1</span>
         <span>运行时间：23 天 14 小时</span>
-        <span>最后备份：2025-05-22 02:15 <CheckCircle2 size={13} /></span>
+        <span>最后备份：{lastRefresh} <CheckCircle2 size={13} /></span>
         <span>待更新：<b className="red-text">2</b></span>
         <div className="cluster-actions">
-          <button className="primary small" type="button"><Plus size={14} /> 新增主机</button>
-          <button className="ghost small" type="button"><RefreshCw size={14} /> 刷新</button>
-          <button className="ghost small" type="button"><RefreshCw size={14} /> 检查更新</button>
-          <button className="warning small" type="button">风险中心 <b>3</b></button>
+          <button className="primary small" type="button" onClick={() => notify("新增主机向导已打开", "info")}><Plus size={14} /> 新增主机</button>
+          <button
+            className="ghost small"
+            type="button"
+            onClick={() => {
+              setLastRefresh(currentClock());
+              notify("集群数据已刷新");
+            }}
+          >
+            <RefreshCw size={14} /> 刷新
+          </button>
+          <button className="ghost small" type="button" onClick={() => notify("检查完成：2 个组件可更新", "warning")}><RefreshCw size={14} /> 检查更新</button>
+          <button className="warning small" type="button" onClick={() => notify("风险中心已定位到 3 个待处理项", "warning")}>风险中心 <b>3</b></button>
         </div>
       </div>
       <section className="metric-row">
@@ -322,23 +400,23 @@ function OverviewPage() {
             <HostTable />
           </PanelCard>
           <div className="two-panels">
-            <PanelCard title="任务流" tabs={["最近任务", "队列中的任务 (7)"]} action="查看全部">
-              <TaskTable />
+            <PanelCard title="任务流" tabs={["最近任务", "队列中的任务 (7)"]} activeTab={taskTab} onTabChange={setTaskTab} action="查看全部" onAction={() => notify("已展开完整任务流", "info")}>
+              <TaskTable queued={taskTab !== "最近任务"} />
             </PanelCard>
-            <PanelCard title="最近审计" action="查看全部">
+            <PanelCard title="最近审计" action="查看全部" onAction={() => notify("已打开审计日志列表", "info")}>
               <AuditTable />
             </PanelCard>
           </div>
         </div>
         <div className="right-stack">
-          <PanelCard title="风险中心" action="查看详情">
-            <RiskList />
+          <PanelCard title="风险中心" action="查看详情" onAction={() => notify("风险详情已展开", "warning")}>
+            <RiskList notify={notify} />
           </PanelCard>
           <PanelCard title="快捷操作">
-            <QuickActions />
+            <QuickActions setPage={setPage} notify={notify} />
           </PanelCard>
-          <PanelCard title="资源概览" tabs={["今天", "近7天", "近30天"]}>
-            <ResourceOverview />
+          <PanelCard title="资源概览" tabs={["今天", "近7天", "近30天"]} activeTab={resourceTab} onTabChange={setResourceTab}>
+            <ResourceOverview activeTab={resourceTab} />
           </PanelCard>
         </div>
       </section>
@@ -411,16 +489,24 @@ function HostTable() {
   );
 }
 
-function TaskTable() {
+function TaskTable({ queued }: { queued?: boolean }) {
+  const rows = queued
+    ? [
+        ["排队", "等待发布 API 服务 v2.8.2", "等待", "预计 12 分钟", "队列 #1"],
+        ["排队", "等待同步静态文件", "等待", "预计 18 分钟", "队列 #2"],
+        ["排队", "等待备份 analytics_db", "等待", "预计 25 分钟", "队列 #3"],
+        ["排队", "等待重启 worker 服务", "等待", "预计 31 分钟", "队列 #4"],
+      ]
+    : taskRows;
   return (
     <div className="task-flow">
-      {taskRows.map((row) => (
+      {rows.map((row) => (
         <div key={row.join("-")}>
-          <StatusLight tone="green" />
+          <StatusLight tone={queued ? "orange" : "green"} />
           <span className="task-icon"><Code2 size={15} /></span>
           <strong>{row[0]}</strong>
           <p>{row[1]}</p>
-          <b>成功</b>
+          <b>{queued ? "等待" : "成功"}</b>
           <em>{row[3]}</em>
           <small>{row[4]}</small>
         </div>
@@ -449,33 +535,44 @@ function AuditTable() {
   );
 }
 
-function RiskList() {
+function RiskList({ notify }: { notify: Notify }) {
+  const [resolved, setResolved] = useState<string[]>([]);
+
   return (
     <div className="risk-list">
       {riskRows.map((row) => (
-        <div key={row[0]}>
+        <div key={row[0]} className={resolved.includes(row[0]) ? "is-resolved" : ""}>
           <KeyRound size={17} />
           <span>{row[0]}</span>
           <b>{row[1]}</b>
-          <em className={row[2] === "高危" ? "red-text" : "orange-text"}>{row[2]}</em>
-          <button type="button">立即处理</button>
+          <em className={row[2] === "高危" ? "red-text" : "orange-text"}>{resolved.includes(row[0]) ? "已处理" : row[2]}</em>
+          <button
+            type="button"
+            disabled={resolved.includes(row[0])}
+            onClick={() => {
+              setResolved((current) => [...current, row[0]]);
+              notify(`已处理风险：${row[0]}`);
+            }}
+          >
+            {resolved.includes(row[0]) ? "完成" : "立即处理"}
+          </button>
         </div>
       ))}
     </div>
   );
 }
 
-function QuickActions() {
+function QuickActions({ setPage, notify }: { setPage: (page: PageKey) => void; notify: Notify }) {
   const actions = [
-    [Globe2, "添加网站"],
-    [TerminalSquare, "开启终端"],
-    [Database, "创建数据库"],
-    [Clock3, "新建定时任务"],
+    [Globe2, "添加网站", () => notify("添加网站向导已打开", "info")],
+    [TerminalSquare, "开启终端", () => notify("终端会话已准备就绪", "info")],
+    [Database, "创建数据库", () => setPage("databases")],
+    [Clock3, "新建定时任务", () => notify("定时任务模板已创建", "info")],
   ] as const;
   return (
     <div className="quick-grid">
-      {actions.map(([Icon, label]) => (
-        <button key={label} type="button">
+      {actions.map(([Icon, label, onClick]) => (
+        <button key={label} type="button" onClick={onClick}>
           <Icon size={28} />
           <span>{label}</span>
         </button>
@@ -484,15 +581,18 @@ function QuickActions() {
   );
 }
 
-function ResourceOverview() {
+function ResourceOverview({ activeTab }: { activeTab: string }) {
+  const multiplier = activeTab === "近30天" ? 1.18 : activeTab === "近7天" ? 1.08 : 1;
+  const resources = [
+    ["CPU 使用率", `${Math.round(18 * multiplier)}%`, activeTab === "今天" ? "+3%" : "+6%", [18, 16, 20, 14, 26, 17, 23, 15, 21, 18]],
+    ["内存使用率", `${Math.round(52 * multiplier)}%`, activeTab === "今天" ? "+4%" : "+7%", [42, 48, 45, 52, 47, 55, 48, 52, 49, 57]],
+    ["磁盘使用率", `${Math.round(61 * multiplier)}%`, activeTab === "今天" ? "+1%" : "+3%", [59, 61, 58, 63, 57, 62, 56, 61, 58, 64]],
+    ["网络流量", activeTab === "今天" ? "1.2 TB" : activeTab === "近7天" ? "8.9 TB" : "34.6 TB", activeTab === "今天" ? "+8%" : "+13%", [20, 16, 26, 18, 30, 23, 19, 24, 21, 28]],
+  ];
+
   return (
     <div className="resource-grid">
-      {[
-        ["CPU 使用率", "18%", "+3%", [18, 16, 20, 14, 26, 17, 23, 15, 21, 18]],
-        ["内存使用率", "52%", "+4%", [42, 48, 45, 52, 47, 55, 48, 52, 49, 57]],
-        ["磁盘使用率", "61%", "+1%", [59, 61, 58, 63, 57, 62, 56, 61, 58, 64]],
-        ["网络流量", "1.2 TB", "+8%", [20, 16, 26, 18, 30, 23, 19, 24, 21, 28]],
-      ].map(([label, value, delta, values]) => (
+      {resources.map(([label, value, delta, values]) => (
         <article key={label as string}>
           <div><span>{label as string}</span><em>{delta as string}</em></div>
           <strong>{value as string}</strong>
@@ -503,27 +603,53 @@ function ResourceOverview() {
   );
 }
 
-function DatabasesPage() {
+function DatabasesPage({ notify }: { notify: Notify }) {
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("全部");
+  const [statusFilter, setStatusFilter] = useState("全部");
+  const [hostFilter, setHostFilter] = useState("全部主机");
+  const [rows, setRows] = useState(dbRows);
+  const [lastSync, setLastSync] = useState(currentClock());
+  const filteredRows = rows.filter((row) => {
+    const matchSearch = row[0].toLowerCase().includes(search.toLowerCase());
+    const matchType = typeFilter === "全部" || row[1].includes(typeFilter);
+    const matchStatus = statusFilter === "全部" || (statusFilter === "告警" ? row[4].startsWith("延迟") || row[5] === "失败" : row[4] === "正常");
+    const matchHost = hostFilter === "全部主机" || row[2] === hostFilter;
+    return matchSearch && matchType && matchStatus && matchHost;
+  });
+
   return (
     <div className="database-page">
       <div className="page-head">
         <div>
           <h1>数据库管理</h1>
-          <p>集中管理和监控所有数据库实例的运行状态、备份与慢查询</p>
+          <p>集中管理和监控所有数据库实例的运行状态、备份与慢查询 · 最近同步 {lastSync}</p>
         </div>
         <div>
-          <button className="ghost" type="button"><Download size={15} /> 导出</button>
-          <button className="ghost" type="button"><RefreshCw size={15} /> 刷新</button>
-          <button className="primary" type="button"><Plus size={15} /> 创建数据库</button>
+          <button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 条数据库记录`, "info")}><Download size={15} /> 导出</button>
+          <button
+            className="ghost"
+            type="button"
+            onClick={() => {
+              setLastSync(currentClock());
+              notify("数据库状态已刷新");
+            }}
+          >
+            <RefreshCw size={15} /> 刷新
+          </button>
+          <button className="primary" type="button" onClick={() => notify("请在右侧抽屉填写数据库信息", "info")}><Plus size={15} /> 创建数据库</button>
         </div>
       </div>
       <div className="database-layout">
         <section className="db-main">
           <div className="filter-line">
-            <label><Search size={14} /><input placeholder="搜索数据库名称" /></label>
-            <FieldSelect label="类型" value="全部" />
-            <FieldSelect label="状态" value="全部" />
-            <FieldSelect label="主机" value="全部主机" />
+            <label>
+              <Search size={14} />
+              <input value={search} placeholder="搜索数据库名称" onChange={(event) => setSearch(event.target.value)} />
+            </label>
+            <FieldSelect label="类型" value={typeFilter} options={["全部", "PostgreSQL", "MySQL"]} onChange={setTypeFilter} />
+            <FieldSelect label="状态" value={statusFilter} options={["全部", "正常", "告警"]} onChange={setStatusFilter} />
+            <FieldSelect label="主机" value={hostFilter} options={["全部主机", "10.0.12.24", "10.0.12.31", "10.0.13.15"]} onChange={setHostFilter} />
           </div>
           <div className="db-metrics">
             {[
@@ -544,29 +670,39 @@ function DatabasesPage() {
               </article>
             ))}
           </div>
-          <DatabaseTable />
+          <DatabaseTable rows={filteredRows} notify={notify} />
           <div className="db-bottom">
-            <PanelCard title="备份状态（最近 7 天）" action="查看备份计划">
+            <PanelCard title="备份状态（最近 7 天）" action="查看备份计划" onAction={() => notify("已打开备份计划", "info")}>
               <DonutCard />
             </PanelCard>
-            <PanelCard title="连接健康（prod-postgres-01）" action="查看监控详情">
+            <PanelCard title="连接健康（prod-postgres-01）" action="查看监控详情" onAction={() => notify("已打开连接监控详情", "info")}>
               <HealthMini />
             </PanelCard>
             <PanelCard title="慢查询 TOP 5（analytics-mysql-01）">
               <SlowSqlList />
             </PanelCard>
-            <PanelCard title="审计日志（最近操作）" action="查看全部">
+            <PanelCard title="审计日志（最近操作）" action="查看全部" onAction={() => notify("已打开数据库审计日志", "info")}>
               <MiniAuditList />
             </PanelCard>
           </div>
         </section>
-        <CreateDatabaseDrawer />
+        <CreateDatabaseDrawer
+          notify={notify}
+          onCreate={(draft) => {
+            const engine = draft.type === "PostgreSQL" ? "PostgreSQL 16.2" : "MySQL 8.0.36";
+            setRows((current) => [
+              [draft.name, engine, "10.0.12.24", draft.port, "正常", "成功", "0", currentClock(), "读写", "研发"],
+              ...current,
+            ]);
+            notify(`数据库 ${draft.name} 已创建`);
+          }}
+        />
       </div>
     </div>
   );
 }
 
-function DatabaseTable() {
+function DatabaseTable({ rows, notify }: { rows: string[][]; notify: Notify }) {
   return (
     <table className="mini-table database-table">
       <thead>
@@ -584,7 +720,7 @@ function DatabaseTable() {
         </tr>
       </thead>
       <tbody>
-        {dbRows.map((row) => (
+        {rows.map((row) => (
           <tr key={row[0]}>
             <td><StatusLight tone={row[4].startsWith("延迟") ? "orange" : "green"} /> <b className="blue-text">{row[0]}</b></td>
             <td><Database size={15} /> {row[1]}</td>
@@ -595,43 +731,89 @@ function DatabaseTable() {
             <td className={Number(row[6]) > 0 ? "red-text" : ""}>{row[6]}</td>
             <td>{row[7]}</td>
             <td><span className="pill blue">{row[8]}</span> <span className="pill green">{row[9]}</span></td>
-            <td className="table-actions">查看  备份  更多 <MoreVertical size={15} /></td>
+            <td className="table-actions">
+              <button type="button" onClick={() => notify(`正在查看 ${row[0]}`, "info")}>查看</button>
+              <button type="button" onClick={() => notify(`已触发 ${row[0]} 备份`)}>备份</button>
+              <button type="button" onClick={() => notify(`${row[0]} 更多操作已展开`, "info")}><MoreVertical size={15} /></button>
+            </td>
           </tr>
         ))}
+        {rows.length === 0 && (
+          <tr>
+            <td colSpan={10} className="empty-row">没有匹配的数据库实例</td>
+          </tr>
+        )}
       </tbody>
     </table>
   );
 }
 
-function CreateDatabaseDrawer() {
+function CreateDatabaseDrawer({
+  notify,
+  onCreate,
+}: {
+  notify: Notify;
+  onCreate: (draft: { name: string; type: string; port: string }) => void;
+}) {
+  const [name, setName] = useState("newdb_app");
+  const [type, setType] = useState("PostgreSQL");
+  const [port, setPort] = useState("5432");
+  const [autoBackup, setAutoBackup] = useState(true);
+  const [remote, setRemote] = useState(false);
+
   return (
     <aside className="create-drawer">
       <div className="drawer-head">
         <strong>创建数据库</strong>
-        <X size={16} />
+        <button type="button" className="icon-action" onClick={() => notify("创建抽屉保持固定展示，已清空草稿", "info")}><X size={16} /></button>
       </div>
-      <FormLine label="数据库名" required value="newdb_app" />
-      <FormSelectLine label="类型" required value="PostgreSQL" icon={<Database size={14} />} />
+      <FormLine label="数据库名" required value={name} onChange={setName} />
+      <FormSelectLine label="类型" required value={type} options={["PostgreSQL", "MySQL"]} onChange={(next) => {
+        setType(next);
+        setPort(next === "PostgreSQL" ? "5432" : "3306");
+      }} icon={<Database size={14} />} />
       <FormSelectLine label="绑定主机" required value="10.0.12.24 (prod-db-01)" />
-      <FormLine label="端口" required value="5432" hint="默认 5432" />
+      <FormLine label="端口" required value={port} onChange={setPort} hint={`默认 ${type === "PostgreSQL" ? "5432" : "3306"}`} />
       <FormLine label="用户名" required value="newdb_app" />
       <FormLine label="初始密码" required value="••••••••••••••••" strength />
       <FormSelectLine label="字符集" value="UTF8" />
       <FormSelectLine label="时区" value="Asia/Shanghai" />
       <FormTagLine label="权限范围" />
-      <ToggleLine label="自动备份" active hint="每天 02:00 执行，备份保留 7 天" />
-      <ToggleLine label="允许远程连接" hint="仅允许白名单 IP 访问" />
+      <ToggleLine label="自动备份" active={autoBackup} onToggle={setAutoBackup} hint="每天 02:00 执行，备份保留 7 天" />
+      <ToggleLine label="允许远程连接" active={remote} onToggle={setRemote} hint="仅允许白名单 IP 访问" />
       <div className="drawer-tip">备份保留 7 天，周期将自动清理。审计日志记录所有变更操作。</div>
       <div className="drawer-warning">删除数据库为危险操作，执行后将无法恢复。请务必谨慎操作！</div>
       <div className="drawer-actions">
-        <button className="ghost" type="button">取消</button>
-        <button className="primary" type="button">创建数据库</button>
+        <button className="ghost" type="button" onClick={() => {
+          setName("newdb_app");
+          setType("PostgreSQL");
+          setPort("5432");
+          notify("数据库草稿已重置", "info");
+        }}>取消</button>
+        <button className="primary" type="button" onClick={() => {
+          if (!name.trim()) {
+            notify("数据库名不能为空", "danger");
+            return;
+          }
+          onCreate({ name: name.trim(), type, port });
+        }}>创建数据库</button>
       </div>
     </aside>
   );
 }
 
-function SettingsPage() {
+function SettingsPage({ notify }: { notify: Notify }) {
+  const tabs = ["基础", "安全", "代理", "通知", "备份", "审计"];
+  const [activeTab, setActiveTab] = useState("备份");
+  const [readOnly, setReadOnly] = useState(false);
+  const [backupItems, setBackupItems] = useState(["面板数据", "审计日志"]);
+  const [twoFactor, setTwoFactor] = useState(true);
+  const [multiLogin, setMultiLogin] = useState(false);
+  const [mailNotice, setMailNotice] = useState(true);
+  const toggleBackupItem = (item: string) => {
+    setBackupItems((current) => current.includes(item) ? current.filter((value) => value !== item) : [...current, item]);
+  };
+
   return (
     <div className="settings-mock-page">
       <div className="page-head settings-title">
@@ -641,8 +823,18 @@ function SettingsPage() {
         </div>
       </div>
       <div className="settings-tabs">
-        {["基础", "安全", "代理", "通知", "备份", "审计"].map((tab) => (
-          <button className={tab === "备份" ? "active" : ""} type="button" key={tab}>{tab}</button>
+        {tabs.map((tab) => (
+          <button
+            className={tab === activeTab ? "active" : ""}
+            type="button"
+            key={tab}
+            onClick={() => {
+              setActiveTab(tab);
+              notify(`已切换到${tab}设置`, "info");
+            }}
+          >
+            {tab}
+          </button>
         ))}
       </div>
       <div className="settings-layout">
@@ -654,16 +846,16 @@ function SettingsPage() {
             <FormSelectLine label="时区" value="Asia/Shanghai (UTC+08:00)" />
             <FormSelectLine label="语言" value="简体中文" />
             <FormLine label="版本号" value="v1.8.2 (Build 20250810.1)" success="已是最新" />
-            <ToggleLine label="只读模式" hint="开启后所有操作将被强制转为只读" />
-            <button className="primary save-button" type="button">保存设置</button>
+            <ToggleLine label="只读模式" active={readOnly} onToggle={setReadOnly} hint="开启后所有操作将被强制转为只读" />
+            <button className="primary save-button" type="button" onClick={() => notify("面板身份设置已保存")}>保存设置</button>
           </div>
         </PanelCard>
         <PanelCard title="访问令牌">
           <div className="token-title">
             <span>用于 API 访问、CI/CD 集成或第三方工具接入，请妥善保管令牌，避免泄露。</span>
-            <div><button className="primary" type="button"><Plus size={14} /> 生成令牌</button><button className="danger-soft" type="button"><Trash2 size={14} /> 编辑清单中</button></div>
+            <div><button className="primary" type="button" onClick={() => notify("新访问令牌已生成")}><Plus size={14} /> 生成令牌</button><button className="danger-soft" type="button" onClick={() => notify("已进入令牌批量编辑模式", "warning")}><Trash2 size={14} /> 编辑清单中</button></div>
           </div>
-          <TokenTable />
+          <TokenTable notify={notify} />
         </PanelCard>
         <PanelCard title="备份策略">
           <div className="backup-grid">
@@ -672,20 +864,24 @@ function SettingsPage() {
             <FormSelectLine label="保留策略" value="保留 14 份" />
             <FormSelectLine label="备份目标" value="S3 / MinIO" />
             <FormLine label="存储位置" value="s3://stackpilot-backup/" />
-            <button className="ghost" type="button">测试连接</button>
+            <button className="ghost" type="button" onClick={() => notify("S3 / MinIO 连接测试成功")}>测试连接</button>
             <FormSelectLine label="加密设置" value="启用（AES-256）" />
           </div>
-          <div className="check-row"><span className="checked">面板数据</span><span className="checked">审计日志</span><span>上传文件</span></div>
-          <div className="settings-buttons"><button className="primary" type="button">保存策略</button><button className="primary" type="button"><Download size={14} /> 立即备份</button><button className="ghost" type="button">恢复演练</button></div>
+          <div className="check-row">
+            {["面板数据", "审计日志", "上传文件"].map((item) => (
+              <button key={item} className={backupItems.includes(item) ? "checked" : ""} type="button" onClick={() => toggleBackupItem(item)}>{item}</button>
+            ))}
+          </div>
+          <div className="settings-buttons"><button className="primary" type="button" onClick={() => notify("备份策略已保存")}>保存策略</button><button className="primary" type="button" onClick={() => notify("已创建立即备份任务")}><Download size={14} /> 立即备份</button><button className="ghost" type="button" onClick={() => notify("恢复演练流程已打开", "info")}>恢复演练</button></div>
         </PanelCard>
         <PanelCard title="验证状态">
           <div className="verify-box">
             <p className="ok-line"><CheckCircle2 size={15} /> 最近验证成功：2025-08-12 03:01</p>
-            <p className="warn-line">上次备份延迟 18 分钟 <button type="button">查看详情</button></p>
-            <p className="error-line">恢复演练未完成 <button type="button">前往演练</button></p>
+            <p className="warn-line">上次备份延迟 18 分钟 <button type="button" onClick={() => notify("已打开备份延迟详情", "warning")}>查看详情</button></p>
+            <p className="error-line">恢复演练未完成 <button type="button" onClick={() => notify("恢复演练流程已打开", "warning")}>前往演练</button></p>
           </div>
           <div className="backup-list">
-            <div><strong>最近备份任务</strong><a>查看全部</a></div>
+            <div><strong>最近备份任务</strong><button type="button" onClick={() => notify("已打开全部备份任务", "info")}>查看全部</button></div>
             {["2025-08-13 02:30", "2025-08-12 02:30", "2025-08-11 02:30", "2025-08-10 02:30", "2025-08-09 02:30"].map((time, index) => (
               <p key={time}><span>{time}</span><StatusLight tone={index === 3 ? "orange" : "green"} /> <em>{index === 3 ? "延迟" : "成功"}</em><b>{index === 0 ? "1.24 GB" : index === 1 ? "1.22 GB" : "1.18 GB"}</b><small>{index === 0 ? "00:03:21" : "00:03:05"}</small></p>
             ))}
@@ -694,23 +890,23 @@ function SettingsPage() {
         </PanelCard>
         <PanelCard title="安全设置">
           <div className="right-settings">
-            <ToggleLine label="强制启用两步验证（2FA）" active />
+            <ToggleLine label="强制启用两步验证（2FA）" active={twoFactor} onToggle={setTwoFactor} />
             <FormSelectLine label="会话超时时间" value="30 分钟" />
             <FormLine label="IP 访问白名单" value="10.0.0.0/8, 172.16.0.0/12" />
-            <ToggleLine label="允许多地同时登录" />
+            <ToggleLine label="允许多地同时登录" active={multiLogin} onToggle={setMultiLogin} />
             <FormSelectLine label="登录失败锁定" value="5 次 / 15 分钟" />
           </div>
         </PanelCard>
         <PanelCard title="通知设置">
           <div className="right-settings">
-            <FormLine label="Webhook 通知" value="https://hooks.example.com/stackpilot" hintButton="测试" />
-            <ToggleLine label="关键事件邮件通知" active />
+            <FormLine label="Webhook 通知" value="https://hooks.example.com/stackpilot" hintButton="测试" hintAction={() => notify("Webhook 测试成功")} />
+            <ToggleLine label="关键事件邮件通知" active={mailNotice} onToggle={setMailNotice} />
             <FormLine label="通知收件人" value="ops@example.com, dev@example.com" />
-            <div className="connected-line"><CheckCircle2 size={14} /> 已连接（响应成本 45ms） <button type="button">预览</button></div>
+            <div className="connected-line"><CheckCircle2 size={14} /> 已连接（响应成本 45ms） <button type="button" onClick={() => notify("通知预览已发送")}>预览</button></div>
           </div>
         </PanelCard>
       </div>
-      <PanelCard title="最近配置变更" action="查看审计日志">
+      <PanelCard title="最近配置变更" action="查看审计日志" onAction={() => notify("已打开设置审计日志", "info")}>
         <table className="mini-table changes-table">
           <tbody>
             {settingsChanges.map((row) => (
@@ -723,7 +919,17 @@ function SettingsPage() {
   );
 }
 
-function MobileMock() {
+function MobileMock({ notify }: { notify: Notify }) {
+  const [activeTab, setActiveTab] = useState("首页");
+  const [activeQuick, setActiveQuick] = useState("添加主机");
+  const tabSummary: Record<string, string> = {
+    首页: "5 台主机在线 · 2 个告警",
+    主机: "3 台生产主机 · db-01 需要关注",
+    网站: "12 个网站正常运行",
+    任务: "5 条最近任务 · 1 条警告",
+    我的: "管理员 · 面板运行正常",
+  };
+
   return (
     <section className="mobile-frame-stage">
       <div className="phone-scale-box">
@@ -738,13 +944,13 @@ function MobileMock() {
               <em>●●●</em>
             </div>
             <div className="mobile-top">
-              <Menu size={20} />
+              <button type="button" className="mobile-icon-button" onClick={() => notify("移动端菜单已打开", "info")}><Menu size={20} /></button>
               <div className="mobile-brand"><div className="brand-gem small" /><strong>StackPilot</strong></div>
-              <div className="mobile-icons"><Bell size={18} /><i>3</i><b>U</b></div>
+              <div className="mobile-icons"><button type="button" onClick={() => notify("移动端通知已标记为已读", "info")}><Bell size={18} /></button><i>3</i><button type="button" onClick={() => notify("已打开移动端个人中心", "info")}><b>U</b></button></div>
             </div>
             <div className="mobile-content">
               <h2>上午好，管理员</h2>
-              <p>今天是 2025年6月2日 星期一</p>
+              <p>{activeTab} · {tabSummary[activeTab]}</p>
               <div className="mobile-stats">
                 {[
                   [Server, "主机", "5", "全部在线", "green"],
@@ -760,7 +966,7 @@ function MobileMock() {
                   </article>
                 ))}
               </div>
-              <MobileCard title="系统状态" action="查看详情">
+              <MobileCard title="系统状态" action="查看详情" onAction={() => notify("已打开移动端系统状态详情", "info")}>
                 <div className="mobile-resource">
                   {[
                     ["CPU", "18%", "负载 0.38", [18, 14, 23, 16, 28, 18, 22]],
@@ -776,7 +982,7 @@ function MobileMock() {
                   ))}
                 </div>
               </MobileCard>
-              <MobileCard title="最近任务" action="查看全部">
+              <MobileCard title="最近任务" action="查看全部" onAction={() => notify("已打开移动端任务列表", "info")}>
                 <div className="mobile-task-list">
                   {[
                     ["部署 Laravel 应用到 web-01", "admin 触发", "成功", "2 分钟前"],
@@ -784,44 +990,68 @@ function MobileMock() {
                     ["更新系统组件 /web-02", "admin 触发", "警告", "32 分钟前"],
                     ["重启 Nginx 服务（web-01）", "自动监控", "成功", "1 小时前"],
                     ["登录到 203.0.113.10", "admin 登录", "信息", "1 小时前"],
-                  ].map((row, index) => (
-                    <div key={row[0]}>
+                  ].map((row, index) => {
+                    const openTask = () => notify(`已打开任务：${row[0]}`, "info");
+                    return (
+                    <div key={row[0]} role="button" tabIndex={0} onClick={openTask} onKeyDown={(event) => activateOnKeyboard(event, openTask)}>
                       <span className="mobile-task-icon">{["★", "▣", "↻", "↺", "♙"][index]}</span>
                       <p><strong>{row[0]}</strong><em>{row[1]}</em></p>
                       <StatusLight tone={row[2] === "警告" ? "orange" : row[2] === "信息" ? "blue" : "green"} />
                       <b>{row[2]}</b>
                       <small>{row[3]}</small>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </MobileCard>
               <MobileCard title="快捷操作">
                 <div className="mobile-quick">
                   {["添加主机", "创建网站", "新建数据库", "上传文件", "终端连接", "系统服务", "计划任务", "防火墙规则"].map((item) => (
-                    <button key={item} type="button">{item}</button>
+                    <button
+                      className={item === activeQuick ? "active" : ""}
+                      key={item}
+                      type="button"
+                      onClick={() => {
+                        setActiveQuick(item);
+                        notify(`移动端已选择：${item}`, "info");
+                      }}
+                    >
+                      {item}
+                    </button>
                   ))}
                 </div>
               </MobileCard>
-              <MobileCard title="主机状态" action="查看全部">
+              <MobileCard title="主机状态" action="查看全部" onAction={() => notify("已打开移动端主机列表", "info")}>
                 <div className="mobile-hosts">
                   {[
                     ["web-01", "生产环境", "203.0.113.10", "Ubuntu 22.04", "12%", "38%", "2 天"],
                     ["web-02", "生产环境", "203.0.113.11", "Ubuntu 22.04", "22%", "45%", "5 天"],
                     ["db-01", "数据库", "203.0.113.20", "Ubuntu 22.04", "35%", "62%", "12 天"],
-                  ].map((row) => (
-                    <div key={row[0]}>
+                  ].map((row) => {
+                    const openHost = () => notify(`已打开主机：${row[0]}`, "info");
+                    return (
+                    <div key={row[0]} role="button" tabIndex={0} onClick={openHost} onKeyDown={(event) => activateOnKeyboard(event, openHost)}>
                       <StatusLight tone={row[0] === "db-01" ? "orange" : "green"} />
                       <p><strong>{row[0]}</strong><span>{row[1]}</span><em>{row[2]} | {row[3]}</em></p>
                       <b>CPU {row[4]}<br />内存 {row[5]}</b>
                       <small>{row[6]}</small>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </MobileCard>
             </div>
             <nav className="mobile-tabbar">
               {[[Home, "首页"], [Server, "主机"], [Globe2, "网站"], [ClipboardIcon, "任务"], [UserRound, "我的"]].map(([Icon, label], index) => (
-                <button className={index === 0 ? "active" : ""} key={label as string} type="button">
+                <button
+                  className={label === activeTab || (index === 0 && activeTab === "首页") ? "active" : ""}
+                  key={label as string}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(label as string);
+                    notify(`已切换到移动端${label}`, "info");
+                  }}
+                >
                   <Icon size={22} />
                   <span>{label as string}</span>
                 </button>
@@ -842,11 +1072,17 @@ function PanelCard({
   title,
   action,
   tabs,
+  activeTab,
+  onTabChange,
+  onAction,
   children,
 }: {
   title: string;
   action?: string;
   tabs?: string[];
+  activeTab?: string;
+  onTabChange?: (tab: string) => void;
+  onAction?: () => void;
   children: React.ReactNode;
 }) {
   return (
@@ -854,8 +1090,17 @@ function PanelCard({
       <header>
         <strong>{title}</strong>
         <div>
-          {tabs?.map((tab, index) => <button className={index === 0 ? "active" : ""} key={tab} type="button">{tab}</button>)}
-          {action && <a>{action}</a>}
+          {tabs?.map((tab, index) => (
+            <button
+              className={(activeTab ?? tabs[0]) === tab || (!activeTab && index === 0) ? "active" : ""}
+              key={tab}
+              type="button"
+              onClick={() => onTabChange?.(tab)}
+            >
+              {tab}
+            </button>
+          ))}
+          {action && <button className="panel-link" type="button" onClick={onAction}>{action}</button>}
         </div>
       </header>
       {children}
@@ -863,10 +1108,20 @@ function PanelCard({
   );
 }
 
-function MobileCard({ title, action, children }: { title: string; action?: string; children: React.ReactNode }) {
+function MobileCard({
+  title,
+  action,
+  onAction,
+  children,
+}: {
+  title: string;
+  action?: string;
+  onAction?: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <section className="mobile-card">
-      <header><strong>{title}</strong>{action && <a>{action}</a>}</header>
+      <header><strong>{title}</strong>{action && <button type="button" onClick={onAction}>{action}</button>}</header>
       {children}
     </section>
   );
@@ -907,23 +1162,86 @@ function StatusDot({ text }: { text: string }) {
   return <span className="status-dot"><StatusLight tone="green" />{text}</span>;
 }
 
-function FieldSelect({ label, value }: { label: string; value: string }) {
+function FieldSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options?: string[];
+  onChange?: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <label className="field-select">
+    <label
+      className={`field-select ${open ? "open" : ""}`}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setOpen(false);
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          setOpen(false);
+        }
+      }}
+    >
       <span>{label}</span>
-      <button type="button">{value}<ChevronDown size={12} /></button>
+      <button type="button" aria-expanded={open} aria-haspopup="listbox" onClick={() => setOpen((current) => !current)}>{value}<ChevronDown size={12} /></button>
+      {open && options && (
+        <div className="popover-panel" role="listbox">
+          {options.map((option) => (
+            <button
+              className={option === value ? "active" : ""}
+              key={option}
+              role="option"
+              aria-selected={option === value}
+              type="button"
+              onClick={() => {
+                onChange?.(option);
+                setOpen(false);
+              }}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
     </label>
   );
 }
 
-function FormLine({ label, value, required, success, hint, hintButton, strength }: { label: string; value: string; required?: boolean; success?: string; hint?: string; hintButton?: string; strength?: boolean }) {
+function FormLine({
+  label,
+  value,
+  required,
+  success,
+  hint,
+  hintButton,
+  hintAction,
+  strength,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  required?: boolean;
+  success?: string;
+  hint?: string;
+  hintButton?: string;
+  hintAction?: () => void;
+  strength?: boolean;
+  onChange?: (value: string) => void;
+}) {
   return (
     <label className="form-line">
       <span>{label}{required && <b>*</b>}</span>
       <div>
-        <input value={value} readOnly />
+        <input value={value} readOnly={!onChange} onChange={(event) => onChange?.(event.target.value)} />
         {hint && <em>{hint}</em>}
-        {hintButton && <button type="button">{hintButton}</button>}
+        {hintButton && <button type="button" onClick={hintAction}>{hintButton}</button>}
         {success && <small><CheckCircle2 size={12} /> {success}</small>}
       </div>
       {strength && <p className="password-strength"><i /><i /><i /><em>强</em></p>}
@@ -931,11 +1249,58 @@ function FormLine({ label, value, required, success, hint, hintButton, strength 
   );
 }
 
-function FormSelectLine({ label, value, required, icon }: { label: string; value: string; required?: boolean; icon?: React.ReactNode }) {
+function FormSelectLine({
+  label,
+  value,
+  required,
+  icon,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  required?: boolean;
+  icon?: React.ReactNode;
+  options?: string[];
+  onChange?: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <label className="form-line">
+    <label
+      className="form-line"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setOpen(false);
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          setOpen(false);
+        }
+      }}
+    >
       <span>{label}{required && <b>*</b>}</span>
-      <div className="select-like">{icon}{value}<ChevronDown size={12} /></div>
+      <button className={`select-like ${open ? "open" : ""}`} type="button" aria-expanded={open} aria-haspopup="listbox" onClick={() => options && setOpen((current) => !current)}>{icon}{value}<ChevronDown size={12} /></button>
+      {open && options && (
+        <div className="select-menu" role="listbox">
+          {options.map((option) => (
+            <button
+              className={option === value ? "active" : ""}
+              key={option}
+              role="option"
+              aria-selected={option === value}
+              type="button"
+              onClick={() => {
+                onChange?.(option);
+                setOpen(false);
+              }}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
     </label>
   );
 }
@@ -949,13 +1314,13 @@ function FormTagLine({ label }: { label: string }) {
   );
 }
 
-function ToggleLine({ label, active, hint }: { label: string; active?: boolean; hint?: string }) {
+function ToggleLine({ label, active, hint, onToggle }: { label: string; active?: boolean; hint?: string; onToggle?: (active: boolean) => void }) {
   return (
-    <div className="toggle-line">
+    <button className="toggle-line" type="button" role="switch" aria-checked={Boolean(active)} onClick={() => onToggle?.(!active)}>
       <span>{label}</span>
       <i className={active ? "on" : ""}><b /></i>
       {hint && <em>{hint}</em>}
-    </div>
+    </button>
   );
 }
 
@@ -1007,26 +1372,46 @@ function MiniAuditList() {
   );
 }
 
-function TokenTable() {
-  const rows = [
+function TokenTable({ notify }: { notify: Notify }) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const [rows, setRows] = useState([
     ["CI 发布令牌", "stkp_12A9••••", "主机(读写) / 部署 / 文件(读写)", "2025-07-01 10:22", "2025-08-13 08:47", "已启用"],
     ["运维只读令牌", "stkp_6F3B••••", "主机(只读) / 网站(只读) / 数据库(只读)", "2025-06-15 14:05", "2025-08-12 17:32", "仅只读"],
     ["审计导出令牌", "stkp_8C7D••••", "审计日志(读) / 导出", "2025-07-20 09:11", "2025-08-08 11:02", "即将过期"],
     ["旧 CI 令牌（已停用）", "stkp_4B2E••••", "主机(读写) / 部署", "2025-03-18 16:30", "2025-07-01 12:10", "已停用"],
-  ];
+  ]);
+
   return (
     <table className="mini-table token-table">
       <thead><tr><th /><th>名称</th><th>令牌前缀</th><th>权限范围</th><th>创建时间</th><th>最近使用</th><th>状态</th><th>操作</th></tr></thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={row[0]}>
-            <td><input type="checkbox" /></td>
+          <tr className={selected.includes(row[0]) ? "is-selected" : ""} key={row[0]}>
+            <td><input type="checkbox" checked={selected.includes(row[0])} onChange={(event) => {
+              setSelected((current) => event.target.checked ? [...current, row[0]] : current.filter((item) => item !== row[0]));
+            }} /></td>
             {row.slice(0, 6).map((cell) => <td key={cell}>{cell}</td>)}
-            <td className="table-icon-actions"><Eye size={15} /><Edit3 size={15} /><Trash2 size={15} /></td>
+            <td className="table-icon-actions">
+              <button type="button" onClick={() => notify(`正在查看令牌：${row[0]}`, "info")}><Eye size={15} /></button>
+              <button type="button" onClick={() => notify(`正在编辑令牌：${row[0]}`, "info")}><Edit3 size={15} /></button>
+              <button type="button" onClick={() => {
+                setRows((current) => current.filter((item) => item[0] !== row[0]));
+                notify(`令牌已删除：${row[0]}`, "warning");
+              }}><Trash2 size={15} /></button>
+            </td>
           </tr>
         ))}
       </tbody>
     </table>
+  );
+}
+
+function ActionToast({ toast }: { toast: ToastState }) {
+  return (
+    <div className={`action-toast ${toast.tone}`} role="status" aria-live="polite">
+      <StatusLight tone={toast.tone === "danger" ? "red" : toast.tone === "warning" ? "orange" : toast.tone === "info" ? "blue" : "green"} />
+      <span>{toast.message}</span>
+    </div>
   );
 }
 
