@@ -39,6 +39,9 @@ import type { LucideIcon } from "lucide-react";
 
 const pageKeys = [
   "overview",
+  "overview-health",
+  "overview-tasks",
+  "overview-risks",
   "hosts",
   "sites",
   "databases",
@@ -61,9 +64,9 @@ type ToastState = { message: string; tone: ToastTone };
 type Notify = (message: string, tone?: ToastTone) => void;
 type SetPage = (page: PageKey, toast?: ToastState) => void;
 type PageMeta = { title: string; breadcrumb: string; search: string };
-type NavChild = { id: string; label: string; meta: string; badge?: string };
+type NavChild = { id: string; label: string; meta: string; page?: PageKey; badge?: string };
 type NavItem = {
-  key: Exclude<PageKey, "mobile">;
+  key: Exclude<PageKey, "mobile" | "overview-health" | "overview-tasks" | "overview-risks">;
   label: string;
   icon: LucideIcon;
   badge?: string;
@@ -86,6 +89,9 @@ function activateOnKeyboard(event: React.KeyboardEvent<HTMLElement>, action: () 
 
 const pageMeta: Record<PageKey, PageMeta> = {
   overview: { title: "首页总览", breadcrumb: "控制台", search: "搜索主机、网站、数据库、任务..." },
+  "overview-health": { title: "集群状态", breadcrumb: "首页总览", search: "搜索节点、IP、服务、版本..." },
+  "overview-tasks": { title: "任务流", breadcrumb: "首页总览", search: "搜索任务、类型、操作人..." },
+  "overview-risks": { title: "风险中心", breadcrumb: "首页总览", search: "搜索风险、主机、对象..." },
   hosts: { title: "主机", breadcrumb: "资源管理", search: "搜索主机名、IP、环境..." },
   sites: { title: "网站", breadcrumb: "应用管理", search: "搜索域名、运行时、证书..." },
   databases: { title: "数据库管理", breadcrumb: "资源管理", search: "搜索数据库名称" },
@@ -107,9 +113,9 @@ const navItems: NavItem[] = [
     label: "首页总览",
     icon: Home,
     children: [
-      { id: "overview-health", label: "集群状态", meta: "健康 / 延迟" },
-      { id: "overview-tasks", label: "任务流", meta: "7 待执行", badge: "7" },
-      { id: "overview-risks", label: "风险中心", meta: "3 风险", badge: "3" },
+      { id: "overview-health", label: "集群状态", meta: "健康 / 延迟", page: "overview-health" },
+      { id: "overview-tasks", label: "任务流", meta: "7 待执行", page: "overview-tasks", badge: "7" },
+      { id: "overview-risks", label: "风险中心", meta: "3 风险", page: "overview-risks", badge: "3" },
     ],
   },
   {
@@ -233,6 +239,25 @@ const navItems: NavItem[] = [
     ],
   },
 ];
+
+const overviewChildPages: Partial<Record<PageKey, string>> = {
+  "overview-health": "overview-health",
+  "overview-tasks": "overview-tasks",
+  "overview-risks": "overview-risks",
+};
+
+function navPageFor(page: PageKey): Exclude<PageKey, "mobile" | "overview-health" | "overview-tasks" | "overview-risks"> {
+  return overviewChildPages[page] ? "overview" : page as Exclude<PageKey, "mobile" | "overview-health" | "overview-tasks" | "overview-risks">;
+}
+
+function firstChildIdFor(key: NavItem["key"]) {
+  return navItems.find((item) => item.key === key)?.children[0]?.id;
+}
+
+function activeChildForPage(page: PageKey) {
+  const exactChild = navItems.flatMap((item) => item.children).find((child) => child.page === page);
+  return exactChild?.id ?? firstChildIdFor(navPageFor(page));
+}
 
 const groupItems = [
   ["全部主机", "23", "blue"],
@@ -409,6 +434,74 @@ type AclRole = {
   permissions: string[];
 };
 
+type OverviewNode = {
+  id: string;
+  name: string;
+  ip: string;
+  env: string;
+  status: "健康" | "警告" | "维护";
+  latency: string;
+  cpu: string;
+  memory: string;
+  disk: string;
+  version: string;
+  uptime: string;
+  backup: string;
+  update: string;
+  owner: string;
+  services: string[];
+};
+
+type OverviewTaskRecord = {
+  id: string;
+  type: string;
+  title: string;
+  target: string;
+  status: "成功" | "运行中" | "等待" | "失败" | "已取消";
+  priority: "高" | "中" | "低";
+  operator: string;
+  queuedAt: string;
+  duration: string;
+  logs: string[];
+};
+
+type OverviewRiskRecord = {
+  id: string;
+  title: string;
+  level: "高危" | "中危" | "低危";
+  status: "待处理" | "已处理" | "已暂缓";
+  target: string;
+  owner: string;
+  impact: string;
+  detected: string;
+  suggestion: string;
+  traceId: string;
+};
+
+const initialOverviewNodes: OverviewNode[] = [
+  { id: "node-1", name: "demo-sg-01", ip: "10.0.0.11", env: "生产", status: "健康", latency: "38ms", cpu: "18%", memory: "42%", disk: "35%", version: "v2.8.1", uptime: "23 天 14 小时", backup: "今天 02:15", update: "已是最新", owner: "核心集群", services: ["nginx", "postgresql", "redis", "worker"] },
+  { id: "node-2", name: "panel-bj-02", ip: "10.0.1.22", env: "预发", status: "健康", latency: "52ms", cpu: "27%", memory: "55%", disk: "62%", version: "v2.8.0", uptime: "18 天 9 小时", backup: "今天 02:20", update: "可更新 1", owner: "发布验证", services: ["nginx", "worker", "systemd-resolved"] },
+  { id: "node-3", name: "panel-hk-03", ip: "10.0.2.33", env: "生产", status: "警告", latency: "126ms", cpu: "63%", memory: "78%", disk: "83%", version: "v2.8.0", uptime: "9 天 2 小时", backup: "昨天 02:18", update: "可更新 1", owner: "边缘站点", services: ["nginx", "mysql", "queue"] },
+  { id: "node-4", name: "panel-dev-04", ip: "10.0.3.44", env: "开发", status: "维护", latency: "离线", cpu: "0%", memory: "0%", disk: "47%", version: "v2.7.9", uptime: "维护中", backup: "3 天前", update: "待检查", owner: "研发调试", services: ["docker", "node", "cron"] },
+];
+
+const initialOverviewTasks: OverviewTaskRecord[] = [
+  { id: "task-1", type: "部署", title: "部署 /api 服务 v2.8.1", target: "demo-sg-01", status: "成功", priority: "中", operator: "李敏", queuedAt: "2 分钟前", duration: "1分24秒", logs: ["拉取 release v2.8.1", "执行健康检查", "发布完成"] },
+  { id: "task-2", type: "备份", title: "备份 shop_db", target: "prod-postgres-01", status: "成功", priority: "低", operator: "系统", queuedAt: "8 分钟前", duration: "32秒", logs: ["创建快照", "上传到 S3", "校验成功"] },
+  { id: "task-3", type: "补丁", title: "更新防火墙规则", target: "panel-bj-02", status: "运行中", priority: "高", operator: "王工", queuedAt: "15 分钟前", duration: "18秒", logs: ["生成规则差异", "应用 TCP 3306 来源限制"] },
+  { id: "task-4", type: "自动化", title: "每日快照", target: "全部生产主机", status: "等待", priority: "中", operator: "系统", queuedAt: "队列 #1", duration: "预计 12 分钟", logs: ["等待前序备份任务释放锁"] },
+  { id: "task-5", type: "修复", title: "重启 mysql.service", target: "panel-hk-03", status: "失败", priority: "高", operator: "张工", queuedAt: "31 分钟前", duration: "7秒", logs: ["尝试重启服务", "systemd 返回 failed", "等待人工处理"] },
+  { id: "task-6", type: "同步", title: "同步静态文件", target: "admin.example.com", status: "等待", priority: "低", operator: "CI", queuedAt: "队列 #2", duration: "预计 18 分钟", logs: ["等待部署窗口"] },
+];
+
+const initialOverviewRisks: OverviewRiskRecord[] = [
+  { id: "risk-1", title: "SSH 密钥过期", level: "高危", status: "待处理", target: "demo-sg-01, panel-hk-03", owner: "安全组", impact: "2 台生产主机无法完成密钥轮换", detected: "10 分钟前", suggestion: "立即轮换 deploy key 并重新验证 SSH 登录链路", traceId: "risk-a1b2c3" },
+  { id: "risk-2", title: "MySQL 端口暴露到公网", level: "高危", status: "待处理", target: "0.0.0.0/0:3306", owner: "数据库组", impact: "外部来源可探测数据库端口", detected: "18 分钟前", suggestion: "收敛来源到 10.0.12.0/24 并触发防火墙重载", traceId: "risk-b2c3d4" },
+  { id: "risk-3", title: "站点证书即将过期", level: "中危", status: "待处理", target: "admin.example.com", owner: "应用组", impact: "4 天后 HTTPS 证书过期", detected: "今天 09:42", suggestion: "执行证书续期并检查 Nginx reload 结果", traceId: "risk-c3d4e5" },
+  { id: "risk-4", title: "systemd 服务反复重启", level: "中危", status: "待处理", target: "mysql.service / panel-hk-03", owner: "运维组", impact: "最近 30 分钟重启 6 次", detected: "8 分钟前", suggestion: "查看服务日志，必要时切换只读副本", traceId: "risk-d4e5f6" },
+  { id: "risk-5", title: "开发节点备份延迟", level: "低危", status: "已暂缓", target: "panel-dev-04", owner: "研发组", impact: "备份晚于策略 3 天", detected: "昨天 18:11", suggestion: "维护窗口结束后重新开启备份计划", traceId: "risk-e5f6g7" },
+];
+
 const initialHostRecords: HostRecord[] = [
   { id: "host-1", name: "panel-se-01", ip: "10.0.0.11", env: "生产", health: "健康", cpu: "18%", memory: "42%", disk: "35%", os: "Ubuntu 22.04", uptime: "23 天", backup: "今天 02:15", update: "已是最新", services: ["nginx", "postgresql", "redis"] },
   { id: "host-2", name: "panel-bj-02", ip: "10.0.1.22", env: "预发", health: "健康", cpu: "27%", memory: "55%", disk: "62%", os: "Debian 12", uptime: "18 天", backup: "今天 02:20", update: "可更新 1", services: ["nginx", "worker", "systemd-resolved"] },
@@ -544,7 +637,7 @@ function DesktopShell({
   setPage: SetPage;
   notify: Notify;
 }) {
-  const whiteTop = page !== "overview";
+  const whiteTop = !["overview", "overview-health", "overview-tasks", "overview-risks"].includes(page);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
     typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches
   ));
@@ -572,6 +665,9 @@ function DesktopShell({
       <div className="desktop-main">
         <TopBar page={page} white={whiteTop} notify={notify} />
         {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
+        {page === "overview-health" && <OverviewHealthPage notify={notify} />}
+        {page === "overview-tasks" && <OverviewTasksPage notify={notify} />}
+        {page === "overview-risks" && <OverviewRisksPage notify={notify} />}
         {page === "hosts" && <HostsPage notify={notify} />}
         {page === "sites" && <SitesPage notify={notify} />}
         {page === "databases" && <DatabasesPage notify={notify} />}
@@ -585,7 +681,7 @@ function DesktopShell({
         {page === "acl" && <AclPage notify={notify} />}
         {page === "settings" && <SettingsPage notify={notify} />}
       </div>
-      {page === "overview" && <DesktopFooter />}
+      {navPageFor(page) === "overview" && <DesktopFooter />}
     </section>
   );
 }
@@ -606,11 +702,12 @@ function Sidebar({
   const [openGroups, setOpenGroups] = useState<Partial<Record<NavItem["key"], boolean>>>(() => ({
     overview: true,
   }));
-  const [activeChild, setActiveChild] = useState<string>("overview-health");
+  const activeChild = activeChildForPage(page);
+  const activeNavPage = navPageFor(page);
 
   const toggleGroup = (key: NavItem["key"], label: string) => {
     setOpenGroups((current) => {
-      const currentOpen = current[key] ?? key === page;
+      const currentOpen = current[key] ?? key === activeNavPage;
       const nextOpen = !currentOpen;
       notify(`${label} 下拉项目已${nextOpen ? "展开" : "收起"}`, "info");
       return { ...current, [key]: nextOpen };
@@ -620,12 +717,11 @@ function Sidebar({
   const openNavPage = (key: NavItem["key"], label: string) => {
     setPage(key, { message: `已进入${label}`, tone: "info" });
     setOpenGroups((current) => ({ ...current, [key]: true }));
-    setActiveChild(navItems.find((item) => item.key === key)?.children[0]?.id ?? activeChild);
   };
 
   const openNavChild = (parent: NavItem, child: NavChild) => {
-    setPage(parent.key, { message: `已打开${parent.label} / ${child.label}`, tone: "info" });
-    setActiveChild(child.id);
+    setPage(child.page ?? parent.key, { message: `已打开${parent.label} / ${child.label}`, tone: "info" });
+    setOpenGroups((current) => ({ ...current, [parent.key]: true }));
   };
 
   return (
@@ -637,7 +733,7 @@ function Sidebar({
       <nav className="side-nav">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const active = item.key === page || (page === "overview" && item.key === "overview");
+          const active = item.key === activeNavPage;
           const open = (openGroups[item.key] ?? active) && !collapsed;
           return (
             <section
@@ -814,7 +910,7 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
             <RefreshCw size={14} /> 刷新
           </button>
           <button className="ghost small" type="button" onClick={() => notify("检查完成：2 个组件可更新", "warning")}><RefreshCw size={14} /> 检查更新</button>
-          <button className="warning small" type="button" onClick={() => notify("风险中心已定位到 3 个待处理项", "warning")}>风险中心 <b>3</b></button>
+          <button className="warning small" type="button" onClick={() => setPage("overview-risks", { message: "已打开风险中心", tone: "warning" })}>风险中心 <b>3</b></button>
         </div>
       </div>
       <section className="metric-row">
@@ -824,11 +920,11 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
       </section>
       <section className="overview-grid">
         <div className="left-stack">
-          <PanelCard title="集群状态" action="查看全部">
+          <PanelCard title="集群状态" action="查看全部" onAction={() => setPage("overview-health", { message: "已打开集群状态", tone: "info" })}>
             <HostTable notify={notify} />
           </PanelCard>
           <div className="two-panels">
-            <PanelCard title="任务流" tabs={["最近任务", "队列中的任务 (7)"]} activeTab={taskTab} onTabChange={setTaskTab} action="查看全部" onAction={() => notify("已展开完整任务流", "info")}>
+            <PanelCard title="任务流" tabs={["最近任务", "队列中的任务 (7)"]} activeTab={taskTab} onTabChange={setTaskTab} action="查看全部" onAction={() => setPage("overview-tasks", { message: "已打开任务流", tone: "info" })}>
               <TaskTable queued={taskTab !== "最近任务"} />
             </PanelCard>
             <PanelCard title="最近审计" action="查看全部" onAction={() => notify("已打开审计日志列表", "info")}>
@@ -837,7 +933,7 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
           </div>
         </div>
         <div className="right-stack">
-          <PanelCard title="风险中心" action="查看详情" onAction={() => notify("风险详情已展开", "warning")}>
+          <PanelCard title="风险中心" action="查看详情" onAction={() => setPage("overview-risks", { message: "已打开风险中心", tone: "warning" })}>
             <RiskList notify={notify} />
           </PanelCard>
           <PanelCard title="快捷操作">
@@ -1046,6 +1142,238 @@ function ResourceOverview({ activeTab }: { activeTab: string }) {
       ))}
     </div>
   );
+}
+
+function OverviewHealthPage({ notify }: { notify: Notify }) {
+  const [nodes, setNodes] = useState(initialOverviewNodes);
+  const [search, setSearch] = useState("");
+  const [envFilter, setEnvFilter] = useState("全部");
+  const [statusFilter, setStatusFilter] = useState("全部");
+  const [selected, setSelected] = useState<OverviewNode | null>(initialOverviewNodes[0]);
+  const [lastRefresh, setLastRefresh] = useState("刚刚");
+  const filteredNodes = nodes.filter((node) => {
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || node.name.toLowerCase().includes(query) || node.ip.includes(query) || node.services.join(" ").toLowerCase().includes(query);
+    const matchEnv = envFilter === "全部" || node.env === envFilter;
+    const matchStatus = statusFilter === "全部" || node.status === statusFilter;
+    return matchSearch && matchEnv && matchStatus;
+  });
+  const warningCount = nodes.filter((node) => node.status !== "健康").length;
+  const updateCount = nodes.filter((node) => node.update !== "已是最新").length;
+
+  const patchNode = (id: string, patch: Partial<OverviewNode>) => {
+    setNodes((current) => current.map((node) => node.id === id ? { ...node, ...patch } : node));
+    setSelected((current) => current?.id === id ? { ...current, ...patch } : current);
+  };
+
+  return (
+    <ModulePageShell
+      title="集群状态"
+      subtitle={`统一查看首页集群节点、延迟、备份和服务健康。最近刷新：${lastRefresh}`}
+      actions={<><button className="ghost" type="button" onClick={() => notify("已打开新增主机向导", "info")}><Plus size={14} /> 新增节点</button><button className="primary" type="button" onClick={() => { setLastRefresh(currentClock()); notify("集群状态已刷新"); }}><RefreshCw size={14} /> 刷新状态</button></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索节点、IP 或服务" onChange={setSearch} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={setEnvFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "健康", "警告", "维护"]} onChange={setStatusFilter} /></>}
+      metrics={<><MetricTile icon={Server} label="节点总数" value={`${nodes.length}`} tone="blue" /><MetricTile icon={Activity} label="异常节点" value={`${warningCount}`} tone={warningCount ? "orange" : "green"} /><MetricTile icon={RefreshCw} label="待更新" value={`${updateCount}`} tone={updateCount ? "orange" : "green"} /></>}
+      side={selected && (
+        <DetailDrawer title={selected.name} subtitle={`${selected.ip} · ${selected.env}`} onClose={() => setSelected(null)}>
+          <div className="detail-kv">
+            <p><span>状态</span><b><StatusLight tone={selected.status === "健康" ? "green" : selected.status === "警告" ? "orange" : "gray"} /> {selected.status}</b></p>
+            <p><span>延迟</span><b>{selected.latency}</b></p>
+            <p><span>版本</span><b>{selected.version}</b></p>
+            <p><span>运行时间</span><b>{selected.uptime}</b></p>
+            <p><span>最后备份</span><b>{selected.backup}</b></p>
+            <p><span>负责人</span><b>{selected.owner}</b></p>
+          </div>
+          <div className="resource-bars">
+            <p><span>CPU</span><Bar value={selected.cpu} tone={selected.status === "警告" ? "orange" : "green"} /></p>
+            <p><span>内存</span><Bar value={selected.memory} tone={selected.status === "警告" ? "red" : "green"} /></p>
+            <p><span>磁盘</span><Bar value={selected.disk} tone={selected.status === "警告" ? "red" : "green"} /></p>
+          </div>
+          <div className="drawer-list">
+            <strong>服务列表</strong>
+            {selected.services.map((service) => <p key={service}><StatusLight tone="green" /> {service}<span>active</span></p>)}
+          </div>
+        </DetailDrawer>
+      )}
+    >
+      <DataTable
+        columns={[
+          { key: "name", label: "节点", width: "170px", render: (row) => <><StatusLight tone={row.status === "健康" ? "green" : row.status === "警告" ? "orange" : "gray"} /> <b className="blue-text">{row.name}</b></> },
+          { key: "ip", label: "IP", width: "118px", render: (row) => row.ip },
+          { key: "env", label: "环境", width: "78px", render: (row) => row.env },
+          { key: "latency", label: "延迟", width: "78px", render: (row) => row.latency },
+          { key: "cpu", label: "CPU", width: "110px", render: (row) => <Bar value={row.cpu} tone={row.status === "警告" ? "orange" : "green"} /> },
+          { key: "memory", label: "内存", width: "110px", render: (row) => <Bar value={row.memory} tone={row.status === "警告" ? "red" : "green"} /> },
+          { key: "backup", label: "备份", width: "118px", render: (row) => row.backup },
+          { key: "update", label: "更新", width: "110px", render: (row) => <span className={row.update === "已是最新" ? "green-text" : "orange-text"}>{row.update}</span> },
+          { key: "actions", label: "操作", width: "190px", render: (row) => (
+            <div className="table-actions">
+              <button type="button" onClick={() => setSelected(row)}>详情</button>
+              <button type="button" onClick={() => { patchNode(row.id, { status: "健康", update: "已是最新", latency: row.latency === "离线" ? "44ms" : row.latency }); notify(`${row.name} 已执行修复`); }}>修复</button>
+              <button type="button" onClick={() => notify(`${row.name} 服务已重启`, "info")}>重启</button>
+            </div>
+          ) },
+        ]}
+        rows={filteredNodes}
+        emptyText="没有匹配的集群节点"
+        getRowKey={(row) => row.id}
+      />
+    </ModulePageShell>
+  );
+}
+
+function OverviewTasksPage({ notify }: { notify: Notify }) {
+  const [rows, setRows] = useState(initialOverviewTasks);
+  const [tab, setTab] = useState("全部");
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<OverviewTaskRecord | null>(initialOverviewTasks[2]);
+  const filteredRows = rows.filter((row) => {
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || row.title.toLowerCase().includes(query) || row.target.toLowerCase().includes(query) || row.operator.toLowerCase().includes(query);
+    const matchTab = tab === "全部" || (tab === "队列中" ? ["运行中", "等待"].includes(row.status) : row.status === tab);
+    return matchSearch && matchTab;
+  });
+  const queueCount = rows.filter((row) => ["运行中", "等待"].includes(row.status)).length;
+  const failedCount = rows.filter((row) => row.status === "失败").length;
+
+  const patchTask = (id: string, patch: Partial<OverviewTaskRecord>, message: string, tone: ToastTone = "success") => {
+    setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+    setSelected((current) => current?.id === id ? { ...current, ...patch } : current);
+    notify(message, tone);
+  };
+
+  return (
+    <ModulePageShell
+      title="任务流"
+      subtitle="集中处理首页总览中的最近任务、排队任务和失败任务。"
+      actions={<><button className="ghost" type="button" onClick={() => notify("已复制当前任务流摘要", "info")}><Download size={14} /> 导出</button><button className="primary" type="button" onClick={() => { const id = `task-${Date.now()}`; setRows((current) => [{ id, type: "巡检", title: "手动触发集群巡检", target: "全部主机", status: "运行中", priority: "中", operator: "管理员", queuedAt: "刚刚", duration: "运行中", logs: ["创建巡检任务", "正在采集节点状态"] }, ...current]); notify("已创建巡检任务", "info"); }}><Plus size={14} /> 新建任务</button></>}
+      filters={<><div className="deploy-tabs">{["全部", "队列中", "成功", "失败", "已取消"].map((item) => <button key={item} className={tab === item ? "active" : ""} type="button" onClick={() => setTab(item)}>{item}</button>)}</div><ModuleSearch value={search} placeholder="搜索任务、目标或操作人" onChange={setSearch} /></>}
+      metrics={<><MetricTile icon={CalendarDays} label="任务总数" value={`${rows.length}`} tone="blue" /><MetricTile icon={Clock3} label="队列中" value={`${queueCount}`} tone={queueCount ? "orange" : "green"} /><MetricTile icon={Bell} label="失败任务" value={`${failedCount}`} tone={failedCount ? "red" : "green"} /></>}
+      side={selected && (
+        <DetailDrawer title={selected.title} subtitle={`${selected.type} · ${selected.target}`} onClose={() => setSelected(null)}>
+          <div className="detail-kv">
+            <p><span>状态</span><b><StatusLight tone={taskTone(selected.status)} /> {selected.status}</b></p>
+            <p><span>优先级</span><b>{selected.priority}</b></p>
+            <p><span>操作人</span><b>{selected.operator}</b></p>
+            <p><span>排队时间</span><b>{selected.queuedAt}</b></p>
+            <p><span>耗时</span><b>{selected.duration}</b></p>
+          </div>
+          <div className="overview-event-log">
+            <strong>执行日志</strong>
+            {selected.logs.map((log, index) => <p key={log}><span>{index + 1}</span>{log}</p>)}
+          </div>
+        </DetailDrawer>
+      )}
+    >
+      <DataTable
+        columns={[
+          { key: "type", label: "类型", width: "82px", render: (row) => <span className="pill blue">{row.type}</span> },
+          { key: "title", label: "任务", width: "240px", render: (row) => <b>{row.title}</b> },
+          { key: "target", label: "目标", width: "150px", render: (row) => row.target },
+          { key: "status", label: "状态", width: "92px", render: (row) => <><StatusLight tone={taskTone(row.status)} /> {row.status}</> },
+          { key: "priority", label: "优先级", width: "78px", render: (row) => row.priority },
+          { key: "operator", label: "操作人", width: "86px", render: (row) => row.operator },
+          { key: "queuedAt", label: "时间", width: "105px", render: (row) => row.queuedAt },
+          { key: "duration", label: "耗时", width: "100px", render: (row) => row.duration },
+          { key: "actions", label: "操作", width: "196px", render: (row) => (
+            <div className="table-actions">
+              <button type="button" onClick={() => setSelected(row)}>日志</button>
+              <button type="button" onClick={() => patchTask(row.id, { status: "成功", duration: row.duration === "运行中" ? "1分02秒" : row.duration, logs: [...row.logs, "人工标记完成"] }, `${row.title} 已完成`)}>完成</button>
+              <button type="button" onClick={() => patchTask(row.id, { status: row.status === "已取消" ? "运行中" : "已取消", logs: [...row.logs, row.status === "已取消" ? "重新进入运行队列" : "任务已取消"] }, row.status === "已取消" ? `${row.title} 已重新运行` : `${row.title} 已取消`, "info")}>{row.status === "已取消" ? "重跑" : "取消"}</button>
+            </div>
+          ) },
+        ]}
+        rows={filteredRows}
+        emptyText="没有匹配的任务"
+        getRowKey={(row) => row.id}
+      />
+    </ModulePageShell>
+  );
+}
+
+function OverviewRisksPage({ notify }: { notify: Notify }) {
+  const [rows, setRows] = useState(initialOverviewRisks);
+  const [search, setSearch] = useState("");
+  const [levelFilter, setLevelFilter] = useState("全部");
+  const [stateFilter, setStateFilter] = useState("全部");
+  const [selected, setSelected] = useState<OverviewRiskRecord | null>(initialOverviewRisks[0]);
+  const filteredRows = rows.filter((row) => {
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || row.title.toLowerCase().includes(query) || row.target.toLowerCase().includes(query) || row.owner.toLowerCase().includes(query) || row.traceId.toLowerCase().includes(query);
+    const matchLevel = levelFilter === "全部" || row.level === levelFilter;
+    const matchState = stateFilter === "全部" || row.status === stateFilter;
+    return matchSearch && matchLevel && matchState;
+  });
+  const openCount = rows.filter((row) => row.status === "待处理").length;
+  const highCount = rows.filter((row) => row.level === "高危" && row.status === "待处理").length;
+  const postponedCount = rows.filter((row) => row.status === "已暂缓").length;
+
+  const patchRisk = (id: string, patch: Partial<OverviewRiskRecord>, message: string, tone: ToastTone = "success") => {
+    setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+    setSelected((current) => current?.id === id ? { ...current, ...patch } : current);
+    notify(message, tone);
+  };
+
+  return (
+    <ModulePageShell
+      title="风险中心"
+      subtitle="集中处理首页总览暴露的安全、证书和服务健康风险。"
+      actions={<><button className="ghost" type="button" onClick={() => notify("风险报告已导出", "info")}><Download size={14} /> 导出报告</button><button className="primary" type="button" onClick={() => notify("已触发风险重新扫描", "info")}><RefreshCw size={14} /> 重新扫描</button></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索风险、目标或 trace id" onChange={setSearch} /><FieldSelect label="等级" value={levelFilter} options={["全部", "高危", "中危", "低危"]} onChange={setLevelFilter} /><FieldSelect label="状态" value={stateFilter} options={["全部", "待处理", "已处理", "已暂缓"]} onChange={setStateFilter} /></>}
+      metrics={<><MetricTile icon={Shield} label="待处理风险" value={`${openCount}`} tone={openCount ? "orange" : "green"} /><MetricTile icon={KeyRound} label="高危风险" value={`${highCount}`} tone={highCount ? "red" : "green"} /><MetricTile icon={Clock3} label="暂缓项" value={`${postponedCount}`} tone="blue" /></>}
+      side={selected && (
+        <DetailDrawer title={selected.title} subtitle={selected.traceId} onClose={() => setSelected(null)}>
+          <div className="detail-kv">
+            <p><span>等级</span><b><StatusLight tone={riskTone(selected.level)} /> {selected.level}</b></p>
+            <p><span>状态</span><b>{selected.status}</b></p>
+            <p><span>目标</span><b>{selected.target}</b></p>
+            <p><span>负责人</span><b>{selected.owner}</b></p>
+            <p><span>发现时间</span><b>{selected.detected}</b></p>
+            <p><span>影响</span><b>{selected.impact}</b></p>
+          </div>
+          <div className="overview-risk-note">
+            <strong>处理建议</strong>
+            <p>{selected.suggestion}</p>
+          </div>
+        </DetailDrawer>
+      )}
+    >
+      <DataTable
+        columns={[
+          { key: "title", label: "风险", width: "240px", render: (row) => <b>{row.title}</b> },
+          { key: "level", label: "等级", width: "82px", render: (row) => <span className={`pill ${row.level === "高危" ? "red" : row.level === "中危" ? "blue" : "green"}`}>{row.level}</span> },
+          { key: "status", label: "状态", width: "90px", render: (row) => <><StatusLight tone={row.status === "待处理" ? riskTone(row.level) : row.status === "已暂缓" ? "blue" : "green"} /> {row.status}</> },
+          { key: "target", label: "目标", width: "200px", render: (row) => row.target },
+          { key: "owner", label: "负责人", width: "86px", render: (row) => row.owner },
+          { key: "detected", label: "发现时间", width: "105px", render: (row) => row.detected },
+          { key: "impact", label: "影响", width: "230px", render: (row) => row.impact },
+          { key: "actions", label: "操作", width: "204px", render: (row) => (
+            <div className="table-actions">
+              <button type="button" onClick={() => setSelected(row)}>详情</button>
+              <button type="button" onClick={() => patchRisk(row.id, { status: "已处理" }, `${row.title} 已处理`)}>处理</button>
+              <button type="button" onClick={() => patchRisk(row.id, { status: "已暂缓" }, `${row.title} 已暂缓`, "warning")}>暂缓</button>
+            </div>
+          ) },
+        ]}
+        rows={filteredRows}
+        emptyText="没有匹配的风险"
+        getRowKey={(row) => row.id}
+      />
+    </ModulePageShell>
+  );
+}
+
+function taskTone(status: OverviewTaskRecord["status"]): Tone {
+  if (status === "成功") return "green";
+  if (status === "运行中") return "blue";
+  if (status === "失败") return "red";
+  if (status === "已取消") return "gray";
+  return "orange";
+}
+
+function riskTone(level: OverviewRiskRecord["level"]): Tone {
+  if (level === "高危") return "red";
+  if (level === "中危") return "orange";
+  return "blue";
 }
 
 type TableColumn<T> = {
