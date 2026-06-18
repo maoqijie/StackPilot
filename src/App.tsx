@@ -1,68 +1,67 @@
 import { useMemo, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
   Activity,
   AlertTriangle,
   Bell,
   CheckCircle2,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   ClipboardList,
   Clock3,
   Cloud,
   Copy,
   Cpu,
-  Database,
-  FileTerminal,
-  FolderOpen,
+  Eye,
   GitBranch,
-  Globe2,
   HardDrive,
+  KeyRound,
   LayoutDashboard,
   Lock,
+  Mail,
   MemoryStick,
-  MoreHorizontal,
   Moon,
-  Package,
+  MoreHorizontal,
+  Network,
+  Play,
   Plus,
   Power,
   RefreshCw,
+  RotateCcw,
+  Save,
   Search,
   Server,
   Settings,
   Shield,
+  Square,
   Sun,
   TerminalSquare,
   UploadCloud,
   Wrench,
+  XCircle,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 type Theme = "light" | "dark";
 type NavKey =
   | "overview"
   | "servers"
-  | "monitor"
-  | "websites"
-  | "databases"
-  | "files"
-  | "terminal"
   | "services"
   | "firewall"
   | "deployments"
   | "audit"
-  | "schedules"
   | "settings";
-type NodeState = "online" | "offline" | "warning" | "initializing";
-type ServiceState = "running" | "failed" | "inactive";
-type ReleaseState = "success" | "running" | "failed" | "queued";
+type NodeState = "online" | "offline" | "warning" | "permission";
+type ServiceState = "running" | "stopped" | "failed" | "deploying";
+type ReleaseState = "success" | "running" | "failed" | "rollback" | "queued";
 type AuditResult = "成功" | "失败" | "等待确认";
 type TaskState = "running" | "waiting" | "failed";
-type ToolTone = "default" | "warning" | "danger";
+type Tone = "success" | "warning" | "danger" | "muted" | "info";
 
 type ServerNode = {
   id: string;
   name: string;
   host: string;
+  group: string;
+  tags: string[];
   os: string;
   state: NodeState;
   load: string;
@@ -73,14 +72,20 @@ type ServerNode = {
   heartbeat: string;
   agent: string;
   risk: string;
+  systemInfo: Array<[string, string]>;
+  activity: string[];
 };
 
 type SystemService = {
   name: string;
   node: string;
   state: ServiceState;
+  port: string;
+  health: "正常" | "异常" | "等待" | "部署中";
+  updatedAt: string;
   description: string;
-  lastAction: string;
+  environment: string;
+  log: string[];
 };
 
 type FirewallRule = {
@@ -89,28 +94,49 @@ type FirewallRule = {
   action: "allow" | "deny";
   port: string;
   protocol: "tcp" | "udp";
-  from: string;
+  source: string;
+  enabled: boolean;
+  highRisk: boolean;
   note: string;
+};
+
+type FirewallDraft = {
+  action: "allow" | "deny";
+  port: string;
+  protocol: "tcp" | "udp";
+  source: string;
+  note: string;
+};
+
+type DeploymentStep = {
+  label: string;
+  state: "done" | "running" | "failed" | "waiting";
 };
 
 type Deployment = {
   project: string;
   node: string;
+  version: string;
   repo: string;
   branch: string;
-  profile: "静态站点" | "Node pnpm";
+  operator: string;
   state: ReleaseState;
   commit: string;
   duration: string;
   updatedAt: string;
+  failure?: string;
+  steps: DeploymentStep[];
+  logs: string[];
 };
 
 type AuditEntry = {
+  id: string;
   time: string;
   user: string;
-  node: string;
+  target: string;
   action: string;
   result: AuditResult;
+  source: string;
   detail: string;
 };
 
@@ -118,38 +144,37 @@ type QueueTask = {
   id: string;
   state: TaskState;
   title: string;
-  node: string;
+  target: string;
   detail: string;
   time: string;
 };
 
-type QuickEntry = {
+type RowAction = {
   label: string;
-  value: string;
-  detail: string;
-  icon: typeof LayoutDashboard;
-  target: NavKey;
-  tone?: ToolTone;
+  icon?: LucideIcon;
+  danger?: boolean;
+  confirm?: boolean;
+  disabled?: boolean;
+  title?: string;
+};
+
+type Toast = {
+  tone: Tone;
+  message: string;
 };
 
 const navItems: Array<{
   key: NavKey;
   label: string;
-  icon: typeof LayoutDashboard;
+  icon: LucideIcon;
 }> = [
-  { key: "overview", label: "首页", icon: LayoutDashboard },
-  { key: "servers", label: "主机", icon: Server },
-  { key: "monitor", label: "监控", icon: Activity },
-  { key: "websites", label: "网站", icon: Globe2 },
-  { key: "databases", label: "数据库", icon: Database },
-  { key: "files", label: "文件", icon: FolderOpen },
-  { key: "terminal", label: "终端", icon: FileTerminal },
+  { key: "overview", label: "总览", icon: LayoutDashboard },
+  { key: "servers", label: "服务器", icon: Server },
   { key: "services", label: "服务", icon: TerminalSquare },
   { key: "firewall", label: "防火墙", icon: Shield },
-  { key: "deployments", label: "项目发布", icon: GitBranch },
-  { key: "audit", label: "审计日志", icon: ClipboardList },
-  { key: "schedules", label: "计划任务", icon: Clock3 },
-  { key: "settings", label: "面板设置", icon: Settings },
+  { key: "deployments", label: "发布", icon: GitBranch },
+  { key: "audit", label: "审计", icon: ClipboardList },
+  { key: "settings", label: "设置", icon: Settings },
 ];
 
 const nodes: ServerNode[] = [
@@ -157,6 +182,8 @@ const nodes: ServerNode[] = [
     id: "sg-prod-01",
     name: "新加坡生产 01",
     host: "213.111.158.139",
+    group: "生产",
+    tags: ["API", "入口"],
     os: "Ubuntu 24.04 LTS",
     state: "online",
     load: "0.42",
@@ -167,11 +194,20 @@ const nodes: ServerNode[] = [
     heartbeat: "12 秒前",
     agent: "v0.1.0",
     risk: "磁盘偏高",
+    systemInfo: [
+      ["内核", "6.8.0-31-generic"],
+      ["运行时间", "18 天 6 小时"],
+      ["公网 IP", "213.111.158.139"],
+      ["数据目录", "/opt/stackpilot"],
+    ],
+    activity: ["10:36 重启 nginx.service", "10:12 新增 443/tcp 规则", "09:58 Agent 心跳恢复"],
   },
   {
     id: "hk-web-02",
     name: "香港 Web 02",
     host: "10.10.8.24",
+    group: "生产",
+    tags: ["Web", "DB"],
     os: "Debian 12",
     state: "online",
     load: "0.18",
@@ -182,11 +218,20 @@ const nodes: ServerNode[] = [
     heartbeat: "19 秒前",
     agent: "v0.1.0",
     risk: "正常",
+    systemInfo: [
+      ["内核", "6.1.0-21-amd64"],
+      ["运行时间", "42 天 1 小时"],
+      ["私网 IP", "10.10.8.24"],
+      ["数据目录", "/srv/customer"],
+    ],
+    activity: ["10:42 发布 customer-portal", "09:12 启动 PostgreSQL", "02:10 备份完成"],
   },
   {
     id: "jp-edge-03",
     name: "东京边缘 03",
     host: "172.18.0.13",
+    group: "边缘",
+    tags: ["边缘", "告警"],
     os: "Ubuntu 22.04 LTS",
     state: "warning",
     load: "1.86",
@@ -196,12 +241,21 @@ const nodes: ServerNode[] = [
     network: "↑ 8.4 / ↓ 22.8 Mbps",
     heartbeat: "44 秒前",
     agent: "v0.1.0",
-    risk: "nginx 失败",
+    risk: "app-web 失败",
+    systemInfo: [
+      ["内核", "5.15.0-91-generic"],
+      ["运行时间", "9 天 3 小时"],
+      ["出口", "Tokyo edge"],
+      ["最近错误", "/health 502"],
+    ],
+    activity: ["10:12 发布失败", "10:08 app-web.service 退出", "09:50 nginx reload"],
   },
   {
     id: "lab-node-04",
     name: "测试节点 04",
     host: "192.168.1.42",
+    group: "测试",
+    tags: ["实验"],
     os: "Debian 12",
     state: "offline",
     load: "-",
@@ -212,6 +266,37 @@ const nodes: ServerNode[] = [
     heartbeat: "17 分钟前",
     agent: "v0.0.9",
     risk: "Agent 失联",
+    systemInfo: [
+      ["最近心跳", "17 分钟前"],
+      ["失败原因", "连接超时"],
+      ["建议", "检查 stackpilot-agent"],
+      ["保护", "危险操作已禁用"],
+    ],
+    activity: ["10:25 Agent 断开", "10:20 SSH 探测超时", "09:10 注册完成"],
+  },
+  {
+    id: "eu-db-05",
+    name: "法兰克福 DB 05",
+    host: "10.30.2.15",
+    group: "数据库",
+    tags: ["DB", "受限"],
+    os: "Rocky Linux 9",
+    state: "permission",
+    load: "-",
+    cpu: 0,
+    memory: 0,
+    disk: 0,
+    network: "-",
+    heartbeat: "3 分钟前",
+    agent: "v0.1.0",
+    risk: "权限不足",
+    systemInfo: [
+      ["最近心跳", "3 分钟前"],
+      ["失败原因", "sudo 白名单缺失"],
+      ["建议", "补齐 systemctl 只读权限"],
+      ["保护", "控制命令已禁用"],
+    ],
+    activity: ["10:39 资源读取被拒绝", "10:36 Agent 在线", "10:30 权限检查失败"],
   },
 ];
 
@@ -220,47 +305,80 @@ const services: SystemService[] = [
     name: "nginx.service",
     node: "新加坡生产 01",
     state: "running",
+    port: "80,443",
+    health: "正常",
+    updatedAt: "12 分钟前",
     description: "反向代理",
-    lastAction: "12 分钟前重启",
+    environment: "prod / systemd",
+    log: ["active (running)", "reload complete", "upstream stackpilot-agent ready"],
   },
   {
     name: "stackpilot-agent.service",
     node: "新加坡生产 01",
     state: "running",
+    port: "9443",
+    health: "正常",
+    updatedAt: "2 分钟前",
     description: "节点连接",
-    lastAction: "2 小时前重连",
+    environment: "agent / stable",
+    log: ["heartbeat accepted", "metrics batch sent", "command queue idle"],
   },
   {
     name: "postgresql.service",
     node: "香港 Web 02",
     state: "running",
+    port: "5432",
+    health: "正常",
+    updatedAt: "09:12",
     description: "PostgreSQL",
-    lastAction: "09:12 启动",
+    environment: "database / private",
+    log: ["checkpoint complete", "backup snapshot created", "connections: 18"],
   },
   {
     name: "app-web.service",
     node: "东京边缘 03",
     state: "failed",
+    port: "3000",
+    health: "异常",
+    updatedAt: "4 分钟前",
     description: "Node 服务",
-    lastAction: "4 分钟前失败",
+    environment: "edge / node",
+    log: ["exit code 1", "health check /health returned 502", "waiting for operator action"],
+  },
+  {
+    name: "customer-portal.service",
+    node: "香港 Web 02",
+    state: "deploying",
+    port: "8080",
+    health: "部署中",
+    updatedAt: "进行中",
+    description: "客户门户",
+    environment: "release / pnpm",
+    log: ["pnpm build", "copy artifacts", "waiting health probe"],
   },
   {
     name: "backup.timer",
     node: "香港 Web 02",
-    state: "inactive",
+    state: "stopped",
+    port: "-",
+    health: "等待",
+    updatedAt: "昨天 23:00",
     description: "每日备份",
-    lastAction: "昨天 23:00",
+    environment: "timer / daily",
+    log: ["last run success", "next run disabled", "manual start required"],
   },
 ];
 
-const firewallRules: FirewallRule[] = [
+const initialFirewallRules: FirewallRule[] = [
   {
     id: "1001",
     node: "新加坡生产 01",
     action: "allow",
     port: "22",
     protocol: "tcp",
-    from: "管理 IP",
+    source: "管理 IP",
+    enabled: true,
+    highRisk: false,
     note: "SSH 入口，受保护",
   },
   {
@@ -269,16 +387,31 @@ const firewallRules: FirewallRule[] = [
     action: "allow",
     port: "80,443",
     protocol: "tcp",
-    from: "Anywhere",
+    source: "Anywhere",
+    enabled: true,
+    highRisk: false,
     note: "Web 入口",
   },
   {
     id: "1003",
+    node: "东京边缘 03",
+    action: "allow",
+    port: "0-65535",
+    protocol: "tcp",
+    source: "Anywhere",
+    enabled: false,
+    highRisk: true,
+    note: "高风险规则，已禁用",
+  },
+  {
+    id: "1004",
     node: "香港 Web 02",
     action: "deny",
     port: "5432",
     protocol: "tcp",
-    from: "Anywhere",
+    source: "Anywhere",
+    enabled: true,
+    highRisk: false,
     note: "数据库禁止公网访问",
   },
 ];
@@ -287,70 +420,132 @@ const deployments: Deployment[] = [
   {
     project: "docs-web",
     node: "新加坡生产 01",
-    repo: "git@github.com:stackpilot/docs-web.git",
+    version: "v2026.06.18",
+    repo: "github.com/stackpilot/docs-web",
     branch: "main",
-    profile: "静态站点",
+    operator: "admin",
     state: "success",
     commit: "8f3a91c",
     duration: "46s",
     updatedAt: "10 分钟前",
+    steps: [
+      { label: "拉取代码", state: "done" },
+      { label: "构建产物", state: "done" },
+      { label: "切换软链", state: "done" },
+      { label: "健康检查", state: "done" },
+    ],
+    logs: ["clone main", "npm run build", "switch release", "health 200"],
   },
   {
     project: "customer-portal",
     node: "香港 Web 02",
-    repo: "git@gitlab.com:ops/customer-portal.git",
+    version: "release-31de8a0",
+    repo: "gitlab.com/ops/customer-portal",
     branch: "release",
-    profile: "Node pnpm",
+    operator: "admin",
     state: "running",
     commit: "31de8a0",
     duration: "01:18",
     updatedAt: "进行中",
+    steps: [
+      { label: "拉取代码", state: "done" },
+      { label: "安装依赖", state: "done" },
+      { label: "构建产物", state: "running" },
+      { label: "健康检查", state: "waiting" },
+    ],
+    logs: ["收到 GitLab push", "pnpm install --frozen-lockfile", "pnpm build", "等待健康检查"],
   },
   {
     project: "status-page",
     node: "东京边缘 03",
-    repo: "git@github.com:stackpilot/status-page.git",
+    version: "v1.8.2",
+    repo: "github.com/stackpilot/status-page",
     branch: "main",
-    profile: "静态站点",
+    operator: "ops",
     state: "failed",
     commit: "b7192fd",
     duration: "22s",
     updatedAt: "36 分钟前",
+    failure: "/health 返回 502，app-web.service 未运行",
+    steps: [
+      { label: "拉取代码", state: "done" },
+      { label: "构建产物", state: "done" },
+      { label: "切换软链", state: "done" },
+      { label: "健康检查", state: "failed" },
+    ],
+    logs: ["clone main", "build complete", "switch release", "health check failed: 502"],
+  },
+  {
+    project: "api-gateway",
+    node: "新加坡生产 01",
+    version: "rollback-20260618",
+    repo: "github.com/stackpilot/api-gateway",
+    branch: "stable",
+    operator: "admin",
+    state: "rollback",
+    commit: "f421bb2",
+    duration: "00:31",
+    updatedAt: "回滚中",
+    steps: [
+      { label: "锁定当前版本", state: "done" },
+      { label: "恢复上一版", state: "running" },
+      { label: "重载服务", state: "waiting" },
+      { label: "健康检查", state: "waiting" },
+    ],
+    logs: ["rollback requested", "restore release-20260617", "waiting nginx reload"],
   },
 ];
 
 const audits: AuditEntry[] = [
   {
+    id: "AUD-2052",
     time: "10:42:18",
     user: "admin",
-    node: "香港 Web 02",
-    action: "发布 customer-portal",
+    target: "customer-portal",
+    action: "发布项目",
     result: "等待确认",
-    detail: "GitLab push · 31de8a0",
+    source: "10.0.0.5 / Web",
+    detail: "GitLab push release · 31de8a0",
   },
   {
+    id: "AUD-2051",
     time: "10:36:03",
     user: "admin",
-    node: "新加坡生产 01",
-    action: "重启 nginx.service",
+    target: "nginx.service",
+    action: "重启服务",
     result: "成功",
-    detail: "AUD-2048",
+    source: "10.0.0.5 / Web",
+    detail: "systemctl restart nginx.service",
   },
   {
+    id: "AUD-2050",
     time: "10:12:44",
-    user: "admin",
-    node: "东京边缘 03",
-    action: "发布 status-page",
+    user: "ops",
+    target: "status-page",
+    action: "发布项目",
     result: "失败",
-    detail: "/health 502",
+    source: "192.168.31.8 / API",
+    detail: "/health 502，已保留失败版本",
   },
   {
+    id: "AUD-2049",
     time: "09:58:21",
     user: "admin",
-    node: "新加坡生产 01",
-    action: "添加 ufw 规则",
+    target: "新加坡生产 01",
+    action: "添加防火墙规则",
     result: "成功",
+    source: "10.0.0.5 / Web",
     detail: "allow 443/tcp from Anywhere",
+  },
+  {
+    id: "AUD-2048",
+    time: "09:31:17",
+    user: "system",
+    target: "法兰克福 DB 05",
+    action: "权限检查",
+    result: "失败",
+    source: "agent / scheduler",
+    detail: "sudoers 缺少 systemctl 只读权限",
   },
 ];
 
@@ -359,142 +554,61 @@ const queueTasks: QueueTask[] = [
     id: "task-4821",
     state: "running",
     title: "发布 customer-portal",
-    node: "香港 Web 02",
+    target: "香港 Web 02",
     detail: "pnpm build",
     time: "已运行 01:18",
   },
   {
     id: "task-4819",
     state: "waiting",
-    title: "确认重启 app-web.service",
-    node: "东京边缘 03",
+    title: "确认停止 app-web.service",
+    target: "东京边缘 03",
     detail: "等待二次确认",
     time: "4 分钟前",
   },
   {
     id: "task-4816",
     state: "failed",
-    title: "拉取 status-page",
-    node: "东京边缘 03",
-    detail: "Git 退出码 128",
+    title: "status-page 健康检查",
+    target: "东京边缘 03",
+    detail: "/health 502",
     time: "36 分钟前",
   },
 ];
 
-const releaseLogs = [
-  "10:42:19  收到 GitLab push: release",
-  "10:42:20  拉取代码 31de8a0",
-  "10:42:31  pnpm install --frozen-lockfile",
-  "10:43:02  pnpm build",
-  "10:43:09  检查 /health",
-];
+const emptyFirewallDraft: FirewallDraft = {
+  action: "allow",
+  port: "443",
+  protocol: "tcp",
+  source: "Anywhere",
+  note: "",
+};
 
-const quickEntries: QuickEntry[] = [
-  {
-    label: "网站",
-    value: "12",
-    detail: "2 个证书需续期",
-    icon: Globe2,
-    target: "websites",
-    tone: "warning",
-  },
-  {
-    label: "数据库",
-    value: "5",
-    detail: "昨晚备份成功",
-    icon: Database,
-    target: "databases",
-  },
-  {
-    label: "文件",
-    value: "/srv",
-    detail: "打开文件管理",
-    icon: FolderOpen,
-    target: "files",
-  },
-  {
-    label: "终端",
-    value: "SSH",
-    detail: "连接生产节点",
-    icon: FileTerminal,
-    target: "terminal",
-  },
-  {
-    label: "服务",
-    value: "5",
-    detail: "1 个失败",
-    icon: TerminalSquare,
-    target: "services",
-    tone: "danger",
-  },
-  {
-    label: "项目",
-    value: "3",
-    detail: "1 个发布中",
-    icon: GitBranch,
-    target: "deployments",
-    tone: "warning",
-  },
-  {
-    label: "计划任务",
-    value: "4",
-    detail: "备份 23:00",
-    icon: Clock3,
-    target: "schedules",
-  },
-  {
-    label: "防火墙",
-    value: "UFW",
-    detail: "22 端口已保护",
-    icon: Shield,
-    target: "firewall",
-  },
-];
-
-const softwareList = [
-  ["Nginx", "1.24.0", "运行中", "80/443"],
-  ["PostgreSQL", "16.2", "运行中", "5432"],
-  ["Docker", "26.1", "运行中", "-"],
-  ["Redis", "7.2", "未安装", "-"],
-  ["Node.js", "22.11", "运行中", "3000"],
-];
-
-const websites = [
-  ["admin.stackpilot.local", "新加坡生产 01", "/srv/www/admin", "有效 26 天", "运行中"],
-  ["docs.stackpilot.local", "新加坡生产 01", "/srv/www/docs", "有效 89 天", "运行中"],
-  ["status.stackpilot.local", "东京边缘 03", "/srv/www/status", "未配置", "异常"],
-];
-
-const databases = [
-  ["stackpilot", "PostgreSQL 16", "香港 Web 02", "1.8 GB", "今天 02:10"],
-  ["audit_log", "PostgreSQL 16", "香港 Web 02", "420 MB", "今天 02:10"],
-  ["cache", "Redis 7.2", "新加坡生产 01", "126 MB", "未开启"],
-];
-
-const files = [
-  ["www", "/srv/www", "目录", "今天 10:20"],
-  ["stackpilot", "/opt/stackpilot", "目录", "今天 09:44"],
-  ["nginx.conf", "/etc/nginx/nginx.conf", "4.8 KB", "昨天 18:21"],
-  ["backup", "/data/backup", "目录", "今天 02:10"],
-];
-
-const schedules = [
-  ["数据库备份", "0 2 * * *", "香港 Web 02", "成功", "今天 02:10"],
-  ["日志清理", "30 3 * * 0", "新加坡生产 01", "成功", "周日 03:30"],
-  ["证书检查", "0 */6 * * *", "全部主机", "等待", "12:00"],
-  ["同步 release", "手动触发", "香港 Web 02", "执行中", "01:18"],
-];
+const defaultSettings = {
+  centerUrl: "https://panel.stackpilot.local",
+  tokenTtl: "30",
+  themePreference: "跟随当前",
+  notifyFailedDeploy: true,
+  notifyOfflineNode: true,
+  notifyWebhook: false,
+  loginProtection: true,
+  commandAudit: true,
+  upgradeChannel: "stable",
+};
 
 function App() {
   const [active, setActive] = useState<NavKey>("overview");
   const [theme, setTheme] = useState<Theme>("light");
   const [query, setQuery] = useState("");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState(nodes[0].id);
+  const [firewallRules, setFirewallRules] = useState(initialFirewallRules);
+  const [toast, setToast] = useState<Toast | null>(null);
 
-  const selectedNode = nodes[0];
+  const selectedNode =
+    nodes.find((node) => node.id === selectedNodeId) ?? nodes[0];
   const onlineCount = nodes.filter((node) => node.state === "online").length;
   const issueCount = nodes.filter(
-    (node) => node.state === "warning" || node.state === "offline",
+    (node) => node.state !== "online",
   ).length;
 
   const filteredNodes = useMemo(() => {
@@ -503,43 +617,29 @@ function App() {
       return nodes;
     }
     return nodes.filter((node) =>
-      [node.name, node.host, node.os, node.risk]
+      [node.name, node.host, node.os, node.group, node.risk, ...node.tags]
         .join(" ")
         .toLowerCase()
         .includes(keyword),
     );
   }, [query]);
 
+  const notify = (message: string, tone: Tone = "success") => {
+    setToast({ message, tone });
+  };
+
   return (
-    <div
-      className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}
-      data-theme={theme}
-    >
+    <div className="app" data-theme={theme}>
       <aside className="sidebar" aria-label="主导航">
         <div className="brand">
           <div className="brand-mark" aria-hidden="true">
             <Cloud size={22} />
           </div>
-          <div className="brand-copy">
+          <div>
             <strong>StackPilot</strong>
-            <span>运维面板</span>
+            <span>多服务器总控台</span>
           </div>
         </div>
-
-        <button
-          className="collapse-button"
-          type="button"
-          aria-label={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
-          aria-pressed={sidebarCollapsed}
-          title={sidebarCollapsed ? "展开" : "收起"}
-          onClick={() => setSidebarCollapsed((value) => !value)}
-        >
-          {sidebarCollapsed ? (
-            <ChevronRight size={17} />
-          ) : (
-            <ChevronLeft size={17} />
-          )}
-        </button>
 
         <nav className="nav-list">
           {navItems.map((item) => {
@@ -549,7 +649,7 @@ function App() {
                 key={item.key}
                 className={`nav-item ${active === item.key ? "active" : ""}`}
                 type="button"
-                title={sidebarCollapsed ? item.label : undefined}
+                aria-current={active === item.key ? "page" : undefined}
                 onClick={() => setActive(item.key)}
               >
                 <Icon size={18} />
@@ -559,48 +659,47 @@ function App() {
           })}
         </nav>
 
-        <button className="sidebar-card" type="button" onClick={() => setActive("audit")}>
-          <div className="sidebar-card-title">
-            <ClipboardList size={17} />
+        <button className="sidebar-status" type="button" onClick={() => setActive("audit")}>
+          <span>
+            <ClipboardList size={16} />
             待处理
-          </div>
-          <p>发布确认 1 条，失败任务 1 条。</p>
+          </span>
+          <strong>2 条需人工确认</strong>
         </button>
       </aside>
 
       <main className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">panel-sg-01 · Ubuntu 24.04 · 运行 18 天</p>
+            <p className="eyebrow">panel-sg-01 · Ubuntu 24.04 · v0.1.0</p>
             <h1>{pageTitle(active)}</h1>
           </div>
           <div className="topbar-actions">
-            <span className="status-pill good">
-              <CheckCircle2 size={16} />
+            <StatusPill tone={issueCount ? "warning" : "success"}>
               {onlineCount}/{nodes.length} 在线
-            </span>
-            <button className="top-link" type="button">
-              v0.1.0
-            </button>
-            <button className="tool-button" type="button">
-              <Wrench size={16} />
-              修复
-            </button>
-            <button className="tool-button danger-text" type="button">
-              <Power size={16} />
-              重启
-            </button>
-            <button className="icon-button" type="button" aria-label="通知">
-              <Bell size={18} />
-            </button>
-            <button
-              className="theme-button"
-              type="button"
-              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-            >
-              {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
-              <span>{theme === "light" ? "暗色" : "浅色"}</span>
-            </button>
+            </StatusPill>
+            <ActionButton
+              label="修复告警"
+              icon={Wrench}
+              onAction={() => notify("已创建告警修复任务", "info")}
+            />
+            <ActionButton
+              label={theme === "light" ? "暗色" : "浅色"}
+              icon={theme === "light" ? Moon : Sun}
+              onAction={() => setTheme(theme === "light" ? "dark" : "light")}
+            />
+            <IconButton
+              label="通知"
+              icon={Bell}
+              onAction={() => notify("当前没有新的未读通知", "info")}
+            />
+            <ActionButton
+              label="重启中心端"
+              icon={Power}
+              danger
+              confirm
+              onAction={() => notify("已提交中心端重启确认", "warning")}
+            />
           </div>
         </header>
 
@@ -608,202 +707,168 @@ function App() {
           {active === "overview" && (
             <Overview
               issueCount={issueCount}
+              onlineCount={onlineCount}
               query={query}
               setQuery={setQuery}
               filteredNodes={filteredNodes}
+              onSelectNode={(id) => {
+                setSelectedNodeId(id);
+                setActive("servers");
+              }}
               onNavigate={setActive}
+              notify={notify}
             />
           )}
-          {active === "servers" && <Servers nodes={filteredNodes} />}
-          {active === "websites" && <Websites />}
-          {active === "databases" && <Databases />}
-          {active === "files" && <Files />}
-          {active === "terminal" && <TerminalView node={selectedNode} />}
-          {active === "monitor" && <Monitor node={selectedNode} />}
-          {active === "services" && <Services />}
-          {active === "firewall" && <Firewall />}
-          {active === "deployments" && <Deployments />}
-          {active === "audit" && <AuditLog />}
-          {active === "schedules" && <Schedules />}
-          {active === "settings" && <SettingsPage theme={theme} />}
+          {active === "servers" && (
+            <ServersPage
+              nodes={filteredNodes}
+              query={query}
+              setQuery={setQuery}
+              selectedNode={selectedNode}
+              onSelectNode={setSelectedNodeId}
+              notify={notify}
+            />
+          )}
+          {active === "services" && <ServicesPage notify={notify} />}
+          {active === "firewall" && (
+            <FirewallPage
+              rules={firewallRules}
+              setRules={setFirewallRules}
+              notify={notify}
+            />
+          )}
+          {active === "deployments" && <DeploymentsPage notify={notify} />}
+          {active === "audit" && <AuditPage />}
+          {active === "settings" && (
+            <SettingsPage theme={theme} setTheme={setTheme} />
+          )}
         </section>
       </main>
+
+      {toast && (
+        <div className={`toast ${toast.tone}`} role="status">
+          <span>{toast.message}</span>
+          <button type="button" aria-label="关闭提示" onClick={() => setToast(null)}>
+            <XCircle size={17} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 function Overview({
   issueCount,
+  onlineCount,
   query,
   setQuery,
   filteredNodes,
+  onSelectNode,
   onNavigate,
+  notify,
 }: {
   issueCount: number;
+  onlineCount: number;
   query: string;
   setQuery: (query: string) => void;
   filteredNodes: ServerNode[];
+  onSelectNode: (id: string) => void;
   onNavigate: (target: NavKey) => void;
+  notify: (message: string, tone?: Tone) => void;
 }) {
+  const runningServices = services.filter((service) => service.state === "running").length;
+  const runningDeployments = deployments.filter(
+    (deployment) => deployment.state === "running" || deployment.state === "rollback",
+  ).length;
+
   return (
     <>
-      <section className="panel status-line" aria-label="面板状态">
-        <div className="status-line-left">
-          <span>账号：admin</span>
-          <span>系统：Ubuntu 24.04 LTS</span>
-          <span>面板：v0.1.0</span>
-          <span>入口：10.0.0.5:9443</span>
-        </div>
-        <div className="status-line-right">
-          <button className="table-link" type="button">
-            检查更新
-          </button>
-          <button className="table-link" type="button">
-            绑定账号
-          </button>
-          <button className="table-link danger" type="button">
-            重启面板
-          </button>
-        </div>
+      <section className="overview-strip" aria-label="关键状态">
+        <MetricCell label="服务器" value={`${onlineCount}/${nodes.length}`} tone="success" />
+        <MetricCell label="异常节点" value={`${issueCount}`} tone={issueCount ? "warning" : "success"} />
+        <MetricCell label="运行服务" value={`${runningServices}/${services.length}`} tone="success" />
+        <MetricCell label="发布中" value={`${runningDeployments}`} tone={runningDeployments ? "warning" : "muted"} />
+        <MetricCell label="待审计" value="2" tone="warning" />
       </section>
 
       <div className="notice-line" role="status">
         <AlertTriangle size={17} />
-        <span>东京边缘 03 的 app-web.service 失败，customer-portal 发布仍在等待健康检查。</span>
-        <button className="table-link" type="button" onClick={() => onNavigate("services")}>
+        <span>东京边缘 03 的 app-web.service 异常，customer-portal 发布仍在等待健康检查。</span>
+        <button className="text-button" type="button" onClick={() => onNavigate("services")}>
           查看服务
         </button>
       </div>
 
       <section className="home-layout">
-        <div className="home-main stack">
-          <Panel title="快捷入口" actions={<PanelTool label="管理入口" />}>
+        <div className="stack">
+          <Panel
+            title="服务器健康"
+            description="核心节点、资源和连接状态"
+            actions={
+              <>
+                <SearchBox
+                  label="搜索服务器"
+                  placeholder="名称 / IP / 分组"
+                  value={query}
+                  onChange={setQuery}
+                />
+                <ActionButton
+                  label="刷新"
+                  icon={RefreshCw}
+                  onAction={() => notify("服务器状态已刷新", "success")}
+                />
+                <ActionButton
+                  label="添加服务器"
+                  icon={Plus}
+                  primary
+                  onAction={() => onNavigate("servers")}
+                />
+              </>
+            }
+          >
+            <ServerTable
+              nodes={filteredNodes}
+              compact
+              onSelect={onSelectNode}
+              onAction={notify}
+            />
+          </Panel>
+
+          <Panel title="监控趋势" description="近 1 小时采样">
+            <div className="chart-grid">
+              <ChartLine title="CPU" values={[22, 30, 28, 36, 34, 42]} tone="info" />
+              <ChartLine title="内存" values={[44, 48, 53, 58, 57, 61]} tone="success" />
+              <ChartLine title="磁盘" values={[66, 67, 68, 70, 72, 73]} tone="warning" />
+              <ChartLine title="网络" values={[18, 12, 24, 20, 31, 18]} unit="Mbps" tone="info" />
+            </div>
+          </Panel>
+        </div>
+
+        <aside className="stack">
+          <Panel title="快捷入口">
             <div className="shortcut-grid">
-              {quickEntries.map((entry) => {
-                const Icon = entry.icon;
+              {navItems.slice(1).map((item) => {
+                const Icon = item.icon;
                 return (
                   <button
-                    className={`shortcut-card ${entry.tone ?? ""}`}
-                    key={entry.label}
+                    key={item.key}
+                    className="shortcut-button"
                     type="button"
-                    onClick={() => onNavigate(entry.target)}
+                    onClick={() => onNavigate(item.key)}
                   >
                     <Icon size={18} />
-                    <span>{entry.label}</span>
-                    <strong>{entry.value}</strong>
-                    <em>{entry.detail}</em>
+                    <span>{item.label}</span>
                   </button>
                 );
               })}
             </div>
           </Panel>
 
-          <Panel title="状态" actions={<PanelTool label="刷新" icon={RefreshCw} />}>
-            <div className="meter-grid">
-              <ResourceMeter
-                icon={Activity}
-                label="负载"
-                value="0.42"
-                detail="运行流畅"
-                percent={42}
-              />
-              <ResourceMeter
-                icon={Cpu}
-                label="CPU"
-                value="34%"
-                detail="4 核"
-                percent={34}
-              />
-              <ResourceMeter
-                icon={MemoryStick}
-                label="内存"
-                value="61%"
-                detail="4.9 / 8 GB"
-                percent={61}
-              />
-              <ResourceMeter
-                icon={HardDrive}
-                label="磁盘"
-                value="73%"
-                detail="/data"
-                percent={73}
-                tone="warning"
-              />
-            </div>
-          </Panel>
-
-          <Panel
-            title="监控"
-            actions={<SegmentedControl options={["流量", "磁盘 IO"]} />}
-          >
-            <div className="traffic-summary">
-              <Metric label="上行" value="2.1 Mbps" />
-              <Metric label="下行" value="16.3 Mbps" />
-              <Metric label="总发送" value="18.4 GB" />
-              <Metric label="总接收" value="142.8 GB" />
-            </div>
-            <div className="chart-grid tight">
-              <ChartCard
-                title="eth0"
-                color="blue"
-                unit="Mbps"
-                values={[8, 11, 6, 18, 22, 16]}
-              />
-              <ChartCard
-                title="sda IO"
-                color="green"
-                unit="MB/s"
-                values={[3, 8, 6, 10, 7, 9]}
-              />
-            </div>
-          </Panel>
-
-          <Panel
-            title="主机"
-            description={`${filteredNodes.length} 台，${issueCount} 个需要处理`}
-            actions={
-              <>
-                <div className="search-box compact">
-                  <Search size={16} />
-                  <input
-                    aria-label="搜索主机"
-                    placeholder="名称 / IP"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                  />
-                </div>
-                <button className="tool-button" type="button">
-                  <RefreshCw size={16} />
-                  刷新
-                </button>
-                <button className="primary-button" type="button">
-                  <Plus size={16} />
-                  添加主机
-                </button>
-              </>
-            }
-          >
-            <ServerTable nodes={filteredNodes} compact />
-            <TableFooter total={filteredNodes.length} />
-          </Panel>
-        </div>
-
-        <aside className="home-side stack">
-          <Panel title="软件" actions={<PanelTool label="软件商店" />}>
-            <SoftwareList />
-          </Panel>
-          <Panel title="任务" description="需要人工确认的任务排在前面">
+          <Panel title="待处理事项" description="危险操作需要二次确认">
             <TaskList />
           </Panel>
-          <Panel title="系统信息" actions={<PanelTool label="复制" icon={Copy} />}>
-            <div className="settings-list compact">
-              <SettingRow label="主机名" value="panel-sg-01" />
-              <SettingRow label="公网 IP" value="213.111.158.139" />
-              <SettingRow label="数据目录" value="/opt/stackpilot" />
-              <SettingRow label="启动时间" value="2026-05-30 18:12" />
-            </div>
-          </Panel>
-          <Panel title="最近操作">
+
+          <Panel title="最近审计">
             <AuditMiniList />
           </Panel>
         </aside>
@@ -812,508 +877,683 @@ function Overview({
   );
 }
 
-function Servers({ nodes }: { nodes: ServerNode[] }) {
+function ServersPage({
+  nodes: visibleNodes,
+  query,
+  setQuery,
+  selectedNode,
+  onSelectNode,
+  notify,
+}: {
+  nodes: ServerNode[];
+  query: string;
+  setQuery: (query: string) => void;
+  selectedNode: ServerNode;
+  onSelectNode: (id: string) => void;
+  notify: (message: string, tone?: Tone) => void;
+}) {
   return (
     <div className="stack">
       <Panel
         title="安装 Agent"
-        description="在目标服务器执行后会出现在主机列表。"
+        description="一次性 token 默认 30 分钟过期"
         actions={
-          <button className="primary-button" type="button">
-            <Copy size={16} />
-            复制命令
-          </button>
+          <ActionButton
+            label="复制命令"
+            icon={Copy}
+            primary
+            onAction={() => notify("安装命令已复制", "success")}
+          />
         }
       >
-        <div className="install-box">
+        <div className="install-command">
           <code>
-            curl -fsSL https://panel.stackpilot.local/install.sh | sudo bash -s --
-            --token sp_once_8f3a
+            curl -fsSL https://panel.stackpilot.local/install.sh | sudo bash -s -- --token sp_once_8f3a
           </code>
         </div>
       </Panel>
 
-      <Panel
-        title="主机"
-        description="离线 Agent 不允许执行危险操作。"
-        actions={
-          <>
-            <button className="tool-button" type="button">
-              <RefreshCw size={16} />
-              刷新
-            </button>
-            <button className="primary-button" type="button">
-              <Plus size={16} />
-              添加主机
-            </button>
-          </>
-        }
-      >
-        <ServerTable nodes={nodes} />
-        <TableFooter total={nodes.length} />
-      </Panel>
+      <div className="split-layout">
+        <Panel
+          title="服务器列表"
+          description="离线和权限不足节点已限制控制命令"
+          actions={
+            <>
+              <SearchBox
+                label="搜索服务器"
+                placeholder="名称 / IP / 标签"
+                value={query}
+                onChange={setQuery}
+              />
+              <ActionButton label="刷新" icon={RefreshCw} onAction={() => notify("服务器列表已刷新", "success")} />
+              <ActionButton label="添加服务器" icon={Plus} primary onAction={() => notify("已打开添加服务器流程", "info")} />
+            </>
+          }
+        >
+          <ServerTable
+            nodes={visibleNodes}
+            onSelect={onSelectNode}
+            selectedId={selectedNode.id}
+            onAction={notify}
+          />
+        </Panel>
+
+        <ServerDetail node={selectedNode} notify={notify} />
+      </div>
     </div>
   );
 }
 
-function Websites() {
-  return (
-    <Panel
-      title="网站"
-      description="证书、根目录、反向代理在这里集中处理。"
-      actions={
-        <>
-          <button className="tool-button" type="button">
-            <RefreshCw size={16} />
-            刷新
-          </button>
-          <button className="primary-button" type="button">
-            <Plus size={16} />
-            添加站点
-          </button>
-        </>
-      }
-    >
-      <SimpleTable
-        headers={["域名", "主机", "根目录", "SSL", "状态", "操作"]}
-        rows={websites.map((site) => [
-          <strong>{site[0]}</strong>,
-          site[1],
-          site[2],
-          site[3],
-          <TextStatus state={site[4] === "异常" ? "failed" : "running"}>
-            {site[4]}
-          </TextStatus>,
-          <ActionLinks labels={["设置", "日志", "证书", "更多"]} />,
-        ])}
-      />
-      <TableFooter total={websites.length} />
-    </Panel>
-  );
-}
+function ServerDetail({
+  node,
+  notify,
+}: {
+  node: ServerNode;
+  notify: (message: string, tone?: Tone) => void;
+}) {
+  const blocked = node.state === "offline" || node.state === "permission";
 
-function Databases() {
   return (
     <Panel
-      title="数据库"
-      description="公网访问默认关闭，备份状态单独显示。"
+      title="服务器详情"
+      description={`${node.name} · ${node.host}`}
       actions={
         <>
-          <button className="tool-button" type="button">
-            导入
-          </button>
-          <button className="primary-button" type="button">
-            <Plus size={16} />
-            创建数据库
-          </button>
+          <ActionButton label="终端" icon={TerminalSquare} disabled={blocked} onAction={() => notify("已打开终端会话", "info")} />
+          <ActionButton
+            label="重启"
+            icon={Power}
+            danger
+            confirm
+            disabled={blocked}
+            title={blocked ? "当前节点不可执行控制命令" : undefined}
+            onAction={() => notify(`${node.name} 已提交重启确认`, "warning")}
+          />
         </>
       }
     >
-      <SimpleTable
-        headers={["名称", "类型", "主机", "大小", "备份", "操作"]}
-        rows={databases.map((db) => [
-          <strong>{db[0]}</strong>,
-          db[1],
-          db[2],
-          db[3],
-          db[4],
-          <ActionLinks labels={["管理", "备份", "权限", "更多"]} />,
-        ])}
-      />
-      <TableFooter total={databases.length} />
-    </Panel>
-  );
-}
-
-function Files() {
-  return (
-    <Panel
-      title="文件"
-      description="当前路径：/srv"
-      actions={
-        <>
-          <button className="tool-button" type="button">
-            上传
-          </button>
-          <button className="tool-button" type="button">
-            远程下载
-          </button>
-          <button className="primary-button" type="button">
-            <Plus size={16} />
-            新建
-          </button>
-        </>
-      }
-    >
-      <div className="file-toolbar">
-        <button className="table-link" type="button">
-          /srv
-        </button>
-        <span>/</span>
-        <button className="table-link" type="button">
-          www
-        </button>
-        <div className="search-box compact">
-          <Search size={16} />
-          <input aria-label="搜索文件" placeholder="搜索文件名" />
+      {blocked && (
+        <div className="inline-alert danger" role="alert">
+          <AlertTriangle size={17} />
+          <span>{node.risk}，控制命令已禁用。</span>
+        </div>
+      )}
+      <div className="resource-grid">
+        <ResourceMeter icon={Cpu} label="CPU" value={node.cpu} suffix="%" />
+        <ResourceMeter icon={MemoryStick} label="内存" value={node.memory} suffix="%" />
+        <ResourceMeter icon={HardDrive} label="磁盘" value={node.disk} suffix="%" tone={node.disk > 70 ? "warning" : "info"} />
+        <ResourceMeter icon={Network} label="网络" value={node.network} />
+      </div>
+      <div className="detail-columns">
+        <div className="settings-list">
+          {node.systemInfo.map(([label, value]) => (
+            <SettingRow key={label} label={label} value={value} />
+          ))}
+        </div>
+        <div className="activity-list">
+          {node.activity.map((item) => (
+            <div key={item}>
+              <Clock3 size={15} />
+              <span>{item}</span>
+            </div>
+          ))}
         </div>
       </div>
-      <SimpleTable
-        headers={["名称", "路径", "大小/类型", "修改时间", "操作"]}
-        rows={files.map((file) => [
-          <span className="file-name">
-            <FolderOpen size={16} />
-            <strong>{file[0]}</strong>
-          </span>,
-          file[1],
-          file[2],
-          file[3],
-          <ActionLinks labels={["打开", "权限", "压缩", "删除"]} dangerLast />,
-        ])}
-      />
-      <TableFooter total={files.length} />
     </Panel>
   );
 }
 
-function TerminalView({ node }: { node: ServerNode }) {
+function ServicesPage({
+  notify,
+}: {
+  notify: (message: string, tone?: Tone) => void;
+}) {
+  const [selectedServiceName, setSelectedServiceName] = useState("app-web.service");
+  const selectedService =
+    services.find((service) => service.name === selectedServiceName) ?? services[0];
+
   return (
     <div className="split-layout equal">
       <Panel
-        title="终端"
-        description={`${node.name} · ${node.host}`}
+        title="systemd 服务"
+        description="运行状态、端口、健康检查和最近更新时间"
         actions={
           <>
-            <button className="tool-button" type="button">
-              断开
-            </button>
-            <button className="primary-button" type="button">
-              新建会话
-            </button>
+            <SearchBox label="搜索服务" placeholder="服务名 / 服务器" />
+            <ActionButton label="刷新" icon={RefreshCw} onAction={() => notify("服务状态已刷新", "success")} />
+            <ActionButton label="添加 unit" icon={Plus} primary onAction={() => notify("已打开添加 unit 流程", "info")} />
           </>
         }
       >
-        <div className="terminal-window" aria-label="终端输出">
-          <p>Last login: Wed Jun 17 10:43:20 from 10.0.0.5</p>
-          <p>root@sg-prod-01:~# systemctl status nginx --no-pager</p>
-          <p className="terminal-ok">active (running) since Wed 2026-06-17 09:31:05 CST</p>
-          <p>root@sg-prod-01:~# tail -f /var/log/stackpilot/agent.log</p>
-          <p className="terminal-cursor">等待输出...</p>
-        </div>
+        <SimpleTable
+          headers={["服务", "服务器", "状态", "端口", "健康", "更新时间", "操作"]}
+          rows={services.map((service) => [
+            <button className="row-title" type="button" onClick={() => setSelectedServiceName(service.name)}>
+              {service.name}
+            </button>,
+            service.node,
+            <ServiceBadge state={service.state} />,
+            service.port,
+            <HealthBadge health={service.health} />,
+            service.updatedAt,
+            <ActionMenu
+              actions={serviceActions(service)}
+              onAction={(label) => notify(`${service.name}：${label} 已记录审计`, label === "停止" ? "warning" : "success")}
+            />,
+          ])}
+        />
       </Panel>
 
-      <Panel title="会话" description="危险命令需要二次确认。">
-        <div className="settings-list">
-          <SettingRow label="当前用户" value="root" />
-          <SettingRow label="Shell" value="/bin/bash" />
-          <SettingRow label="审计 ID" value="AUD-2051" />
-          <SettingRow label="空闲断开" value="30 分钟" />
-        </div>
-      </Panel>
-    </div>
-  );
-}
-
-function Monitor({ node }: { node: ServerNode }) {
-  return (
-    <div className="stack">
       <Panel
-        title={`${node.name} 监控`}
-        description="采样间隔 15 秒。"
+        title="服务详情"
+        description={`${selectedService.node} · ${selectedService.environment}`}
         actions={
           <>
-            <SegmentedControl options={["近 1 小时", "6 小时", "24 小时"]} />
-            <button className="tool-button" type="button">
-              <ChevronDown size={16} />
-              eth0
-            </button>
+            <ActionButton label="查看日志" icon={Eye} onAction={() => notify("日志窗口已定位到最新输出", "info")} />
+            <ActionButton
+              label="停止"
+              icon={Square}
+              danger
+              confirm
+              disabled={selectedService.state !== "running"}
+              onAction={() => notify(`${selectedService.name} 已提交停止确认`, "warning")}
+            />
           </>
         }
       >
-        <div className="traffic-summary">
-          <Metric label="负载" value={node.load} />
-          <Metric label="CPU" value={`${node.cpu}%`} />
-          <Metric label="内存" value={`${node.memory}%`} />
-          <Metric label="磁盘" value={`${node.disk}%`} />
+        <div className="service-summary">
+          <MetricCell label="状态" value={serviceStateText(selectedService.state)} tone={serviceTone(selectedService.state)} />
+          <MetricCell label="端口" value={selectedService.port} tone="muted" />
+          <MetricCell label="健康" value={selectedService.health} tone={healthTone(selectedService.health)} />
         </div>
-        <div className="chart-grid">
-          <ChartCard title="CPU" color="blue" values={[22, 30, 28, 36, 34, 42]} />
-          <ChartCard
-            title="内存"
-            color="green"
-            values={[44, 48, 53, 58, 57, 61]}
-          />
-          <ChartCard
-            title="磁盘"
-            color="orange"
-            values={[66, 67, 68, 70, 72, 73]}
-          />
-          <ChartCard
-            title="网络"
-            color="blue"
-            unit="Mbps"
-            values={[18, 12, 24, 20, 31, 18]}
-          />
+        <div className="log-window" aria-label={`${selectedService.name} 日志`}>
+          {selectedService.log.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
         </div>
       </Panel>
     </div>
   );
 }
 
-function Services() {
-  return (
-    <Panel
-      title="systemd 服务"
-      description="失败服务优先处理，停止和重启会记录审计 ID。"
-      actions={
-        <>
-          <div className="search-box compact">
-            <Search size={16} />
-            <input aria-label="搜索服务" placeholder="服务名 / 主机" />
-          </div>
-          <button className="tool-button" type="button">
-            <RefreshCw size={16} />
-            刷新
-          </button>
-          <button className="primary-button" type="button">
-            <Plus size={16} />
-            添加 unit
-          </button>
-        </>
-      }
-    >
-      <SimpleTable
-        headers={["服务", "服务器", "状态", "类型", "最近动作", "操作"]}
-        rows={services.map((service) => [
-          <strong>{service.name}</strong>,
-          service.node,
-          <StateBadge state={service.state} />,
-          service.description,
-          service.lastAction,
-          <ActionLinks
-            labels={
-              service.state === "running"
-                ? ["重启", "日志", "停止", "更多"]
-                : ["启动", "日志", "更多"]
-            }
-            dangerIndex={service.state === "running" ? 2 : undefined}
-          />,
-        ])}
-      />
-      <TableFooter total={services.length} />
-    </Panel>
-  );
-}
+function FirewallPage({
+  rules,
+  setRules,
+  notify,
+}: {
+  rules: FirewallRule[];
+  setRules: (rules: FirewallRule[]) => void;
+  notify: (message: string, tone?: Tone) => void;
+}) {
+  const [draft, setDraft] = useState<FirewallDraft>(emptyFirewallDraft);
+  const [submitted, setSubmitted] = useState(false);
+  const [touched, setTouched] = useState<Partial<Record<keyof FirewallDraft, boolean>>>({});
+  const errors = validateFirewallDraft(draft);
 
-function Firewall() {
+  const showError = (field: keyof FirewallDraft) =>
+    Boolean((submitted || touched[field]) && errors[field]);
+
+  const updateDraft = (field: keyof FirewallDraft, value: string) => {
+    setDraft((current) => ({ ...current, [field]: value }) as FirewallDraft);
+  };
+
+  const submitRule = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitted(true);
+    if (Object.keys(errors).length > 0) {
+      notify("请修正防火墙规则表单", "danger");
+      return;
+    }
+
+    const nextRule: FirewallRule = {
+      id: `10${rules.length + 1}`,
+      node: "新加坡生产 01",
+      action: draft.action,
+      port: draft.port,
+      protocol: draft.protocol,
+      source: draft.source,
+      enabled: true,
+      highRisk: draft.source === "Anywhere" && (draft.port.includes("0-65535") || draft.port === "22"),
+      note: draft.note || "手动新增",
+    };
+    setRules([nextRule, ...rules]);
+    setDraft(emptyFirewallDraft);
+    setSubmitted(false);
+    setTouched({});
+    notify("规则已添加，审计 ID AUD-2060", "success");
+  };
+
   return (
     <div className="split-layout firewall-layout">
       <Panel
-        title="防火墙"
-        description="只开放必要端口，SSH 入口单独保护。"
+        title="防火墙规则"
+        description="高风险规则和禁用状态在列表中直接标识"
         actions={
           <>
-            <button className="tool-button" type="button">
-              导入
-            </button>
-            <button className="tool-button" type="button">
-              导出
-            </button>
-            <button className="primary-button" type="button">
-              <Plus size={16} />
-              添加端口
-            </button>
+            <ActionButton label="导入" onAction={() => notify("规则导入入口已打开", "info")} />
+            <ActionButton label="导出" onAction={() => notify("规则已导出", "success")} />
           </>
         }
       >
-        <div className="tabs-line" role="tablist" aria-label="防火墙分类">
-          <button className="active" type="button">
-            系统防火墙
-          </button>
-          <button type="button">SSH 管理</button>
-          <button type="button">端口规则</button>
-          <button type="button">日志</button>
-        </div>
-        <div className="safety-bar">
-          <Metric label="防火墙" value="开启" />
-          <Metric label="SSH 端口" value="22" />
-          <Metric label="放行规则" value="2" />
-          <Metric label="拒绝规则" value="1" />
+        <div className="summary-row">
+          <MetricCell label="开启规则" value={`${rules.filter((rule) => rule.enabled).length}`} tone="success" />
+          <MetricCell label="禁用规则" value={`${rules.filter((rule) => !rule.enabled).length}`} tone="muted" />
+          <MetricCell label="高风险" value={`${rules.filter((rule) => rule.highRisk).length}`} tone="warning" />
+          <MetricCell label="拒绝策略" value={`${rules.filter((rule) => rule.action === "deny").length}`} tone="danger" />
         </div>
         <SimpleTable
-          headers={["服务器", "动作", "端口", "协议", "来源", "备注", "操作"]}
-          rows={firewallRules.map((rule) => [
+          headers={["服务器", "策略", "端口", "协议", "来源", "状态", "备注", "操作"]}
+          rows={rules.map((rule) => [
             rule.node,
             <RuleAction action={rule.action} />,
-            rule.port,
+            <span className={rule.highRisk ? "risk-text" : undefined}>{rule.port}</span>,
             rule.protocol,
-            rule.from,
-            rule.note,
-            <ActionLinks labels={["编辑", "删除"]} dangerLast />,
+            rule.source,
+            <StatusPill tone={rule.enabled ? "success" : "muted"}>
+              {rule.enabled ? "启用" : "禁用"}
+            </StatusPill>,
+            rule.highRisk ? (
+              <span className="risk-text">高风险 · {rule.note}</span>
+            ) : (
+              rule.note
+            ),
+            <ActionMenu
+              actions={[
+                { label: "编辑" },
+                { label: rule.enabled ? "禁用" : "启用", confirm: rule.enabled },
+                { label: "删除", danger: true, confirm: true },
+              ]}
+              onAction={(label) => notify(`规则 ${rule.id}：${label} 已记录`, label === "删除" ? "warning" : "success")}
+            />,
           ])}
         />
-        <TableFooter total={firewallRules.length} />
       </Panel>
 
-      <Panel title="添加端口" description="22/tcp 已锁定，避免误断 SSH。">
-        <form className="rule-form">
-          <label>
-            动作
-            <select defaultValue="allow">
+      <Panel title="新增规则" description="保存前校验端口、协议和来源">
+        <form className="rule-form" onSubmit={submitRule}>
+          <FormField label="策略">
+            <select
+              value={draft.action}
+              onBlur={() => setTouched((value) => ({ ...value, action: true }))}
+              onChange={(event) => updateDraft("action", event.currentTarget.value)}
+            >
               <option value="allow">放行</option>
               <option value="deny">拒绝</option>
             </select>
-          </label>
-          <label>
-            端口
-            <input defaultValue="443" />
-          </label>
-          <label>
-            协议
-            <select defaultValue="tcp">
-              <option>tcp</option>
-              <option>udp</option>
+          </FormField>
+          <FormField label="端口" error={showError("port") ? errors.port : undefined}>
+            <input
+              value={draft.port}
+              inputMode="numeric"
+              aria-invalid={showError("port")}
+              onBlur={() => setTouched((value) => ({ ...value, port: true }))}
+              onChange={(event) => updateDraft("port", event.currentTarget.value)}
+            />
+          </FormField>
+          <FormField label="协议">
+            <select
+              value={draft.protocol}
+              onBlur={() => setTouched((value) => ({ ...value, protocol: true }))}
+              onChange={(event) => updateDraft("protocol", event.currentTarget.value)}
+            >
+              <option value="tcp">tcp</option>
+              <option value="udp">udp</option>
             </select>
-          </label>
-          <label>
-            来源
-            <input defaultValue="Anywhere" />
-          </label>
-          <div className="warning-callout">
+          </FormField>
+          <FormField label="来源" error={showError("source") ? errors.source : undefined}>
+            <input
+              value={draft.source}
+              aria-invalid={showError("source")}
+              onBlur={() => setTouched((value) => ({ ...value, source: true }))}
+              onChange={(event) => updateDraft("source", event.currentTarget.value)}
+            />
+          </FormField>
+          <FormField label="备注">
+            <input
+              value={draft.note}
+              placeholder="可选"
+              onChange={(event) => updateDraft("note", event.currentTarget.value)}
+            />
+          </FormField>
+          <div className="inline-alert warning">
             <Lock size={17} />
-            保存后生成审计 ID，可在日志页追踪。
+            <span>保存后生成审计记录，22/tcp 与全端口规则会标为高风险。</span>
           </div>
-          <button className="primary-button" type="button">
-            添加规则
-          </button>
+          <ActionButton label="添加规则" icon={Plus} primary submit />
         </form>
       </Panel>
     </div>
   );
 }
 
-function Deployments() {
+function DeploymentsPage({
+  notify,
+}: {
+  notify: (message: string, tone?: Tone) => void;
+}) {
+  const [selectedProject, setSelectedProject] = useState("customer-portal");
+  const selected =
+    deployments.find((deployment) => deployment.project === selectedProject) ??
+    deployments[0];
+
   return (
     <div className="split-layout equal">
       <Panel
-        title="项目"
-        description="发布前拉取代码，失败会保留完整日志。"
+        title="发布项目"
+        description="失败记录保留日志与回滚入口"
         actions={
-          <button className="primary-button" type="button">
-            <UploadCloud size={16} />
-            新建项目
-          </button>
+          <ActionButton
+            label="新建发布"
+            icon={UploadCloud}
+            primary
+            onAction={() => notify("已打开新建发布流程", "info")}
+          />
         }
       >
-        <DeploymentTable />
+        <SimpleTable
+          headers={["项目", "服务器", "版本", "状态", "操作者", "更新时间", "操作"]}
+          rows={deployments.map((deployment) => [
+            <button
+              className="row-title"
+              type="button"
+              onClick={() => setSelectedProject(deployment.project)}
+            >
+              {deployment.project}
+            </button>,
+            deployment.node,
+            deployment.version,
+            <DeploymentBadge state={deployment.state} />,
+            deployment.operator,
+            deployment.updatedAt,
+            <ActionMenu
+              actions={[
+                { label: "详情", icon: Eye },
+                { label: "重试", icon: Play, disabled: deployment.state === "success" },
+                { label: "回滚", danger: true, confirm: true, disabled: deployment.state === "running" },
+              ]}
+              onAction={(label) => notify(`${deployment.project}：${label} 已记录`, label === "回滚" ? "warning" : "success")}
+            />,
+          ])}
+        />
       </Panel>
 
-      <Panel title="发布日志" description="customer-portal · release">
-        <div className="log-window" aria-label="发布日志">
-          {releaseLogs.map((log) => (
-            <p key={log}>{log}</p>
+      <Panel
+        title="发布详情"
+        description={`${selected.project} · ${selected.branch} · ${selected.commit}`}
+        actions={
+          <>
+            <ActionButton label="查看日志" icon={Eye} onAction={() => notify("已定位发布日志", "info")} />
+            <ActionButton
+              label="回滚"
+              icon={RotateCcw}
+              danger
+              confirm
+              disabled={selected.state === "running"}
+              onAction={() => notify(`${selected.project} 已提交回滚确认`, "warning")}
+            />
+          </>
+        }
+      >
+        {selected.failure && (
+          <div className="inline-alert danger" role="alert">
+            <AlertTriangle size={17} />
+            <span>{selected.failure}</span>
+          </div>
+        )}
+        <ol className="step-list">
+          {selected.steps.map((step) => (
+            <li key={step.label} className={step.state}>
+              <span>{step.label}</span>
+              <StatusPill tone={stepTone(step.state)}>{stepText(step.state)}</StatusPill>
+            </li>
           ))}
-          <p className="log-cursor">10:43:15  等待健康检查返回...</p>
+        </ol>
+        <div className="log-window" aria-label={`${selected.project} 发布日志`}>
+          {selected.logs.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
         </div>
       </Panel>
     </div>
   );
 }
 
-function AuditLog() {
+function AuditPage() {
+  const [keyword, setKeyword] = useState("");
+  const [resultFilter, setResultFilter] = useState<"全部" | AuditResult>("全部");
+  const [selectedAuditId, setSelectedAuditId] = useState(audits[0].id);
+  const filteredAudits = audits.filter((audit) => {
+    const matchesResult = resultFilter === "全部" || audit.result === resultFilter;
+    const matchesKeyword = [audit.id, audit.user, audit.target, audit.action, audit.source]
+      .join(" ")
+      .toLowerCase()
+      .includes(keyword.trim().toLowerCase());
+    return matchesResult && matchesKeyword;
+  });
+  const selected = audits.find((audit) => audit.id === selectedAuditId) ?? audits[0];
+
   return (
-    <Panel
-      title="审计日志"
-      description="按服务器、动作、结果筛选。"
-      actions={<SegmentedControl options={["今天", "7 天", "30 天"]} />}
-    >
-      <div className="filter-row">
-        <div className="search-box compact">
-          <Search size={16} />
-          <input aria-label="搜索操作记录" placeholder="动作 / 服务器 / ID" />
+    <div className="split-layout audit-layout">
+      <Panel
+        title="审计日志"
+        description="操作人、对象、结果、来源和上下文"
+        actions={
+          <>
+            <SearchBox
+              label="搜索审计"
+              placeholder="动作 / 对象 / ID"
+              value={keyword}
+              onChange={setKeyword}
+            />
+            <select
+              className="control-select"
+              aria-label="按结果筛选"
+              value={resultFilter}
+              onChange={(event) => setResultFilter(event.currentTarget.value as "全部" | AuditResult)}
+            >
+              <option>全部</option>
+              <option>成功</option>
+              <option>失败</option>
+              <option>等待确认</option>
+            </select>
+          </>
+        }
+      >
+        <SimpleTable
+          headers={["时间", "操作人", "动作", "对象", "结果", "来源", "操作"]}
+          emptyMessage="没有匹配的审计记录"
+          rows={filteredAudits.map((audit) => [
+            audit.time,
+            audit.user,
+            audit.action,
+            audit.target,
+            <AuditBadge result={audit.result} />,
+            audit.source,
+            <button className="text-button" type="button" onClick={() => setSelectedAuditId(audit.id)}>
+              详情
+            </button>,
+          ])}
+        />
+      </Panel>
+
+      <Panel title="审计详情" description={selected.id}>
+        <div className="settings-list">
+          <SettingRow label="操作人" value={selected.user} />
+          <SettingRow label="目标对象" value={selected.target} />
+          <SettingRow label="操作类型" value={selected.action} />
+          <SettingRow label="来源" value={selected.source} />
+          <SettingRow label="结果" value={selected.result} />
+          <SettingRow label="上下文" value={selected.detail} />
         </div>
-        <button className="tool-button" type="button">
-          <ChevronDown size={16} />
-          结果
-        </button>
-        <button className="tool-button" type="button">
-          <ChevronDown size={16} />
-          主机
-        </button>
+      </Panel>
+    </div>
+  );
+}
+
+function SettingsPage({
+  theme,
+  setTheme,
+}: {
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+}) {
+  const [settings, setSettings] = useState(defaultSettings);
+  const [baseline, setBaseline] = useState(defaultSettings);
+  const [feedback, setFeedback] = useState<Toast | null>(null);
+  const dirty = JSON.stringify(settings) !== JSON.stringify(baseline);
+  const centerUrlInvalid = !/^https:\/\/[^\s]+$/.test(settings.centerUrl);
+
+  const save = () => {
+    if (centerUrlInvalid) {
+      setFeedback({ tone: "danger", message: "中心地址必须使用 https://" });
+      return;
+    }
+    setBaseline(settings);
+    setFeedback({ tone: "success", message: "设置已保存，审计 ID AUD-2061" });
+  };
+
+  return (
+    <div className="settings-page">
+      {feedback && (
+        <div className={`inline-alert ${feedback.tone}`} role="status">
+          <CheckCircle2 size={17} />
+          <span>{feedback.message}</span>
+        </div>
+      )}
+
+      <div className="settings-grid">
+        <Panel title="基础配置" description="中心端地址与 token 策略">
+          <div className="form-grid">
+            <FormField label="中心地址" error={centerUrlInvalid ? "必须是 https 地址" : undefined}>
+              <input
+                value={settings.centerUrl}
+                aria-invalid={centerUrlInvalid}
+                onChange={(event) =>
+                  setSettings((value) => ({ ...value, centerUrl: event.currentTarget.value }))
+                }
+              />
+            </FormField>
+            <FormField label="一次性 token 过期时间">
+              <input
+                value={settings.tokenTtl}
+                inputMode="numeric"
+                onChange={(event) =>
+                  setSettings((value) => ({ ...value, tokenTtl: event.currentTarget.value }))
+                }
+              />
+            </FormField>
+            <FormField label="升级通道">
+              <select
+                value={settings.upgradeChannel}
+                onChange={(event) =>
+                  setSettings((value) => ({ ...value, upgradeChannel: event.currentTarget.value }))
+                }
+              >
+                <option value="stable">stable</option>
+                <option value="preview">preview</option>
+              </select>
+            </FormField>
+          </div>
+        </Panel>
+
+        <Panel title="主题偏好" description="默认浅色，暗色可选">
+          <div className="theme-choice" role="group" aria-label="主题偏好">
+            <button
+              className={theme === "light" ? "selected" : ""}
+              type="button"
+              onClick={() => setTheme("light")}
+            >
+              <Sun size={17} />
+              浅色
+            </button>
+            <button
+              className={theme === "dark" ? "selected" : ""}
+              type="button"
+              onClick={() => setTheme("dark")}
+            >
+              <Moon size={17} />
+              暗色
+            </button>
+          </div>
+          <div className="settings-list compact">
+            <SettingRow label="当前主题" value={theme === "light" ? "浅色" : "暗色"} />
+            <SettingRow label="层级策略" value="同源色阶" />
+          </div>
+        </Panel>
+
+        <Panel title="通知偏好" description="只保留可执行事件">
+          <div className="checkbox-list">
+            <CheckboxRow
+              icon={UploadCloud}
+              label="发布失败"
+              checked={settings.notifyFailedDeploy}
+              onChange={(checked) =>
+                setSettings((value) => ({ ...value, notifyFailedDeploy: checked }))
+              }
+            />
+            <CheckboxRow
+              icon={Server}
+              label="节点离线"
+              checked={settings.notifyOfflineNode}
+              onChange={(checked) =>
+                setSettings((value) => ({ ...value, notifyOfflineNode: checked }))
+              }
+            />
+            <CheckboxRow
+              icon={Mail}
+              label="Webhook 通知"
+              checked={settings.notifyWebhook}
+              onChange={(checked) =>
+                setSettings((value) => ({ ...value, notifyWebhook: checked }))
+              }
+            />
+          </div>
+        </Panel>
+
+        <Panel title="安全配置" description="登录保护和命令审计">
+          <div className="checkbox-list">
+            <CheckboxRow
+              icon={KeyRound}
+              label="登录保护"
+              checked={settings.loginProtection}
+              onChange={(checked) =>
+                setSettings((value) => ({ ...value, loginProtection: checked }))
+              }
+            />
+            <CheckboxRow
+              icon={ClipboardList}
+              label="命令审计"
+              checked={settings.commandAudit}
+              onChange={(checked) =>
+                setSettings((value) => ({ ...value, commandAudit: checked }))
+              }
+            />
+          </div>
+        </Panel>
       </div>
-      <SimpleTable
-        headers={["时间", "账号", "服务器", "动作", "结果", "详情"]}
-        rows={audits.map((audit) => [
-          audit.time,
-          audit.user,
-          audit.node,
-          audit.action,
-          <AuditBadge result={audit.result} />,
-          audit.detail,
-        ])}
-      />
-      <TableFooter total={audits.length} />
-    </Panel>
-  );
-}
 
-function Schedules() {
-  return (
-    <Panel
-      title="计划任务"
-      description="备份、清理、证书检查和发布同步。"
-      actions={
-        <button className="primary-button" type="button">
-          <Plus size={16} />
-          添加任务
-        </button>
-      }
-    >
-      <SimpleTable
-        headers={["任务", "周期", "主机", "结果", "最近执行", "操作"]}
-        rows={schedules.map((schedule) => [
-          <strong>{schedule[0]}</strong>,
-          schedule[1],
-          schedule[2],
-          <TextStatus state={schedule[3] === "成功" ? "running" : "queued"}>
-            {schedule[3]}
-          </TextStatus>,
-          schedule[4],
-          <ActionLinks labels={["执行", "日志", "编辑", "删除"]} dangerLast />,
-        ])}
-      />
-      <TableFooter total={schedules.length} />
-    </Panel>
-  );
-}
-
-function SettingsPage({ theme }: { theme: Theme }) {
-  return (
-    <div className="settings-grid">
-      <Panel title="面板入口" description="中心端 panel-sg-01">
-        <div className="settings-list">
-          <SettingRow label="访问地址" value="https://panel.stackpilot.local" />
-          <SettingRow label="绑定账号" value="admin" />
-          <SettingRow label="登录保护" value="开启" />
-          <SettingRow label="当前主题" value={theme === "light" ? "浅色" : "暗色"} />
-        </div>
-      </Panel>
-      <Panel title="Agent 注册" description="一次性 token 默认 30 分钟过期。">
-        <div className="settings-list">
-          <SettingRow label="注册通道" value="stable" />
-          <SettingRow label="最新 Agent" value="v0.1.0" />
-          <SettingRow label="心跳超时" value="90 秒" />
-          <SettingRow label="命令审计" value="开启" />
-        </div>
-      </Panel>
-      <Panel title="数据与备份" description="不保留无用历史。">
-        <div className="settings-list">
-          <SettingRow label="指标数据" value="30 天" />
-          <SettingRow label="发布记录" value="20 次/项目" />
-          <SettingRow label="备份目录" value="/data/backup" />
-          <SettingRow label="升级通道" value="stable" />
-        </div>
-      </Panel>
+      <div className="settings-actions">
+        <ActionButton label="保存" icon={Save} primary disabled={!dirty} onAction={save} />
+        <ActionButton
+          label="取消"
+          disabled={!dirty}
+          onAction={() => {
+            setSettings(baseline);
+            setFeedback({ tone: "muted", message: "已恢复到上次保存状态" });
+          }}
+        />
+        <ActionButton
+          label="重置"
+          icon={RotateCcw}
+          danger
+          confirm
+          onAction={() => {
+            setSettings(defaultSettings);
+            setBaseline(defaultSettings);
+            setFeedback({ tone: "warning", message: "设置已重置为默认值" });
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -1326,8 +1566,8 @@ function Panel({
 }: {
   title: string;
   description?: string;
-  actions?: React.ReactNode;
-  children: React.ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section className="panel">
@@ -1343,113 +1583,105 @@ function Panel({
   );
 }
 
-function PanelTool({
-  label,
-  icon: Icon,
-}: {
-  label: string;
-  icon?: typeof LayoutDashboard;
-}) {
-  return (
-    <button className="tool-button" type="button">
-      {Icon && <Icon size={16} />}
-      {label}
-    </button>
-  );
-}
-
 function ServerTable({
-  nodes,
+  nodes: tableNodes,
   compact = false,
+  selectedId,
+  onSelect,
+  onAction,
 }: {
   nodes: ServerNode[];
   compact?: boolean;
+  selectedId?: string;
+  onSelect: (id: string) => void;
+  onAction: (message: string, tone?: Tone) => void;
 }) {
+  if (tableNodes.length === 0) {
+    return <EmptyState title="没有匹配的服务器" detail="调整搜索条件后再试。" />;
+  }
+
   return (
     <div className="table-wrap">
       <table className={compact ? "server-table compact" : "server-table"}>
         <thead>
           <tr>
-            <th>
-              <input aria-label="选择全部主机" type="checkbox" />
-            </th>
             <th>名称 / IP</th>
             <th>状态</th>
             <th>系统</th>
+            <th>分组</th>
             <th>负载</th>
-            <th>资源</th>
+            <th>CPU / 内存</th>
             <th>磁盘</th>
-            <th>Agent</th>
-            <th>最后连接</th>
+            <th>最近连接</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody>
-          {nodes.map((node) => (
-            <tr key={node.id}>
-              <td>
-                <input aria-label={`选择 ${node.name}`} type="checkbox" />
-              </td>
-              <td>
-                <div className="node-cell">
-                  <strong>{node.name}</strong>
-                  <span>{node.host}</span>
-                </div>
-              </td>
-              <td>
-                <NodeBadge state={node.state} label={node.risk} />
-              </td>
-              <td>{node.os}</td>
-              <td className="numeric">{node.load}</td>
-              <td>
-                <ResourceStack cpu={node.cpu} memory={node.memory} />
-              </td>
-              <td>
-                <Usage value={node.disk} />
-              </td>
-              <td>{node.agent}</td>
-              <td>{node.heartbeat}</td>
-              <td>
-                <ActionLinks labels={["终端", "文件", "监控", "更多"]} />
-              </td>
-            </tr>
-          ))}
+          {tableNodes.map((node) => {
+            const blocked = node.state === "offline" || node.state === "permission";
+            return (
+              <tr key={node.id} className={selectedId === node.id ? "selected-row" : undefined}>
+                <td>
+                  <div className="node-cell">
+                    <strong>{node.name}</strong>
+                    <span>{node.host}</span>
+                    <div className="tag-row">
+                      {node.tags.map((tag) => (
+                        <em key={tag}>{tag}</em>
+                      ))}
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <NodeBadge state={node.state} label={node.risk} />
+                </td>
+                <td>{node.os}</td>
+                <td>{node.group}</td>
+                <td className="numeric">{node.load}</td>
+                <td>
+                  <ResourceStack cpu={node.cpu} memory={node.memory} />
+                </td>
+                <td>
+                  <Usage value={node.disk} />
+                </td>
+                <td>{node.heartbeat}</td>
+                <td>
+                  <ActionMenu
+                    actions={[
+                      { label: "详情", icon: Eye },
+                      { label: "监控", icon: Activity, disabled: blocked },
+                      { label: "重启", icon: Power, danger: true, confirm: true, disabled: blocked, title: "离线或权限不足时不可执行" },
+                    ]}
+                    onAction={(label) => {
+                      if (label === "详情" || label === "监控") {
+                        onSelect(node.id);
+                      }
+                      onAction(`${node.name}：${label} 已处理`, label === "重启" ? "warning" : "info");
+                    }}
+                  />
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function DeploymentTable() {
-  return (
-    <>
-      <SimpleTable
-        headers={["项目", "主机", "仓库", "分支", "类型", "状态", "提交", "耗时", "更新时间", "操作"]}
-        rows={deployments.map((deployment) => [
-          <strong>{deployment.project}</strong>,
-          deployment.node,
-          deployment.repo,
-          deployment.branch,
-          deployment.profile,
-          <StateBadge state={deployment.state} />,
-          deployment.commit,
-          deployment.duration,
-          deployment.updatedAt,
-          <ActionLinks labels={["发布", "日志", "回滚", "更多"]} dangerIndex={2} />,
-        ])}
-      />
-      <TableFooter total={deployments.length} />
-    </>
-  );
-}
-
 function SimpleTable({
   headers,
   rows,
+  emptyMessage = "暂无数据",
 }: {
   headers: string[];
-  rows: React.ReactNode[][];
+  rows: ReactNode[][];
+  emptyMessage?: string;
 }) {
+  if (rows.length === 0) {
+    return <EmptyState title={emptyMessage} />;
+  }
+
   return (
     <div className="table-wrap">
       <table>
@@ -1474,51 +1706,187 @@ function SimpleTable({
   );
 }
 
-function TableFooter({ total }: { total: number }) {
+function ActionMenu({
+  actions,
+  onAction,
+}: {
+  actions: RowAction[];
+  onAction: (label: string) => void;
+}) {
   return (
-    <div className="table-footer">
-      <span>共 {total} 条</span>
-      <div>
-        <span>10 条/页</span>
-        <strong>1</strong>
-      </div>
+    <div className="action-menu">
+      {actions.map((action) => (
+        <ActionButton
+          key={action.label}
+          label={action.label}
+          icon={action.icon ?? (action.label === "更多" ? MoreHorizontal : undefined)}
+          compact
+          danger={action.danger}
+          confirm={action.confirm}
+          disabled={action.disabled}
+          title={action.title}
+          onAction={() => onAction(action.label)}
+        />
+      ))}
     </div>
   );
 }
 
-function ActionLinks({
-  labels,
-  dangerLast = false,
-  dangerIndex,
+function ActionButton({
+  label,
+  icon: Icon,
+  primary = false,
+  danger = false,
+  compact = false,
+  confirm = false,
+  disabled = false,
+  submit = false,
+  title,
+  onAction,
 }: {
-  labels: string[];
-  dangerLast?: boolean;
-  dangerIndex?: number;
+  label: string;
+  icon?: LucideIcon;
+  primary?: boolean;
+  danger?: boolean;
+  compact?: boolean;
+  confirm?: boolean;
+  disabled?: boolean;
+  submit?: boolean;
+  title?: string;
+  onAction?: () => void;
+}) {
+  const [armed, setArmed] = useState(false);
+  const buttonLabel = confirm && armed ? `确认${label}` : label;
+
+  return (
+    <button
+      className={[
+        "action-button",
+        primary ? "primary" : "",
+        danger ? "danger" : "",
+        compact ? "compact" : "",
+        armed ? "armed" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      type={submit ? "submit" : "button"}
+      disabled={disabled}
+      title={title}
+      aria-label={buttonLabel}
+      onClick={() => {
+        if (submit) {
+          return;
+        }
+        if (confirm && !armed) {
+          setArmed(true);
+          return;
+        }
+        setArmed(false);
+        onAction?.();
+      }}
+    >
+      {Icon && <Icon size={compact ? 15 : 16} />}
+      <span>{buttonLabel}</span>
+    </button>
+  );
+}
+
+function IconButton({
+  label,
+  icon: Icon,
+  onAction,
+}: {
+  label: string;
+  icon: LucideIcon;
+  onAction: () => void;
 }) {
   return (
-    <div className="action-links">
-      {labels.map((label, index) => {
-        const isDanger = dangerLast
-          ? index === labels.length - 1
-          : dangerIndex === index;
-        return (
-          <span key={label} className="action-link-wrap">
-            <button
-              className={`table-link ${isDanger ? "danger" : ""}`}
-              type="button"
-            >
-              {label === "更多" ? <MoreHorizontal size={15} /> : label}
-            </button>
-          </span>
-        );
-      })}
-    </div>
+    <button className="icon-button" type="button" aria-label={label} title={label} onClick={onAction}>
+      <Icon size={18} />
+    </button>
+  );
+}
+
+function SearchBox({
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  label: string;
+  placeholder: string;
+  value?: string;
+  onChange?: (value: string) => void;
+}) {
+  return (
+    <label className="search-box">
+      <Search size={16} />
+      <span className="sr-only">{label}</span>
+      <input
+        value={value ?? ""}
+        placeholder={placeholder}
+        onChange={(event) => onChange?.(event.currentTarget.value)}
+      />
+    </label>
+  );
+}
+
+function MetricCell({
+  label,
+  value,
+  tone = "muted",
+}: {
+  label: string;
+  value: string;
+  tone?: Tone;
+}) {
+  return (
+    <article className={`metric-cell ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </article>
+  );
+}
+
+function ResourceMeter({
+  icon: Icon,
+  label,
+  value,
+  suffix = "",
+  tone = "info",
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: number | string;
+  suffix?: string;
+  tone?: Tone;
+}) {
+  const numericValue = typeof value === "number" ? value : 0;
+  return (
+    <article className={`resource-meter ${tone}`}>
+      <div
+        className="meter-ring"
+        style={{ "--meter": `${numericValue * 3.6}deg` } as CSSProperties}
+        aria-hidden="true"
+      >
+        <span>
+          <Icon size={17} />
+        </span>
+      </div>
+      <div>
+        <span>{label}</span>
+        <strong>
+          {value}
+          {suffix}
+        </strong>
+      </div>
+    </article>
   );
 }
 
 function Usage({ value }: { value: number }) {
   return (
-    <div className="usage">
+    <div className="usage" aria-label={`使用率 ${value || 0}%`}>
       <span>{value ? `${value}%` : "-"}</span>
       <div className="usage-track" aria-hidden="true">
         <i style={{ width: `${value}%` }} />
@@ -1536,59 +1904,16 @@ function ResourceStack({ cpu, memory }: { cpu: number; memory: number }) {
   );
 }
 
-function ResourceMeter({
-  icon: Icon,
-  label,
-  value,
-  detail,
-  percent,
-  tone = "default",
-}: {
-  icon: typeof LayoutDashboard;
-  label: string;
-  value: string;
-  detail: string;
-  percent: number;
-  tone?: "default" | "warning";
-}) {
-  return (
-    <article
-      className={`resource-meter ${tone}`}
-      style={{ "--value": `${percent * 3.6}deg` } as React.CSSProperties}
-    >
-      <div className="meter-ring" aria-hidden="true">
-        <span>
-          <Icon size={18} />
-        </span>
-      </div>
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-        <em>{detail}</em>
-      </div>
-    </article>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function ChartCard({
+function ChartLine({
   title,
   values,
-  color,
   unit = "%",
+  tone,
 }: {
   title: string;
   values: number[];
-  color: string;
   unit?: string;
+  tone: Tone;
 }) {
   const points = values
     .map((value, index) => {
@@ -1599,45 +1924,18 @@ function ChartCard({
     .join(" ");
 
   return (
-    <article className="chart-card">
-      <div className="chart-title">
+    <article className={`chart-line ${tone}`}>
+      <div>
         <strong>{title}</strong>
         <span>
           {values.at(-1)}
           {unit}
         </span>
       </div>
-      <svg
-        className={`line-chart ${color}`}
-        viewBox="0 0 100 100"
-        role="img"
-        aria-label={`${title} 趋势图`}
-        preserveAspectRatio="none"
-      >
+      <svg viewBox="0 0 100 100" role="img" aria-label={`${title} 趋势图`} preserveAspectRatio="none">
         <polyline points={points} fill="none" vectorEffect="non-scaling-stroke" />
       </svg>
     </article>
-  );
-}
-
-function SoftwareList() {
-  return (
-    <div className="software-list">
-      {softwareList.map(([name, version, state, port]) => (
-        <article className="software-row" key={name}>
-          <Package size={17} />
-          <div>
-            <strong>{name}</strong>
-            <span>
-              {version} · {port}
-            </span>
-          </div>
-          <TextStatus state={state === "未安装" ? "inactive" : "running"}>
-            {state}
-          </TextStatus>
-        </article>
-      ))}
-    </div>
   );
 }
 
@@ -1646,114 +1944,131 @@ function TaskList() {
     <div className="task-list">
       {queueTasks.map((task) => (
         <article className="task-item" key={task.id}>
-          <StateDot state={task.state} />
+          <span className={`state-dot ${task.state}`} aria-hidden="true" />
           <div>
             <strong>{task.title}</strong>
-            <p>
-              {task.node} · {task.detail}
-            </p>
+            <p>{task.target} · {task.detail}</p>
           </div>
-          <span>{task.time}</span>
+          <em>{task.time}</em>
         </article>
       ))}
     </div>
   );
 }
 
-function StateDot({ state }: { state: TaskState }) {
-  return (
-    <span
-      className={`state-dot ${state}`}
-      aria-label={
-        state === "running" ? "执行中" : state === "waiting" ? "等待" : "失败"
-      }
-      role="img"
-    />
-  );
-}
-
 function AuditMiniList() {
   return (
     <div className="audit-mini-list">
-      {audits.slice(0, 3).map((audit) => (
-        <div key={audit.time}>
-          <span>{audit.time}</span>
+      {audits.slice(0, 4).map((audit) => (
+        <article key={audit.id}>
+          <span>{audit.time} · {audit.user}</span>
           <strong>{audit.action}</strong>
           <p>{audit.detail}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function SegmentedControl({ options }: { options: string[] }) {
-  return (
-    <div className="segmented" role="group" aria-label="切换范围">
-      {options.map((option, index) => (
-        <button
-          className={index === 0 ? "selected" : ""}
-          key={option}
-          type="button"
-        >
-          {option}
-        </button>
+        </article>
       ))}
     </div>
   );
 }
 
 function NodeBadge({ state, label }: { state: NodeState; label: string }) {
-  const text = {
-    online: "在线",
-    offline: "离线",
-    warning: "告警",
-    initializing: "初始化",
-  }[state];
-
+  const map: Record<NodeState, { text: string; tone: Tone }> = {
+    online: { text: "在线", tone: label === "正常" ? "success" : "warning" },
+    offline: { text: "离线", tone: "danger" },
+    warning: { text: "告警", tone: "warning" },
+    permission: { text: "权限不足", tone: "danger" },
+  };
+  const item = map[state];
   return (
-    <span className={`node-status ${state}`}>
+    <span className={`node-badge ${item.tone}`}>
       <i aria-hidden="true" />
-      <span>{text}</span>
+      <span>{item.text}</span>
       {label !== "正常" && <em>{label}</em>}
     </span>
   );
 }
 
-function StateBadge({ state }: { state: ServiceState | ReleaseState }) {
-  const map: Record<ServiceState | ReleaseState, string> = {
-    running: "运行中",
-    failed: "失败",
-    inactive: "未运行",
-    success: "成功",
-    queued: "排队中",
+function ServiceBadge({ state }: { state: ServiceState }) {
+  return <StatusPill tone={serviceTone(state)}>{serviceStateText(state)}</StatusPill>;
+}
+
+function DeploymentBadge({ state }: { state: ReleaseState }) {
+  const map: Record<ReleaseState, { text: string; tone: Tone }> = {
+    success: { text: "成功", tone: "success" },
+    running: { text: "发布中", tone: "warning" },
+    failed: { text: "失败", tone: "danger" },
+    rollback: { text: "回滚中", tone: "warning" },
+    queued: { text: "排队中", tone: "muted" },
   };
-
-  return <TextStatus state={state}>{map[state]}</TextStatus>;
+  return <StatusPill tone={map[state].tone}>{map[state].text}</StatusPill>;
 }
 
-function TextStatus({
-  state,
-  children,
-}: {
-  state: ServiceState | ReleaseState;
-  children: React.ReactNode;
-}) {
-  return <span className={`text-status ${state}`}>{children}</span>;
-}
-
-function RuleAction({ action }: { action: "allow" | "deny" }) {
-  return (
-    <span className={`rule-action ${action}`}>
-      {action === "allow" ? "放行" : "拒绝"}
-    </span>
-  );
+function HealthBadge({ health }: { health: SystemService["health"] }) {
+  return <StatusPill tone={healthTone(health)}>{health}</StatusPill>;
 }
 
 function AuditBadge({ result }: { result: AuditResult }) {
-  const className =
-    result === "成功" ? "success" : result === "失败" ? "failed" : "pending";
+  const tone: Tone = result === "成功" ? "success" : result === "失败" ? "danger" : "warning";
+  return <StatusPill tone={tone}>{result}</StatusPill>;
+}
 
-  return <span className={`audit-badge ${className}`}>{result}</span>;
+function StatusPill({
+  tone,
+  children,
+}: {
+  tone: Tone;
+  children: ReactNode;
+}) {
+  return <span className={`status-pill ${tone}`}>{children}</span>;
+}
+
+function RuleAction({ action }: { action: FirewallRule["action"] }) {
+  return (
+    <StatusPill tone={action === "allow" ? "success" : "danger"}>
+      {action === "allow" ? "放行" : "拒绝"}
+    </StatusPill>
+  );
+}
+
+function FormField({
+  label,
+  error,
+  children,
+}: {
+  label: string;
+  error?: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="form-field">
+      <span>{label}</span>
+      {children}
+      {error && <em role="alert">{error}</em>}
+    </label>
+  );
+}
+
+function CheckboxRow({
+  icon: Icon,
+  label,
+  checked,
+  onChange,
+}: {
+  icon: LucideIcon;
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="checkbox-row">
+      <Icon size={17} />
+      <span>{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+      />
+    </label>
+  );
 }
 
 function SettingRow({ label, value }: { label: string; value: string }) {
@@ -1765,8 +2080,112 @@ function SettingRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function EmptyState({ title, detail }: { title: string; detail?: string }) {
+  return (
+    <div className="empty-state">
+      <ClipboardList size={22} />
+      <strong>{title}</strong>
+      {detail && <span>{detail}</span>}
+    </div>
+  );
+}
+
+function validateFirewallDraft(draft: FirewallDraft) {
+  const errors: Partial<Record<keyof FirewallDraft, string>> = {};
+  const portParts = draft.port
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (portParts.length === 0) {
+    errors.port = "端口必填";
+  } else if (
+    !portParts.every((part) => {
+      if (part.includes("-")) {
+        const [start, end] = part.split("-").map(Number);
+        return Number.isInteger(start) && Number.isInteger(end) && start >= 1 && end <= 65535 && start <= end;
+      }
+      const value = Number(part);
+      return Number.isInteger(value) && value >= 1 && value <= 65535;
+    })
+  ) {
+    errors.port = "端口范围必须在 1-65535";
+  }
+
+  if (!draft.source.trim()) {
+    errors.source = "来源必填";
+  }
+
+  return errors;
+}
+
+function serviceActions(service: SystemService): RowAction[] {
+  if (service.state === "running") {
+    return [
+      { label: "重启", icon: RefreshCw, confirm: true },
+      { label: "日志", icon: Eye },
+      { label: "停止", icon: Square, danger: true, confirm: true },
+    ];
+  }
+  if (service.state === "deploying") {
+    return [
+      { label: "日志", icon: Eye },
+      { label: "停止", icon: Square, danger: true, confirm: true },
+    ];
+  }
+  return [
+    { label: "启动", icon: Play },
+    { label: "日志", icon: Eye },
+  ];
+}
+
+function serviceStateText(state: ServiceState) {
+  return {
+    running: "运行中",
+    stopped: "已停止",
+    failed: "异常",
+    deploying: "部署中",
+  }[state];
+}
+
+function serviceTone(state: ServiceState): Tone {
+  return {
+    running: "success",
+    stopped: "muted",
+    failed: "danger",
+    deploying: "warning",
+  }[state] as Tone;
+}
+
+function healthTone(health: SystemService["health"]): Tone {
+  return {
+    正常: "success",
+    异常: "danger",
+    等待: "muted",
+    部署中: "warning",
+  }[health] as Tone;
+}
+
+function stepText(state: DeploymentStep["state"]) {
+  return {
+    done: "完成",
+    running: "执行中",
+    failed: "失败",
+    waiting: "等待",
+  }[state];
+}
+
+function stepTone(state: DeploymentStep["state"]): Tone {
+  return {
+    done: "success",
+    running: "warning",
+    failed: "danger",
+    waiting: "muted",
+  }[state] as Tone;
+}
+
 function pageTitle(active: NavKey) {
-  return navItems.find((item) => item.key === active)?.label ?? "首页";
+  return navItems.find((item) => item.key === active)?.label ?? "总览";
 }
 
 export default App;
