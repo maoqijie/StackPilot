@@ -37,11 +37,8 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-const pageKeys = [
+const parentPageKeys = [
   "overview",
-  "overview-health",
-  "overview-tasks",
-  "overview-risks",
   "hosts",
   "sites",
   "databases",
@@ -54,10 +51,10 @@ const pageKeys = [
   "audit",
   "acl",
   "settings",
-  "mobile",
 ] as const;
 
-type PageKey = (typeof pageKeys)[number];
+type ParentPageKey = (typeof parentPageKeys)[number];
+type PageKey = string;
 type Tone = "green" | "blue" | "orange" | "red" | "gray" | "purple";
 type ToastTone = "success" | "info" | "warning" | "danger";
 type ToastState = { message: string; tone: ToastTone };
@@ -66,7 +63,7 @@ type SetPage = (page: PageKey, toast?: ToastState) => void;
 type PageMeta = { title: string; breadcrumb: string; search: string };
 type NavChild = { id: string; label: string; meta: string; page?: PageKey; badge?: string };
 type NavItem = {
-  key: Exclude<PageKey, "mobile" | "overview-health" | "overview-tasks" | "overview-risks">;
+  key: ParentPageKey;
   label: string;
   icon: LucideIcon;
   badge?: string;
@@ -87,7 +84,7 @@ function activateOnKeyboard(event: React.KeyboardEvent<HTMLElement>, action: () 
   action();
 }
 
-const pageMeta: Record<PageKey, PageMeta> = {
+const pageMeta: Record<string, PageMeta> = {
   overview: { title: "首页总览", breadcrumb: "控制台", search: "搜索主机、网站、数据库、任务..." },
   "overview-health": { title: "集群状态", breadcrumb: "首页总览", search: "搜索节点、IP、服务、版本..." },
   "overview-tasks": { title: "任务流", breadcrumb: "首页总览", search: "搜索任务、类型、操作人..." },
@@ -246,18 +243,42 @@ const overviewChildPages: Partial<Record<PageKey, string>> = {
   "overview-risks": "overview-risks",
 };
 
-function navPageFor(page: PageKey): Exclude<PageKey, "mobile" | "overview-health" | "overview-tasks" | "overview-risks"> {
-  return overviewChildPages[page] ? "overview" : page as Exclude<PageKey, "mobile" | "overview-health" | "overview-tasks" | "overview-risks">;
+function navPageFor(page: PageKey): ParentPageKey {
+  if ((parentPageKeys as readonly string[]).includes(page)) return page as ParentPageKey;
+  const childParent = navItems.find((item) => item.children.some((child) => (child.page ?? child.id) === page));
+  return childParent?.key ?? (overviewChildPages[page] ? "overview" : "overview");
 }
 
-function firstChildIdFor(key: NavItem["key"]) {
+function firstChildIdFor(key: ParentPageKey) {
   return navItems.find((item) => item.key === key)?.children[0]?.id;
 }
 
 function activeChildForPage(page: PageKey) {
-  const exactChild = navItems.flatMap((item) => item.children).find((child) => child.page === page);
+  const exactChild = navItems.flatMap((item) => item.children).find((child) => (child.page ?? child.id) === page);
   return exactChild?.id ?? firstChildIdFor(navPageFor(page));
 }
+
+function resolvePageMeta(page: PageKey): PageMeta {
+  const direct = pageMeta[page];
+  if (direct) return direct;
+  const parent = navItems.find((item) => item.children.some((child) => (child.page ?? child.id) === page));
+  const child = parent?.children.find((item) => (item.page ?? item.id) === page);
+  if (parent && child) {
+    return {
+      title: child.label,
+      breadcrumb: parent.label,
+      search: pageMeta[parent.key].search,
+    };
+  }
+  return pageMeta.overview;
+}
+
+const routePageKeys = new Set<string>([
+  ...parentPageKeys,
+  "mobile",
+  ...Object.keys(pageMeta),
+  ...navItems.flatMap((item) => item.children.map((child) => child.page ?? child.id)),
+]);
 
 const groupItems = [
   ["全部主机", "23", "blue"],
@@ -523,6 +544,10 @@ const initialFileRecords: FileRecord[] = [
   { id: "file-4", name: "nginx.conf", type: "文件", path: "/var/www/html", size: "4 KB", modified: "昨天 22:10", owner: "root" },
   { id: "file-5", name: "v2.8.1", type: "文件夹", path: "/var/www/html/releases", size: "-", modified: "今天 08:40", owner: "deploy" },
   { id: "file-6", name: "bundle.js", type: "文件", path: "/var/www/html/releases/v2.8.1", size: "418 KB", modified: "今天 08:42", owner: "deploy" },
+  { id: "file-7", name: "upload-20260618.log", type: "文件", path: "/var/www/html", size: "12 KB", modified: "今天 10:21", owner: "admin" },
+  { id: "file-8", name: "upload-assets.zip", type: "文件", path: "/var/www/html", size: "84 MB", modified: "今天 10:19", owner: "admin" },
+  { id: "file-9", name: "old-error.log", type: "文件", path: "/tmp", size: "32 KB", modified: "昨天 23:40", owner: "root" },
+  { id: "file-10", name: "old-cache.tar", type: "文件", path: "/tmp", size: "128 MB", modified: "3 天前", owner: "www-data" },
 ];
 
 const initialServiceRecords: ServiceRecord[] = [
@@ -581,9 +606,84 @@ const initialAclRoles: AclRole[] = [
   { id: "role-4", name: "发布机器人", desc: "供 CI/CD 自动发布使用", permissions: ["网站发布", "文件管理"] },
 ];
 
+function hostPagePreset(page: PageKey) {
+  if (page === "hosts-prod") {
+    return { env: "生产", health: "全部", search: "", subtitle: "生产环境主机视图，默认筛选生产节点。" };
+  }
+  if (page === "hosts-alert") {
+    return { env: "全部", health: "警告", search: "", subtitle: "健康告警视图，聚焦需要处理的主机。" };
+  }
+  return { env: "全部", health: "全部", search: "", subtitle: "统一查看各环境主机健康、资源负载、备份和系统更新状态。" };
+}
+
+function sitesPagePreset(page: PageKey) {
+  if (page === "sites-cert") return { status: "全部", runtime: "全部", search: "", subtitle: "证书续期视图，优先展示即将过期的站点。" };
+  if (page === "sites-runtime") return { status: "全部", runtime: "Node 20", search: "", subtitle: "运行时分组视图，按站点运行时快速筛选。" };
+  return { status: page === "sites-running" ? "运行中" : "全部", runtime: "全部", search: "", subtitle: "管理域名、运行时、证书有效期和站点启停状态。" };
+}
+
+function filesPagePreset(page: PageKey) {
+  if (page === "files-upload") return { path: "/var/www/html", type: "文件", search: "upload", subtitle: "上传队列视图，展示当前路径中的上传文件项。" };
+  if (page === "files-trash") return { path: "/tmp", type: "全部", search: "old", subtitle: "回收站视图，模拟 7 天保留的可删除文件。" };
+  return { path: "/var/www/html", type: "全部", search: "", subtitle: "模拟文件管理器，支持路径面包屑、进入文件夹、本地上传和重命名删除。" };
+}
+
+function terminalPagePreset(page: PageKey) {
+  if (page === "terminal-snippets") return { panel: "snippets", subtitle: "常用命令视图，可一键填充到终端输入。" };
+  if (page === "terminal-history") return { panel: "history", subtitle: "执行历史视图，展示今日命令记录并可复制会话。" };
+  return { panel: "sessions", subtitle: "本地模拟 SSH 会话，命令输入会追加到终端输出。" };
+}
+
+function systemdPagePreset(page: PageKey) {
+  if (page === "systemd-failed") return { status: "failed", search: "", subtitle: "Failed 服务视图，聚焦需要处理的异常服务。" };
+  if (page === "systemd-logs") return { status: "全部", search: "", subtitle: "服务日志视图，可打开任意服务查看模拟 journal 输出。" };
+  return { status: page === "systemd-active" ? "active" : "全部", search: "", subtitle: "查看服务 active/failed/inactive 状态，并在本地模拟启停、重启和处理失败服务。" };
+}
+
+function firewallPagePreset(page: PageKey) {
+  if (page === "firewall-open") return { protocol: "全部", source: "0.0.0.0/0", search: "", subtitle: "开放端口视图，默认展示公网来源规则。" };
+  if (page === "firewall-deny") return { protocol: "UDP", source: "全部", search: "", subtitle: "拦截记录视图，模拟查看被限制或停用的规则。" };
+  return { protocol: "全部", source: "全部", search: "", subtitle: "本地维护规则列表，支持端口、协议、来源筛选和启用删除。" };
+}
+
+function deployPagePreset(page: PageKey) {
+  if (page === "deploy-staging") return { env: "预发", mode: "list", subtitle: "预发环境视图，默认展示 rc 与验证发布任务。" };
+  if (page === "deploy-rollbacks") return { env: "生产", mode: "rollbacks", subtitle: "回滚记录视图，聚焦可回滚与回滚中的发布任务。" };
+  return { env: "生产", mode: "list", subtitle: "按环境查看发布任务，支持创建、完成、回滚、查看日志和重新部署。" };
+}
+
+function schedulePagePreset(page: PageKey) {
+  if (page === "schedule-failed") return { state: "全部", search: "健康", mode: "list", subtitle: "失败任务视图，默认定位最近执行失败的自动化任务。" };
+  if (page === "schedule-calendar") return { state: "全部", search: "", mode: "calendar", subtitle: "执行日历视图，按时间线展示今天的定时任务。" };
+  return { state: page === "schedule-enabled" ? "已启用" : "全部", search: "", mode: "list", subtitle: "管理 cron 自动化，支持启停、立即执行、编辑和新增。" };
+}
+
+function auditPagePreset(page: PageKey) {
+  if (page === "audit-failed") return { result: "失败", user: "全部", search: "", mode: "list", subtitle: "失败操作视图，默认筛选审计中的失败记录。" };
+  if (page === "audit-export") return { result: "全部", user: "全部", search: "", mode: "exports", subtitle: "导出记录视图，模拟 CSV / JSON 导出历史。" };
+  return { result: "全部", user: "全部", search: "", mode: "list", subtitle: "只读审计视图，支持关键字、用户和结果过滤。" };
+}
+
+function aclPagePreset(page: PageKey) {
+  if (page === "acl-roles" || page === "acl-policies") return { tab: "roles" as const, subtitle: page === "acl-policies" ? "权限项视图，按角色勾选和保存权限项。" : "角色视图，管理不同角色的权限组合。" };
+  return { tab: "users" as const, subtitle: "管理用户启用状态、MFA 和角色权限勾选。" };
+}
+
+function databasePagePreset(page: PageKey) {
+  if (page === "databases-backups") return { type: "全部", status: "全部", host: "全部主机", search: "", mode: "backups", subtitle: "备份计划视图，聚焦备份成功率、最近任务和恢复演练。" };
+  if (page === "databases-slow") return { type: "全部", status: "告警", host: "全部主机", search: "", mode: "slow", subtitle: "慢查询视图，默认筛选连接延迟或慢查询较多的实例。" };
+  return { type: "全部", status: "全部", host: "全部主机", search: "", mode: "instances", subtitle: "集中管理和监控所有数据库实例的运行状态、备份与慢查询。" };
+}
+
+function settingsPagePreset(page: PageKey) {
+  if (page === "settings-security") return "安全";
+  if (page === "settings-backup") return "备份";
+  return "基础";
+}
+
 function readPageFromHash(): PageKey {
   const key = window.location.hash.replace("#", "");
-  return pageKeys.find((pageKey) => pageKey === key) ?? "overview";
+  return routePageKeys.has(key) ? key : "overview";
 }
 
 function App() {
@@ -637,13 +737,14 @@ function DesktopShell({
   setPage: SetPage;
   notify: Notify;
 }) {
+  const activeModule = navPageFor(page);
   const whiteTop = !["overview", "overview-health", "overview-tasks", "overview-risks"].includes(page);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
-    typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches
+    typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
   ));
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(max-width: 760px)");
+    const mediaQuery = window.matchMedia("(max-width: 773px)");
     const syncSidebar = (event: MediaQueryListEvent | MediaQueryList) => {
       setSidebarCollapsed(event.matches);
     };
@@ -668,20 +769,20 @@ function DesktopShell({
         {page === "overview-health" && <OverviewHealthPage notify={notify} />}
         {page === "overview-tasks" && <OverviewTasksPage notify={notify} />}
         {page === "overview-risks" && <OverviewRisksPage notify={notify} />}
-        {page === "hosts" && <HostsPage notify={notify} />}
-        {page === "sites" && <SitesPage notify={notify} />}
-        {page === "databases" && <DatabasesPage notify={notify} />}
-        {page === "files" && <FilesPage notify={notify} />}
-        {page === "terminal" && <TerminalPage notify={notify} />}
-        {page === "systemd" && <SystemdPage notify={notify} />}
-        {page === "firewall" && <FirewallPage notify={notify} />}
-        {page === "deploy" && <DeployPage notify={notify} />}
-        {page === "schedule" && <SchedulePage notify={notify} />}
-        {page === "audit" && <AuditPage notify={notify} />}
-        {page === "acl" && <AclPage notify={notify} />}
-        {page === "settings" && <SettingsPage notify={notify} />}
+        {activeModule === "hosts" && <HostsPage key={page} page={page} notify={notify} />}
+        {activeModule === "sites" && <SitesPage key={page} page={page} notify={notify} />}
+        {activeModule === "databases" && <DatabasesPage key={page} page={page} notify={notify} />}
+        {activeModule === "files" && <FilesPage key={page} page={page} notify={notify} />}
+        {activeModule === "terminal" && <TerminalPage key={page} page={page} notify={notify} />}
+        {activeModule === "systemd" && <SystemdPage key={page} page={page} notify={notify} />}
+        {activeModule === "firewall" && <FirewallPage key={page} page={page} notify={notify} />}
+        {activeModule === "deploy" && <DeployPage key={page} page={page} notify={notify} />}
+        {activeModule === "schedule" && <SchedulePage key={page} page={page} notify={notify} />}
+        {activeModule === "audit" && <AuditPage key={page} page={page} notify={notify} />}
+        {activeModule === "acl" && <AclPage key={page} page={page} notify={notify} />}
+        {activeModule === "settings" && <SettingsPage key={page} page={page} notify={notify} />}
       </div>
-      {navPageFor(page) === "overview" && <DesktopFooter />}
+      {activeModule === "overview" && <DesktopFooter />}
     </section>
   );
 }
@@ -706,12 +807,10 @@ function Sidebar({
   const activeNavPage = navPageFor(page);
 
   const toggleGroup = (key: NavItem["key"], label: string) => {
-    setOpenGroups((current) => {
-      const currentOpen = current[key] ?? key === activeNavPage;
-      const nextOpen = !currentOpen;
-      notify(`${label} 下拉项目已${nextOpen ? "展开" : "收起"}`, "info");
-      return { ...current, [key]: nextOpen };
-    });
+    const currentOpen = openGroups[key] ?? key === activeNavPage;
+    const nextOpen = !currentOpen;
+    setOpenGroups((current) => ({ ...current, [key]: nextOpen }));
+    notify(`${label} 下拉项目已${nextOpen ? "展开" : "收起"}`, "info");
   };
 
   const openNavPage = (key: NavItem["key"], label: string) => {
@@ -720,7 +819,7 @@ function Sidebar({
   };
 
   const openNavChild = (parent: NavItem, child: NavChild) => {
-    setPage(child.page ?? parent.key, { message: `已打开${parent.label} / ${child.label}`, tone: "info" });
+    setPage(child.page ?? child.id, { message: `已打开${parent.label} / ${child.label}`, tone: "info" });
     setOpenGroups((current) => ({ ...current, [parent.key]: true }));
   };
 
@@ -818,7 +917,7 @@ function Sidebar({
 
 function TopBar({ page, white, notify }: { page: PageKey; white: boolean; notify: Notify }) {
   const [query, setQuery] = useState("");
-  const meta = pageMeta[page];
+  const meta = resolvePageMeta(page);
 
   return (
     <header className={`topbar-mock ${white ? "white" : ""}`}>
@@ -861,11 +960,13 @@ function TopBar({ page, white, notify }: { page: PageKey; white: boolean; notify
         <button type="button" className="icon-action" onClick={() => notify("帮助中心已准备好", "info")} aria-label="帮助">
           <CircleHelp size={17} />
         </button>
-        <button type="button" className="avatar-mini" onClick={() => notify("已打开用户菜单", "info")} aria-label="用户菜单">
-          {page === "overview" ? <UserRound size={18} /> : "张"}
+        <button type="button" className="user-menu-button" onClick={() => notify("已打开用户菜单", "info")} aria-label="用户菜单">
+          <span className="avatar-mini" aria-hidden="true">
+            {page === "overview" ? <UserRound size={18} /> : "张"}
+          </span>
+          <strong>{page === "overview" ? "admin" : page === "databases" ? "张工" : "管理员"}</strong>
+          <ChevronDown size={13} />
         </button>
-        <strong>{page === "overview" ? "admin" : page === "databases" ? "张工" : "管理员"}</strong>
-        <ChevronDown size={13} />
       </div>
     </header>
   );
@@ -1503,11 +1604,12 @@ function MetricTile({ icon: Icon, label, value, tone }: { icon: LucideIcon; labe
   );
 }
 
-function HostsPage({ notify }: { notify: Notify }) {
+function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialHostRecords);
-  const [search, setSearch] = useState("");
-  const [envFilter, setEnvFilter] = useState("全部");
-  const [healthFilter, setHealthFilter] = useState("全部");
+  const hostPreset = hostPagePreset(page);
+  const [search, setSearch] = useState(hostPreset.search);
+  const [envFilter, setEnvFilter] = useState(hostPreset.env);
+  const [healthFilter, setHealthFilter] = useState(hostPreset.health);
   const [drawer, setDrawer] = useState<{ type: "detail" | "create"; host?: HostRecord } | null>(null);
   const [draft, setDraft] = useState({ name: "panel-new-05", ip: "10.0.4.55", env: "开发" });
   const filteredRows = rows.filter((row) => {
@@ -1549,8 +1651,8 @@ function HostsPage({ notify }: { notify: Notify }) {
 
   return (
     <ModulePageShell
-      title="主机"
-      subtitle="统一查看各环境主机健康、资源负载、备份和系统更新状态。"
+      title={resolvePageMeta(page).title}
+      subtitle={hostPreset.subtitle}
       actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 台主机`, "info")}><Download size={15} /> 导出</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 新增主机</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索主机名或 IP" onChange={setSearch} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={setEnvFilter} /><FieldSelect label="健康" value={healthFilter} options={["全部", "健康", "警告", "离线"]} onChange={setHealthFilter} /></>}
       metrics={<><MetricTile icon={Server} label="主机总数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="健康" value={`${rows.filter((row) => row.health === "健康").length}`} tone="green" /><MetricTile icon={Shield} label="需关注" value={`${rows.filter((row) => row.health !== "健康").length}`} tone="orange" /></>}
@@ -1604,17 +1706,19 @@ function HostsPage({ notify }: { notify: Notify }) {
   );
 }
 
-function SitesPage({ notify }: { notify: Notify }) {
+function SitesPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialSiteRecords);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("全部");
-  const [runtimeFilter, setRuntimeFilter] = useState("全部");
+  const sitePreset = sitesPagePreset(page);
+  const [search, setSearch] = useState(sitePreset.search);
+  const [statusFilter, setStatusFilter] = useState(sitePreset.status);
+  const [runtimeFilter, setRuntimeFilter] = useState(sitePreset.runtime);
   const [drawer, setDrawer] = useState<{ type: "create" | "logs"; site?: SiteRecord } | null>(null);
   const [draft, setDraft] = useState({ domain: "new.example.com", runtime: "Node 20", host: "panel-se-01" });
   const runtimeOptions = ["全部", ...Array.from(new Set(rows.map((row) => row.runtime)))];
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
-    return (!query || row.domain.toLowerCase().includes(query)) && (statusFilter === "全部" || row.status === statusFilter) && (runtimeFilter === "全部" || row.runtime === runtimeFilter);
+    const matchCert = page === "sites-cert" ? row.certDays < 14 : true;
+    return (!query || row.domain.toLowerCase().includes(query)) && (statusFilter === "全部" || row.status === statusFilter) && (runtimeFilter === "全部" || row.runtime === runtimeFilter) && matchCert;
   });
   const updateSite = (id: string, patch: Partial<SiteRecord>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   const addSite = () => {
@@ -1630,8 +1734,8 @@ function SitesPage({ notify }: { notify: Notify }) {
 
   return (
     <ModulePageShell
-      title="网站"
-      subtitle="管理域名、运行时、证书有效期和站点启停状态。"
+      title={resolvePageMeta(page).title}
+      subtitle={sitePreset.subtitle}
       actions={<><button className="ghost" type="button" onClick={() => notify("站点列表已刷新", "info")}><RefreshCw size={15} /> 刷新</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 添加网站</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索域名" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={["全部", "运行中", "已停止", "告警"]} onChange={setStatusFilter} /><FieldSelect label="运行时" value={runtimeFilter} options={runtimeOptions} onChange={setRuntimeFilter} /></>}
       metrics={<><MetricTile icon={Globe2} label="站点" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="green" /><MetricTile icon={Shield} label="证书告警" value={`${rows.filter((row) => row.certDays < 14).length}`} tone="orange" /></>}
@@ -1670,11 +1774,12 @@ function SitesPage({ notify }: { notify: Notify }) {
   );
 }
 
-function FilesPage({ notify }: { notify: Notify }) {
+function FilesPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialFileRecords);
-  const [currentPath, setCurrentPath] = useState("/var/www/html");
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("全部");
+  const filePreset = filesPagePreset(page);
+  const [currentPath, setCurrentPath] = useState(filePreset.path);
+  const [search, setSearch] = useState(filePreset.search);
+  const [typeFilter, setTypeFilter] = useState(filePreset.type);
   const [drawer, setDrawer] = useState<{ type: "folder" | "rename"; file?: FileRecord } | null>(null);
   const [draftName, setDraftName] = useState("new-folder");
   const crumbs = currentPath.split("/").filter(Boolean);
@@ -1698,8 +1803,8 @@ function FilesPage({ notify }: { notify: Notify }) {
 
   return (
     <ModulePageShell
-      title="文件"
-      subtitle="模拟文件管理器，支持路径面包屑、进入文件夹、本地上传和重命名删除。"
+      title={resolvePageMeta(page).title}
+      subtitle={filePreset.subtitle}
       actions={<><button className="ghost" type="button" onClick={() => { setRows((current) => [{ id: `file-${Date.now()}`, name: `upload-${current.length + 1}.log`, type: "文件", path: currentPath, size: "12 KB", modified: currentClock(), owner: "admin" }, ...current]); notify("文件已上传到当前路径"); }}><CloudUpload size={15} /> 上传</button><button className="primary" type="button" onClick={() => { setDraftName("new-folder"); setDrawer({ type: "folder" }); }}><Plus size={15} /> 创建文件夹</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索文件名" onChange={setSearch} /><FieldSelect label="类型" value={typeFilter} options={["全部", "文件夹", "文件"]} onChange={setTypeFilter} /></>}
       side={drawer?.type === "folder" ? (
@@ -1737,7 +1842,8 @@ function FilesPage({ notify }: { notify: Notify }) {
   );
 }
 
-function TerminalPage({ notify }: { notify: Notify }) {
+function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
+  const terminalPreset = terminalPagePreset(page);
   const [host, setHost] = useState(initialHostRecords[0].name);
   const [connected, setConnected] = useState(true);
   const [command, setCommand] = useState("");
@@ -1756,13 +1862,25 @@ function TerminalPage({ notify }: { notify: Notify }) {
 
   return (
     <ModulePageShell
-      title="终端"
-      subtitle="本地模拟 SSH 会话，命令输入会追加到终端输出。"
+      title={resolvePageMeta(page).title}
+      subtitle={terminalPreset.subtitle}
       actions={<><button className="ghost" type="button" onClick={() => { setConnected(false); notify("终端会话已断开", "warning"); }}>断开</button><button className="primary" type="button" onClick={() => { setConnected(true); setLogs((current) => [...current, `reconnected to ${host}`]); notify(`已连接 ${host}`); }}>连接</button></>}
       filters={<><FieldSelect label="主机" value={host} options={initialHostRecords.map((item) => item.name)} onChange={(value) => { setHost(value); setLogs((current) => [...current, `switch host to ${value}`]); }} /><StatusDot text={connected ? "已连接" : "未连接"} /></>}
       metrics={<><MetricTile icon={TerminalSquare} label="当前主机" value={host} tone="blue" /><MetricTile icon={Clock3} label="会话行数" value={`${logs.length}`} tone="green" /><MetricTile icon={Shield} label="权限" value="sudo" tone="orange" /></>}
     >
-      <div className="terminal-panel">
+      <div className={`terminal-panel ${terminalPreset.panel !== "sessions" ? "has-terminal-extra" : ""}`}>
+        {terminalPreset.panel === "snippets" && (
+          <div className="snippet-grid">
+            {["systemctl status nginx", "df -h", "top -bn1", "journalctl -u mysql --since today"].map((snippet) => (
+              <button key={snippet} type="button" onClick={() => { setCommand(snippet); notify(`已填充命令：${snippet}`, "info"); }}>{snippet}</button>
+            ))}
+          </div>
+        )}
+        {terminalPreset.panel === "history" && (
+          <div className="terminal-history">
+            {["systemctl restart nginx", "df -h", "tail -n 100 /var/log/nginx/error.log"].map((item, index) => <p key={item}><span>{index + 1}</span>{item}<b>今天</b></p>)}
+          </div>
+        )}
         <div className="terminal-toolbar">
           <span><StatusLight tone={connected ? "green" : "red"} /> {connected ? "connected" : "disconnected"}</span>
           <div>
@@ -1783,18 +1901,18 @@ function TerminalPage({ notify }: { notify: Notify }) {
   );
 }
 
-function SystemdPage({ notify }: { notify: Notify }) {
+function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialServiceRecords);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("全部");
+  const servicePreset = systemdPagePreset(page);
+  const [search, setSearch] = useState(servicePreset.search);
+  const [statusFilter, setStatusFilter] = useState(servicePreset.status);
   const [drawer, setDrawer] = useState<ServiceRecord | null>(null);
   const filteredRows = rows.filter((row) => (!search.trim() || `${row.name} ${row.host}`.toLowerCase().includes(search.trim().toLowerCase())) && (statusFilter === "全部" || row.status === statusFilter));
   const updateService = (id: string, patch: Partial<ServiceRecord>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
-
   return (
     <ModulePageShell
-      title="systemd 服务"
-      subtitle="查看服务 active/failed/inactive 状态，并在本地模拟启停、重启和处理失败服务。"
+      title={resolvePageMeta(page).title}
+      subtitle={servicePreset.subtitle}
       actions={<button className="ghost" type="button" onClick={() => notify("服务状态已刷新", "info")}><RefreshCw size={15} /> 刷新</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索服务或主机" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={["全部", "active", "failed", "inactive"]} onChange={setStatusFilter} /></>}
       metrics={<><MetricTile icon={CheckCircle2} label="active" value={`${rows.filter((row) => row.status === "active").length}`} tone="green" /><MetricTile icon={Shield} label="failed" value={`${rows.filter((row) => row.status === "failed").length}`} tone="red" /><MetricTile icon={Clock3} label="inactive" value={`${rows.filter((row) => row.status === "inactive").length}`} tone="gray" /></>}
@@ -1826,16 +1944,18 @@ function SystemdPage({ notify }: { notify: Notify }) {
   );
 }
 
-function FirewallPage({ notify }: { notify: Notify }) {
+function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialFirewallRules);
-  const [search, setSearch] = useState("");
-  const [protocolFilter, setProtocolFilter] = useState("全部");
-  const [sourceFilter, setSourceFilter] = useState("全部");
+  const firewallPreset = firewallPagePreset(page);
+  const [search, setSearch] = useState(firewallPreset.search);
+  const [protocolFilter, setProtocolFilter] = useState(firewallPreset.protocol);
+  const [sourceFilter, setSourceFilter] = useState(firewallPreset.source);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [draft, setDraft] = useState({ name: "临时调试端口", port: "", protocol: "TCP", source: "10.0.0.0/8" });
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
-    return (!query || `${row.name} ${row.port}`.toLowerCase().includes(query)) && (protocolFilter === "全部" || row.protocol === protocolFilter) && (sourceFilter === "全部" || row.source === sourceFilter);
+    const matchDeny = page === "firewall-deny" ? !row.enabled || row.protocol === "UDP" : true;
+    return (!query || `${row.name} ${row.port}`.toLowerCase().includes(query)) && (protocolFilter === "全部" || row.protocol === protocolFilter) && (sourceFilter === "全部" || row.source === sourceFilter) && matchDeny;
   });
   const addRule = () => {
     if (!draft.port.trim()) {
@@ -1849,8 +1969,8 @@ function FirewallPage({ notify }: { notify: Notify }) {
 
   return (
     <ModulePageShell
-      title="防火墙"
-      subtitle="本地维护规则列表，支持端口、协议、来源筛选和启用删除。"
+      title={resolvePageMeta(page).title}
+      subtitle={firewallPreset.subtitle}
       actions={<button className="primary" type="button" onClick={() => setDrawerOpen(true)}><Plus size={15} /> 新增规则</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索规则名或端口" onChange={setSearch} /><FieldSelect label="协议" value={protocolFilter} options={["全部", "TCP", "UDP"]} onChange={setProtocolFilter} /><FieldSelect label="来源" value={sourceFilter} options={["全部", ...Array.from(new Set(rows.map((row) => row.source)))]} onChange={setSourceFilter} /></>}
       metrics={<><MetricTile icon={Shield} label="规则数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Lock} label="停用" value={`${rows.filter((row) => !row.enabled).length}`} tone="orange" /></>}
@@ -1881,11 +2001,12 @@ function FirewallPage({ notify }: { notify: Notify }) {
   );
 }
 
-function DeployPage({ notify }: { notify: Notify }) {
+function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialDeployJobs);
-  const [env, setEnv] = useState("生产");
+  const deployPreset = deployPagePreset(page);
+  const [env, setEnv] = useState(deployPreset.env);
   const [drawer, setDrawer] = useState<DeployJob | null>(null);
-  const filteredRows = rows.filter((row) => row.env === env);
+  const filteredRows = rows.filter((row) => row.env === env && (deployPreset.mode !== "rollbacks" || ["失败", "运行中", "待发布"].includes(row.status)));
   const updateDeploy = (id: string, patch: Partial<DeployJob>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   const createDeploy = () => {
     const next: DeployJob = { id: `dep-${Date.now()}`, app: env === "生产" ? "shop-web" : "feature-service", env, version: `build-${rows.length + 1}`, status: "运行中", operator: "管理员", duration: "运行中" };
@@ -1895,8 +2016,8 @@ function DeployPage({ notify }: { notify: Notify }) {
 
   return (
     <ModulePageShell
-      title="部署"
-      subtitle="按环境查看发布任务，支持创建、完成、回滚、查看日志和重新部署。"
+      title={resolvePageMeta(page).title}
+      subtitle={deployPreset.subtitle}
       actions={<button className="primary" type="button" onClick={createDeploy}><Plus size={15} /> 创建部署任务</button>}
       filters={<div className="deploy-tabs">{["生产", "预发", "开发"].map((item) => <button key={item} className={item === env ? "active" : ""} type="button" onClick={() => setEnv(item)}>{item}</button>)}</div>}
       metrics={<><MetricTile icon={CloudUpload} label="当前环境" value={env} tone="blue" /><MetricTile icon={Activity} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="成功" value={`${rows.filter((row) => row.status === "成功").length}`} tone="green" /></>}
@@ -1929,17 +2050,19 @@ function DeployPage({ notify }: { notify: Notify }) {
   );
 }
 
-function SchedulePage({ notify }: { notify: Notify }) {
+function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialScheduleJobs);
-  const [search, setSearch] = useState("");
-  const [stateFilter, setStateFilter] = useState("全部");
+  const schedulePreset = schedulePagePreset(page);
+  const [search, setSearch] = useState(schedulePreset.search);
+  const [stateFilter, setStateFilter] = useState(schedulePreset.state);
   const [drawer, setDrawer] = useState<{ type: "create" | "edit"; job?: ScheduleJob } | null>(null);
   const [draft, setDraft] = useState({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" });
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
     const matchSearch = !query || `${row.name} ${row.cron} ${row.command}`.toLowerCase().includes(query);
     const matchState = stateFilter === "全部" || (stateFilter === "已启用" ? row.enabled : !row.enabled);
-    return matchSearch && matchState;
+    const matchFailed = page === "schedule-failed" ? row.result === "失败" : true;
+    return matchSearch && matchState && matchFailed;
   });
   const updateJob = (id: string, patch: Partial<ScheduleJob>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   const saveJob = () => {
@@ -1959,8 +2082,8 @@ function SchedulePage({ notify }: { notify: Notify }) {
 
   return (
     <ModulePageShell
-      title="定时任务"
-      subtitle="管理 cron 自动化，支持启停、立即执行、编辑和新增。"
+      title={resolvePageMeta(page).title}
+      subtitle={schedulePreset.subtitle}
       actions={<button className="primary" type="button" onClick={() => { setDraft({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" }); setDrawer({ type: "create" }); }}><Plus size={15} /> 新建任务</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索任务、cron 或命令" onChange={setSearch} /><FieldSelect label="状态" value={stateFilter} options={["全部", "已启用", "已停用"]} onChange={setStateFilter} /></>}
       metrics={<><MetricTile icon={CalendarDays} label="任务数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.result === "失败").length}`} tone="red" /></>}
@@ -1972,6 +2095,11 @@ function SchedulePage({ notify }: { notify: Notify }) {
         </DetailDrawer>
       )}
     >
+      {schedulePreset.mode === "calendar" && (
+        <div className="schedule-calendar">
+          {rows.map((row, index) => <article key={row.id}><span>{["02:00", "03:15", "09:30", "每 10 分钟"][index] ?? "待定"}</span><strong>{row.name}</strong><em>{row.cron}</em><b className={row.result === "失败" ? "red-text" : "green-text"}>{row.result}</b></article>)}
+        </div>
+      )}
       <DataTable
         columns={[
           { key: "name", label: "任务", width: "190px", render: (row) => <b>{row.name}</b> },
@@ -1990,10 +2118,11 @@ function SchedulePage({ notify }: { notify: Notify }) {
   );
 }
 
-function AuditPage({ notify }: { notify: Notify }) {
-  const [search, setSearch] = useState("");
-  const [userFilter, setUserFilter] = useState("全部");
-  const [resultFilter, setResultFilter] = useState("全部");
+function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
+  const auditPreset = auditPagePreset(page);
+  const [search, setSearch] = useState(auditPreset.search);
+  const [userFilter, setUserFilter] = useState(auditPreset.user);
+  const [resultFilter, setResultFilter] = useState(auditPreset.result);
   const [selected, setSelected] = useState<AuditRecord | null>(null);
   const users = ["全部", ...Array.from(new Set(initialAuditRecords.map((row) => row.user)))];
   const filteredRows = initialAuditRecords.filter((row) => {
@@ -2001,11 +2130,10 @@ function AuditPage({ notify }: { notify: Notify }) {
     const matchSearch = !query || `${row.user} ${row.action} ${row.object} ${row.result} ${row.traceId} ${row.ip}`.toLowerCase().includes(query);
     return matchSearch && (userFilter === "全部" || row.user === userFilter) && (resultFilter === "全部" || row.result === resultFilter);
   });
-
   return (
     <ModulePageShell
-      title="审计日志"
-      subtitle="只读审计视图，支持关键字、用户和结果过滤。"
+      title={resolvePageMeta(page).title}
+      subtitle={auditPreset.subtitle}
       actions={<button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 条审计日志`, "info")}><Download size={15} /> 导出</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索关键字、对象或 trace id" onChange={setSearch} /><FieldSelect label="用户" value={userFilter} options={users} onChange={setUserFilter} /><FieldSelect label="结果" value={resultFilter} options={["全部", "成功", "失败"]} onChange={setResultFilter} /></>}
       metrics={<><MetricTile icon={FileText} label="日志" value={`${initialAuditRecords.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="成功" value={`${initialAuditRecords.filter((row) => row.result === "成功").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${initialAuditRecords.filter((row) => row.result === "失败").length}`} tone="red" /></>}
@@ -2021,6 +2149,11 @@ function AuditPage({ notify }: { notify: Notify }) {
         </DetailDrawer>
       )}
     >
+      {auditPreset.mode === "exports" && (
+        <div className="export-list">
+          {["CSV 导出 / 今日 10:24", "JSON 导出 / 昨天 18:33", "审计包归档 / 周一 09:10"].map((item) => <p key={item}><Download size={14} /> {item}<button type="button" onClick={() => notify(`${item} 已重新生成`, "info")}>重新生成</button></p>)}
+        </div>
+      )}
       <DataTable
         columns={[
           { key: "time", label: "时间", width: "130px", render: (row) => row.time },
@@ -2040,8 +2173,9 @@ function AuditPage({ notify }: { notify: Notify }) {
   );
 }
 
-function AclPage({ notify }: { notify: Notify }) {
-  const [tab, setTab] = useState<"users" | "roles">("users");
+function AclPage({ page, notify }: { page: PageKey; notify: Notify }) {
+  const aclPreset = aclPagePreset(page);
+  const [tab, setTab] = useState<"users" | "roles">(aclPreset.tab);
   const [users, setUsers] = useState(initialAclUsers);
   const [roles, setRoles] = useState(initialAclRoles);
   const [search, setSearch] = useState("");
@@ -2056,11 +2190,10 @@ function AclPage({ notify }: { notify: Notify }) {
         : { ...role, permissions: [...role.permissions, permission] };
     }));
   };
-
   return (
     <ModulePageShell
-      title="权限"
-      subtitle="管理用户启用状态、MFA 和角色权限勾选。"
+      title={resolvePageMeta(page).title}
+      subtitle={aclPreset.subtitle}
       actions={<button className="ghost" type="button" onClick={() => notify("权限变更已保存")}>保存权限</button>}
       filters={<><div className="deploy-tabs"><button className={tab === "users" ? "active" : ""} type="button" onClick={() => setTab("users")}>用户</button><button className={tab === "roles" ? "active" : ""} type="button" onClick={() => setTab("roles")}>角色</button></div>{tab === "users" && <ModuleSearch value={search} placeholder="搜索用户、邮箱或角色" onChange={setSearch} />}</>}
       metrics={<><MetricTile icon={UserRound} label="用户" value={`${users.length}`} tone="blue" /><MetricTile icon={Lock} label="角色" value={`${roles.length}`} tone="purple" /><MetricTile icon={Shield} label="MFA 异常" value={`${users.filter((user) => user.mfa !== "已启用").length}`} tone="orange" /></>}
@@ -2103,11 +2236,12 @@ function AclPage({ notify }: { notify: Notify }) {
   );
 }
 
-function DatabasesPage({ notify }: { notify: Notify }) {
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("全部");
-  const [statusFilter, setStatusFilter] = useState("全部");
-  const [hostFilter, setHostFilter] = useState("全部主机");
+function DatabasesPage({ page, notify }: { page: PageKey; notify: Notify }) {
+  const databasePreset = databasePagePreset(page);
+  const [search, setSearch] = useState(databasePreset.search);
+  const [typeFilter, setTypeFilter] = useState(databasePreset.type);
+  const [statusFilter, setStatusFilter] = useState(databasePreset.status);
+  const [hostFilter, setHostFilter] = useState(databasePreset.host);
   const [rows, setRows] = useState(dbRows);
   const [lastSync, setLastSync] = useState(currentClock());
   const filteredRows = rows.filter((row) => {
@@ -2115,15 +2249,15 @@ function DatabasesPage({ notify }: { notify: Notify }) {
     const matchType = typeFilter === "全部" || row[1].includes(typeFilter);
     const matchStatus = statusFilter === "全部" || (statusFilter === "告警" ? row[4].startsWith("延迟") || row[5] === "失败" : row[4] === "正常");
     const matchHost = hostFilter === "全部主机" || row[2] === hostFilter;
-    return matchSearch && matchType && matchStatus && matchHost;
+    const matchSlow = page === "databases-slow" ? Number(row[6]) > 0 || row[4].startsWith("延迟") : true;
+    return matchSearch && matchType && matchStatus && matchHost && matchSlow;
   });
-
   return (
     <div className="database-page">
       <div className="page-head">
         <div>
-          <h1>数据库管理</h1>
-          <p>集中管理和监控所有数据库实例的运行状态、备份与慢查询 · 最近同步 {lastSync}</p>
+          <h1>{resolvePageMeta(page).title}</h1>
+          <p>{databasePreset.subtitle} · 最近同步 {lastSync}</p>
         </div>
         <div>
           <button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 条数据库记录`, "info")}><Download size={15} /> 导出</button>
@@ -2171,6 +2305,11 @@ function DatabasesPage({ notify }: { notify: Notify }) {
             ))}
           </div>
           <DatabaseTable rows={filteredRows} notify={notify} />
+          {databasePreset.mode === "backups" && (
+            <div className="backup-timeline">
+              {["02:00 prod-postgres-01 成功", "02:10 billing-mysql-02 等待确认", "02:20 analytics-mysql-01 失败"].map((item) => <p key={item}><StatusLight tone={item.includes("失败") ? "red" : item.includes("等待") ? "orange" : "green"} /> {item}</p>)}
+            </div>
+          )}
           <div className="db-bottom">
             <PanelCard title="备份状态（最近 7 天）" action="查看备份计划" onAction={() => notify("已打开备份计划", "info")}>
               <DonutCard />
@@ -2302,9 +2441,9 @@ function CreateDatabaseDrawer({
   );
 }
 
-function SettingsPage({ notify }: { notify: Notify }) {
+function SettingsPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const tabs = ["基础", "安全", "代理", "通知", "备份", "审计"];
-  const [activeTab, setActiveTab] = useState("备份");
+  const [activeTab, setActiveTab] = useState(settingsPagePreset(page));
   const [readOnly, setReadOnly] = useState(false);
   const [backupItems, setBackupItems] = useState(["面板数据", "审计日志"]);
   const [twoFactor, setTwoFactor] = useState(true);
@@ -2313,12 +2452,11 @@ function SettingsPage({ notify }: { notify: Notify }) {
   const toggleBackupItem = (item: string) => {
     setBackupItems((current) => current.includes(item) ? current.filter((value) => value !== item) : [...current, item]);
   };
-
   return (
     <div className="settings-mock-page">
       <div className="page-head settings-title">
         <div>
-          <h1>面板设置</h1>
+          <h1>{resolvePageMeta(page).title}</h1>
           <p>配置面板身份、访问令牌、备份与恢复策略、安全与通知等全局设置，确保系统安全、可审计、稳定运行。</p>
         </div>
       </div>
@@ -2434,15 +2572,7 @@ function MobileMock({ notify }: { notify: Notify }) {
     <section className="mobile-frame-stage">
       <div className="phone-scale-box">
         <div className="phone-shell">
-          <div className="phone-side left top" />
-          <div className="phone-side left mid" />
-          <div className="phone-side right mid" />
           <div className="phone-screen">
-            <div className="ios-status">
-              <strong>9:41</strong>
-              <span />
-              <em>●●●</em>
-            </div>
             <div className="mobile-top">
               <button type="button" className="mobile-icon-button" onClick={() => notify("移动端菜单已打开", "info")}><Menu size={20} /></button>
               <div className="mobile-brand"><div className="brand-gem small" /><strong>StackPilot</strong></div>
