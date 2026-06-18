@@ -750,6 +750,8 @@ a {
 
 .mock-search {
   width: 470px;
+  min-width: 0;
+  flex: 0 1 470px;
   height: 36px;
   padding: 0 10px;
   border: 1px solid rgb(255 255 255 / 9%);
@@ -790,6 +792,7 @@ a {
 
 .top-actions {
   margin-left: auto;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 13px;
@@ -804,6 +807,8 @@ a {
 
 .icon-action {
   width: 32px;
+  min-width: 32px;
+  flex: 0 0 32px;
   height: 32px;
   border-radius: 6px;
   display: grid;
@@ -817,11 +822,21 @@ a {
   background: rgb(10 152 213 / 9%);
 }
 
+.notification-wrap {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+}
+
 .red-badge {
+  position: absolute;
+  top: -4px;
+  right: -5px;
   min-width: 17px;
   height: 17px;
-  margin-left: -18px;
-  margin-top: -15px;
   padding: 0 5px;
   border-radius: 999px;
   display: grid;
@@ -833,6 +848,8 @@ a {
 
 .avatar-mini {
   width: 32px;
+  min-width: 32px;
+  flex: 0 0 32px;
   height: 32px;
   border-radius: 50%;
   display: grid;
@@ -2101,6 +2118,10 @@ a {
 
   .topbar-mock.white .mock-search {
     width: min(210px, 40vw);
+  }
+
+  .breadcrumb-title + .mock-search {
+    display: none;
   }
 
   .module-page {

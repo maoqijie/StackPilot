@@ -847,10 +847,12 @@ function TopBar({ page, white, notify }: { page: PageKey; white: boolean; notify
       {page !== "overview" && <div className="top-spacer" />}
       <div className="top-actions">
         {page === "settings" && <StatusDot text="面板运行正常" />}
-        <button type="button" className="icon-action" onClick={() => notify("暂无新的未读通知", "info")} aria-label="通知">
-          <Bell size={18} />
-        </button>
-        <span className="red-badge">{page === "overview" ? "3" : page === "settings" ? "5" : "2"}</span>
+        <span className="notification-wrap">
+          <button type="button" className="icon-action" onClick={() => notify("暂无新的未读通知", "info")} aria-label="通知">
+            <Bell size={18} />
+          </button>
+          <span className="red-badge">{page === "overview" ? "3" : page === "settings" ? "5" : "2"}</span>
+        </span>
         {page !== "overview" && (
           <button type="button" className="icon-action" onClick={() => notify("已打开当前页操作记录", "info")} aria-label="操作记录">
             <FileText size={17} />
