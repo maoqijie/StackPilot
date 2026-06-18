@@ -149,11 +149,7 @@ a {
     radial-gradient(circle at 0 0, rgb(20 74 101 / 45%), transparent 34%),
     linear-gradient(180deg, #08202f 0%, #061824 100%);
   border-right: 1px solid rgb(255 255 255 / 8%);
-}
-
-.sidebar-mock.compact {
-  width: 226px;
-  padding-top: 12px;
+  overflow: hidden;
 }
 
 .sidebar-mock.collapsed {
@@ -240,8 +236,12 @@ a {
 }
 
 .side-nav {
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
+  align-content: start;
   gap: 4px;
+  overflow: auto;
 }
 
 .side-nav button {
@@ -302,9 +302,12 @@ a {
 }
 
 .host-groups {
-  margin-top: auto;
+  flex: 0 0 auto;
+  margin-top: 0;
   padding-top: 10px;
   border-top: 1px solid rgb(255 255 255 / 10%);
+  min-height: 0;
+  overflow: auto;
 }
 
 .host-groups > div {
@@ -346,6 +349,7 @@ a {
 }
 
 .collapse-side {
+  flex: 0 0 auto;
   height: 38px;
   padding: 0 11px;
   border-top: 1px solid rgb(255 255 255 / 10%);

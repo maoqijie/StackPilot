@@ -418,13 +418,23 @@ function DesktopShell({
     typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches
   ));
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 760px)");
+    const syncSidebar = (event: MediaQueryListEvent | MediaQueryList) => {
+      setSidebarCollapsed(event.matches);
+    };
+
+    syncSidebar(mediaQuery);
+    mediaQuery.addEventListener("change", syncSidebar);
+    return () => mediaQuery.removeEventListener("change", syncSidebar);
+  }, []);
+
   return (
     <section className={`desktop-frame ${whiteTop ? "white-top" : "dark-top"} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <Sidebar
         page={page}
         setPage={setPage}
         notify={notify}
-        compact={page === "settings"}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
       />
@@ -453,23 +463,21 @@ function Sidebar({
   page,
   setPage,
   notify,
-  compact,
   collapsed,
   onToggleCollapsed,
 }: {
   page: PageKey;
   setPage: (page: PageKey) => void;
   notify: Notify;
-  compact?: boolean;
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }) {
   return (
-    <aside className={`sidebar-mock ${compact ? "compact" : ""} ${collapsed ? "collapsed" : ""}`}>
+    <aside className={`sidebar-mock ${collapsed ? "collapsed" : ""}`}>
       <div className="side-brand">
         <div className="brand-gem" />
         {!collapsed && <strong>StackPilot</strong>}
-        {(compact || collapsed) && <Menu size={16} />}
+        {collapsed && <Menu size={16} />}
       </div>
       <nav className="side-nav">
         {navItems.map((item) => {
@@ -483,16 +491,13 @@ function Sidebar({
               onClick={() => setPage(item.key)}
             >
               <Icon size={17} />
-              {!collapsed && <span>{compact && item.key === "overview" ? "仪表盘" : item.label}</span>}
-              {!collapsed && item.key === "hosts" && compact && <b>12</b>}
-              {!collapsed && item.key === "sites" && compact && <b>28</b>}
-              {!collapsed && item.key === "databases" && compact && <b>9</b>}
-              {!collapsed && !compact && ["hosts", "sites", "databases", "files", "terminal", "systemd", "firewall", "deploy", "schedule", "audit", "acl", "settings"].includes(item.key) && <ChevronDown size={13} />}
+              {!collapsed && <span>{item.label}</span>}
+              {!collapsed && ["hosts", "sites", "databases", "files", "terminal", "systemd", "firewall", "deploy", "schedule", "audit", "acl", "settings"].includes(item.key) && <ChevronDown size={13} />}
             </button>
           );
         })}
       </nav>
-      {!compact && !collapsed && (
+      {!collapsed && (
         <div className="host-groups">
           <div>
             <span>主机分组</span>
@@ -516,8 +521,8 @@ function Sidebar({
         }}
         aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
       >
-        {collapsed ? <Menu size={15} /> : compact ? <Settings size={15} /> : <ChevronLeft size={15} />}
-        {!collapsed && <span>{compact ? "收起侧栏" : "收起侧栏"}</span>}
+        {collapsed ? <Menu size={15} /> : <ChevronLeft size={15} />}
+        {!collapsed && <span>收起侧栏</span>}
       </button>
     </aside>
   );
