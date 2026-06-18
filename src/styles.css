@@ -740,6 +740,14 @@ a {
   font-weight: 800;
 }
 
+.topbar-mock:not(.white) .breadcrumb-title {
+  color: #d8e8f1;
+}
+
+.topbar-mock:not(.white) .breadcrumb-title em {
+  color: #8195a6;
+}
+
 .mock-search {
   width: 470px;
   height: 36px;
@@ -1390,6 +1398,10 @@ a {
   overflow: hidden;
 }
 
+.dark-top .module-page {
+  padding-bottom: 64px;
+}
+
 .module-head {
   min-height: 64px;
 }
@@ -1404,6 +1416,10 @@ a {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 13px;
+}
+
+.dark-top .module-layout {
+  height: calc(100vh - 62px - 20px - 64px - 64px);
 }
 
 .module-layout.has-side {
@@ -1645,6 +1661,58 @@ a {
   margin-left: auto;
   color: #15914f;
   font-size: 11px;
+}
+
+.overview-event-log,
+.overview-risk-note {
+  margin-top: 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.overview-event-log strong,
+.overview-risk-note strong {
+  color: #1f3242;
+  font-size: 13px;
+}
+
+.overview-event-log p {
+  min-height: 32px;
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: #42586b;
+  background: #fbfdff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.overview-event-log span {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #0b92cf;
+  background: #eaf8ff;
+  font-size: 11px;
+}
+
+.overview-risk-note p {
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid #ffe1b8;
+  border-radius: 6px;
+  color: #7a4b08;
+  background: #fff8ed;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.7;
 }
 
 .overview-inline-detail {
@@ -1945,6 +2013,18 @@ a {
     height: calc(100vh - 59px - 18px - 60px - 20px);
   }
 
+  .dark-top .module-layout {
+    height: calc(100vh - 62px - 18px - 60px - 64px);
+  }
+
+  .module-layout.has-side {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .detail-drawer {
+    min-height: 260px;
+  }
+
   .module-metrics {
     grid-template-columns: repeat(2, minmax(140px, 1fr));
   }
@@ -2016,8 +2096,20 @@ a {
     padding: 16px;
   }
 
+  .dark-top .module-page {
+    padding-bottom: 64px;
+  }
+
+  .dark-top .module-layout {
+    height: calc(100vh - 62px - 16px - 60px - 64px);
+  }
+
   .module-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .detail-drawer {
+    min-height: 240px;
   }
 
   .module-table tbody {
@@ -3338,6 +3430,12 @@ a {
   display: flex;
   align-items: center;
   gap: 9px;
+}
+
+@media (max-width: 760px) {
+  .desktop-footer {
+    left: 64px;
+  }
 }
 
 .spark polyline {
