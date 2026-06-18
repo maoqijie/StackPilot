@@ -2563,6 +2563,143 @@ a {
   font-weight: 700;
 }
 
+@media (max-width: 920px) {
+  .settings-mock-page {
+    display: block;
+    padding: 18px 20px 66px;
+    overflow: auto;
+  }
+
+  .settings-title {
+    min-height: 0;
+  }
+
+  .settings-tabs,
+  .settings-layout,
+  .settings-mock-page > .panel-card {
+    margin-top: 12px;
+  }
+
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-auto-rows: max-content;
+    align-content: start;
+  }
+
+  .settings-layout .panel-card:nth-child(1),
+  .settings-layout .panel-card:nth-child(2) {
+    grid-row: auto;
+    grid-column: auto;
+  }
+
+  .settings-layout .panel-card {
+    min-height: max-content;
+    overflow: visible;
+  }
+
+  .backup-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(104px, 136px);
+    row-gap: 11px;
+  }
+
+  .settings-buttons {
+    flex-wrap: wrap;
+  }
+
+  .settings-buttons button {
+    min-height: 32px;
+  }
+
+  .changes-table {
+    min-width: 720px;
+  }
+}
+
+@media (max-width: 760px) {
+  .settings-mock-page {
+    padding: 16px 12px 66px;
+  }
+
+  .settings-title {
+    display: block;
+  }
+
+  .settings-title h1 {
+    font-size: 24px;
+  }
+
+  .settings-tabs {
+    gap: 18px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .settings-tabs button {
+    flex: 0 0 auto;
+  }
+
+  .settings-form,
+  .right-settings {
+    padding: 12px;
+  }
+
+  .backup-grid {
+    padding: 12px 12px 0;
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 10px;
+  }
+
+  .check-row {
+    padding: 0 12px;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+  }
+
+  .check-row button {
+    min-height: 28px;
+  }
+
+  .settings-buttons {
+    padding: 12px 12px 0;
+  }
+
+  .settings-buttons button {
+    flex: 1 1 128px;
+  }
+
+  .token-title {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .token-title div {
+    flex-wrap: wrap;
+  }
+
+  .token-title div button {
+    min-height: 32px;
+  }
+
+  .backup-list {
+    margin: 0 12px;
+  }
+
+  .backup-list p {
+    grid-template-columns: 128px 12px 42px 1fr;
+    height: auto;
+    min-height: 31px;
+  }
+
+  .backup-list p small {
+    display: none;
+  }
+
+  .storage-bar {
+    margin: 11px 12px 12px;
+  }
+}
+
 .connected-line {
   height: 32px;
   display: flex;
