@@ -290,6 +290,13 @@ function activeChildForPage(page: PageKey) {
   return exactChild?.id;
 }
 
+function navChildMetaText(child: NavChild) {
+  if (!child.meta) return "";
+  if (!child.badge) return child.meta;
+  const escapedBadge = child.badge.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return child.meta.replace(new RegExp(`^${escapedBadge}\\s*(个|条|项|台|人|组)?\\s*`), "").trim();
+}
+
 function activeNavEntryForPage(page: PageKey) {
   const parentKey = navPageFor(page);
   const parent = navItems.find((item) => item.key === parentKey);
@@ -355,6 +362,9 @@ function viewContextForPage(page: PageKey): ViewContext | null {
       return { eyebrow, title, description: preset.subtitle, chips: [`视图 ${viewName}`] };
     }
     case "settings": {
+      if (page === "settings-proxy") {
+        return { eyebrow, title, description: "独立管理代理节点、路由规则和运行时变量。", chips: ["代理节点", "路由规则", "NO_PROXY"] };
+      }
       const tab = settingsPagePreset(page);
       return { eyebrow, title, description: `当前定位到${tab}设置。`, chips: [`Tab ${tab}`] };
     }
@@ -441,6 +451,20 @@ const initialDatabaseRestorePoints: DatabaseRestorePoint[] = [
   { id: "db-restore-1", database: "prod-postgres-01", createdAt: "今天 02:14", storage: "s3://stackpilot/prod-postgres-01", size: "18.6 GB", checksum: "已校验", drillStatus: "未演练" },
   { id: "db-restore-2", database: "billing-mysql-02", createdAt: "今天 10:30", storage: "minio://db-backup/billing-mysql-02", size: "2.4 GB", checksum: "待校验", drillStatus: "未演练" },
   { id: "db-restore-3", database: "archive-pg-02", createdAt: "昨天 22:30", storage: "s3://stackpilot/archive-pg-02", size: "46.2 GB", checksum: "已校验", drillStatus: "已完成" },
+];
+
+const initialProxyEndpoints: ProxyEndpoint[] = [
+  { id: "px-1", name: "公司出口代理", protocol: "HTTP", url: "http://proxy.internal:7890", scope: "全局", enabled: true, latency: "42ms", status: "可用", lastCheck: "刚刚" },
+  { id: "px-2", name: "部署专用代理", protocol: "HTTPS", url: "https://deploy-proxy.internal:8443", scope: "部署", enabled: true, latency: "68ms", status: "可用", lastCheck: "3 分钟前" },
+  { id: "px-3", name: "仓库拉取代理", protocol: "SOCKS5", url: "socks5://git-proxy.internal:1080", scope: "仓库", enabled: false, latency: "-", status: "停用", lastCheck: "未探测" },
+  { id: "px-4", name: "终端跳板代理", protocol: "SOCKS5", url: "socks5://ssh-proxy.internal:1081", scope: "终端", enabled: true, latency: "216ms", status: "告警", lastCheck: "12 分钟前" },
+];
+
+const initialProxyRules: ProxyRouteRule[] = [
+  { id: "rule-1", target: "github.com", type: "代理", endpointId: "px-3", note: "仓库拉取和 release 下载", enabled: true },
+  { id: "rule-2", target: "registry.npmjs.org", type: "代理", endpointId: "px-1", note: "前端依赖安装", enabled: true },
+  { id: "rule-3", target: "10.0.0.0/8", type: "直连", endpointId: "direct", note: "内网服务保持直连", enabled: true },
+  { id: "rule-4", target: "localhost,127.0.0.1", type: "直连", endpointId: "direct", note: "本地预览和开发服务", enabled: true },
 ];
 
 const settingsChanges = [
@@ -593,6 +617,27 @@ type AclPolicy = {
   desc: string;
   roles: string[];
   lastUpdated: string;
+};
+
+type ProxyEndpoint = {
+  id: string;
+  name: string;
+  protocol: "HTTP" | "HTTPS" | "SOCKS5";
+  url: string;
+  scope: "全局" | "部署" | "终端" | "仓库";
+  enabled: boolean;
+  latency: string;
+  status: "可用" | "告警" | "停用" | "未验证";
+  lastCheck: string;
+};
+
+type ProxyRouteRule = {
+  id: string;
+  target: string;
+  type: "直连" | "代理";
+  endpointId: string;
+  note: string;
+  enabled: boolean;
 };
 
 type DatabaseBackupPlan = {
@@ -889,7 +934,6 @@ function databasePagePreset(page: PageKey) {
 
 function settingsPagePreset(page: PageKey) {
   if (page === "settings-security") return "安全";
-  if (page === "settings-proxy") return "代理";
   if (page === "settings-notice") return "通知";
   if (page === "settings-backup") return "备份";
   if (page === "settings-audit") return "审计";
@@ -898,7 +942,6 @@ function settingsPagePreset(page: PageKey) {
 
 function settingsPageForTab(tab: string): PageKey {
   if (tab === "安全") return "settings-security";
-  if (tab === "代理") return "settings-proxy";
   if (tab === "通知") return "settings-notice";
   if (tab === "备份") return "settings-backup";
   if (tab === "审计") return "settings-audit";
@@ -1008,7 +1051,11 @@ function DesktopShell({
         {activeModule === "schedule" && <SchedulePage key={page} page={page} notify={notify} />}
         {activeModule === "audit" && <AuditPage key={page} page={page} notify={notify} />}
         {activeModule === "acl" && <AclPage key={page} page={page} notify={notify} />}
-        {activeModule === "settings" && <SettingsPage key={page} page={page} setPage={setPage} notify={notify} />}
+        {activeModule === "settings" && (
+          page === "settings-proxy"
+            ? <SettingsProxyPage key={page} page={page} notify={notify} />
+            : <SettingsPage key={page} page={page} setPage={setPage} notify={notify} />
+        )}
       </div>
       {activeModule === "overview" && <DesktopFooter />}
     </section>
@@ -1106,23 +1153,34 @@ function Sidebar({
                 className="side-submenu"
                 id={`side-submenu-${item.key}`}
                 aria-hidden={!open}
-                style={{ "--side-submenu-open-height": `${item.children.length * 34 + 12}px` } as CSSProperties}
+                style={{ "--side-submenu-open-height": `${item.children.length * 43 + 12}px` } as CSSProperties}
               >
-                {item.children.map((child) => (
-                  <button
-                    key={child.id}
-                    className={["side-child", activeChild === child.id ? "is-child-active" : ""].filter(Boolean).join(" ")}
-                    type="button"
-                    tabIndex={open ? 0 : -1}
-                    aria-current={open && activeChild === child.id ? "page" : undefined}
-                    aria-label={`${child.label}${child.meta ? `，${child.meta}` : child.badge ? `，${child.badge}` : ""}`}
-                    onClick={() => openNavChild(item, child)}
-                  >
-                    <i />
-                    <span>{child.label}</span>
-                    <em>{child.meta}</em>
-                  </button>
-                ))}
+                {item.children.map((child) => {
+                  const metaText = navChildMetaText(child);
+                  const labelDetail = [child.badge, metaText].filter(Boolean).join(" ");
+                  return (
+                    <button
+                      key={child.id}
+                      className={[
+                        "side-child",
+                        child.badge ? "has-child-badge" : "",
+                        activeChild === child.id ? "is-child-active" : "",
+                      ].filter(Boolean).join(" ")}
+                      type="button"
+                      tabIndex={open ? 0 : -1}
+                      aria-current={open && activeChild === child.id ? "page" : undefined}
+                      aria-label={[child.label, labelDetail].filter(Boolean).join("，")}
+                      onClick={() => openNavChild(item, child)}
+                    >
+                      <i />
+                      <span className="side-child-copy">
+                        <span className="side-child-label">{child.label}</span>
+                        {metaText && <em>{metaText}</em>}
+                      </span>
+                      {child.badge && <strong className="side-child-badge">{child.badge}</strong>}
+                    </button>
+                  );
+                })}
               </div>
             </section>
           );
@@ -2067,6 +2125,7 @@ function DetailDrawer({
 function ModuleSearch({ value, placeholder, onChange }: { value: string; placeholder: string; onChange: (value: string) => void }) {
   return (
     <label className="module-search">
+      <span className="sr-only">{placeholder}</span>
       <Search size={14} />
       <input value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
     </label>
@@ -3159,7 +3218,7 @@ function DatabaseBackupsPage({ page, notify }: { page: PageKey; notify: Notify }
         <section className="backup-plan-section">
           <DataTable
             columns={[
-              { key: "plan", label: "备份计划", width: "240px", render: (plan) => <button className="backup-plan-link" type="button" aria-label={`查看 ${plan.name} 详情`} onClick={() => setDrawer(plan)}><StatusLight tone={backupPlanTone(plan)} /><b>{plan.name}</b></button> },
+              { key: "plan", label: "备份计划", width: "240px", render: (plan) => <button className="module-row-link" type="button" aria-label={`查看 ${plan.name} 详情`} onClick={() => setDrawer(plan)}><StatusLight tone={backupPlanTone(plan)} /><b>{plan.name}</b></button> },
               { key: "database", label: "数据库", render: (plan) => <code>{plan.database}</code> },
               { key: "schedule", label: "周期", render: (plan) => plan.schedule },
               { key: "storage", label: "存储", render: (plan) => <span className="pill blue">{plan.storage}</span> },
@@ -3339,14 +3398,13 @@ function CreateDatabaseDrawer({
 }
 
 function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; notify: Notify }) {
-  const tabs = ["基础", "安全", "代理", "通知", "备份", "审计"];
+  const tabs = ["基础", "安全", "通知", "备份", "审计"];
   const [activeTab, setActiveTab] = useState(settingsPagePreset(page));
   const [readOnly, setReadOnly] = useState(false);
   const [backupItems, setBackupItems] = useState(["面板数据", "审计日志"]);
   const [twoFactor, setTwoFactor] = useState(true);
   const [multiLogin, setMultiLogin] = useState(false);
   const [mailNotice, setMailNotice] = useState(true);
-  const [proxyEnabled, setProxyEnabled] = useState(false);
   const activeSettingsPage = settingsPageForTab(activeTab);
   const toggleBackupItem = (item: string) => {
     setBackupItems((current) => current.includes(item) ? current.filter((value) => value !== item) : [...current, item]);
@@ -3381,7 +3439,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
         ))}
       </div>
       <div className="settings-layout">
-        {(activeTab === "基础" || activeTab === "代理") && <PanelCard title="面板身份" className="settings-card-tall">
+        {activeTab === "基础" && <PanelCard title="面板身份" className="settings-card-tall">
           <div className="settings-form">
             <FormLine label="面板名称" value="StackPilot 控制面板" />
             <FormLine label="公网访问地址" value="https://panel.example.com" success="已验证" />
@@ -3393,7 +3451,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
             <button className="primary save-button" type="button" onClick={() => notify("面板身份设置已保存")}>保存设置</button>
           </div>
         </PanelCard>}
-        {(activeTab === "基础" || activeTab === "代理") && <PanelCard title="访问令牌" className="settings-card-wide">
+        {activeTab === "基础" && <PanelCard title="访问令牌" className="settings-card-wide">
           <div className="token-title">
             <span>用于 API 访问、CI/CD 集成或第三方工具接入，请妥善保管令牌，避免泄露。</span>
             <div><button className="primary" type="button" onClick={() => notify("新访问令牌已生成")}><Plus size={14} /> 生成令牌</button><button className="danger-soft" type="button" onClick={() => notify("已进入令牌批量编辑模式", "warning")}><Trash2 size={14} /> 编辑清单中</button></div>
@@ -3455,14 +3513,6 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
             <div className="connected-line"><CheckCircle2 size={14} /> 已连接（响应成本 45ms） <button type="button" onClick={() => notify("通知预览已发送")}>预览</button></div>
           </div>
         </PanelCard>}
-        {activeTab === "代理" && <PanelCard title="代理设置">
-          <div className="right-settings">
-            <FormLine label="HTTP 代理" value="http://proxy.internal:7890" hintButton="测试" hintAction={() => notify("HTTP 代理连通")} />
-            <FormLine label="NO_PROXY" value="localhost,127.0.0.1,10.0.0.0/8" />
-            <ToggleLine label="部署任务使用代理" active={proxyEnabled} onToggle={setProxyEnabled} />
-            <div className="connected-line"><CheckCircle2 size={14} /> 最近探测成功 <button type="button" onClick={() => notify("代理探测已刷新")}>重新探测</button></div>
-          </div>
-        </PanelCard>}
       </div>
       {(activeTab === "审计" || activeTab === "基础") && <PanelCard title="最近配置变更" action="查看审计日志" onAction={() => notify("已打开设置审计日志", "info")}>
         <table className="mini-table changes-table">
@@ -3475,6 +3525,192 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
       </PanelCard>}
     </div>
   );
+}
+
+function SettingsProxyPage({ page, notify }: { page: PageKey; notify: Notify }) {
+  const [endpoints, setEndpoints] = useState(initialProxyEndpoints);
+  const [rules, setRules] = useState(initialProxyRules);
+  const [search, setSearch] = useState("");
+  const [scopeFilter, setScopeFilter] = useState("全部");
+  const [statusFilter, setStatusFilter] = useState("全部");
+  const [deployProxy, setDeployProxy] = useState(true);
+  const [terminalProxy, setTerminalProxy] = useState(true);
+  const [strictTls, setStrictTls] = useState(true);
+  const [noProxy, setNoProxy] = useState("localhost,127.0.0.1,10.0.0.0/8,*.internal");
+  const [drawer, setDrawer] = useState<{ type: "test"; endpointId: string } | { type: "create" } | null>(null);
+  const [draft, setDraft] = useState({ name: "临时调试代理", protocol: "HTTP", url: "http://proxy.local:7890", scope: "部署" });
+  const healthyEndpoints = endpoints.filter((endpoint) => endpoint.enabled && endpoint.status === "可用");
+  const selectedDrawerEndpoint = drawer?.type === "test" ? endpoints.find((endpoint) => endpoint.id === drawer.endpointId) ?? null : null;
+  const warningEndpoints = endpoints.filter((endpoint) => endpoint.status === "告警");
+  const filteredEndpoints = endpoints.filter((endpoint) => {
+    const keyword = search.trim().toLowerCase();
+    const matchSearch = !keyword || `${endpoint.name} ${endpoint.url} ${endpoint.scope}`.toLowerCase().includes(keyword);
+    const matchScope = scopeFilter === "全部" || endpoint.scope === scopeFilter;
+    const matchStatus = statusFilter === "全部" || endpoint.status === statusFilter;
+    return matchSearch && matchScope && matchStatus;
+  });
+  const updateEndpoint = (id: string, patch: Partial<ProxyEndpoint>) => {
+    setEndpoints((current) => current.map((endpoint) => endpoint.id === id ? { ...endpoint, ...patch } : endpoint));
+  };
+  const updateRule = (id: string, patch: Partial<ProxyRouteRule>) => {
+    setRules((current) => current.map((rule) => rule.id === id ? { ...rule, ...patch } : rule));
+  };
+  const runProbe = (endpoint: ProxyEndpoint) => {
+    const latency = endpoint.status === "告警" ? "86ms" : endpoint.latency === "-" || endpoint.latency === "未探测" ? "58ms" : endpoint.latency;
+    const nextStatus = endpoint.enabled ? "可用" : "停用";
+    updateEndpoint(endpoint.id, { status: nextStatus, latency, lastCheck: "刚刚" });
+    notify(`${endpoint.name} 探测成功，延迟 ${latency}${endpoint.enabled ? "" : "，节点仍保持停用"}`);
+  };
+  const addEndpoint = () => {
+    if (!draft.name.trim() || !draft.url.trim()) {
+      notify("代理名称和地址不能为空", "danger");
+      return;
+    }
+    const next: ProxyEndpoint = {
+      id: `px-${Date.now()}`,
+      name: draft.name.trim(),
+      protocol: draft.protocol as ProxyEndpoint["protocol"],
+      url: draft.url.trim(),
+      scope: draft.scope as ProxyEndpoint["scope"],
+      enabled: true,
+      latency: "未探测",
+      status: "未验证",
+      lastCheck: "未探测",
+    };
+    setEndpoints((current) => [next, ...current]);
+    setSearch("");
+    setScopeFilter("全部");
+    setStatusFilter("全部");
+    setDrawer({ type: "test", endpointId: next.id });
+    notify(`${next.name} 已新增`);
+  };
+  const proxyEndpointForRule = (rule: ProxyRouteRule) => endpoints.find((endpoint) => endpoint.id === rule.endpointId);
+  const ruleTone = (rule: ProxyRouteRule): Tone => {
+    if (!rule.enabled) return "gray";
+    if (rule.type === "直连") return "blue";
+    const endpoint = proxyEndpointForRule(rule);
+    if (!endpoint || !endpoint.enabled || endpoint.status === "停用") return "red";
+    if (endpoint.status === "告警" || endpoint.status === "未验证") return "orange";
+    return "green";
+  };
+  const envEndpoint = (protocol: ProxyEndpoint["protocol"]) => healthyEndpoints.find((endpoint) => endpoint.protocol === protocol);
+  const httpProxy = deployProxy ? envEndpoint("HTTP")?.url ?? "" : "";
+  const httpsProxy = deployProxy ? envEndpoint("HTTPS")?.url ?? httpProxy : "";
+  const socksProxy = terminalProxy ? envEndpoint("SOCKS5")?.url ?? "" : "";
+  const envPreview = [
+    `HTTP_PROXY=${httpProxy}`,
+    `HTTPS_PROXY=${httpsProxy}`,
+    `ALL_PROXY=${socksProxy}`,
+    `NO_PROXY=${noProxy}`,
+    `STACKPILOT_DEPLOY_PROXY=${deployProxy ? "enabled" : "disabled"}`,
+    `STACKPILOT_TERMINAL_PROXY=${terminalProxy ? "enabled" : "disabled"}`,
+    `NODE_TLS_REJECT_UNAUTHORIZED=${strictTls ? "1" : "0"}`,
+  ];
+
+  return (
+    <ModulePageShell
+      title={resolvePageMeta(page).title}
+      subtitle="独立管理 HTTP / HTTPS / SOCKS5 代理节点、路由规则、NO_PROXY 和运行时环境变量。"
+      page={page}
+      viewContext={{
+        eyebrow: "设置 / 代理设置",
+        title: "代理设置",
+        description: "配置控制台访问外部网络时的代理策略，并模拟连通性探测和规则切换。",
+        chips: [`可用 ${healthyEndpoints.length}`, `告警 ${warningEndpoints.length}`, `规则 ${rules.length}`],
+      }}
+      actions={<><button className="ghost" type="button" onClick={() => { setEndpoints((current) => current.map((endpoint) => endpoint.enabled ? { ...endpoint, status: "可用", latency: endpoint.latency === "-" || endpoint.latency === "未探测" ? "54ms" : endpoint.latency, lastCheck: "刚刚" } : endpoint)); notify("已批量探测启用代理"); }}><RefreshCw size={15} /> 批量探测</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 新增代理</button></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索代理名称、地址或用途" onChange={setSearch} /><FieldSelect label="用途" value={scopeFilter} options={["全部", "全局", "部署", "终端", "仓库"]} onChange={setScopeFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "可用", "告警", "未验证", "停用"]} onChange={setStatusFilter} /></>}
+      metrics={<><MetricTile icon={Shield} label="可用节点" value={`${healthyEndpoints.length}`} tone="green" /><MetricTile icon={TerminalSquare} label="终端代理" value={terminalProxy ? "启用" : "停用"} tone={terminalProxy ? "blue" : "gray"} /><MetricTile icon={Globe2} label="部署代理" value={deployProxy ? "启用" : "停用"} tone={deployProxy ? "blue" : "gray"} /></>}
+      side={drawer?.type === "create" ? (
+        <DetailDrawer title="新增代理" subtitle="本地插入代理节点" onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={addEndpoint}>保存代理</button></>}>
+          <FormLine label="代理名称" required value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
+          <FormSelectLine label="协议" required value={draft.protocol} options={["HTTP", "HTTPS", "SOCKS5"]} onChange={(value) => setDraft((current) => ({ ...current, protocol: value }))} />
+          <FormLine label="代理地址" required value={draft.url} onChange={(value) => setDraft((current) => ({ ...current, url: value }))} />
+          <FormSelectLine label="用途" required value={draft.scope} options={["全局", "部署", "终端", "仓库"]} onChange={(value) => setDraft((current) => ({ ...current, scope: value }))} />
+        </DetailDrawer>
+      ) : selectedDrawerEndpoint ? (
+        <DetailDrawer title="代理探测" subtitle={selectedDrawerEndpoint.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => notify(`${selectedDrawerEndpoint.name} curl 诊断已复制`, "info")}>复制诊断</button><button className="primary" type="button" onClick={() => runProbe(selectedDrawerEndpoint)}>重新探测</button></>}>
+          <div className="proxy-test-panel">
+            <p><span>协议</span><b>{selectedDrawerEndpoint.protocol}</b></p>
+            <p><span>地址</span><b>{selectedDrawerEndpoint.url}</b></p>
+            <p><span>用途</span><b>{selectedDrawerEndpoint.scope}</b></p>
+            <p><span>状态</span><b>{selectedDrawerEndpoint.status}</b></p>
+            <p><span>最近探测</span><b>{selectedDrawerEndpoint.lastCheck}</b></p>
+            <p><span>延迟</span><b>{selectedDrawerEndpoint.latency}</b></p>
+          </div>
+        </DetailDrawer>
+      ) : null}
+    >
+      <div className="proxy-settings-content">
+        <DataTable
+          columns={[
+            { key: "name", label: "代理节点", width: "220px", render: (endpoint) => <button className="module-row-link" type="button" aria-label={`查看代理 ${endpoint.name}`} onClick={() => setDrawer({ type: "test", endpointId: endpoint.id })}><StatusLight tone={proxyStatusTone(endpoint)} /><b>{endpoint.name}</b></button> },
+            { key: "protocol", label: "协议", width: "86px", render: (endpoint) => <span className="pill blue">{endpoint.protocol}</span> },
+            { key: "url", label: "地址", render: (endpoint) => <code>{endpoint.url}</code> },
+            { key: "scope", label: "用途", width: "78px", render: (endpoint) => endpoint.scope },
+            { key: "status", label: "状态", width: "88px", render: (endpoint) => <span className={`pill ${proxyStatusTone(endpoint)}`}>{endpoint.status}</span> },
+            { key: "latency", label: "延迟", width: "82px", render: (endpoint) => endpoint.latency },
+            { key: "ops", label: "操作", width: "230px", render: (endpoint) => <span className="table-actions"><button type="button" aria-label={`探测 ${endpoint.name}`} onClick={() => runProbe(endpoint)}>探测</button><button type="button" aria-label={`${endpoint.enabled ? "停用" : "启用"} ${endpoint.name}`} onClick={() => { const enabled = !endpoint.enabled; updateEndpoint(endpoint.id, { enabled, status: enabled ? "未验证" : "停用", latency: enabled ? "未探测" : "-" }); notify(`${endpoint.name} 已${enabled ? "启用，等待探测" : "停用"}`, enabled ? "success" : "warning"); }}>{endpoint.enabled ? "停用" : "启用"}</button><button type="button" aria-label={`打开 ${endpoint.name} 详情`} onClick={() => setDrawer({ type: "test", endpointId: endpoint.id })}>详情</button></span> },
+          ]}
+          rows={filteredEndpoints}
+          emptyText="没有匹配的代理节点"
+          getRowKey={(endpoint) => endpoint.id}
+        />
+        <section className="proxy-lower-grid">
+          <PanelCard title="代理路由规则" action="新增规则" onAction={() => {
+            const next: ProxyRouteRule = { id: `rule-${Date.now()}`, target: "api.github.com", type: "代理", endpointId: healthyEndpoints[0]?.id ?? "direct", note: "新增 API 规则", enabled: true };
+            setRules((current) => [next, ...current]);
+            notify("代理路由规则已新增");
+          }}>
+            <div className="proxy-rule-list">
+              {rules.map((rule) => {
+                const endpoint = proxyEndpointForRule(rule);
+                const endpointName = rule.type === "直连" ? "DIRECT" : endpoint?.name ?? "未绑定";
+                const tone = ruleTone(rule);
+                const ruleState = !rule.enabled
+                  ? "已禁用"
+                  : rule.type === "直连"
+                    ? "直连"
+                    : endpoint?.status === "可用" && endpoint.enabled
+                      ? "可用"
+                      : "需处理";
+                return (
+                  <article key={rule.id}>
+                    <span><StatusLight tone={tone} /><b>{rule.target}</b></span>
+                    <em>{rule.note}</em>
+                    <strong>{rule.type} · {endpointName} · {ruleState}</strong>
+                    <button type="button" aria-label={`${rule.enabled ? "禁用" : "启用"}规则 ${rule.target}`} onClick={() => { updateRule(rule.id, { enabled: !rule.enabled }); notify(`${rule.target} 规则已${rule.enabled ? "禁用" : "启用"}`, rule.enabled ? "warning" : "success"); }}>{rule.enabled ? "禁用" : "启用"}</button>
+                  </article>
+                );
+              })}
+            </div>
+          </PanelCard>
+          <PanelCard title="运行时策略">
+            <div className="proxy-policy-panel">
+              <ToggleLine label="部署任务使用代理" active={deployProxy} onToggle={setDeployProxy} hint="用于 npm、composer、镜像拉取和远端发布任务" />
+              <ToggleLine label="终端会话使用 SOCKS5" active={terminalProxy} onToggle={setTerminalProxy} hint="仅影响新开的终端会话" />
+              <ToggleLine label="严格 TLS 校验" active={strictTls} onToggle={setStrictTls} hint="关闭后会在审计日志标记为高风险" />
+              <FormLine label="NO_PROXY" value={noProxy} onChange={setNoProxy} hint="逗号分隔，支持通配符和 CIDR" />
+              <div className="proxy-env-preview">
+                {envPreview.map((line) => <code key={line}>{line}</code>)}
+              </div>
+              <div className="settings-buttons">
+                <button className="primary" type="button" onClick={() => notify("代理运行时策略已保存")}>保存策略</button>
+                <button className="ghost" type="button" onClick={() => { void navigator.clipboard?.writeText(envPreview.join("\n")); notify("环境变量已复制", "info"); }}>复制环境变量</button>
+              </div>
+            </div>
+          </PanelCard>
+        </section>
+      </div>
+    </ModulePageShell>
+  );
+}
+
+function proxyStatusTone(endpoint: ProxyEndpoint) {
+  if (!endpoint.enabled || endpoint.status === "停用") return "gray";
+  if (endpoint.status === "告警") return "red";
+  if (endpoint.status === "未验证") return "orange";
+  return "green";
 }
 
 type MobileTab = "首页" | "主机" | "网站" | "任务" | "我的";
