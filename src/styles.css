@@ -5349,6 +5349,12 @@ a {
   outline: 0;
 }
 
+.form-line input[aria-invalid="true"] {
+  border-color: #ef9b9b;
+  color: #b82424;
+  background: #fffafa;
+}
+
 .select-like {
   display: flex;
   align-items: center;
@@ -5386,6 +5392,12 @@ a {
   gap: 3px;
   color: #20a65a;
   font-size: 11px;
+}
+
+.form-error {
+  color: #cf3f3f;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .form-line button {
@@ -5630,6 +5642,59 @@ a {
   column-gap: 10px;
 }
 
+.backup-test-button {
+  width: 112px;
+  align-self: end;
+  margin-bottom: 11px;
+}
+
+.backup-policy-summary {
+  margin: 12px 14px 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  overflow: hidden;
+  background: #fbfdff;
+}
+
+.backup-policy-summary p {
+  min-height: 38px;
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 10px;
+  color: #4a6073;
+  font-size: 12px;
+}
+
+.backup-policy-summary p:first-child {
+  border-top: 0;
+}
+
+.backup-policy-summary span,
+.backup-policy-summary em {
+  color: #7b8fa0;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.backup-policy-summary b,
+.backup-policy-summary em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backup-policy-summary .ok-line,
+.backup-policy-summary .warn-line,
+.backup-policy-summary .error-line {
+  grid-template-columns: 82px minmax(0, 1fr);
+}
+
 .check-row {
   padding: 0 14px;
   display: flex;
@@ -5670,6 +5735,11 @@ a {
   padding: 12px 14px 0;
   display: flex;
   gap: 9px;
+}
+
+.settings-buttons button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .verify-box {
@@ -5813,6 +5883,32 @@ a {
     row-gap: 11px;
   }
 
+  .backup-test-button {
+    width: 100%;
+  }
+
+  .backup-list p {
+    min-width: 0;
+    grid-template-columns: minmax(118px, 1fr) 12px 42px minmax(54px, 0.7fr) minmax(64px, 0.7fr);
+  }
+
+  .backup-list p span,
+  .backup-list p b,
+  .backup-list p small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .backup-policy-summary p {
+    grid-template-columns: 78px minmax(0, 1fr);
+  }
+
+  .backup-policy-summary em {
+    grid-column: 2;
+  }
+
   .settings-buttons {
     flex-wrap: wrap;
   }
@@ -5908,6 +6004,16 @@ a {
     padding: 12px;
   }
 
+  .backup-grid .form-line > div {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .backup-grid .form-line em {
+    line-height: 1.35;
+  }
+
   .database-page {
     padding: 16px 12px 66px;
   }
@@ -5936,6 +6042,25 @@ a {
     padding: 12px 12px 0;
     grid-template-columns: minmax(0, 1fr);
     row-gap: 10px;
+  }
+
+  .backup-test-button {
+    width: auto;
+    min-height: 32px;
+    margin-bottom: 0;
+  }
+
+  .backup-policy-summary {
+    margin: 12px 12px 0;
+  }
+
+  .backup-policy-summary p {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .backup-policy-summary em {
+    grid-column: auto;
   }
 
   .check-row {
