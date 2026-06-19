@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import {
   Activity,
   Bell,
@@ -984,6 +984,7 @@ function Sidebar({
                 className="side-submenu"
                 id={`side-submenu-${item.key}`}
                 aria-hidden={!open}
+                style={{ "--side-submenu-open-height": `${item.children.length * 32 + 6}px` } as CSSProperties}
               >
                 {item.children.map((child) => (
                   <button
@@ -1029,7 +1030,7 @@ function Sidebar({
       >
         <ChevronLeft className="collapse-icon collapse-icon-close" size={15} />
         <Menu className="collapse-icon collapse-icon-open" size={15} />
-        <span>收起侧栏</span>
+        <span>{collapsed ? "展开侧栏" : "收起侧栏"}</span>
       </button>
     </aside>
   );
