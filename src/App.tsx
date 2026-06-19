@@ -1033,7 +1033,7 @@ function deployPagePreset(page: PageKey) {
 }
 
 function schedulePagePreset(page: PageKey) {
-  if (page === "schedule-failed") return { state: "全部", search: "健康", mode: "list", subtitle: "失败任务视图，默认定位最近执行失败的自动化任务。" };
+  if (page === "schedule-failed") return { state: "全部", search: "", mode: "list", subtitle: "失败任务视图，默认定位最近执行失败的自动化任务。" };
   if (page === "schedule-calendar") return { state: "全部", search: "", mode: "calendar", subtitle: "执行日历视图，按时间线展示今天的定时任务。" };
   return { state: page === "schedule-enabled" ? "已启用" : "全部", search: "", mode: "list", subtitle: "管理 cron 自动化，支持启停、立即执行、编辑和新增。" };
 }
@@ -1171,12 +1171,12 @@ function DesktopShell({
         )}
         {activeModule === "files" && <FilesModule page={page} notify={notify} />}
         {activeModule === "terminal" && <TerminalPage page={page} notify={notify} />}
-        {activeModule === "systemd" && <SystemdPage key={page} page={page} notify={notify} />}
+        {activeModule === "systemd" && <SystemdPage page={page} notify={notify} />}
         {activeModule === "firewall" && <FirewallPage key={page} page={page} notify={notify} />}
         {activeModule === "deploy" && <DeployPage key={page} page={page} notify={notify} />}
-        {activeModule === "schedule" && <SchedulePage key={page} page={page} notify={notify} />}
+        {activeModule === "schedule" && <SchedulePage page={page} notify={notify} />}
         {activeModule === "audit" && <AuditPage key={page} page={page} notify={notify} />}
-        {activeModule === "acl" && <AclPage key={page} page={page} notify={notify} />}
+        {activeModule === "acl" && <AclPage page={page} setPage={setPage} notify={notify} />}
         {activeModule === "settings" && (
           page === "settings-proxy"
             ? <SettingsProxyPage key={page} page={page} notify={notify} />
@@ -1288,7 +1288,7 @@ function Sidebar({
                 >
                   {item.children.map((child) => {
                     const metaText = navChildMetaText(child);
-                    const labelDetail = [child.badge, metaText].filter(Boolean).join(" ");
+                    const labelDetail = [child.badge, child.meta].filter(Boolean).join("，");
                     return (
                       <button
                         key={child.id}
@@ -1303,13 +1303,13 @@ function Sidebar({
                         aria-current={open && activeChild === child.id ? "page" : undefined}
                         aria-label={[child.label, labelDetail].filter(Boolean).join("，")}
                         onClick={() => openNavChild(item, child)}
-                      >
+                        >
                         <i />
                         <span className="side-child-copy">
                           <span className="side-child-label">{child.label}</span>
                           {metaText && !child.badge && <em>{metaText}</em>}
                         </span>
-                        {child.badge && <strong className="side-child-badge">{[child.badge, metaText].filter(Boolean).join(" ")}</strong>}
+                        {child.badge && <strong className="side-child-badge">{child.badge}</strong>}
                       </button>
                     );
                   })}
@@ -3055,11 +3055,16 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
 function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialServiceRecords);
   const servicePreset = systemdPagePreset(page);
-  const [search, setSearch] = useState(servicePreset.search);
-  const [statusFilter, setStatusFilter] = useState(servicePreset.status);
+  const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
+  const [statusByPage, setStatusByPage] = useState<Record<string, string>>({});
   const [drawer, setDrawer] = useState<ServiceRecord | null>(servicePreset.mode === "logs" ? initialServiceRecords[0] : null);
+  const search = searchByPage[page] ?? servicePreset.search;
+  const statusFilter = statusByPage[page] ?? servicePreset.status;
   const filteredRows = rows.filter((row) => (!search.trim() || `${row.name} ${row.host}`.toLowerCase().includes(search.trim().toLowerCase())) && (statusFilter === "全部" || row.status === statusFilter));
-  const updateService = (id: string, patch: Partial<ServiceRecord>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+  const updateService = (id: string, patch: Partial<ServiceRecord>) => {
+    setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+    setDrawer((current) => current?.id === id ? { ...current, ...patch } : current);
+  };
   const logRows = servicePreset.mode === "logs" ? rows : drawer ? [drawer] : [];
   return (
     <ModulePageShell
@@ -3067,7 +3072,7 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
       subtitle={servicePreset.subtitle}
       page={page}
       actions={<button className="ghost" type="button" onClick={() => notify("服务状态已刷新", "info")}><RefreshCw size={15} /> 刷新</button>}
-      filters={<><ModuleSearch value={search} placeholder="搜索服务或主机" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={["全部", "active", "failed", "inactive"]} onChange={setStatusFilter} /></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索服务或主机" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={statusFilter} options={["全部", "active", "failed", "inactive"]} onChange={(value) => setStatusByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={CheckCircle2} label="active" value={`${rows.filter((row) => row.status === "active").length}`} tone="green" /><MetricTile icon={Shield} label="failed" value={`${rows.filter((row) => row.status === "failed").length}`} tone="red" /><MetricTile icon={Clock3} label="inactive" value={`${rows.filter((row) => row.status === "inactive").length}`} tone="gray" /></>}
       side={drawer && (
         <DetailDrawer title="服务日志" subtitle={drawer.name} onClose={() => setDrawer(null)}>
@@ -3258,10 +3263,12 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
 function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialScheduleJobs);
   const schedulePreset = schedulePagePreset(page);
-  const [search, setSearch] = useState(schedulePreset.search);
-  const [stateFilter, setStateFilter] = useState(schedulePreset.state);
+  const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
+  const [stateByPage, setStateByPage] = useState<Record<string, string>>({});
   const [drawer, setDrawer] = useState<{ type: "create" | "edit"; job?: ScheduleJob } | null>(null);
   const [draft, setDraft] = useState({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" });
+  const search = searchByPage[page] ?? schedulePreset.search;
+  const stateFilter = stateByPage[page] ?? schedulePreset.state;
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
     const matchSearch = !query || `${row.name} ${row.cron} ${row.command}`.toLowerCase().includes(query);
@@ -3276,8 +3283,8 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       return;
     }
     if (drawer?.type === "edit" && drawer.job) {
-      updateJob(drawer.job.id, { cron: draft.cron, command: draft.command });
-      notify(`${drawer.job.name} 已保存`);
+      updateJob(drawer.job.id, { name: draft.name.trim(), cron: draft.cron.trim(), command: draft.command.trim() });
+      notify(`${draft.name.trim()} 已保存`);
     } else {
       setRows((current) => [{ id: `sch-${Date.now()}`, name: draft.name.trim(), cron: draft.cron.trim(), command: draft.command.trim(), enabled: true, nextRun: "待计算", lastRun: "未运行", result: "未运行" }, ...current]);
       notify("定时任务已新建");
@@ -3291,7 +3298,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       subtitle={schedulePreset.subtitle}
       page={page}
       actions={<button className="primary" type="button" onClick={() => { setDraft({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" }); setDrawer({ type: "create" }); }}><Plus size={15} /> 新建任务</button>}
-      filters={<><ModuleSearch value={search} placeholder="搜索任务、cron 或命令" onChange={setSearch} /><FieldSelect label="状态" value={stateFilter} options={["全部", "已启用", "已停用"]} onChange={setStateFilter} /></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索任务、cron 或命令" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={stateFilter} options={["全部", "已启用", "已停用"]} onChange={(value) => setStateByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={CalendarDays} label="任务数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.result === "失败").length}`} tone="red" /></>}
       side={drawer && (
         <DetailDrawer title={drawer.type === "edit" ? "编辑 cron" : "新建任务"} subtitle={drawer.job?.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={saveJob}>保存</button></>}>
@@ -3315,7 +3322,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
           { key: "enabled", label: "启用", render: (row) => <span className={`pill ${row.enabled ? "green" : "blue"}`}>{row.enabled ? "启用" : "停用"}</span> },
           { key: "last", label: "最近执行", render: (row) => row.lastRun },
           { key: "result", label: "结果", render: (row) => <span className={`pill ${row.result === "成功" ? "green" : row.result === "失败" ? "red" : "blue"}`}>{row.result}</span> },
-          { key: "ops", label: "操作", width: "250px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { updateJob(row.id, { enabled: !row.enabled }); notify(`${row.name} 已${row.enabled ? "停用" : "启用"}`); }}>{row.enabled ? "停用" : "启用"}</button><button type="button" onClick={() => { updateJob(row.id, { lastRun: currentClock(), result: "成功" }); notify(`${row.name} 已立即执行`); }}>执行</button><button type="button" onClick={() => { setDraft({ name: row.name, cron: row.cron, command: row.command }); setDrawer({ type: "edit", job: row }); }}>编辑</button></span> },
+          { key: "ops", label: "操作", width: "300px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { updateJob(row.id, { enabled: !row.enabled }); notify(`${row.name} 已${row.enabled ? "停用" : "启用"}`); }}>{row.enabled ? "停用" : "启用"}</button><button type="button" onClick={() => { updateJob(row.id, { lastRun: currentClock(), result: "成功" }); notify(`${row.name} 已立即执行`); }}>执行</button><button type="button" onClick={() => { setDraft({ name: row.name, cron: row.cron, command: row.command }); setDrawer({ type: "edit", job: row }); }}>编辑</button><button type="button" onClick={() => { setRows((current) => current.filter((item) => item.id !== row.id)); notify(`${row.name} 已删除`, "warning"); }}>删除</button></span> },
         ]}
         rows={filteredRows}
         emptyText="没有匹配的定时任务"
@@ -3459,43 +3466,115 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
   );
 }
 
-function AclPage({ page, notify }: { page: PageKey; notify: Notify }) {
+function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; notify: Notify }) {
   const aclPreset = aclPagePreset(page);
-  const [tab, setTab] = useState<"users" | "roles" | "policies">(aclPreset.tab);
+  const tab = aclPreset.tab;
   const [users, setUsers] = useState(initialAclUsers);
   const [roles, setRoles] = useState(initialAclRoles);
-  const [search, setSearch] = useState("");
+  const [policies, setPolicies] = useState(initialAclPolicies);
+  const [savedRoleIds, setSavedRoleIds] = useState(() => new Set(initialAclRoles.map((role) => role.id)));
+  const [savedPolicyIds, setSavedPolicyIds] = useState(() => new Set(initialAclPolicies.map((policy) => policy.id)));
+  const [userSearch, setUserSearch] = useState("");
+  const [policySearch, setPolicySearch] = useState("");
   const [policyModule, setPolicyModule] = useState("全部");
   const [policyRisk, setPolicyRisk] = useState("全部");
   const [selectedPolicyId, setSelectedPolicyId] = useState(initialAclPolicies[0].id);
   const [roleId, setRoleId] = useState(initialAclRoles[0].id);
   const selectedRole = roles.find((role) => role.id === roleId) ?? roles[0];
-  const filteredUsers = users.filter((user) => !search.trim() || `${user.name} ${user.email} ${user.role}`.toLowerCase().includes(search.trim().toLowerCase()));
-  const filteredPolicies = initialAclPolicies.filter((policy) => {
-    const query = search.trim().toLowerCase();
+  const filteredUsers = users.filter((user) => !userSearch.trim() || `${user.name} ${user.email} ${user.role}`.toLowerCase().includes(userSearch.trim().toLowerCase()));
+  const filteredPolicies = policies.filter((policy) => {
+    const query = policySearch.trim().toLowerCase();
     const matchSearch = !query || `${policy.name} ${policy.module} ${policy.desc} ${policy.roles.join(" ")}`.toLowerCase().includes(query);
     const matchModule = policyModule === "全部" || policy.module === policyModule;
     const matchRisk = policyRisk === "全部" || policy.risk === policyRisk;
     return matchSearch && matchModule && matchRisk;
   });
   const selectedPolicy = filteredPolicies.find((policy) => policy.id === selectedPolicyId) ?? filteredPolicies[0] ?? null;
-  const policyModules = ["全部", ...Array.from(new Set(initialAclPolicies.map((policy) => policy.module)))];
+  const policyModules = ["全部", ...Array.from(new Set(policies.map((policy) => policy.module)))];
+  const dirtyRoles = roles.filter((role) => !savedRoleIds.has(role.id)).length;
+  const dirtyPolicies = policies.filter((policy) => !savedPolicyIds.has(policy.id)).length;
+  const setAclTab = (nextTab: "users" | "roles" | "policies") => {
+    const pageForTab = nextTab === "roles" ? "acl-roles" : nextTab === "policies" ? "acl-policies" : "acl-users";
+    if (nextTab !== "policies") {
+      setPolicyModule("全部");
+      setPolicyRisk("全部");
+    }
+    setPage(pageForTab, { message: `已切换到${nextTab === "users" ? "用户" : nextTab === "roles" ? "角色" : "权限项"}视图`, tone: "info" });
+  };
+  const saveRole = (role: AclRole) => {
+    setSavedRoleIds((current) => new Set(current).add(role.id));
+    notify(`${role.name} 权限已保存`);
+  };
+  const savePolicy = (policy: AclPolicy) => {
+    setSavedPolicyIds((current) => new Set(current).add(policy.id));
+    notify(`${policy.name} 关联角色已保存`);
+  };
   const togglePermission = (permission: string) => {
+    const nextAllowed = !selectedRole.permissions.includes(permission);
+    const policy = policies.find((item) => item.name === permission);
     setRoles((current) => current.map((role) => {
       if (role.id !== selectedRole.id) return role;
-      return role.permissions.includes(permission)
-        ? { ...role, permissions: role.permissions.filter((item) => item !== permission) }
-        : { ...role, permissions: [...role.permissions, permission] };
+      return nextAllowed
+        ? { ...role, permissions: [...role.permissions, permission] }
+        : { ...role, permissions: role.permissions.filter((item) => item !== permission) };
     }));
+    setPolicies((current) => current.map((item) => {
+      if (item.name !== permission) return item;
+      const nextRoles = nextAllowed
+        ? Array.from(new Set([...item.roles, selectedRole.name]))
+        : item.roles.filter((roleName) => roleName !== selectedRole.name);
+      return { ...item, roles: nextRoles, lastUpdated: currentClock() };
+    }));
+    setSavedRoleIds((current) => {
+      const next = new Set(current);
+      next.delete(selectedRole.id);
+      return next;
+    });
+    setSavedPolicyIds((current) => {
+      if (!policy) return current;
+      const next = new Set(current);
+      next.delete(policy.id);
+      return next;
+    });
+  };
+  const togglePolicyRole = (policy: AclPolicy, role: AclRole) => {
+    const checked = policy.roles.includes(role.name);
+    setPolicies((current) => current.map((item) => item.id === policy.id ? {
+      ...item,
+      roles: checked ? item.roles.filter((name) => name !== role.name) : [...item.roles, role.name],
+      lastUpdated: currentClock(),
+    } : item));
+    setRoles((current) => current.map((item) => {
+      if (item.id !== role.id) return item;
+      const hasPermission = item.permissions.includes(policy.name);
+      return hasPermission
+        ? { ...item, permissions: item.permissions.filter((permission) => permission !== policy.name) }
+        : { ...item, permissions: [...item.permissions, policy.name] };
+    }));
+    setSavedPolicyIds((current) => {
+      const next = new Set(current);
+      next.delete(policy.id);
+      return next;
+    });
+    setSavedRoleIds((current) => {
+      const next = new Set(current);
+      next.delete(role.id);
+      return next;
+    });
+    notify(`${role.name} 已${checked ? "移除" : "关联"} ${policy.name}`, checked ? "warning" : "info");
+  };
+  const resetUserMfa = (user: AclUser) => {
+    setUsers((current) => current.map((item) => item.id === user.id ? { ...item, mfa: "需重置" } : item));
+    notify(`${user.name} MFA 已重置`, "warning");
   };
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={aclPreset.subtitle}
       page={page}
-      actions={tab === "roles" ? <button className="ghost" type="button" onClick={() => notify(`${selectedRole.name} 权限已保存`)}>保存角色权限</button> : undefined}
-      filters={<><div className="deploy-tabs"><button className={tab === "users" ? "active" : ""} type="button" onClick={() => setTab("users")}>用户</button><button className={tab === "roles" ? "active" : ""} type="button" onClick={() => setTab("roles")}>角色</button><button className={tab === "policies" ? "active" : ""} type="button" onClick={() => setTab("policies")}>权限项</button></div>{tab === "users" && <ModuleSearch value={search} placeholder="搜索用户、邮箱或角色" onChange={setSearch} />}{tab === "policies" && <><ModuleSearch value={search} placeholder="搜索权限项、模块或角色" onChange={setSearch} /><FieldSelect label="模块" value={policyModule} options={policyModules} onChange={setPolicyModule} /><FieldSelect label="风险" value={policyRisk} options={["全部", "高", "中", "低"]} onChange={setPolicyRisk} /></>}</>}
-      metrics={<><MetricTile icon={UserRound} label="用户" value={`${users.length}`} tone="blue" /><MetricTile icon={Lock} label="角色" value={`${roles.length}`} tone="purple" /><MetricTile icon={Shield} label="高风险权限" value={`${initialAclPolicies.filter((policy) => policy.risk === "高").length}`} tone="orange" /></>}
+      actions={tab === "roles" ? <button className={dirtyRoles > 0 ? "primary" : "ghost"} type="button" onClick={() => saveRole(selectedRole)}>{dirtyRoles > 0 ? `保存角色权限 (${dirtyRoles})` : "保存角色权限"}</button> : tab === "policies" && selectedPolicy ? <button className={dirtyPolicies > 0 ? "primary" : "ghost"} type="button" onClick={() => savePolicy(selectedPolicy)}>{dirtyPolicies > 0 ? `保存权限项 (${dirtyPolicies})` : "保存权限项"}</button> : undefined}
+      filters={<><div className="deploy-tabs" role="tablist" aria-label="权限视图"><button className={tab === "users" ? "active" : ""} type="button" role="tab" aria-selected={tab === "users"} onClick={() => setAclTab("users")}>用户</button><button className={tab === "roles" ? "active" : ""} type="button" role="tab" aria-selected={tab === "roles"} onClick={() => setAclTab("roles")}>角色</button><button className={tab === "policies" ? "active" : ""} type="button" role="tab" aria-selected={tab === "policies"} onClick={() => setAclTab("policies")}>权限项</button></div>{tab === "users" && <ModuleSearch value={userSearch} placeholder="搜索用户、邮箱或角色" onChange={setUserSearch} />}{tab === "policies" && <><ModuleSearch value={policySearch} placeholder="搜索权限项、模块或角色" onChange={setPolicySearch} /><FieldSelect label="模块" value={policyModule} options={policyModules} onChange={setPolicyModule} /><FieldSelect label="风险" value={policyRisk} options={["全部", "高", "中", "低"]} onChange={setPolicyRisk} /></>}</>}
+      metrics={<><MetricTile icon={UserRound} label="用户" value={`${users.length}`} tone="blue" /><MetricTile icon={Lock} label="未保存" value={`${dirtyRoles + dirtyPolicies}`} tone={dirtyRoles + dirtyPolicies > 0 ? "orange" : "purple"} /><MetricTile icon={Shield} label="高风险权限" value={`${policies.filter((policy) => policy.risk === "高").length}`} tone="orange" /></>}
     >
       {tab === "users" ? (
         <DataTable
@@ -3506,7 +3585,7 @@ function AclPage({ page, notify }: { page: PageKey; notify: Notify }) {
             { key: "enabled", label: "状态", render: (row) => <span className={`pill ${row.enabled ? "green" : "red"}`}>{row.enabled ? "启用" : "禁用"}</span> },
             { key: "mfa", label: "MFA", render: (row) => <span className={row.mfa === "已启用" ? "green-text" : "orange-text"}>{row.mfa}</span> },
             { key: "last", label: "最近登录", render: (row) => row.lastLogin },
-            { key: "ops", label: "操作", width: "180px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { setUsers((current) => current.map((item) => item.id === row.id ? { ...item, enabled: !item.enabled } : item)); notify(`${row.name} 已${row.enabled ? "禁用" : "启用"}`); }}>{row.enabled ? "禁用" : "启用"}</button><button type="button" onClick={() => { setUsers((current) => current.map((item) => item.id === row.id ? { ...item, mfa: "需重置" } : item)); notify(`${row.name} MFA 已重置`, "warning"); }}>重置 MFA</button></span> },
+            { key: "ops", label: "操作", width: "180px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { setUsers((current) => current.map((item) => item.id === row.id ? { ...item, enabled: !item.enabled } : item)); notify(`${row.name} 已${row.enabled ? "禁用" : "启用"}`); }}>{row.enabled ? "禁用" : "启用"}</button><button type="button" onClick={() => resetUserMfa(row)}>重置 MFA</button></span> },
           ]}
           rows={filteredUsers}
           emptyText="没有匹配的用户"
@@ -3516,13 +3595,13 @@ function AclPage({ page, notify }: { page: PageKey; notify: Notify }) {
         <div className="acl-role-layout">
           <PanelCard title="角色列表">
             <div className="role-list">
-              {roles.map((role) => <button key={role.id} className={role.id === roleId ? "active" : ""} type="button" onClick={() => setRoleId(role.id)}><strong>{role.name}</strong><span>{role.desc}</span></button>)}
+              {roles.map((role) => <button key={role.id} className={role.id === roleId ? "active" : ""} type="button" aria-pressed={role.id === roleId} onClick={() => setRoleId(role.id)}><strong>{role.name}</strong><span>{role.desc}</span></button>)}
             </div>
           </PanelCard>
-          <PanelCard title={`${selectedRole.name} 权限项`} action="保存" onAction={() => notify(`${selectedRole.name} 权限已保存`)}>
+          <PanelCard title={`${selectedRole.name} 权限项`} action={savedRoleIds.has(selectedRole.id) ? "已保存" : "保存"} onAction={() => saveRole(selectedRole)}>
             <div className="permission-grid">
               {permissionOptions.map((permission) => (
-                <button key={permission} className={selectedRole.permissions.includes(permission) ? "checked" : ""} type="button" onClick={() => togglePermission(permission)}>
+                <button key={permission} className={selectedRole.permissions.includes(permission) ? "checked" : ""} type="button" aria-pressed={selectedRole.permissions.includes(permission)} onClick={() => togglePermission(permission)}>
                   <span>{permission}</span>
                   <i>{selectedRole.permissions.includes(permission) ? "已允许" : "未允许"}</i>
                 </button>
@@ -3534,7 +3613,7 @@ function AclPage({ page, notify }: { page: PageKey; notify: Notify }) {
         <div className="acl-policy-layout">
           <div className="policy-catalog">
             {filteredPolicies.map((policy) => (
-              <button key={policy.id} className={policy.id === selectedPolicy?.id ? "active" : ""} type="button" onClick={() => setSelectedPolicyId(policy.id)}>
+              <button key={policy.id} className={policy.id === selectedPolicy?.id ? "active" : ""} type="button" aria-pressed={policy.id === selectedPolicy?.id} onClick={() => setSelectedPolicyId(policy.id)}>
                 <span><b>{policy.name}</b><i>{policy.module}</i></span>
                 <em className={policy.risk === "高" ? "red-text" : policy.risk === "中" ? "orange-text" : "blue-text"}>{policy.risk}风险</em>
                 <small>{policy.desc}</small>
@@ -3543,7 +3622,7 @@ function AclPage({ page, notify }: { page: PageKey; notify: Notify }) {
             {filteredPolicies.length === 0 && <p className="module-empty-card">没有匹配的权限项</p>}
           </div>
           {selectedPolicy ? (
-            <PanelCard title={`${selectedPolicy.name} 关联角色`} action="保存" onAction={() => notify(`${selectedPolicy.name} 权限项已保存`)}>
+            <PanelCard title={`${selectedPolicy.name} 关联角色`} action={savedPolicyIds.has(selectedPolicy.id) ? "已保存" : "保存"} onAction={() => savePolicy(selectedPolicy)}>
               <div className="policy-detail">
                 <p><span>模块</span><b>{selectedPolicy.module}</b></p>
                 <p><span>风险级别</span><b>{selectedPolicy.risk}风险</b></p>
@@ -3554,7 +3633,7 @@ function AclPage({ page, notify }: { page: PageKey; notify: Notify }) {
                 {roles.map((role) => {
                   const checked = selectedPolicy.roles.includes(role.name);
                   return (
-                    <button key={role.id} className={checked ? "checked" : ""} type="button" onClick={() => notify(`${role.name} ${checked ? "已保持关联" : "需要在角色页授予"} ${selectedPolicy.name}`, checked ? "info" : "warning")}>
+                    <button key={role.id} className={checked ? "checked" : ""} type="button" aria-pressed={checked} onClick={() => togglePolicyRole(selectedPolicy, role)}>
                       <span>{role.name}</span>
                       <i>{checked ? "已关联" : "未关联"}</i>
                     </button>
