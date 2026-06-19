@@ -272,6 +272,7 @@ a {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
+  grid-auto-rows: max-content;
   align-content: start;
   gap: 4px;
   overflow-x: hidden;
@@ -310,17 +311,18 @@ a {
   display: grid;
   gap: 0;
   border-radius: 8px;
+  overflow: hidden;
   transition:
     background 180ms ease,
     box-shadow 180ms ease;
 }
 
 .side-nav-group.open {
-  background: rgb(255 255 255 / 3.5%);
+  background: rgb(255 255 255 / 3.8%);
 }
 
 .side-nav-group.has-active-child {
-  background: rgb(255 255 255 / 4%);
+  background: linear-gradient(180deg, rgb(14 165 233 / 7%), rgb(255 255 255 / 3.5%));
   box-shadow: inset 2px 0 0 rgb(25 183 232 / 72%);
 }
 
@@ -434,7 +436,7 @@ a {
 }
 
 .side-nav-group.has-active-child .side-nav-row {
-  background: rgb(14 165 233 / 9%);
+  background: rgb(255 255 255 / 4%);
 }
 
 .side-nav-group.has-active-child.open .side-toggle-button {
@@ -450,7 +452,7 @@ a {
 
 .side-nav-group.exact-active .side-nav-row:hover,
 .side-nav-group.has-active-child .side-nav-row:hover {
-  background: rgb(14 165 233 / 12%);
+  background: rgb(14 165 233 / 8%);
 }
 
 .side-nav-group.active .side-nav-row:hover .side-toggle-button {
@@ -508,11 +510,11 @@ a {
 }
 
 .side-submenu {
-  margin: 2px 6px 7px 12px;
-  padding: 4px 0 4px 14px;
-  border-left: 1px solid rgb(134 178 202 / 22%);
+  margin: 0 6px 8px 18px;
+  padding: 2px 0 2px 8px;
+  border-left: 1px solid rgb(134 178 202 / 18%);
   display: grid;
-  gap: 2px;
+  gap: 3px;
   max-height: 0;
   overflow: hidden;
   opacity: 0;
@@ -531,13 +533,13 @@ a {
 
 .side-submenu button {
   position: relative;
-  min-height: 30px;
-  padding: 0 8px 0 10px;
+  min-height: 31px;
+  padding: 0 7px 0 10px;
   border-radius: 5px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(16px, max-content);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   color: #b7cfdd;
   background: transparent;
   font-size: 12px;
@@ -550,10 +552,10 @@ a {
 
 .side-submenu button i {
   position: absolute;
-  left: -17px;
+  left: -11px;
   top: 50%;
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   border-radius: 999px;
   background: rgb(156 195 214 / 42%);
   transform: translateY(-50%);
@@ -574,7 +576,7 @@ a {
 }
 
 .side-submenu button em {
-  max-width: 62px;
+  max-width: 66px;
   min-width: 0;
   padding: 0;
   display: inline-flex;
@@ -589,31 +591,21 @@ a {
   text-overflow: ellipsis;
 }
 
-.side-submenu button em.is-badge {
-  min-width: 17px;
-  height: 17px;
-  padding: 0 5px;
-  justify-content: center;
-  color: #bce9f7;
-  background: rgb(14 165 233 / 13%);
-  border-radius: 999px;
-}
-
 .side-submenu button:hover,
 .side-submenu button.is-child-active {
   color: #ffffff;
-  background: rgb(255 255 255 / 5.5%);
+  background: rgb(255 255 255 / 5%);
 }
 
 .side-submenu button.is-child-active {
-  background: rgb(14 165 233 / 14%);
+  background: rgb(14 165 233 / 13%);
   box-shadow: inset 0 0 0 1px rgb(56 189 248 / 13%);
 }
 
 .side-submenu button.is-child-active i {
-  width: 7px;
-  height: 7px;
-  left: -18px;
+  width: 6px;
+  height: 6px;
+  left: -12px;
   background: #19b7e8;
   box-shadow: 0 0 8px rgb(25 183 232 / 42%);
 }
@@ -2308,6 +2300,146 @@ a {
   gap: 12px;
 }
 
+.acl-policy-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(260px, 0.95fr) minmax(0, 1.05fr);
+  gap: 12px;
+  overflow: hidden;
+}
+
+.policy-catalog {
+  min-height: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  background: #ffffff;
+  overflow: auto;
+}
+
+.policy-catalog button {
+  min-width: 0;
+  min-height: 78px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  color: #405669;
+  background: #fbfdff;
+  text-align: left;
+}
+
+.policy-catalog button.active {
+  border-color: #9ed6ef;
+  background: #f1faff;
+}
+
+.policy-catalog span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.policy-catalog b {
+  overflow: hidden;
+  color: #172331;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.policy-catalog i,
+.policy-catalog small,
+.policy-role-list i {
+  color: #7d8f9e;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.policy-catalog em {
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.policy-catalog small {
+  grid-column: 1 / -1;
+  line-height: 1.35;
+}
+
+.policy-detail {
+  padding: 14px 14px 4px;
+  display: grid;
+  gap: 8px;
+}
+
+.policy-detail p {
+  min-height: 34px;
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+  color: #405669;
+  font-size: 12px;
+}
+
+.policy-detail span {
+  color: #7d8f9e;
+}
+
+.policy-detail b {
+  min-width: 0;
+  color: #172331;
+  font-weight: 800;
+}
+
+.policy-role-list {
+  padding: 10px 14px 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.policy-role-list button {
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  color: #405669;
+  background: #fbfdff;
+  text-align: left;
+  font-weight: 800;
+}
+
+.policy-role-list button.checked {
+  border-color: #9ed6ef;
+  color: #087fc0;
+  background: #f1faff;
+}
+
+.module-empty-card {
+  min-height: 46px;
+  margin: 0;
+  padding: 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: #718395;
+  background: #fbfdff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .role-list {
   padding: 12px;
   display: grid;
@@ -2460,6 +2592,32 @@ a {
   .systemd-content.logs-mode {
     grid-template-rows: minmax(210px, max-content) minmax(260px, max-content);
     overflow: auto;
+  }
+
+  .acl-role-layout,
+  .acl-policy-layout {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: visible;
+  }
+
+  .permission-grid,
+  .policy-role-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .schedule-calendar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .schedule-calendar article {
+    min-height: 70px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .schedule-calendar article strong,
+  .schedule-calendar article em {
+    grid-column: 1 / -1;
   }
 
   .detail-drawer {
