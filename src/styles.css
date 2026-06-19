@@ -1906,6 +1906,189 @@ a {
   grid-template-columns: 1fr 1fr;
 }
 
+.database-backup-content {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(220px, 0.9fr);
+  gap: 12px;
+  overflow: hidden;
+}
+
+.backup-plan-section {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.backup-plan-link {
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #173247;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.backup-plan-link b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backup-plan-link:hover {
+  color: #087fc0;
+}
+
+.backup-plan-section .module-table thead,
+.backup-plan-section .module-table tbody,
+.backup-plan-section .module-table tr {
+  min-width: 980px;
+}
+
+.database-backup-lower {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  gap: 12px;
+  overflow: hidden;
+}
+
+.backup-task-list,
+.restore-point-list {
+  min-height: 0;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  overflow: auto;
+}
+
+.backup-task-list article {
+  min-width: 0;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 150px 72px 112px 58px;
+  align-items: center;
+  gap: 10px;
+  color: #455d70;
+  background: #fbfdff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.backup-task-list span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.backup-task-list span b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backup-task-list em,
+.backup-task-list i {
+  color: #70879a;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.backup-task-list button {
+  min-height: 30px;
+  border-radius: 4px;
+  color: #0b86bd;
+  background: #eef8ff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.restore-point-list button {
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  color: #40566a;
+  background: #fbfdff;
+  text-align: left;
+}
+
+.restore-point-list button.active {
+  border-color: #9ed6ef;
+  background: #f2fbff;
+}
+
+.restore-point-list span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.restore-point-list b {
+  min-width: 0;
+  overflow: hidden;
+  color: #1c3040;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.restore-point-list i,
+.restore-point-list em,
+.restore-point-list strong {
+  color: #718598;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.restore-point-list strong {
+  grid-column: 1 / -1;
+}
+
+.backup-drawer-body {
+  display: grid;
+  gap: 10px;
+}
+
+.backup-drawer-body p {
+  min-height: 42px;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  color: #40566a;
+  background: #fbfdff;
+}
+
+.backup-drawer-body span {
+  color: #73899b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.backup-drawer-body b {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #1e3040;
+  font-size: 12px;
+}
+
 .detail-kv {
   display: grid;
   gap: 10px;
@@ -2701,6 +2884,26 @@ a {
     width: 100%;
     flex: none;
   }
+
+  .database-backup-content {
+    grid-template-rows: auto auto;
+    overflow: visible;
+  }
+
+  .database-backup-lower {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: visible;
+  }
+
+  .backup-task-list article {
+    grid-template-columns: minmax(0, 1fr) 104px;
+    align-items: start;
+  }
+
+  .backup-task-list em,
+  .backup-task-list i {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 773px) {
@@ -2791,6 +2994,15 @@ a {
 
   .module-table tbody {
     max-height: calc(100vh - 440px);
+  }
+
+  .backup-task-list article {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .backup-task-list strong,
+  .backup-task-list button {
+    justify-self: start;
   }
 
   .systemd-log-stream {
@@ -4350,6 +4562,11 @@ a {
 .pill.red {
   color: #d63c3c;
   background: #fff0f0;
+}
+
+.pill.gray {
+  color: #4f6274;
+  background: #eef2f5;
 }
 
 .mobile-app-shell {
