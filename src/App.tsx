@@ -534,6 +534,20 @@ type AuditRecord = {
   summary: string;
 };
 
+type AuditExportRecord = {
+  id: string;
+  name: string;
+  format: "CSV" | "JSON" | "ZIP";
+  range: string;
+  status: "可下载" | "生成中" | "失败";
+  rows: number;
+  size: string;
+  creator: string;
+  createdAt: string;
+  expiresAt: string;
+  traceId: string;
+};
+
 type AclUser = {
   id: string;
   name: string;
@@ -714,6 +728,13 @@ const initialAuditRecords: AuditRecord[] = auditRows.map((row) => ({
   traceId: row[6],
   summary: `${row[2]} 对 ${row[4]} 执行 ${row[3]}，结果为 ${row[5]}`,
 }));
+
+const initialAuditExports: AuditExportRecord[] = [
+  { id: "exp-1", name: "今日操作审计 CSV", format: "CSV", range: "今天 00:00 - 现在", status: "可下载", rows: 482, size: "318 KB", creator: "管理员", createdAt: "今天 10:24", expiresAt: "7 天后", traceId: "EXP-20260619-001" },
+  { id: "exp-2", name: "失败操作 JSON", format: "JSON", range: "近 24 小时", status: "可下载", rows: 17, size: "42 KB", creator: "王工", createdAt: "今天 09:16", expiresAt: "6 天后", traceId: "EXP-20260619-002" },
+  { id: "exp-3", name: "合规审计归档包", format: "ZIP", range: "近 30 天", status: "生成中", rows: 18642, size: "生成中", creator: "系统任务", createdAt: "今天 08:30", expiresAt: "永久归档", traceId: "EXP-20260619-003" },
+  { id: "exp-4", name: "昨日配置变更 CSV", format: "CSV", range: "昨天", status: "失败", rows: 0, size: "-", creator: "管理员", createdAt: "昨天 18:33", expiresAt: "-", traceId: "EXP-20260618-017" },
+];
 
 const permissionOptions = ["主机读写", "网站发布", "数据库管理", "文件管理", "终端访问", "防火墙管理", "审计导出", "权限管理"];
 
@@ -2580,25 +2601,78 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
 
 function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const auditPreset = auditPagePreset(page);
+  const [exportRows, setExportRows] = useState(initialAuditExports);
   const [search, setSearch] = useState(auditPreset.search);
   const [userFilter, setUserFilter] = useState(auditPreset.user);
   const [resultFilter, setResultFilter] = useState(auditPreset.result);
+  const [formatFilter, setFormatFilter] = useState("全部");
+  const [exportStatusFilter, setExportStatusFilter] = useState("全部");
   const [selected, setSelected] = useState<AuditRecord | null>(null);
+  const [selectedExport, setSelectedExport] = useState<AuditExportRecord | null>(null);
+  const isExportMode = auditPreset.mode === "exports";
   const users = ["全部", ...Array.from(new Set(initialAuditRecords.map((row) => row.user)))];
   const filteredRows = initialAuditRecords.filter((row) => {
     const query = search.trim().toLowerCase();
     const matchSearch = !query || `${row.user} ${row.action} ${row.object} ${row.result} ${row.traceId} ${row.ip}`.toLowerCase().includes(query);
     return matchSearch && (userFilter === "全部" || row.user === userFilter) && (resultFilter === "全部" || row.result === resultFilter);
   });
+  const filteredExports = exportRows.filter((row) => {
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || `${row.name} ${row.format} ${row.range} ${row.status} ${row.creator} ${row.traceId}`.toLowerCase().includes(query);
+    return matchSearch && (formatFilter === "全部" || row.format === formatFilter) && (exportStatusFilter === "全部" || row.status === exportStatusFilter);
+  });
+  const createExport = () => {
+    const next: AuditExportRecord = {
+      id: `exp-${Date.now()}`,
+      name: `审计导出 ${exportRows.length + 1}`,
+      format: formatFilter === "全部" ? "CSV" : formatFilter as AuditExportRecord["format"],
+      range: "当前筛选范围",
+      status: "生成中",
+      rows: filteredRows.length,
+      size: "生成中",
+      creator: "管理员",
+      createdAt: currentClock(),
+      expiresAt: "7 天后",
+      traceId: `EXP-${Date.now()}`,
+    };
+    setExportRows((current) => [next, ...current]);
+    setExportStatusFilter("全部");
+    notify(`${next.name} 已创建`, "success");
+  };
+  const regenerateExport = (row: AuditExportRecord) => {
+    notify(`${row.name} 已加入重新生成队列`, row.status === "失败" ? "warning" : "info");
+  };
+  const handleExportPrimaryAction = (row: AuditExportRecord) => {
+    if (row.status === "可下载") {
+      notify(`${row.name} 已开始下载`, "success");
+      return;
+    }
+    regenerateExport(row);
+  };
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={auditPreset.subtitle}
       page={page}
-      actions={<button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 条审计日志`, "info")}><Download size={15} /> 导出</button>}
-      filters={<><ModuleSearch value={search} placeholder="搜索关键字、对象或 trace id" onChange={setSearch} /><FieldSelect label="用户" value={userFilter} options={users} onChange={setUserFilter} /><FieldSelect label="结果" value={resultFilter} options={["全部", "成功", "失败"]} onChange={setResultFilter} /></>}
-      metrics={<><MetricTile icon={FileText} label="日志" value={`${initialAuditRecords.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="成功" value={`${initialAuditRecords.filter((row) => row.result === "成功").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${initialAuditRecords.filter((row) => row.result === "失败").length}`} tone="red" /></>}
-      side={selected && (
+      actions={<button className="ghost" type="button" onClick={() => isExportMode ? createExport() : notify(`已导出 ${filteredRows.length} 条审计日志`, "info")}><Download size={15} /> {isExportMode ? "新建导出" : "导出"}</button>}
+      filters={isExportMode
+        ? <><ModuleSearch value={search} placeholder="搜索导出名称、范围或 trace id" onChange={setSearch} /><FieldSelect label="格式" value={formatFilter} options={["全部", "CSV", "JSON", "ZIP"]} onChange={setFormatFilter} /><FieldSelect label="状态" value={exportStatusFilter} options={["全部", "可下载", "生成中", "失败"]} onChange={setExportStatusFilter} /></>
+        : <><ModuleSearch value={search} placeholder="搜索关键字、对象或 trace id" onChange={setSearch} /><FieldSelect label="用户" value={userFilter} options={users} onChange={setUserFilter} /><FieldSelect label="结果" value={resultFilter} options={["全部", "成功", "失败"]} onChange={setResultFilter} /></>}
+      metrics={isExportMode
+        ? <><MetricTile icon={Download} label="导出任务" value={`${exportRows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="可下载" value={`${exportRows.filter((row) => row.status === "可下载").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${exportRows.filter((row) => row.status === "失败").length}`} tone="red" /></>
+        : <><MetricTile icon={FileText} label="日志" value={`${initialAuditRecords.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="成功" value={`${initialAuditRecords.filter((row) => row.result === "成功").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${initialAuditRecords.filter((row) => row.result === "失败").length}`} tone="red" /></>}
+      side={selectedExport ? (
+        <DetailDrawer title="导出详情" subtitle={selectedExport.traceId} onClose={() => setSelectedExport(null)}>
+          <div className="detail-kv">
+            <p><span>名称</span><b>{selectedExport.name}</b></p>
+            <p><span>格式</span><b>{selectedExport.format}</b></p>
+            <p><span>范围</span><b>{selectedExport.range}</b></p>
+            <p><span>记录数</span><b>{selectedExport.rows.toLocaleString("zh-CN")}</b></p>
+            <p><span>状态</span><b>{selectedExport.status}</b></p>
+            <p><span>过期</span><b>{selectedExport.expiresAt}</b></p>
+          </div>
+        </DetailDrawer>
+      ) : selected && (
         <DetailDrawer title="审计详情" subtitle={selected.traceId} onClose={() => setSelected(null)}>
           <div className="detail-kv">
             <p><span>时间</span><b>{selected.time}</b></p>
@@ -2610,26 +2684,51 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
         </DetailDrawer>
       )}
     >
-      {auditPreset.mode === "exports" && (
-        <div className="export-list">
-          {["CSV 导出 / 今日 10:24", "JSON 导出 / 昨天 18:33", "审计包归档 / 周一 09:10"].map((item) => <p key={item}><Download size={14} /> {item}<button type="button" onClick={() => notify(`${item} 已重新生成`, "info")}>重新生成</button></p>)}
-        </div>
+      {isExportMode ? (
+        <>
+          <div className="export-list">
+            {filteredExports.map((row) => (
+              <p key={row.id}>
+                <Download size={14} />
+                <span><b>{row.name}</b><em>{row.range} · {row.rows.toLocaleString("zh-CN")} 条 · {row.size}</em></span>
+                <strong className={row.status === "可下载" ? "green-text" : row.status === "生成中" ? "blue-text" : "red-text"}>{row.status}</strong>
+              </p>
+            ))}
+            {filteredExports.length === 0 && <div className="module-empty-card">没有匹配的导出记录</div>}
+          </div>
+          <DataTable
+            columns={[
+              { key: "name", label: "导出名称", width: "220px", render: (row) => <b>{row.name}</b> },
+              { key: "format", label: "格式", render: (row) => <span className="pill blue">{row.format}</span> },
+              { key: "range", label: "范围", render: (row) => row.range },
+              { key: "status", label: "状态", render: (row) => <span className={`pill ${row.status === "可下载" ? "green" : row.status === "生成中" ? "blue" : "red"}`}>{row.status}</span> },
+              { key: "rows", label: "记录数", render: (row) => row.rows.toLocaleString("zh-CN") },
+              { key: "creator", label: "创建人", render: (row) => row.creator },
+              { key: "created", label: "创建时间", render: (row) => row.createdAt },
+              { key: "ops", label: "操作", width: "160px", render: (row) => <span className="table-actions export-actions"><button type="button" onClick={() => setSelectedExport(row)}>详情</button><button type="button" onClick={() => handleExportPrimaryAction(row)}>{row.status === "可下载" ? "下载" : "重试"}</button></span> },
+            ]}
+            rows={filteredExports}
+            emptyText="没有匹配的导出记录"
+            getRowKey={(row) => row.id}
+          />
+        </>
+      ) : (
+        <DataTable
+          columns={[
+            { key: "time", label: "时间", width: "130px", render: (row) => row.time },
+            { key: "ip", label: "IP", render: (row) => row.ip },
+            { key: "user", label: "用户", render: (row) => row.user },
+            { key: "action", label: "动作", render: (row) => row.action },
+            { key: "object", label: "对象", render: (row) => row.object },
+            { key: "result", label: "结果", render: (row) => <span className={`pill ${row.result === "成功" ? "green" : "red"}`}>{row.result}</span> },
+            { key: "trace", label: "trace id", render: (row) => row.traceId },
+            { key: "ops", label: "操作", width: "78px", render: (row) => <span className="table-actions"><button type="button" onClick={() => setSelected(row)}>详情</button></span> },
+          ]}
+          rows={filteredRows}
+          emptyText="没有匹配的审计日志"
+          getRowKey={(row) => row.id}
+        />
       )}
-      <DataTable
-        columns={[
-          { key: "time", label: "时间", width: "130px", render: (row) => row.time },
-          { key: "ip", label: "IP", render: (row) => row.ip },
-          { key: "user", label: "用户", render: (row) => row.user },
-          { key: "action", label: "动作", render: (row) => row.action },
-          { key: "object", label: "对象", render: (row) => row.object },
-          { key: "result", label: "结果", render: (row) => <span className={`pill ${row.result === "成功" ? "green" : "red"}`}>{row.result}</span> },
-          { key: "trace", label: "trace id", render: (row) => row.traceId },
-          { key: "ops", label: "操作", width: "78px", render: (row) => <span className="table-actions"><button type="button" onClick={() => setSelected(row)}>详情</button></span> },
-        ]}
-        rows={filteredRows}
-        emptyText="没有匹配的审计日志"
-        getRowKey={(row) => row.id}
-      />
     </ModulePageShell>
   );
 }
