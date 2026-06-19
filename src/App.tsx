@@ -423,6 +423,26 @@ const dbRows = [
   ["logs-mysql-02", "MySQL 8.0.28", "10.0.17.19", "3306", "正常", "成功", "0", "2025-03-08 02:00", "仅备份", "运维"],
 ];
 
+const initialDatabaseBackupPlans: DatabaseBackupPlan[] = [
+  { id: "db-bkp-plan-1", name: "生产 PostgreSQL 每日全量", database: "prod-postgres-01", storage: "S3", schedule: "0 2 * * *", retention: "14 份", enabled: true, health: "正常", lastRun: "今天 02:14", successRate: 99.2 },
+  { id: "db-bkp-plan-2", name: "账务 MySQL 半小时增量", database: "billing-mysql-02", storage: "MinIO", schedule: "*/30 * * * *", retention: "48 份", enabled: true, health: "正常", lastRun: "今天 10:30", successRate: 96.4 },
+  { id: "db-bkp-plan-3", name: "分析库夜间归档", database: "analytics-mysql-01", storage: "S3", schedule: "20 2 * * *", retention: "7 份", enabled: true, health: "告警", lastRun: "昨天 20:45", successRate: 82.5 },
+  { id: "db-bkp-plan-4", name: "日志库本地快照", database: "logs-mysql-02", storage: "本地", schedule: "0 */6 * * *", retention: "12 份", enabled: false, health: "正常", lastRun: "昨天 18:00", successRate: 91.8 },
+];
+
+const initialDatabaseBackupTasks: DatabaseBackupTask[] = [
+  { id: "db-bkp-task-1", planId: "db-bkp-plan-1", database: "prod-postgres-01", storage: "S3", status: "成功", startedAt: "今天 02:14", size: "18.6 GB", duration: "3分12秒" },
+  { id: "db-bkp-task-2", planId: "db-bkp-plan-2", database: "billing-mysql-02", storage: "MinIO", status: "运行中", startedAt: "今天 10:30", size: "2.4 GB", duration: "1分08秒" },
+  { id: "db-bkp-task-3", planId: "db-bkp-plan-3", database: "analytics-mysql-01", storage: "S3", status: "失败", startedAt: "昨天 20:45", size: "-", duration: "18秒" },
+  { id: "db-bkp-task-4", planId: "db-bkp-plan-4", database: "logs-mysql-02", storage: "本地", status: "等待", startedAt: "等待窗口", size: "-", duration: "-" },
+];
+
+const initialDatabaseRestorePoints: DatabaseRestorePoint[] = [
+  { id: "db-restore-1", database: "prod-postgres-01", createdAt: "今天 02:14", storage: "s3://stackpilot/prod-postgres-01", size: "18.6 GB", checksum: "已校验", drillStatus: "未演练" },
+  { id: "db-restore-2", database: "billing-mysql-02", createdAt: "今天 10:30", storage: "minio://db-backup/billing-mysql-02", size: "2.4 GB", checksum: "待校验", drillStatus: "未演练" },
+  { id: "db-restore-3", database: "archive-pg-02", createdAt: "昨天 22:30", storage: "s3://stackpilot/archive-pg-02", size: "46.2 GB", checksum: "已校验", drillStatus: "已完成" },
+];
+
 const settingsChanges = [
   ["2025-08-13 09:12:45", "管理员", "备份策略", "修改", "新增保留周期：14", "10.0.12.24"],
   ["2025-08-13 09:01:32", "管理员", "访问令牌", "创建", "创建令牌：CI 发布令牌", "10.0.12.24"],
@@ -573,6 +593,40 @@ type AclPolicy = {
   desc: string;
   roles: string[];
   lastUpdated: string;
+};
+
+type DatabaseBackupPlan = {
+  id: string;
+  name: string;
+  database: string;
+  storage: "S3" | "MinIO" | "本地";
+  schedule: string;
+  retention: string;
+  enabled: boolean;
+  health: "正常" | "告警";
+  lastRun: string;
+  successRate: number;
+};
+
+type DatabaseBackupTask = {
+  id: string;
+  planId: string;
+  database: string;
+  storage: string;
+  status: "成功" | "运行中" | "失败" | "等待";
+  startedAt: string;
+  size: string;
+  duration: string;
+};
+
+type DatabaseRestorePoint = {
+  id: string;
+  database: string;
+  createdAt: string;
+  storage: string;
+  size: string;
+  checksum: "已校验" | "待校验";
+  drillStatus: "未演练" | "演练中" | "已完成";
 };
 
 const initialOverviewNodes: OverviewNode[] = [
@@ -941,7 +995,11 @@ function DesktopShell({
         {page === "overview-risks" && <OverviewRisksPage notify={notify} />}
         {activeModule === "hosts" && <HostsPage key={page} page={page} notify={notify} />}
         {activeModule === "sites" && <SitesPage key={page} page={page} notify={notify} />}
-        {activeModule === "databases" && <DatabasesPage key={page} page={page} notify={notify} />}
+        {activeModule === "databases" && (
+          page === "databases-backups"
+            ? <DatabaseBackupsPage key={page} page={page} notify={notify} />
+            : <DatabasesPage key={page} page={page} notify={notify} />
+        )}
         {activeModule === "files" && <FilesPage key={page} page={page} notify={notify} />}
         {activeModule === "terminal" && <TerminalPage key={page} page={page} notify={notify} />}
         {activeModule === "systemd" && <SystemdPage key={page} page={page} notify={notify} />}
@@ -2976,6 +3034,208 @@ function DatabasesPage({ page, notify }: { page: PageKey; notify: Notify }) {
       </div>
     </div>
   );
+}
+
+function DatabaseBackupsPage({ page, notify }: { page: PageKey; notify: Notify }) {
+  const preset = databasePagePreset(page);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("全部");
+  const [storageFilter, setStorageFilter] = useState("全部");
+  const [plans, setPlans] = useState(initialDatabaseBackupPlans);
+  const [tasks, setTasks] = useState(initialDatabaseBackupTasks);
+  const [restorePoints, setRestorePoints] = useState(initialDatabaseRestorePoints);
+  const [restorePointId, setRestorePointId] = useState(initialDatabaseRestorePoints[0]?.id ?? "");
+  const [drawer, setDrawer] = useState<DatabaseBackupPlan | DatabaseRestorePoint | null>(null);
+  const selectedRestorePoint = restorePoints.find((point) => point.id === restorePointId) ?? restorePoints[0];
+  const filteredPlans = plans.filter((plan) => {
+    const keyword = search.trim().toLowerCase();
+    const matchSearch = !keyword || `${plan.name} ${plan.database} ${plan.schedule}`.toLowerCase().includes(keyword);
+    const matchStatus = statusFilter === "全部" || (statusFilter === "已启用" ? plan.enabled : statusFilter === "已暂停" ? !plan.enabled : plan.health === "告警");
+    const matchStorage = storageFilter === "全部" || plan.storage === storageFilter;
+    return matchSearch && matchStatus && matchStorage;
+  });
+  const successTasks = tasks.filter((task) => task.status === "成功").length;
+  const successRate = tasks.length ? Math.round((successTasks / tasks.length) * 100) : 0;
+  const failedTasks = tasks.filter((task) => task.status === "失败").length;
+  const runningTasks = tasks.filter((task) => task.status === "运行中").length;
+  const updatePlan = (id: string, patch: Partial<DatabaseBackupPlan>) => {
+    setPlans((current) => current.map((plan) => plan.id === id ? { ...plan, ...patch } : plan));
+  };
+  const updateTask = (id: string, patch: Partial<DatabaseBackupTask>) => {
+    setTasks((current) => current.map((task) => task.id === id ? { ...task, ...patch } : task));
+  };
+  const syncCompletedPlan = (planIds: string[]) => {
+    const uniqueIds = new Set(planIds);
+    setPlans((current) => current.map((plan) => uniqueIds.has(plan.id) ? { ...plan, health: plan.health === "告警" ? "正常" : plan.health, lastRun: "刚刚", successRate: Math.max(plan.successRate, 96.8) } : plan));
+  };
+  const updateRestorePoint = (id: string, patch: Partial<DatabaseRestorePoint>) => {
+    setRestorePoints((current) => current.map((point) => point.id === id ? { ...point, ...patch } : point));
+    setDrawer((current) => current && !("schedule" in current) && current.id === id ? { ...current, ...patch } : current);
+  };
+  const runPlanNow = (plan: DatabaseBackupPlan) => {
+    const task: DatabaseBackupTask = {
+      id: `db-bkp-task-${Date.now()}`,
+      planId: plan.id,
+      database: plan.database,
+      storage: plan.storage,
+      status: "运行中",
+      startedAt: "刚刚",
+      size: "计算中",
+      duration: "0秒",
+    };
+    setTasks((current) => [task, ...current]);
+    updatePlan(plan.id, { enabled: true, lastRun: "刚刚" });
+    notify(`${plan.database} 已开始立即备份`);
+  };
+  const createPlan = () => {
+    const next: DatabaseBackupPlan = {
+      id: `db-bkp-plan-${Date.now()}`,
+      name: "新建备份计划",
+      database: "staging-pg-03",
+      storage: "S3",
+      schedule: "0 3 * * *",
+      retention: "7 份",
+      enabled: false,
+      health: "正常",
+      lastRun: "未执行",
+      successRate: 100,
+    };
+    setPlans((current) => [next, ...current]);
+    setSearch("");
+    setStatusFilter("全部");
+    setStorageFilter("全部");
+    setDrawer(next);
+    notify("备份计划已创建，默认处于暂停状态", "info");
+  };
+
+  return (
+    <ModulePageShell
+      title={resolvePageMeta(page).title}
+      subtitle={`${preset.subtitle} · 最近同步 ${currentClock()}`}
+      page={page}
+      viewContext={{
+        eyebrow: "数据库 / 备份计划",
+        title: "备份计划",
+        description: "独立管理数据库备份策略、最近任务和恢复点演练，不混入实例创建流程。",
+        chips: [`计划 ${plans.length}`, `失败 ${failedTasks}`, `恢复点 ${restorePoints.length}`],
+      }}
+      actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredPlans.length} 条备份计划`, "info")}><Download size={15} /> 导出</button><button className="ghost" type="button" onClick={() => notify("备份计划状态已刷新", "info")}><RefreshCw size={15} /> 刷新</button><button className="primary" type="button" onClick={createPlan}><Plus size={15} /> 新建计划</button></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索计划、数据库或 cron" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={["全部", "已启用", "已暂停", "告警"]} onChange={setStatusFilter} /><FieldSelect label="存储" value={storageFilter} options={["全部", "S3", "MinIO", "本地"]} onChange={setStorageFilter} /></>}
+      metrics={<><MetricTile icon={CalendarDays} label="备份计划" value={`${plans.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="任务成功率" value={`${successRate}%`} tone="green" /><MetricTile icon={Shield} label="失败任务" value={`${failedTasks}`} tone={failedTasks ? "red" : "gray"} /></>}
+      side={drawer && (
+        <DetailDrawer
+          title={"schedule" in drawer ? "备份计划详情" : "恢复演练"}
+          subtitle={drawer.database}
+          onClose={() => setDrawer(null)}
+          actions={"schedule" in drawer ? (
+            <><button className="ghost" type="button" onClick={() => setDrawer(null)}>关闭</button><button className="primary" type="button" onClick={() => { runPlanNow(drawer); setDrawer(null); }}>立即备份</button></>
+          ) : (
+            <><button className="ghost" type="button" aria-label={`校验恢复点 ${drawer.database}`} onClick={() => { updateRestorePoint(drawer.id, { checksum: "已校验" }); notify(`${drawer.database} 校验已完成`, "info"); }}>校验</button><button className="primary" type="button" aria-label={`${drawer.drillStatus === "演练中" ? "完成" : "开始"}恢复演练 ${drawer.database}`} onClick={() => { updateRestorePoint(drawer.id, { drillStatus: drawer.drillStatus === "演练中" ? "已完成" : "演练中" }); notify(`${drawer.database} 恢复演练已${drawer.drillStatus === "演练中" ? "完成" : "创建"}`); }}>{drawer.drillStatus === "演练中" ? "完成演练" : "开始演练"}</button></>
+          )}
+        >
+          {"schedule" in drawer ? (
+            <div className="backup-drawer-body">
+              <p><span>计划名称</span><b>{drawer.name}</b></p>
+              <p><span>执行周期</span><b>{drawer.schedule}</b></p>
+              <p><span>保留策略</span><b>{drawer.retention}</b></p>
+              <p><span>存储目标</span><b>{drawer.storage}</b></p>
+              <p><span>成功率</span><b>{drawer.successRate}%</b></p>
+              <div className="drawer-tip">编辑计划会记录到审计日志，本地原型仅模拟保存状态。</div>
+            </div>
+          ) : (
+            <div className="backup-drawer-body">
+              <p><span>恢复点</span><b>{drawer.createdAt}</b></p>
+              <p><span>存储位置</span><b>{drawer.storage}</b></p>
+              <p><span>大小</span><b>{drawer.size}</b></p>
+              <p><span>校验</span><b>{drawer.checksum}</b></p>
+              <p><span>演练状态</span><b>{drawer.drillStatus}</b></p>
+              <div className="drawer-warning">恢复演练不会覆盖生产库，原型中仅生成本地状态反馈。</div>
+            </div>
+          )}
+        </DetailDrawer>
+      )}
+    >
+      <div className="database-backup-content">
+        <section className="backup-plan-section">
+          <DataTable
+            columns={[
+              { key: "plan", label: "备份计划", width: "240px", render: (plan) => <button className="backup-plan-link" type="button" aria-label={`查看 ${plan.name} 详情`} onClick={() => setDrawer(plan)}><StatusLight tone={backupPlanTone(plan)} /><b>{plan.name}</b></button> },
+              { key: "database", label: "数据库", render: (plan) => <code>{plan.database}</code> },
+              { key: "schedule", label: "周期", render: (plan) => plan.schedule },
+              { key: "storage", label: "存储", render: (plan) => <span className="pill blue">{plan.storage}</span> },
+              { key: "retention", label: "保留", render: (plan) => plan.retention },
+              { key: "status", label: "状态", render: (plan) => <span className={`pill ${backupPlanTone(plan)}`}>{plan.enabled ? plan.health : "暂停"}</span> },
+              { key: "success", label: "成功率", render: (plan) => <span className={plan.successRate < 90 ? "red-text" : "green-text"}>{plan.successRate}%</span> },
+              { key: "ops", label: "操作", width: "230px", render: (plan) => <span className="table-actions"><button type="button" aria-label={`立即备份 ${plan.name}`} onClick={() => runPlanNow(plan)}>立即</button><button type="button" aria-label={`${plan.enabled ? "暂停" : "启用"} ${plan.name}`} onClick={() => { const enabled = !plan.enabled; updatePlan(plan.id, { enabled }); notify(`${plan.name} 已${enabled ? "启用" : "暂停"}`, enabled ? "success" : "warning"); }}>{plan.enabled ? "暂停" : "启用"}</button><button type="button" aria-label={`打开 ${plan.name} 详情`} onClick={() => setDrawer(plan)}>详情</button></span> },
+            ]}
+            rows={filteredPlans}
+            emptyText="没有匹配的备份计划"
+            getRowKey={(plan) => plan.id}
+          />
+        </section>
+        <section className="database-backup-lower">
+          <PanelCard title="最近备份任务" action="完成运行中" onAction={() => {
+            if (!runningTasks) {
+              notify("当前没有运行中的备份任务", "info");
+              return;
+            }
+            const completedPlanIds = tasks.filter((task) => task.status === "运行中").map((task) => task.planId);
+            setTasks((current) => current.map((task) => task.status === "运行中" ? { ...task, status: "成功", size: task.size === "计算中" || task.size === "-" ? "3.1 GB" : task.size, duration: "2分06秒" } : task));
+            syncCompletedPlan(completedPlanIds);
+            notify("运行中的备份任务已标记成功");
+          }}>
+            <div className="backup-task-list">
+              {tasks.map((task) => (
+                <article key={task.id}>
+                  <span><StatusLight tone={backupTaskTone(task.status)} /> <b>{task.database}</b></span>
+                  <em>{task.startedAt} · {task.storage}</em>
+                  <strong className={task.status === "失败" ? "red-text" : task.status === "成功" ? "green-text" : ""}>{task.status}</strong>
+                  <i>{task.size} / {task.duration}</i>
+                  <button type="button" aria-label={`${task.status === "失败" ? "重试" : "查看日志"} ${task.database}`} onClick={() => {
+                    if (task.status === "失败") {
+                      updateTask(task.id, { status: "运行中", startedAt: "刚刚", duration: "0秒" });
+                      notify(`${task.database} 失败任务已重试`);
+                      return;
+                    }
+                    notify(`${task.database} 任务日志已打开`, "info");
+                  }}>{task.status === "失败" ? "重试" : "日志"}</button>
+                </article>
+              ))}
+            </div>
+          </PanelCard>
+          <PanelCard title="恢复点演练" action="开始演练" onAction={() => {
+            if (selectedRestorePoint) {
+              setDrawer(selectedRestorePoint);
+              notify(`${selectedRestorePoint.database} 恢复演练已准备`, "info");
+            }
+          }}>
+            <div className="restore-point-list">
+              {restorePoints.map((point) => (
+                <button key={point.id} className={point.id === restorePointId ? "active" : ""} type="button" aria-label={`选择恢复点 ${point.database} ${point.createdAt}`} aria-pressed={point.id === restorePointId} onClick={() => { setRestorePointId(point.id); setDrawer(point); }}>
+                  <span><b>{point.database}</b><i>{point.createdAt}</i></span>
+                  <em>{point.size}</em>
+                  <strong>{point.checksum} · {point.drillStatus}</strong>
+                </button>
+              ))}
+            </div>
+          </PanelCard>
+        </section>
+      </div>
+    </ModulePageShell>
+  );
+}
+
+function backupPlanTone(plan: DatabaseBackupPlan) {
+  if (!plan.enabled) return "gray";
+  if (plan.health === "告警") return "red";
+  return "green";
+}
+
+function backupTaskTone(status: DatabaseBackupTask["status"]) {
+  if (status === "成功") return "green";
+  if (status === "失败") return "red";
+  if (status === "运行中") return "orange";
+  return "gray";
 }
 
 function DatabaseTable({ rows, notify }: { rows: string[][]; notify: Notify }) {
