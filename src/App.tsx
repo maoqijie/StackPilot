@@ -175,7 +175,7 @@ const navItems: NavItem[] = [
     children: [
       { id: "databases-instances", label: "实例列表", meta: "19 个" },
       { id: "databases-backups", label: "备份计划", meta: "02:00 执行" },
-      { id: "databases-slow", label: "慢查询", meta: "23 条", badge: "23" },
+      { id: "databases-slow", label: "慢查询", meta: "4 条", badge: "4" },
     ],
   },
   {
@@ -295,6 +295,12 @@ function navChildMetaText(child: NavChild) {
   if (!child.badge) return child.meta;
   const escapedBadge = child.badge.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return child.meta.replace(new RegExp(`^${escapedBadge}\\s*(个|条|项|台|人|组)?\\s*`), "").trim();
+}
+
+function secondsFromDuration(value: string) {
+  const amount = Number.parseFloat(value);
+  if (Number.isNaN(amount)) return 0;
+  return value.toLowerCase().includes("ms") ? amount / 1000 : amount;
 }
 
 function activeNavEntryForPage(page: PageKey) {
@@ -451,6 +457,13 @@ const initialDatabaseRestorePoints: DatabaseRestorePoint[] = [
   { id: "db-restore-1", database: "prod-postgres-01", createdAt: "今天 02:14", storage: "s3://stackpilot/prod-postgres-01", size: "18.6 GB", checksum: "已校验", drillStatus: "未演练" },
   { id: "db-restore-2", database: "billing-mysql-02", createdAt: "今天 10:30", storage: "minio://db-backup/billing-mysql-02", size: "2.4 GB", checksum: "待校验", drillStatus: "未演练" },
   { id: "db-restore-3", database: "archive-pg-02", createdAt: "昨天 22:30", storage: "s3://stackpilot/archive-pg-02", size: "46.2 GB", checksum: "已校验", drillStatus: "已完成" },
+];
+
+const initialDatabaseSlowQueries: DatabaseSlowQuery[] = [
+  { id: "slow-1", database: "analytics-mysql-01", fingerprint: "orders_status_created_at", sql: "SELECT * FROM orders WHERE status = 'pending' ORDER BY created_at DESC LIMIT 200", avgTime: "2.48s", p95Time: "4.12s", calls: 428, rows: "18.4 万", level: "高", status: "待处理", owner: "运维", firstSeen: "今天 09:18", suggestion: "为 orders(status, created_at) 增加组合索引，并限制 SELECT 字段。", sessionId: "mysql-80231" },
+  { id: "slow-2", database: "billing-mysql-02", fingerprint: "invoice_bulk_update", sql: "UPDATE invoices SET status = 'paid' WHERE id IN (...)", avgTime: "2.41s", p95Time: "3.86s", calls: 92, rows: "12.1 万", level: "高", status: "分析中", owner: "研发", firstSeen: "今天 08:52", suggestion: "拆分批次并在低峰期执行，避免长事务锁住账务表。", sessionId: "mysql-79418", explain: "type=range, key=PRIMARY, rows=121000, Extra=Using where" },
+  { id: "slow-3", database: "metrics-pg-01", fingerprint: "metrics_group_by_day", sql: "SELECT date_trunc('day', created_at), avg(value) FROM metrics GROUP BY 1", avgTime: "1.95s", p95Time: "2.72s", calls: 316, rows: "42.8 万", level: "中", status: "待处理", owner: "运维", firstSeen: "昨天 22:17", suggestion: "增加按天聚合的物化视图，仪表盘读取聚合表。", sessionId: "pg-18842" },
+  { id: "slow-4", database: "prod-postgres-01", fingerprint: "users_role_count", sql: "SELECT role, COUNT(*) FROM users WHERE active = true GROUP BY role", avgTime: "1.28s", p95Time: "1.76s", calls: 74, rows: "7.2 万", level: "低", status: "已处理", owner: "DBA", firstSeen: "昨天 16:40", suggestion: "已改为读取只读副本，保留观察 24 小时。", sessionId: "pg-17310", explain: "Seq Scan on users, Filter active=true, HashAggregate role" },
 ];
 
 const initialProxyEndpoints: ProxyEndpoint[] = [
@@ -672,6 +685,24 @@ type DatabaseRestorePoint = {
   size: string;
   checksum: "已校验" | "待校验";
   drillStatus: "未演练" | "演练中" | "已完成";
+};
+
+type DatabaseSlowQuery = {
+  id: string;
+  database: string;
+  fingerprint: string;
+  sql: string;
+  avgTime: string;
+  p95Time: string;
+  calls: number;
+  rows: string;
+  level: "高" | "中" | "低";
+  status: "待处理" | "分析中" | "已处理";
+  owner: string;
+  firstSeen: string;
+  suggestion: string;
+  sessionId: string;
+  explain?: string;
 };
 
 const initialOverviewNodes: OverviewNode[] = [
@@ -1041,6 +1072,8 @@ function DesktopShell({
         {activeModule === "databases" && (
           page === "databases-backups"
             ? <DatabaseBackupsPage key={page} page={page} notify={notify} />
+            : page === "databases-slow"
+              ? <DatabaseSlowQueriesPage key={page} page={page} notify={notify} />
             : <DatabasesPage key={page} page={page} notify={notify} />
         )}
         {activeModule === "files" && <FilesPage key={page} page={page} notify={notify} />}
@@ -1078,22 +1111,26 @@ function Sidebar({
   const [openGroups, setOpenGroups] = useState<Partial<Record<NavItem["key"], boolean>>>(() => ({
     overview: true,
   }));
+  const [manuallyClosedActiveGroup, setManuallyClosedActiveGroup] = useState<{ key: NavItem["key"]; page: PageKey } | null>(null);
   const activeChild = activeChildForPage(page);
   const activeNavPage = navPageFor(page);
 
   const toggleGroup = (key: NavItem["key"], label: string) => {
     const currentOpen = openGroups[key] ?? key === activeNavPage;
     const nextOpen = !currentOpen;
+    setManuallyClosedActiveGroup(!nextOpen && key === activeNavPage && activeChild ? { key, page } : null);
     setOpenGroups((current) => ({ ...current, [key]: nextOpen }));
     notify(`${label} 下拉项目已${nextOpen ? "展开" : "收起"}`, "info");
   };
 
   const openNavPage = (key: NavItem["key"], label: string) => {
+    setManuallyClosedActiveGroup(null);
     setPage(key, { message: `已进入${label}`, tone: "info" });
     setOpenGroups((current) => ({ ...current, [key]: true }));
   };
 
   const openNavChild = (parent: NavItem, child: NavChild) => {
+    setManuallyClosedActiveGroup(null);
     setPage(child.page ?? child.id, { message: `已打开${parent.label} / ${child.label}`, tone: "info" });
     setOpenGroups((current) => ({ ...current, [parent.key]: true }));
   };
@@ -1110,7 +1147,8 @@ function Sidebar({
           const active = item.key === activeNavPage;
           const exactActive = item.key === page;
           const hasActiveChild = active && !exactActive && item.children.some((child) => child.id === activeChild);
-          const open = (openGroups[item.key] ?? active) && !collapsed;
+          const wasManuallyClosedForThisPage = manuallyClosedActiveGroup?.key === item.key && manuallyClosedActiveGroup?.page === page;
+          const open = ((openGroups[item.key] ?? active) || (hasActiveChild && !wasManuallyClosedForThisPage)) && !collapsed;
           const parentCurrent = exactActive || (!open && hasActiveChild);
           const activeChildLabel = item.children.find((child) => child.id === activeChild)?.label;
           return (
@@ -1153,7 +1191,7 @@ function Sidebar({
                 className="side-submenu"
                 id={`side-submenu-${item.key}`}
                 aria-hidden={!open}
-                style={{ "--side-submenu-open-height": `${item.children.length * 43 + 12}px` } as CSSProperties}
+                style={{ "--side-submenu-open-height": `${item.children.length * 37 + 12}px` } as CSSProperties}
               >
                 {item.children.map((child) => {
                   const metaText = navChildMetaText(child);
@@ -2025,7 +2063,7 @@ function ModulePageShell({
 }) {
   const effectiveViewContext = viewContext ?? (page ? viewContextForPage(page) : null);
   return (
-    <div className="module-page">
+    <div className={`module-page ${page ? `module-page-${page}` : ""}`}>
       <div className="page-head module-head">
         <div>
           <h1>{title}</h1>
@@ -3092,6 +3130,163 @@ function DatabasesPage({ page, notify }: { page: PageKey; notify: Notify }) {
         />
       </div>
     </div>
+  );
+}
+
+function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Notify }) {
+  const [queries, setQueries] = useState(initialDatabaseSlowQueries);
+  const [search, setSearch] = useState("");
+  const [databaseFilter, setDatabaseFilter] = useState("全部");
+  const [levelFilter, setLevelFilter] = useState("全部");
+  const [statusFilter, setStatusFilter] = useState("全部");
+  const [timeRange, setTimeRange] = useState("近 24 小时");
+  const [drawerId, setDrawerId] = useState(initialDatabaseSlowQueries[0]?.id ?? "");
+  const databaseOptions = ["全部", ...Array.from(new Set(queries.map((query) => query.database)))];
+  const filteredQueries = queries.filter((query) => {
+    const keyword = search.trim().toLowerCase();
+    const matchSearch = !keyword || `${query.database} ${query.fingerprint} ${query.sql} ${query.owner}`.toLowerCase().includes(keyword);
+    const matchDatabase = databaseFilter === "全部" || query.database === databaseFilter;
+    const matchLevel = levelFilter === "全部" || query.level === levelFilter;
+    const matchStatus = statusFilter === "全部" || query.status === statusFilter;
+    return matchSearch && matchDatabase && matchLevel && matchStatus;
+  });
+  const selectedQuery = queries.find((query) => query.id === drawerId) ?? filteredQueries[0] ?? null;
+  const pendingCount = queries.filter((query) => query.status !== "已处理").length;
+  const highCount = queries.filter((query) => query.level === "高" && query.status !== "已处理").length;
+  const affectedDatabases = new Set(queries.filter((query) => query.status !== "已处理").map((query) => query.database)).size;
+  const highestP95 = queries.reduce((max, query) => (
+    secondsFromDuration(query.p95Time) > secondsFromDuration(max.p95Time) ? query : max
+  ), queries[0]);
+  const updateQuery = (id: string, patch: Partial<DatabaseSlowQuery>) => {
+    setQueries((current) => current.map((query) => query.id === id ? { ...query, ...patch } : query));
+  };
+  const openQuery = (query: DatabaseSlowQuery) => {
+    setDrawerId(query.id);
+  };
+  const runExplain = (queryId: string) => {
+    const target = queries.find((query) => query.id === queryId);
+    if (!target) {
+      notify("未找到可分析的慢查询", "warning");
+      return;
+    }
+    const nextExplain = target.explain ?? `${target.database.toLowerCase().includes("mysql") ? "type=range" : "Bitmap Heap Scan"} · rows=${target.rows} · cost=high · 建议按指纹创建索引`;
+    setDrawerId(target.id);
+    setQueries((current) => current.map((item) => (
+      item.id === queryId
+        ? { ...item, status: item.status === "已处理" ? "已处理" : "分析中", explain: nextExplain }
+        : item
+    )));
+    notify(`${target.fingerprint} 的 Explain 已生成`, "info");
+  };
+  const markResolved = (query: DatabaseSlowQuery) => {
+    updateQuery(query.id, { status: "已处理" });
+    notify(`${query.fingerprint} 已标记处理`);
+  };
+  const createIndexAdvice = (query: DatabaseSlowQuery) => {
+    updateQuery(query.id, { suggestion: `${query.suggestion} · 已生成索引建议草案。`, status: query.status === "已处理" ? "已处理" : "分析中" });
+    setDrawerId(query.id);
+    notify(`${query.database} 索引建议已生成`);
+  };
+  const killSession = (query: DatabaseSlowQuery) => {
+    updateQuery(query.id, { status: query.status === "已处理" ? "已处理" : "分析中" });
+    notify(`${query.sessionId} 已发送终止会话指令`, "warning");
+  };
+  const copyFingerprint = async (fingerprint: string) => {
+    try {
+      await navigator.clipboard?.writeText(fingerprint);
+      notify("SQL 指纹已复制", "info");
+    } catch {
+      notify("浏览器未允许复制 SQL 指纹", "warning");
+    }
+  };
+  const levelTone = (level: DatabaseSlowQuery["level"]): Tone => {
+    if (level === "高") return "red";
+    if (level === "中") return "orange";
+    return "blue";
+  };
+  const statusTone = (status: DatabaseSlowQuery["status"]): Tone => {
+    if (status === "已处理") return "green";
+    if (status === "分析中") return "blue";
+    return "orange";
+  };
+
+  return (
+    <ModulePageShell
+      title={resolvePageMeta(page).title}
+      subtitle={`聚焦慢查询指纹、耗时分布和治理动作，不混入数据库创建流程。采样窗口：${timeRange}`}
+      page={page}
+      viewContext={{
+        eyebrow: "数据库 / 慢查询",
+        title: "慢查询中心",
+        description: "按 SQL 指纹聚合慢查询，支持 Explain、索引建议、终止会话和处理状态流转。",
+        chips: [`窗口 ${timeRange}`, `待处理 ${pendingCount}`, `高危 ${highCount}`],
+      }}
+      actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredQueries.length} 条慢查询`, "info")}><Download size={15} /> 导出慢查询</button><button className="ghost" type="button" onClick={() => { setTimeRange(timeRange === "近 24 小时" ? "近 7 天" : "近 24 小时"); notify("慢查询采样窗口已切换", "info"); }}><Clock3 size={15} /> 切换窗口</button><button className="primary" type="button" onClick={() => selectedQuery ? createIndexAdvice(selectedQuery) : notify("没有可生成建议的慢查询", "warning")}><Plus size={15} /> 生成索引建议</button></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索 SQL、指纹、数据库或负责人" onChange={setSearch} /><FieldSelect label="数据库" value={databaseFilter} options={databaseOptions} onChange={setDatabaseFilter} /><FieldSelect label="等级" value={levelFilter} options={["全部", "高", "中", "低"]} onChange={setLevelFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "待处理", "分析中", "已处理"]} onChange={setStatusFilter} /></>}
+      metrics={<><MetricTile icon={Activity} label="慢查询指纹" value={`${queries.length}`} tone="orange" /><MetricTile icon={Clock3} label="P95 最高" value={highestP95?.p95Time ?? "-"} tone="red" /><MetricTile icon={Database} label="受影响实例" value={`${affectedDatabases}`} tone="blue" /><MetricTile icon={Shield} label="高风险待处理" value={`${highCount}`} tone={highCount ? "red" : "green"} /></>}
+      side={selectedQuery && (
+        <DetailDrawer title="慢查询详情" subtitle={selectedQuery.fingerprint} onClose={() => setDrawerId("")} actions={<><button className="ghost" type="button" onClick={() => void copyFingerprint(selectedQuery.fingerprint)}>复制指纹</button><button className="primary" type="button" onClick={() => runExplain(selectedQuery.id)}>生成 Explain</button></>}>
+          <div className="slow-query-drawer">
+            <p><span>数据库</span><b>{selectedQuery.database}</b></p>
+            <p><span>等级 / 状态</span><b>{selectedQuery.level} · {selectedQuery.status}</b></p>
+            <p><span>平均 / P95</span><b>{selectedQuery.avgTime} / {selectedQuery.p95Time}</b></p>
+            <p><span>调用次数</span><b>{selectedQuery.calls} 次 · 扫描 {selectedQuery.rows} 行</b></p>
+            <p><span>会话</span><b>{selectedQuery.sessionId}</b></p>
+            <code>{selectedQuery.sql}</code>
+            <p><span>优化建议</span><b>{selectedQuery.suggestion}</b></p>
+            <code>{selectedQuery.explain ?? "尚未生成 Explain，点击下方操作进行模拟分析。"}</code>
+            <div className="slow-drawer-actions">
+              <button type="button" onClick={() => createIndexAdvice(selectedQuery)}>索引建议</button>
+              <button type="button" onClick={() => killSession(selectedQuery)}>终止会话</button>
+              <button type="button" onClick={() => markResolved(selectedQuery)}>标记处理</button>
+            </div>
+          </div>
+        </DetailDrawer>
+      )}
+    >
+      <div className="database-slow-content">
+        <DataTable
+          columns={[
+            { key: "fingerprint", label: "SQL 指纹", width: "220px", render: (query) => <button className="module-row-link" type="button" aria-label={`查看慢查询 ${query.fingerprint}`} onClick={() => openQuery(query)}><StatusLight tone={levelTone(query.level)} /><b>{query.fingerprint}</b></button> },
+            { key: "database", label: "数据库", width: "150px", render: (query) => <span className="pill blue">{query.database}</span> },
+            { key: "sql", label: "SQL 摘要", render: (query) => <code>{query.sql}</code> },
+            { key: "avg", label: "平均", width: "76px", render: (query) => query.avgTime },
+            { key: "p95", label: "P95", width: "76px", render: (query) => <b className={query.level === "高" ? "red-text" : ""}>{query.p95Time}</b> },
+            { key: "calls", label: "调用", width: "72px", render: (query) => query.calls },
+            { key: "level", label: "等级", width: "70px", render: (query) => <span className={`pill ${levelTone(query.level)}`}>{query.level}</span> },
+            { key: "status", label: "状态", width: "86px", render: (query) => <span className={`pill ${statusTone(query.status)}`}>{query.status}</span> },
+            { key: "ops", label: "操作", width: "250px", render: (query) => <span className="table-actions"><button type="button" aria-label={`生成 ${query.fingerprint} Explain`} onClick={() => runExplain(query.id)}>Explain</button><button type="button" aria-label={`创建 ${query.fingerprint} 索引建议`} onClick={() => createIndexAdvice(query)}>索引</button><button type="button" aria-label={`标记 ${query.fingerprint} 已处理`} onClick={() => markResolved(query)}>处理</button><button type="button" aria-label={`打开 ${query.fingerprint} 详情`} onClick={() => openQuery(query)}>详情</button></span> },
+          ]}
+          rows={filteredQueries}
+          emptyText="没有匹配的慢查询指纹"
+          getRowKey={(query) => query.id}
+        />
+        <section className="slow-query-lower">
+          <PanelCard title="治理队列" action="刷新采样" onAction={() => notify("慢查询采样已刷新")}>
+            <div className="slow-remediation-list">
+              {queries.filter((query) => query.status !== "已处理").map((query) => (
+                <article key={query.id}>
+                  <span><StatusLight tone={levelTone(query.level)} /><b>{query.database}</b></span>
+                  <em>{query.suggestion}</em>
+                  <button type="button" onClick={() => openQuery(query)}>查看</button>
+                </article>
+              ))}
+            </div>
+          </PanelCard>
+          <PanelCard title="耗时趋势">
+            <div className="slow-trend-panel">
+              {[
+                ["平均耗时", [42, 46, 51, 58, 54, 62, 67], "orange"],
+                ["P95 耗时", [50, 54, 61, 70, 74, 78, 82], "red"],
+                ["调用次数", [22, 28, 24, 33, 38, 42, 36], "blue"],
+              ].map(([label, points, tone]) => (
+                <p key={label as string}><span>{label as string}</span><Sparkline values={points as number[]} tone={tone as Tone} /></p>
+              ))}
+            </div>
+          </PanelCard>
+        </section>
+      </div>
+    </ModulePageShell>
   );
 }
 
