@@ -1353,13 +1353,12 @@ function Sidebar({
                 >
                   {item.children.map((child) => {
                     const metaText = navChildMetaText(child);
-                    const labelDetail = [child.badge, child.meta].filter(Boolean).join("，");
+                    const labelDetail = child.meta ?? child.badge ?? "";
                     return (
                       <button
                         key={child.id}
                         className={[
                           "side-child",
-                          child.badge ? "has-child-badge" : "",
                           metaText ? "has-child-meta" : "",
                           activeChild === child.id ? "is-child-active" : "",
                         ].filter(Boolean).join(" ")}
