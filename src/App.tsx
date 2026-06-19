@@ -88,6 +88,9 @@ type Notify = (message: string, tone?: ToastTone) => void;
 type SetPage = (page: PageKey, toast?: ToastState) => void;
 type PageMeta = { title: string; breadcrumb: string; search: string };
 type ViewContext = { eyebrow: string; title: string; description: string; chips: string[] };
+type TopbarPanel = "search" | "notifications" | "activity" | "help" | "user" | null;
+type TopbarMenuPanel = Exclude<TopbarPanel, "search" | null>;
+type TopbarSearchResult = { id: string; label: string; detail: string; page: PageKey; kind: string };
 type NavChild = { id: string; label: string; meta: string; page?: PageKey; badge?: string };
 type NavItem = {
   key: ParentPageKey;
@@ -273,6 +276,24 @@ const navItems: NavItem[] = [
   },
 ];
 
+const topbarNotifications = [
+  { id: "ntf-1", title: "备份延迟 18 分钟", detail: "prod-postgres-01 已进入观察队列", tone: "orange", time: "2 分钟前" },
+  { id: "ntf-2", title: "证书即将过期", detail: "api.stackpilot.local 还剩 5 天", tone: "red", time: "18 分钟前" },
+  { id: "ntf-3", title: "部署任务完成", detail: "web-console v2.8.1 已发布到生产", tone: "green", time: "36 分钟前" },
+] as const;
+
+const topbarActivities = [
+  { id: "act-1", title: "张工 更新防火墙规则", detail: "允许 10.0.0.0/8 访问 443/TCP", time: "刚刚" },
+  { id: "act-2", title: "admin 重启 systemd 服务", detail: "nginx.service 已恢复 active", time: "12 分钟前" },
+  { id: "act-3", title: "CI 创建部署任务", detail: "api-gateway staging v2.8.2-rc", time: "42 分钟前" },
+] as const;
+
+const topbarHelpLinks = [
+  { id: "help-1", title: "快捷排障手册", detail: "查看主机、服务、日志的标准路径" },
+  { id: "help-2", title: "防火墙规则说明", detail: "端口、协议、来源的填写规范" },
+  { id: "help-3", title: "部署回滚指南", detail: "失败后如何查看日志并回滚" },
+] as const;
+
 const overviewChildPages: Partial<Record<PageKey, string>> = {
   "overview-health": "overview-health",
   "overview-tasks": "overview-tasks",
@@ -308,6 +329,31 @@ function activeNavEntryForPage(page: PageKey) {
   const parent = navItems.find((item) => item.key === parentKey);
   const child = parent?.children.find((item) => (item.page ?? item.id) === page);
   return { parent, child };
+}
+
+function topbarSearchResults(query: string): TopbarSearchResult[] {
+  const normalized = query.trim().toLowerCase();
+  const entries: TopbarSearchResult[] = navItems.flatMap((item) => [
+    { id: item.key, label: item.label, detail: resolvePageMeta(item.key).breadcrumb, page: item.key, kind: "模块" },
+    ...item.children.map((child) => ({
+      id: child.page ?? child.id,
+      label: `${item.label} / ${child.label}`,
+      detail: child.meta,
+      page: child.page ?? child.id,
+      kind: "入口",
+    })),
+  ]);
+  const quickActions: TopbarSearchResult[] = [
+    { id: "quick-create-host", label: "新增主机", detail: "打开主机新增页", page: "hosts", kind: "动作" },
+    { id: "quick-open-terminal", label: "开启终端", detail: "进入终端会话", page: "terminal", kind: "动作" },
+    { id: "quick-create-rule", label: "新增防火墙规则", detail: "打开防火墙规则列表", page: "firewall", kind: "动作" },
+    { id: "quick-audit-export", label: "导出审计日志", detail: "进入审计导出记录", page: "audit-export", kind: "动作" },
+  ];
+  const allEntries = [...entries, ...quickActions];
+  if (!normalized) return allEntries.slice(0, 6);
+  return allEntries
+    .filter((item) => `${item.label} ${item.detail} ${item.kind}`.toLowerCase().includes(normalized))
+    .slice(0, 7);
 }
 
 function viewContextForPage(page: PageKey): ViewContext | null {
@@ -1145,17 +1191,23 @@ function DesktopShell({
     return () => mediaQuery.removeEventListener("change", syncSidebar);
   }, []);
 
+  const expandSidebar = () => setSidebarCollapsed(false);
+  const collapseSidebar = () => setSidebarCollapsed(true);
+  const toggleSidebar = () => setSidebarCollapsed((current) => !current);
+
   return (
     <section className={`desktop-frame ${whiteTop ? "white-top" : "dark-top"} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      {!sidebarCollapsed && <button className="sidebar-backdrop" type="button" aria-label="收起侧栏" onClick={collapseSidebar} />}
       <Sidebar
         page={page}
         setPage={setPage}
         notify={notify}
         collapsed={sidebarCollapsed}
-        onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
+        onToggleCollapsed={toggleSidebar}
+        onExpandCollapsed={expandSidebar}
       />
       <div className="desktop-main">
-        <TopBar page={page} white={whiteTop} notify={notify} />
+        <TopBar key={page} page={page} setPage={setPage} white={whiteTop} notify={notify} />
         {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
         {page === "overview-health" && <OverviewHealthPage notify={notify} />}
         {page === "overview-tasks" && <OverviewTasksPage notify={notify} />}
@@ -1194,12 +1246,14 @@ function Sidebar({
   notify,
   collapsed,
   onToggleCollapsed,
+  onExpandCollapsed,
 }: {
   page: PageKey;
   setPage: SetPage;
   notify: Notify;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  onExpandCollapsed: () => void;
 }) {
   const [openGroups, setOpenGroups] = useState<Partial<Record<NavItem["key"], boolean>>>(() => ({
     overview: true,
@@ -1226,7 +1280,7 @@ function Sidebar({
     if (collapsed && hasActiveChild) {
       setManuallyClosedActiveGroup(null);
       setOpenGroups((current) => ({ ...current, [item.key]: true }));
-      onToggleCollapsed();
+      onExpandCollapsed();
       notify(`已展开${item.label}下拉项目`, "info");
       return;
     }
@@ -1360,11 +1414,51 @@ function Sidebar({
   );
 }
 
-function TopBar({ page, white, notify }: { page: PageKey; white: boolean; notify: Notify }) {
+function TopBar({ page, setPage, white, notify }: { page: PageKey; setPage: SetPage; white: boolean; notify: Notify }) {
   const [query, setQuery] = useState("");
+  const [openPanel, setOpenPanel] = useState<TopbarPanel>(null);
+  const [unreadCount, setUnreadCount] = useState(() => (page === "overview" ? 3 : navPageFor(page) === "settings" ? 5 : 2));
+  const topbarRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const meta = resolvePageMeta(page);
   const activeModule = navPageFor(page);
   const isSettings = activeModule === "settings";
+  const userName = page === "overview" ? "admin" : page === "databases" ? "张工" : "管理员";
+  const searchResults = topbarSearchResults(query);
+  const togglePanel = (panel: TopbarMenuPanel) => {
+    setOpenPanel((current) => (current === panel ? null : panel));
+  };
+  const openSearchResult = (result: TopbarSearchResult) => {
+    setOpenPanel(null);
+    setQuery("");
+    searchInputRef.current?.blur();
+    window.requestAnimationFrame(() => {
+      setPage(result.page, { message: `已打开${result.label}`, tone: "info" });
+    });
+  };
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (topbarRef.current?.contains(event.target as Node) || searchRef.current?.contains(event.target as Node)) return;
+      setOpenPanel(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setOpenPanel("search");
+        searchInputRef.current?.focus();
+        return;
+      }
+      if (event.key === "Escape") setOpenPanel(null);
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   return (
     <header className={`topbar-mock ${white ? "white" : ""}`}>
@@ -1376,46 +1470,221 @@ function TopBar({ page, white, notify }: { page: PageKey; white: boolean; notify
           <strong>{meta.title}</strong>
         </div>
       )}
-      <label className="mock-search">
+      <div className={`mock-search ${openPanel === "search" ? "active" : ""}`} ref={searchRef}>
         <Search size={13} />
+        <span id="topbar-search-label" className="sr-only">全局搜索</span>
         <input
+          ref={searchInputRef}
           value={query}
           placeholder={meta.search}
-          onChange={(event) => setQuery(event.target.value)}
+          aria-labelledby="topbar-search-label"
+          role="combobox"
+          aria-haspopup="listbox"
+          onFocus={() => setOpenPanel("search")}
+          onBlur={(event) => {
+            if (searchRef.current?.contains(event.relatedTarget as Node)) return;
+            setOpenPanel((current) => current === "search" ? null : current);
+          }}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpenPanel("search");
+          }}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && query.trim()) {
-              notify(`已搜索：${query.trim()}`, "info");
+            if (event.key === "Enter") {
+              const firstResult = searchResults[0];
+              if (firstResult) {
+                event.preventDefault();
+                openSearchResult(firstResult);
+              }
             }
           }}
+          aria-expanded={openPanel === "search"}
+          aria-controls="topbar-search-panel"
         />
         <kbd>⌘K</kbd>
-      </label>
+        {openPanel === "search" && (
+          <div className="topbar-search-panel" id="topbar-search-panel" role="listbox" aria-label="全局搜索结果">
+            <div className="topbar-search-head">
+              <span>{query.trim() ? `搜索 ${query.trim()}` : "快速打开"}</span>
+              <em>{searchResults.length} 项</em>
+            </div>
+            {searchResults.length > 0 ? (
+              searchResults.map((result) => (
+                <button
+                  key={result.id}
+                  type="button"
+                  role="option"
+                  aria-selected="false"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => openSearchResult(result)}
+                >
+                  <b>{result.kind}</b>
+                  <span>
+                    <strong>{result.label}</strong>
+                    <em>{result.detail}</em>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <p>没有匹配结果</p>
+            )}
+          </div>
+        )}
+      </div>
       {page !== "overview" && <div className="top-spacer" />}
-      <div className="top-actions">
+      <div className="top-actions" ref={topbarRef}>
         {isSettings && <StatusDot text="面板运行正常" />}
         <span className="notification-wrap">
-          <button type="button" className="icon-action" onClick={() => notify("暂无新的未读通知", "info")} aria-label="通知">
+          <button
+            type="button"
+            className={`icon-action ${openPanel === "notifications" ? "active" : ""}`}
+            onClick={() => togglePanel("notifications")}
+            aria-label={`通知${unreadCount > 0 ? `，${unreadCount} 条未读` : "，无未读"}`}
+            aria-haspopup="dialog"
+            aria-expanded={openPanel === "notifications"}
+            aria-controls={openPanel === "notifications" ? "topbar-notifications-panel" : undefined}
+          >
             <Bell size={18} />
           </button>
-          <span className="red-badge">{page === "overview" ? "3" : isSettings ? "5" : "2"}</span>
+          {unreadCount > 0 && <span className="red-badge">{unreadCount}</span>}
         </span>
         {page !== "overview" && (
-          <button type="button" className="icon-action" onClick={() => notify("已打开当前页操作记录", "info")} aria-label="操作记录">
+          <button
+            type="button"
+            className={`icon-action ${openPanel === "activity" ? "active" : ""}`}
+            onClick={() => togglePanel("activity")}
+            aria-label="操作记录"
+            aria-haspopup="dialog"
+            aria-expanded={openPanel === "activity"}
+            aria-controls={openPanel === "activity" ? "topbar-activity-panel" : undefined}
+          >
             <FileText size={17} />
           </button>
         )}
-        <button type="button" className="icon-action" onClick={() => notify("帮助中心已准备好", "info")} aria-label="帮助">
+        <button
+          type="button"
+          className={`icon-action ${openPanel === "help" ? "active" : ""}`}
+          onClick={() => togglePanel("help")}
+          aria-label="帮助"
+          aria-haspopup="dialog"
+          aria-expanded={openPanel === "help"}
+          aria-controls={openPanel === "help" ? "topbar-help-panel" : undefined}
+        >
           <CircleHelp size={17} />
         </button>
-        <button type="button" className="user-menu-button" onClick={() => notify("已打开用户菜单", "info")} aria-label="用户菜单">
+        <button
+          type="button"
+          className={`user-menu-button ${openPanel === "user" ? "active" : ""}`}
+          onClick={() => togglePanel("user")}
+          aria-label="用户菜单"
+          aria-haspopup="menu"
+          aria-expanded={openPanel === "user"}
+          aria-controls={openPanel === "user" ? "topbar-user-panel" : undefined}
+        >
           <span className="avatar-mini" aria-hidden="true">
             {page === "overview" ? <UserRound size={18} /> : "张"}
           </span>
-          <strong>{page === "overview" ? "admin" : page === "databases" ? "张工" : "管理员"}</strong>
+          <strong>{userName}</strong>
           <ChevronDown size={13} />
         </button>
+        {openPanel && openPanel !== "search" && (
+          <TopbarDropdown
+            panel={openPanel}
+            page={page}
+            userName={userName}
+            unreadCount={unreadCount}
+            onClose={() => setOpenPanel(null)}
+            onMarkRead={() => {
+              setUnreadCount(0);
+              notify("通知已全部标记为已读", "info");
+            }}
+            notify={notify}
+          />
+        )}
       </div>
     </header>
+  );
+}
+
+function TopbarDropdown({
+  panel,
+  page,
+  userName,
+  unreadCount,
+  onClose,
+  onMarkRead,
+  notify,
+}: {
+  panel: TopbarMenuPanel;
+  page: PageKey;
+  userName: string;
+  unreadCount: number;
+  onClose: () => void;
+  onMarkRead: () => void;
+  notify: Notify;
+}) {
+  if (panel === "user") {
+    return (
+      <div className="topbar-dropdown user-dropdown" id="topbar-user-panel" role="menu" aria-label="用户菜单">
+        <div className="topbar-dropdown-head">
+          <span>当前账号</span>
+          <strong>{userName}</strong>
+        </div>
+        {["个人资料", "访问令牌", "登录记录"].map((item) => (
+          <button key={item} type="button" role="menuitem" onClick={() => { notify(`已打开${item}`, "info"); onClose(); }}>
+            {item}
+          </button>
+        ))}
+        <button type="button" role="menuitem" className="danger-item" onClick={() => { notify("已退出当前会话", "warning"); onClose(); }}>
+          退出登录
+        </button>
+      </div>
+    );
+  }
+
+  const panelMeta = {
+    notifications: { title: "通知中心", subtitle: `${unreadCount} 条未读`, action: "全部已读" },
+    activity: { title: "操作记录", subtitle: resolvePageMeta(page).title, action: "查看审计" },
+    help: { title: "帮助中心", subtitle: "当前页上下文", action: "打开文档" },
+  }[panel];
+  const items = panel === "notifications" ? topbarNotifications : panel === "activity" ? topbarActivities : topbarHelpLinks;
+
+  return (
+    <div className={`topbar-dropdown ${panel}-dropdown`} id={`topbar-${panel}-panel`} role="dialog" aria-label={panelMeta.title}>
+      <div className="topbar-dropdown-head">
+        <span>{panelMeta.title}</span>
+        <button
+          type="button"
+          onClick={() => {
+            if (panel === "notifications") onMarkRead();
+            else notify(panel === "activity" ? "已打开审计日志" : "帮助文档已打开", "info");
+          }}
+        >
+          {panelMeta.action}
+        </button>
+      </div>
+      <p className="topbar-dropdown-subtitle">{panelMeta.subtitle}</p>
+      <div className="topbar-dropdown-list">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className="topbar-dropdown-item"
+            onClick={() => {
+              notify(panel === "help" ? `已打开帮助：${item.title}` : `已打开记录：${item.title}`, "info");
+              onClose();
+            }}
+          >
+            {panel === "notifications" && <StatusLight tone={"tone" in item ? item.tone : "blue"} />}
+            <span>
+              <strong>{item.title}</strong>
+              <em>{item.detail}</em>
+            </span>
+            {"time" in item && <small>{item.time}</small>}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
