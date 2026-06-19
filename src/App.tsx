@@ -2523,24 +2523,39 @@ function DataTable<T>({
   getRowKey: (row: T) => string;
 }) {
   return (
-    <table className="mini-table module-table">
-      <colgroup>
-        {columns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
-      </colgroup>
-      <thead>
-        <tr>{columns.map((column) => <th key={column.key}>{column.label}</th>)}</tr>
-      </thead>
-      <tbody>
+    <div className="module-table-wrap">
+      <table className="mini-table module-table">
+        <colgroup>
+          {columns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
+        </colgroup>
+        <thead>
+          <tr>{columns.map((column) => <th key={column.key}>{column.label}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={getRowKey(row)}>{columns.map((column) => <td key={column.key} data-label={column.label}>{column.render(row)}</td>)}</tr>
+          ))}
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={columns.length} className="empty-row">{emptyText}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      <div className="module-card-list">
         {rows.map((row) => (
-          <tr key={getRowKey(row)}>{columns.map((column) => <td key={column.key}>{column.render(row)}</td>)}</tr>
+          <article className="module-card-row" key={getRowKey(row)}>
+            {columns.map((column) => (
+              <div className="module-card-cell" key={column.key}>
+                <span>{column.label}</span>
+                <div>{column.render(row)}</div>
+              </div>
+            ))}
+          </article>
         ))}
-        {rows.length === 0 && (
-          <tr>
-            <td colSpan={columns.length} className="empty-row">{emptyText}</td>
-          </tr>
-        )}
-      </tbody>
-    </table>
+        {rows.length === 0 && <div className="module-card-empty">{emptyText}</div>}
+      </div>
+    </div>
   );
 }
 
