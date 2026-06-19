@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   Activity,
   Bell,
@@ -3217,131 +3217,362 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
   );
 }
 
+type MobileTab = "首页" | "主机" | "网站" | "任务" | "我的";
+type MobileTaskStatus = "成功" | "运行中" | "警告" | "信息";
+type MobileHostRecord = {
+  id: string;
+  name: string;
+  env: string;
+  ip: string;
+  os: string;
+  cpu: string;
+  memory: string;
+  uptime: string;
+  health: "健康" | "告警";
+};
+type MobileSiteRecord = {
+  id: string;
+  domain: string;
+  runtime: string;
+  host: string;
+  status: "运行中" | "已停止" | "证书告警";
+  certDays: number;
+  traffic: string;
+};
+type MobileTaskRecord = {
+  id: string;
+  icon: LucideIcon;
+  title: string;
+  operator: string;
+  status: MobileTaskStatus;
+  time: string;
+};
+
+type MobileTabIcon = (props: { size?: number }) => React.ReactNode;
+
+const mobileTabs: Array<[MobileTabIcon, MobileTab]> = [
+  [Home, "首页"],
+  [Server, "主机"],
+  [Globe2, "网站"],
+  [ClipboardIcon, "任务"],
+  [UserRound, "我的"],
+];
+
 function MobileApp({ notify }: { notify: Notify }) {
-  const [activeTab, setActiveTab] = useState("首页");
+  const [activeTab, setActiveTab] = useState<MobileTab>("首页");
+  const mobileContentRef = useRef<HTMLDivElement>(null);
   const [activeQuick, setActiveQuick] = useState("添加主机");
-  const mobileTasks: Array<[LucideIcon, string, string, string, string]> = [
-    [CloudUpload, "部署 Laravel 应用到 web-01", "admin 触发", "成功", "2 分钟前"],
-    [Database, "备份数据库 shop_db", "system 自动", "成功", "15 分钟前"],
-    [RefreshCw, "更新系统组件 /web-02", "admin 触发", "警告", "32 分钟前"],
-    [Server, "重启 Nginx 服务（web-01）", "自动监控", "成功", "1 小时前"],
-    [TerminalSquare, "登录到 203.0.113.10", "admin 登录", "信息", "1 小时前"],
-  ];
-  const tabSummary: Record<string, string> = {
-    首页: "5 台主机在线 · 2 个告警",
-    主机: "3 台生产主机 · db-01 需要关注",
-    网站: "12 个网站正常运行",
-    任务: "5 条最近任务 · 1 条警告",
-    我的: "管理员 · 面板运行正常",
+  const [hostFilter, setHostFilter] = useState("全部");
+  const [siteFilter, setSiteFilter] = useState("全部");
+  const [taskFilter, setTaskFilter] = useState("全部");
+  const [unreadNoticeCount, setUnreadNoticeCount] = useState(3);
+  const [pushEnabled, setPushEnabled] = useState(true);
+  const [mfaEnabled, setMfaEnabled] = useState(true);
+  const [mobileHosts, setMobileHosts] = useState<MobileHostRecord[]>([
+    { id: "web-01", name: "web-01", env: "生产环境", ip: "203.0.113.10", os: "Ubuntu 22.04", cpu: "12%", memory: "38%", uptime: "2 天", health: "健康" },
+    { id: "web-02", name: "web-02", env: "生产环境", ip: "203.0.113.11", os: "Ubuntu 22.04", cpu: "22%", memory: "45%", uptime: "5 天", health: "健康" },
+    { id: "db-01", name: "db-01", env: "数据库", ip: "203.0.113.20", os: "Ubuntu 22.04", cpu: "35%", memory: "62%", uptime: "12 天", health: "告警" },
+    { id: "dev-01", name: "dev-01", env: "开发环境", ip: "10.0.4.21", os: "Debian 12", cpu: "8%", memory: "29%", uptime: "18 小时", health: "健康" },
+  ]);
+  const [mobileSites, setMobileSites] = useState<MobileSiteRecord[]>([
+    { id: "site-main", domain: "stackpilot.io", runtime: "Node 20", host: "web-01", status: "运行中", certDays: 72, traffic: "128 GB" },
+    { id: "site-shop", domain: "shop.example.com", runtime: "PHP 8.3", host: "web-02", status: "运行中", certDays: 11, traffic: "86 GB" },
+    { id: "site-docs", domain: "docs.example.com", runtime: "Static", host: "web-01", status: "运行中", certDays: 45, traffic: "24 GB" },
+    { id: "site-lab", domain: "lab.internal", runtime: "Node 18", host: "dev-01", status: "已停止", certDays: 30, traffic: "3 GB" },
+  ]);
+  const [mobileTasks, setMobileTasks] = useState<MobileTaskRecord[]>([
+    { id: "deploy-laravel", icon: CloudUpload, title: "部署 Laravel 应用到 web-01", operator: "admin 触发", status: "成功", time: "2 分钟前" },
+    { id: "backup-shop", icon: Database, title: "备份数据库 shop_db", operator: "system 自动", status: "成功", time: "15 分钟前" },
+    { id: "update-web02", icon: RefreshCw, title: "更新系统组件 /web-02", operator: "admin 触发", status: "警告", time: "32 分钟前" },
+    { id: "restart-nginx", icon: Server, title: "重启 Nginx 服务（web-01）", operator: "自动监控", status: "成功", time: "1 小时前" },
+    { id: "login-terminal", icon: TerminalSquare, title: "登录到 203.0.113.10", operator: "admin 登录", status: "信息", time: "1 小时前" },
+  ]);
+  const mobileSiteDisplayStatus = (site: MobileSiteRecord) => (
+    site.certDays <= 14 && site.status === "运行中" ? "证书告警" : site.status
+  );
+  const tabSummary: Record<MobileTab, string> = {
+    首页: `${mobileHosts.filter((host) => host.health === "健康").length} 台主机在线 · ${mobileHosts.filter((host) => host.health === "告警").length} 个告警`,
+    主机: `${mobileHosts.length} 台主机 · ${mobileHosts.filter((host) => host.health === "告警").length} 台需要关注`,
+    网站: `${mobileSites.filter((site) => mobileSiteDisplayStatus(site) === "运行中").length} 个网站正常运行`,
+    任务: `${mobileTasks.length} 条最近任务 · ${mobileTasks.filter((task) => task.status === "警告").length} 条警告`,
+    我的: `管理员 · 推送${pushEnabled ? "已开启" : "已关闭"}`,
   };
+  const visibleHosts = mobileHosts.filter((host) => (
+    hostFilter === "全部" || host.env === hostFilter || host.health === hostFilter
+  ));
+  const visibleSites = mobileSites.filter((site) => (
+    siteFilter === "全部" || mobileSiteDisplayStatus(site) === siteFilter
+  ));
+  const visibleTasks = mobileTasks.filter((task) => taskFilter === "全部" || task.status === taskFilter);
+  const updateHost = (id: string, patch: Partial<MobileHostRecord>) => {
+    setMobileHosts((current) => current.map((host) => (host.id === id ? { ...host, ...patch } : host)));
+  };
+  const updateSite = (id: string, patch: Partial<MobileSiteRecord>) => {
+    setMobileSites((current) => current.map((site) => (site.id === id ? { ...site, ...patch } : site)));
+  };
+  const updateTask = (id: string, patch: Partial<MobileTaskRecord>) => {
+    setMobileTasks((current) => current.map((task) => (task.id === id ? { ...task, ...patch } : task)));
+  };
+  const statusTone = (status: string): Tone => {
+    if (status === "警告" || status === "告警" || status === "证书告警") return "orange";
+    if (status === "信息" || status === "运行中") return "blue";
+    if (status === "已停止") return "gray";
+    return "green";
+  };
+
+  useEffect(() => {
+    mobileContentRef.current?.scrollTo({ top: 0 });
+  }, [activeTab]);
 
   return (
     <section className="mobile-app-shell">
       <header className="mobile-top">
         <button type="button" className="mobile-icon-button" aria-label="打开菜单" onClick={() => notify("移动端菜单已打开", "info")}><Menu size={20} /></button>
         <div className="mobile-brand"><div className="brand-gem small" /><strong>StackPilot</strong></div>
-        <div className="mobile-icons"><button type="button" aria-label="查看通知" onClick={() => notify("移动端通知已标记为已读", "info")}><Bell size={18} /></button><i>3</i><button type="button" aria-label="打开个人中心" onClick={() => notify("已打开移动端个人中心", "info")}><b>U</b></button></div>
-      </header>
-      <div className="mobile-content">
-        <h2>上午好，管理员</h2>
-        <p>{activeTab} · {tabSummary[activeTab]}</p>
-        <div className="mobile-stats">
-          {[
-            [Server, "主机", "5", "全部在线", "green"],
-            [Globe2, "网站", "12", "正常运行", "green"],
-            [Database, "数据库", "8", "运行中", "green"],
-            [Shield, "告警", "2", "需要处理", "orange"],
-          ].map(([Icon, label, value, desc, tone]) => (
-            <article key={label as string}>
-              <Icon className={tone as string} size={20} />
-              <span>{label as string}</span>
-              <strong>{value as string}</strong>
-              <em><StatusLight tone={tone as Tone} />{desc as string}</em>
-            </article>
-          ))}
+        <div className="mobile-icons">
+          <button
+            type="button"
+            aria-label={unreadNoticeCount > 0 ? `查看通知，${unreadNoticeCount} 条未读` : "查看通知，无未读"}
+            onClick={() => {
+              setUnreadNoticeCount(0);
+              notify("移动端通知已标记为已读", "info");
+            }}
+          >
+            <Bell size={18} />
+          </button>
+          {unreadNoticeCount > 0 && <i>{unreadNoticeCount}</i>}
+          <button type="button" aria-label="打开个人中心" onClick={() => { setActiveTab("我的"); notify("已切换到移动端我的", "info"); }}><b>U</b></button>
         </div>
-        <MobileCard title="系统状态" action="查看详情" onAction={() => notify("已打开移动端系统状态详情", "info")}>
-          <div className="mobile-resource">
-            {[
-              ["CPU", "18%", "负载 0.38", [18, 14, 23, 16, 28, 18, 22]],
-              ["内存", "42%", "3.2 / 7.6 GB", [38, 42, 39, 46, 41, 43, 45]],
-              ["磁盘", "37%", "180 / 480 GB", [35, 39, 37, 42, 36, 41, 38]],
-            ].map(([label, value, desc, values]) => (
-              <article key={label as string}>
-                <span>{label as string}</span>
-                <strong>{value as string}</strong>
-                <Sparkline values={values as number[]} tone="blue" />
-                <em>{desc as string}</em>
-              </article>
-            ))}
-          </div>
-        </MobileCard>
-        <MobileCard title="最近任务" action="查看全部" onAction={() => notify("已打开移动端任务列表", "info")}>
-          <div className="mobile-task-list">
-            {mobileTasks.map(([Icon, title, operator, status, time]) => {
-              const openTask = () => notify(`已打开任务：${title}`, "info");
-              return (
-                <div key={title} role="button" tabIndex={0} onClick={openTask} onKeyDown={(event) => activateOnKeyboard(event, openTask)}>
-                  <span className="mobile-task-icon"><Icon size={14} /></span>
-                  <p><strong>{title}</strong><em>{operator}</em></p>
-                  <StatusLight tone={status === "警告" ? "orange" : status === "信息" ? "blue" : "green"} />
-                  <b>{status}</b>
-                  <small>{time}</small>
-                </div>
-              );
-            })}
-          </div>
-        </MobileCard>
-        <MobileCard title="快捷操作">
-          <div className="mobile-quick">
-            {["添加主机", "创建网站", "新建数据库", "上传文件", "终端连接", "系统服务", "计划任务", "防火墙规则"].map((item) => (
-              <button
-                className={item === activeQuick ? "active" : ""}
-                key={item}
-                type="button"
-                onClick={() => {
-                  setActiveQuick(item);
-                  notify(`移动端已选择：${item}`, "info");
-                }}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-        </MobileCard>
-        <MobileCard title="主机状态" action="查看全部" onAction={() => notify("已打开移动端主机列表", "info")}>
-          <div className="mobile-hosts">
-            {[
-              ["web-01", "生产环境", "203.0.113.10", "Ubuntu 22.04", "12%", "38%", "2 天"],
-              ["web-02", "生产环境", "203.0.113.11", "Ubuntu 22.04", "22%", "45%", "5 天"],
-              ["db-01", "数据库", "203.0.113.20", "Ubuntu 22.04", "35%", "62%", "12 天"],
-            ].map((row) => {
-              const openHost = () => notify(`已打开主机：${row[0]}`, "info");
-              return (
-                <div key={row[0]} role="button" tabIndex={0} onClick={openHost} onKeyDown={(event) => activateOnKeyboard(event, openHost)}>
-                  <StatusLight tone={row[0] === "db-01" ? "orange" : "green"} />
-                  <p><strong>{row[0]}</strong><span>{row[1]}</span><em>{row[2]} | {row[3]}</em></p>
-                  <b>CPU {row[4]}<br />内存 {row[5]}</b>
-                  <small>{row[6]}</small>
-                </div>
-              );
-            })}
-          </div>
-        </MobileCard>
+      </header>
+      <div className="mobile-content" ref={mobileContentRef}>
+        <h2>{activeTab === "首页" ? "上午好，管理员" : activeTab}</h2>
+        <p>{activeTab} · {tabSummary[activeTab]}</p>
+        {activeTab === "首页" && (
+          <>
+            <div className="mobile-stats">
+              {[
+                [Server, "主机", `${mobileHosts.length}`, `${mobileHosts.filter((host) => host.health === "健康").length} 台在线`, "green"],
+                [Globe2, "网站", `${mobileSites.filter((site) => mobileSiteDisplayStatus(site) === "运行中").length}`, `${mobileSites.filter((site) => mobileSiteDisplayStatus(site) !== "运行中").length} 个待处理`, "green"],
+                [Database, "数据库", "8", "运行中", "green"],
+                [Shield, "告警", `${mobileHosts.filter((host) => host.health === "告警").length + mobileTasks.filter((task) => task.status === "警告").length}`, "需要处理", "orange"],
+              ].map(([Icon, label, value, desc, tone]) => (
+                <article key={label as string}>
+                  <Icon className={tone as string} size={20} />
+                  <span>{label as string}</span>
+                  <strong>{value as string}</strong>
+                  <em><StatusLight tone={tone as Tone} />{desc as string}</em>
+                </article>
+              ))}
+            </div>
+            <MobileCard title="系统状态" action="查看详情" onAction={() => notify("已打开移动端系统状态详情", "info")}>
+              <div className="mobile-resource">
+                {[
+                  ["CPU", "18%", "负载 0.38", [18, 14, 23, 16, 28, 18, 22]],
+                  ["内存", "42%", "3.2 / 7.6 GB", [38, 42, 39, 46, 41, 43, 45]],
+                  ["磁盘", "37%", "180 / 480 GB", [35, 39, 37, 42, 36, 41, 38]],
+                ].map(([label, value, desc, values]) => (
+                  <article key={label as string}>
+                    <span>{label as string}</span>
+                    <strong>{value as string}</strong>
+                    <Sparkline values={values as number[]} tone="blue" />
+                    <em>{desc as string}</em>
+                  </article>
+                ))}
+              </div>
+            </MobileCard>
+            <MobileCard title="最近任务" action="查看全部" onAction={() => { setTaskFilter("全部"); setActiveTab("任务"); notify("已切换到移动端任务", "info"); }}>
+              <div className="mobile-task-list">
+                {mobileTasks.slice(0, 4).map((task) => {
+                  const Icon = task.icon;
+                  const openTask = () => notify(`已打开任务：${task.title}`, "info");
+                  return (
+                    <div key={task.id} role="button" tabIndex={0} onClick={openTask} onKeyDown={(event) => activateOnKeyboard(event, openTask)}>
+                      <span className="mobile-task-icon"><Icon size={14} /></span>
+                      <p><strong>{task.title}</strong><em>{task.operator}</em></p>
+                      <StatusLight tone={statusTone(task.status)} />
+                      <b>{task.status}</b>
+                      <small>{task.time}</small>
+                    </div>
+                  );
+                })}
+              </div>
+            </MobileCard>
+            <MobileCard title="快捷操作">
+              <div className="mobile-quick">
+                {["添加主机", "创建网站", "新建数据库", "上传文件", "终端连接", "系统服务", "计划任务", "防火墙规则"].map((item) => (
+                  <button
+                    className={item === activeQuick ? "active" : ""}
+                    key={item}
+                    type="button"
+                    aria-pressed={item === activeQuick}
+                    onClick={() => {
+                      setActiveQuick(item);
+                      notify(`移动端已选择：${item}`, "info");
+                    }}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </MobileCard>
+          </>
+        )}
+        {activeTab === "主机" && (
+          <>
+            <div className="mobile-filter-tabs" role="group" aria-label="主机筛选">
+              {["全部", "生产环境", "开发环境", "告警"].map((filter) => (
+                <button className={hostFilter === filter ? "active" : ""} key={filter} type="button" aria-pressed={hostFilter === filter} onClick={() => setHostFilter(filter)}>{filter}</button>
+              ))}
+            </div>
+            <div className="mobile-list">
+              {visibleHosts.map((host) => (
+                <article className="mobile-list-item" key={host.id}>
+                  <header>
+                    <StatusLight tone={host.health === "告警" ? "orange" : "green"} />
+                    <h3>{host.name}</h3>
+                    <span className={`mobile-status-pill ${statusTone(host.health)}`}>{host.health}</span>
+                  </header>
+                  <p>{host.env} · {host.ip} · {host.os}</p>
+                  <div className="mobile-row-meta">
+                    <span>CPU <b>{host.cpu}</b></span>
+                    <span>内存 <b>{host.memory}</b></span>
+                    <span>运行 <b>{host.uptime}</b></span>
+                  </div>
+                  <div className="mobile-row-actions">
+                    <button type="button" aria-label={`重启主机 ${host.name}`} onClick={() => { updateHost(host.id, { uptime: "刚刚重启", health: "健康" }); notify(`${host.name} 已重启`); }}>重启</button>
+                    <button type="button" aria-label={`备份主机 ${host.name}`} onClick={() => notify(`${host.name} 已创建备份`, "info")}>备份</button>
+                    <button type="button" aria-label={`查看主机 ${host.name} 详情`} onClick={() => notify(`已打开 ${host.name} 详情`, "info")}>详情</button>
+                  </div>
+                </article>
+              ))}
+              {visibleHosts.length === 0 && <div className="mobile-empty">没有匹配的主机</div>}
+            </div>
+          </>
+        )}
+        {activeTab === "网站" && (
+          <>
+            <div className="mobile-filter-tabs" role="group" aria-label="网站筛选">
+              {["全部", "运行中", "已停止", "证书告警"].map((filter) => (
+                <button className={siteFilter === filter ? "active" : ""} key={filter} type="button" aria-pressed={siteFilter === filter} onClick={() => setSiteFilter(filter)}>{filter}</button>
+              ))}
+            </div>
+            <div className="mobile-list">
+              {visibleSites.map((site) => {
+                const displayStatus = mobileSiteDisplayStatus(site);
+                return (
+                  <article className="mobile-list-item" key={site.id}>
+                    <header>
+                      <StatusLight tone={statusTone(displayStatus)} />
+                      <h3>{site.domain}</h3>
+                      <span className={`mobile-status-pill ${statusTone(displayStatus)}`}>{displayStatus}</span>
+                    </header>
+                    <p>{site.runtime} · {site.host} · {site.traffic}</p>
+                    <div className="mobile-row-meta">
+                      <span>证书 <b className={site.certDays <= 14 ? "orange-text" : "green-text"}>{site.certDays} 天</b></span>
+                      <span>主机 <b>{site.host}</b></span>
+                      <span>流量 <b>{site.traffic}</b></span>
+                    </div>
+                    <div className="mobile-row-actions">
+                      <button type="button" aria-label={`${site.status === "已停止" ? "启动" : "停止"}网站 ${site.domain}`} onClick={() => { updateSite(site.id, { status: site.status === "已停止" ? "运行中" : "已停止" }); notify(`${site.domain} 已${site.status === "已停止" ? "启动" : "停止"}`); }}>{site.status === "已停止" ? "启动" : "停止"}</button>
+                      <button type="button" aria-label={`续期网站 ${site.domain} 证书`} onClick={() => { updateSite(site.id, { certDays: 90, status: "运行中" }); notify(`${site.domain} 证书已续期`); }}>续期</button>
+                      <button type="button" aria-label={`查看网站 ${site.domain} 日志`} onClick={() => notify(`已打开 ${site.domain} 日志`, "info")}>日志</button>
+                    </div>
+                  </article>
+                );
+              })}
+              {visibleSites.length === 0 && <div className="mobile-empty">没有匹配的网站</div>}
+            </div>
+          </>
+        )}
+        {activeTab === "任务" && (
+          <>
+            <div className="mobile-filter-tabs" role="group" aria-label="任务筛选">
+              {["全部", "运行中", "警告", "成功"].map((filter) => (
+                <button className={taskFilter === filter ? "active" : ""} key={filter} type="button" aria-pressed={taskFilter === filter} onClick={() => setTaskFilter(filter)}>{filter}</button>
+              ))}
+            </div>
+            <div className="mobile-list">
+              {visibleTasks.map((task) => {
+                const Icon = task.icon;
+                return (
+                  <article className="mobile-list-item" key={task.id}>
+                    <header>
+                      <span className="mobile-task-icon"><Icon size={14} /></span>
+                      <h3>{task.title}</h3>
+                      <span className={`mobile-status-pill ${statusTone(task.status)}`}>{task.status}</span>
+                    </header>
+                    <p>{task.operator} · {task.time}</p>
+                    <div className="mobile-row-actions">
+                      <button type="button" aria-label={`查看任务 ${task.title} 日志`} onClick={() => notify(`已打开任务日志：${task.title}`, "info")}>日志</button>
+                      <button type="button" aria-label={`重跑任务 ${task.title}`} onClick={() => { updateTask(task.id, { status: "运行中", time: "刚刚" }); notify(`已重新执行：${task.title}`); }}>重跑</button>
+                      <button type="button" aria-label={`完成任务 ${task.title}`} onClick={() => { updateTask(task.id, { status: "成功", time: "刚刚完成" }); notify(`任务已标记完成`); }}>完成</button>
+                    </div>
+                  </article>
+                );
+              })}
+              {visibleTasks.length === 0 && <div className="mobile-empty">没有匹配的任务</div>}
+            </div>
+          </>
+        )}
+        {activeTab === "我的" && (
+          <>
+            <div className="mobile-profile">
+              <section className="mobile-profile-hero">
+                <b>U</b>
+                <div><strong>管理员</strong><span>Default Workspace · 超级管理员</span></div>
+                <button type="button" onClick={() => notify("移动端资料已刷新", "info")}><RefreshCw size={14} />刷新</button>
+              </section>
+              <div className="mobile-row-meta">
+                <span>MFA <b>{mfaEnabled ? "已启用" : "未启用"}</b></span>
+                <span>推送 <b>{pushEnabled ? "开启" : "关闭"}</b></span>
+                <span>会话 <b>3 台</b></span>
+              </div>
+            </div>
+            <MobileCard title="账号设置">
+              <div className="mobile-settings-list">
+                <button
+                  type="button"
+                  aria-label="通知推送"
+                  aria-pressed={pushEnabled}
+                  onClick={() => { setPushEnabled((value) => !value); notify(`移动端推送已${pushEnabled ? "关闭" : "开启"}`); }}
+                >
+                  <span><Bell size={16} />通知推送</span><b>{pushEnabled ? "开启" : "关闭"}</b>
+                </button>
+                <button
+                  type="button"
+                  aria-label="MFA 验证"
+                  aria-pressed={mfaEnabled}
+                  onClick={() => { setMfaEnabled((value) => !value); notify(`MFA 已${mfaEnabled ? "暂停" : "启用"}`, "info"); }}
+                >
+                  <span><KeyRound size={16} />MFA 验证</span><b>{mfaEnabled ? "启用" : "暂停"}</b>
+                </button>
+                <button type="button" onClick={() => notify("已打开移动端审计记录", "info")}>
+                  <span><FileText size={16} />我的审计</span><b>128 条</b>
+                </button>
+                <button type="button" onClick={() => notify("已复制移动端诊断摘要", "info")}>
+                  <span><Activity size={16} />诊断摘要</span><b>正常</b>
+                </button>
+              </div>
+            </MobileCard>
+          </>
+        )}
       </div>
       <nav className="mobile-tabbar" aria-label="移动端主导航">
-        {[[Home, "首页"], [Server, "主机"], [Globe2, "网站"], [ClipboardIcon, "任务"], [UserRound, "我的"]].map(([Icon, label], index) => (
+        {mobileTabs.map(([Icon, label]) => (
           <button
-            className={label === activeTab || (index === 0 && activeTab === "首页") ? "active" : ""}
-            key={label as string}
+            className={label === activeTab ? "active" : ""}
+            key={label}
             type="button"
+            aria-current={label === activeTab ? "page" : undefined}
             onClick={() => {
-              setActiveTab(label as string);
-              notify(`已切换到移动端${label}`, "info");
+              if (label !== activeTab) {
+                setActiveTab(label);
+                notify(`已切换到移动端${label}`, "info");
+              }
             }}
           >
             <Icon size={22} />
-            <span>{label as string}</span>
+            <span>{label}</span>
           </button>
         ))}
       </nav>
