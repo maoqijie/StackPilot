@@ -4233,12 +4233,30 @@ a {
   }
 
   .user-menu-button {
-    width: 32px;
-    max-width: 32px;
+    width: 40px;
+    max-width: 40px;
     padding: 0;
-    flex-basis: 32px;
+    flex-basis: 40px;
     justify-content: center;
     background: transparent;
+  }
+
+  .top-actions {
+    max-width: min(128px, 100%);
+    justify-content: flex-end;
+  }
+
+  .top-actions > .status-dot {
+    display: none;
+  }
+
+  .top-actions > .icon-action:not(.active) {
+    display: none;
+  }
+
+  .top-actions .notification-wrap,
+  .top-actions .user-menu-button {
+    flex: 0 0 40px;
   }
 
   .module-page {
@@ -4504,6 +4522,12 @@ a {
     right: 8px;
     left: 76px;
     width: auto;
+  }
+
+  .topbar-mock {
+    min-width: 0;
+    padding: 0 8px 0 10px;
+    gap: 8px;
   }
 
   .module-page {
