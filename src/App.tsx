@@ -719,7 +719,7 @@ function App() {
   return (
     <main className="shot-canvas">
       {page === "mobile" ? (
-        <MobileMock notify={notify} />
+        <MobileApp notify={notify} />
       ) : (
         <DesktopShell page={page} setPage={setPage} notify={notify} />
       )}
@@ -2557,9 +2557,16 @@ function SettingsPage({ page, notify }: { page: PageKey; notify: Notify }) {
   );
 }
 
-function MobileMock({ notify }: { notify: Notify }) {
+function MobileApp({ notify }: { notify: Notify }) {
   const [activeTab, setActiveTab] = useState("首页");
   const [activeQuick, setActiveQuick] = useState("添加主机");
+  const mobileTasks: Array<[LucideIcon, string, string, string, string]> = [
+    [CloudUpload, "部署 Laravel 应用到 web-01", "admin 触发", "成功", "2 分钟前"],
+    [Database, "备份数据库 shop_db", "system 自动", "成功", "15 分钟前"],
+    [RefreshCw, "更新系统组件 /web-02", "admin 触发", "警告", "32 分钟前"],
+    [Server, "重启 Nginx 服务（web-01）", "自动监控", "成功", "1 小时前"],
+    [TerminalSquare, "登录到 203.0.113.10", "admin 登录", "信息", "1 小时前"],
+  ];
   const tabSummary: Record<string, string> = {
     首页: "5 台主机在线 · 2 个告警",
     主机: "3 台生产主机 · db-01 需要关注",
@@ -2570,126 +2577,114 @@ function MobileMock({ notify }: { notify: Notify }) {
 
   return (
     <section className="mobile-frame-stage">
-      <div className="phone-scale-box">
-        <div className="phone-shell">
-          <div className="phone-screen">
-            <div className="mobile-top">
-              <button type="button" className="mobile-icon-button" onClick={() => notify("移动端菜单已打开", "info")}><Menu size={20} /></button>
-              <div className="mobile-brand"><div className="brand-gem small" /><strong>StackPilot</strong></div>
-              <div className="mobile-icons"><button type="button" onClick={() => notify("移动端通知已标记为已读", "info")}><Bell size={18} /></button><i>3</i><button type="button" onClick={() => notify("已打开移动端个人中心", "info")}><b>U</b></button></div>
-            </div>
-            <div className="mobile-content">
-              <h2>上午好，管理员</h2>
-              <p>{activeTab} · {tabSummary[activeTab]}</p>
-              <div className="mobile-stats">
-                {[
-                  [Server, "主机", "5", "全部在线", "green"],
-                  [Globe2, "网站", "12", "正常运行", "green"],
-                  [Database, "数据库", "8", "运行中", "green"],
-                  [Shield, "告警", "2", "需要处理", "orange"],
-                ].map(([Icon, label, value, desc, tone]) => (
-                  <article key={label as string}>
-                    <Icon className={tone as string} size={20} />
-                    <span>{label as string}</span>
-                    <strong>{value as string}</strong>
-                    <em><StatusLight tone={tone as Tone} />{desc as string}</em>
-                  </article>
-                ))}
-              </div>
-              <MobileCard title="系统状态" action="查看详情" onAction={() => notify("已打开移动端系统状态详情", "info")}>
-                <div className="mobile-resource">
-                  {[
-                    ["CPU", "18%", "负载 0.38", [18, 14, 23, 16, 28, 18, 22]],
-                    ["内存", "42%", "3.2 / 7.6 GB", [38, 42, 39, 46, 41, 43, 45]],
-                    ["磁盘", "37%", "180 / 480 GB", [35, 39, 37, 42, 36, 41, 38]],
-                  ].map(([label, value, desc, values]) => (
-                    <article key={label as string}>
-                      <span>{label as string}</span>
-                      <strong>{value as string}</strong>
-                      <Sparkline values={values as number[]} tone="blue" />
-                      <em>{desc as string}</em>
-                    </article>
-                  ))}
-                </div>
-              </MobileCard>
-              <MobileCard title="最近任务" action="查看全部" onAction={() => notify("已打开移动端任务列表", "info")}>
-                <div className="mobile-task-list">
-                  {[
-                    ["部署 Laravel 应用到 web-01", "admin 触发", "成功", "2 分钟前"],
-                    ["备份数据库 shop_db", "system 自动", "成功", "15 分钟前"],
-                    ["更新系统组件 /web-02", "admin 触发", "警告", "32 分钟前"],
-                    ["重启 Nginx 服务（web-01）", "自动监控", "成功", "1 小时前"],
-                    ["登录到 203.0.113.10", "admin 登录", "信息", "1 小时前"],
-                  ].map((row, index) => {
-                    const openTask = () => notify(`已打开任务：${row[0]}`, "info");
-                    return (
-                    <div key={row[0]} role="button" tabIndex={0} onClick={openTask} onKeyDown={(event) => activateOnKeyboard(event, openTask)}>
-                      <span className="mobile-task-icon">{["★", "▣", "↻", "↺", "♙"][index]}</span>
-                      <p><strong>{row[0]}</strong><em>{row[1]}</em></p>
-                      <StatusLight tone={row[2] === "警告" ? "orange" : row[2] === "信息" ? "blue" : "green"} />
-                      <b>{row[2]}</b>
-                      <small>{row[3]}</small>
-                    </div>
-                    );
-                  })}
-                </div>
-              </MobileCard>
-              <MobileCard title="快捷操作">
-                <div className="mobile-quick">
-                  {["添加主机", "创建网站", "新建数据库", "上传文件", "终端连接", "系统服务", "计划任务", "防火墙规则"].map((item) => (
-                    <button
-                      className={item === activeQuick ? "active" : ""}
-                      key={item}
-                      type="button"
-                      onClick={() => {
-                        setActiveQuick(item);
-                        notify(`移动端已选择：${item}`, "info");
-                      }}
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
-              </MobileCard>
-              <MobileCard title="主机状态" action="查看全部" onAction={() => notify("已打开移动端主机列表", "info")}>
-                <div className="mobile-hosts">
-                  {[
-                    ["web-01", "生产环境", "203.0.113.10", "Ubuntu 22.04", "12%", "38%", "2 天"],
-                    ["web-02", "生产环境", "203.0.113.11", "Ubuntu 22.04", "22%", "45%", "5 天"],
-                    ["db-01", "数据库", "203.0.113.20", "Ubuntu 22.04", "35%", "62%", "12 天"],
-                  ].map((row) => {
-                    const openHost = () => notify(`已打开主机：${row[0]}`, "info");
-                    return (
-                    <div key={row[0]} role="button" tabIndex={0} onClick={openHost} onKeyDown={(event) => activateOnKeyboard(event, openHost)}>
-                      <StatusLight tone={row[0] === "db-01" ? "orange" : "green"} />
-                      <p><strong>{row[0]}</strong><span>{row[1]}</span><em>{row[2]} | {row[3]}</em></p>
-                      <b>CPU {row[4]}<br />内存 {row[5]}</b>
-                      <small>{row[6]}</small>
-                    </div>
-                    );
-                  })}
-                </div>
-              </MobileCard>
-            </div>
-            <nav className="mobile-tabbar">
-              {[[Home, "首页"], [Server, "主机"], [Globe2, "网站"], [ClipboardIcon, "任务"], [UserRound, "我的"]].map(([Icon, label], index) => (
-                <button
-                  className={label === activeTab || (index === 0 && activeTab === "首页") ? "active" : ""}
-                  key={label as string}
-                  type="button"
-                  onClick={() => {
-                    setActiveTab(label as string);
-                    notify(`已切换到移动端${label}`, "info");
-                  }}
-                >
-                  <Icon size={22} />
-                  <span>{label as string}</span>
-                </button>
-              ))}
-            </nav>
-          </div>
+      <header className="mobile-top">
+        <button type="button" className="mobile-icon-button" aria-label="打开菜单" onClick={() => notify("移动端菜单已打开", "info")}><Menu size={20} /></button>
+        <div className="mobile-brand"><div className="brand-gem small" /><strong>StackPilot</strong></div>
+        <div className="mobile-icons"><button type="button" aria-label="查看通知" onClick={() => notify("移动端通知已标记为已读", "info")}><Bell size={18} /></button><i>3</i><button type="button" aria-label="打开个人中心" onClick={() => notify("已打开移动端个人中心", "info")}><b>U</b></button></div>
+      </header>
+      <div className="mobile-content">
+        <h2>上午好，管理员</h2>
+        <p>{activeTab} · {tabSummary[activeTab]}</p>
+        <div className="mobile-stats">
+          {[
+            [Server, "主机", "5", "全部在线", "green"],
+            [Globe2, "网站", "12", "正常运行", "green"],
+            [Database, "数据库", "8", "运行中", "green"],
+            [Shield, "告警", "2", "需要处理", "orange"],
+          ].map(([Icon, label, value, desc, tone]) => (
+            <article key={label as string}>
+              <Icon className={tone as string} size={20} />
+              <span>{label as string}</span>
+              <strong>{value as string}</strong>
+              <em><StatusLight tone={tone as Tone} />{desc as string}</em>
+            </article>
+          ))}
         </div>
+        <MobileCard title="系统状态" action="查看详情" onAction={() => notify("已打开移动端系统状态详情", "info")}>
+          <div className="mobile-resource">
+            {[
+              ["CPU", "18%", "负载 0.38", [18, 14, 23, 16, 28, 18, 22]],
+              ["内存", "42%", "3.2 / 7.6 GB", [38, 42, 39, 46, 41, 43, 45]],
+              ["磁盘", "37%", "180 / 480 GB", [35, 39, 37, 42, 36, 41, 38]],
+            ].map(([label, value, desc, values]) => (
+              <article key={label as string}>
+                <span>{label as string}</span>
+                <strong>{value as string}</strong>
+                <Sparkline values={values as number[]} tone="blue" />
+                <em>{desc as string}</em>
+              </article>
+            ))}
+          </div>
+        </MobileCard>
+        <MobileCard title="最近任务" action="查看全部" onAction={() => notify("已打开移动端任务列表", "info")}>
+          <div className="mobile-task-list">
+            {mobileTasks.map(([Icon, title, operator, status, time]) => {
+              const openTask = () => notify(`已打开任务：${title}`, "info");
+              return (
+                <div key={title} role="button" tabIndex={0} onClick={openTask} onKeyDown={(event) => activateOnKeyboard(event, openTask)}>
+                  <span className="mobile-task-icon"><Icon size={14} /></span>
+                  <p><strong>{title}</strong><em>{operator}</em></p>
+                  <StatusLight tone={status === "警告" ? "orange" : status === "信息" ? "blue" : "green"} />
+                  <b>{status}</b>
+                  <small>{time}</small>
+                </div>
+              );
+            })}
+          </div>
+        </MobileCard>
+        <MobileCard title="快捷操作">
+          <div className="mobile-quick">
+            {["添加主机", "创建网站", "新建数据库", "上传文件", "终端连接", "系统服务", "计划任务", "防火墙规则"].map((item) => (
+              <button
+                className={item === activeQuick ? "active" : ""}
+                key={item}
+                type="button"
+                onClick={() => {
+                  setActiveQuick(item);
+                  notify(`移动端已选择：${item}`, "info");
+                }}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        </MobileCard>
+        <MobileCard title="主机状态" action="查看全部" onAction={() => notify("已打开移动端主机列表", "info")}>
+          <div className="mobile-hosts">
+            {[
+              ["web-01", "生产环境", "203.0.113.10", "Ubuntu 22.04", "12%", "38%", "2 天"],
+              ["web-02", "生产环境", "203.0.113.11", "Ubuntu 22.04", "22%", "45%", "5 天"],
+              ["db-01", "数据库", "203.0.113.20", "Ubuntu 22.04", "35%", "62%", "12 天"],
+            ].map((row) => {
+              const openHost = () => notify(`已打开主机：${row[0]}`, "info");
+              return (
+                <div key={row[0]} role="button" tabIndex={0} onClick={openHost} onKeyDown={(event) => activateOnKeyboard(event, openHost)}>
+                  <StatusLight tone={row[0] === "db-01" ? "orange" : "green"} />
+                  <p><strong>{row[0]}</strong><span>{row[1]}</span><em>{row[2]} | {row[3]}</em></p>
+                  <b>CPU {row[4]}<br />内存 {row[5]}</b>
+                  <small>{row[6]}</small>
+                </div>
+              );
+            })}
+          </div>
+        </MobileCard>
       </div>
+      <nav className="mobile-tabbar" aria-label="移动端主导航">
+        {[[Home, "首页"], [Server, "主机"], [Globe2, "网站"], [ClipboardIcon, "任务"], [UserRound, "我的"]].map(([Icon, label], index) => (
+          <button
+            className={label === activeTab || (index === 0 && activeTab === "首页") ? "active" : ""}
+            key={label as string}
+            type="button"
+            onClick={() => {
+              setActiveTab(label as string);
+              notify(`已切换到移动端${label}`, "info");
+            }}
+          >
+            <Icon size={22} />
+            <span>{label as string}</span>
+          </button>
+        ))}
+      </nav>
     </section>
   );
 }
