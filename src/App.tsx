@@ -275,13 +275,9 @@ function navPageFor(page: PageKey): ParentPageKey {
   return childParent?.key ?? (overviewChildPages[page] ? "overview" : "overview");
 }
 
-function firstChildIdFor(key: ParentPageKey) {
-  return navItems.find((item) => item.key === key)?.children[0]?.id;
-}
-
 function activeChildForPage(page: PageKey) {
   const exactChild = navItems.flatMap((item) => item.children).find((child) => (child.page ?? child.id) === page);
-  return exactChild?.id ?? firstChildIdFor(navPageFor(page));
+  return exactChild?.id;
 }
 
 function resolvePageMeta(page: PageKey): PageMeta {
@@ -849,33 +845,46 @@ function Sidebar({
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = item.key === activeNavPage;
+          const exactActive = item.key === page;
+          const hasActiveChild = active && !exactActive && item.children.some((child) => child.id === activeChild);
           const open = (openGroups[item.key] ?? active) && !collapsed;
+          const parentCurrent = exactActive || (!open && hasActiveChild);
+          const activeChildLabel = item.children.find((child) => child.id === activeChild)?.label;
           return (
             <section
               key={item.key}
-              className={`side-nav-group ${active ? "active" : ""} ${open ? "open" : ""}`}
+              className={[
+                "side-nav-group",
+                active ? "active" : "",
+                exactActive ? "exact-active" : "",
+                hasActiveChild ? "has-active-child" : "",
+                open ? "open" : "",
+              ].filter(Boolean).join(" ")}
             >
               <div className="side-nav-row">
                 <button
                   className="side-main-button"
                   type="button"
                   onClick={() => openNavPage(item.key, item.label)}
-                  aria-current={active ? "page" : undefined}
+                  aria-current={parentCurrent ? "page" : undefined}
+                  aria-label={parentCurrent && activeChildLabel ? `${item.label}，当前页面：${activeChildLabel}` : undefined}
                 >
                   <Icon size={17} />
                   <span>{item.label}</span>
                   {item.badge && <b>{item.badge}</b>}
                 </button>
-                <button
-                  className="side-toggle-button"
-                  type="button"
-                  onClick={() => toggleGroup(item.key, item.label)}
-                  aria-label={`${open ? "收起" : "展开"}${item.label}下拉项目`}
-                  aria-expanded={open}
-                  aria-controls={`side-submenu-${item.key}`}
-                >
-                  <ChevronDown className="side-chevron" size={13} />
-                </button>
+                {!collapsed && (
+                  <button
+                    className="side-toggle-button"
+                    type="button"
+                    onClick={() => toggleGroup(item.key, item.label)}
+                    aria-label={`${open ? "收起" : "展开"}${item.label}下拉项目`}
+                    aria-expanded={open}
+                    aria-controls={`side-submenu-${item.key}`}
+                  >
+                    <ChevronDown className="side-chevron" size={13} />
+                  </button>
+                )}
               </div>
               <div
                 className="side-submenu"
@@ -888,12 +897,13 @@ function Sidebar({
                     className={activeChild === child.id ? "is-child-active" : ""}
                     type="button"
                     tabIndex={open ? 0 : -1}
-                    aria-current={activeChild === child.id ? "true" : undefined}
+                    aria-current={open && activeChild === child.id ? "page" : undefined}
+                    aria-label={`${child.label}${child.meta ? `，${child.meta}` : child.badge ? `，${child.badge}` : ""}`}
                     onClick={() => openNavChild(item, child)}
                   >
                     <i />
                     <span>{child.label}</span>
-                    <em>{child.badge ?? child.meta}</em>
+                    <em className={child.badge ? "is-badge" : ""}>{child.badge ?? child.meta}</em>
                   </button>
                 ))}
               </div>

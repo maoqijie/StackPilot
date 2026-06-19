@@ -308,7 +308,16 @@ a {
 .side-nav-group {
   min-width: 0;
   display: grid;
-  gap: 4px;
+  gap: 2px;
+  border-radius: 8px;
+  transition:
+    background 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.side-nav-group.has-active-child {
+  background: rgb(255 255 255 / 3.5%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 5%);
 }
 
 .side-nav-row {
@@ -327,7 +336,8 @@ a {
   background: rgb(255 255 255 / 7%);
 }
 
-.side-nav button {
+.side-main-button,
+.side-toggle-button {
   height: 38px;
   border-radius: 5px;
   display: flex;
@@ -391,7 +401,7 @@ a {
   box-shadow: none;
 }
 
-.side-nav-group.active .side-main-button {
+.side-nav-group.exact-active .side-main-button {
   color: #ffffff;
   background: rgb(255 255 255 / 7%);
   box-shadow: inset 2px 0 0 rgb(25 183 232 / 72%);
@@ -403,9 +413,20 @@ a {
   box-shadow: none;
 }
 
-.side-nav-group.active .side-nav-row:hover .side-main-button {
+.side-nav-group.has-active-child .side-main-button {
+  color: #eef9ff;
+  background: transparent;
+  box-shadow: none;
+}
+
+.side-nav-group.has-active-child .side-toggle-button {
+  color: #d4eaf5;
+}
+
+.side-nav-group.exact-active .side-nav-row:hover .side-main-button,
+.side-nav-group.has-active-child .side-nav-row:hover .side-main-button {
   color: #ffffff;
-  background: rgb(255 255 255 / 9%);
+  background: rgb(255 255 255 / 6%);
 }
 
 .side-nav-group.active .side-nav-row:hover .side-toggle-button {
@@ -417,7 +438,7 @@ a {
   outline-color: rgb(255 255 255 / 46%);
 }
 
-.side-nav span {
+.side-main-button span {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -445,7 +466,7 @@ a {
   transform: rotate(180deg);
 }
 
-.sidebar-mock.collapsed .side-nav span,
+.sidebar-mock.collapsed .side-main-button span,
 .sidebar-mock.collapsed .side-nav b {
   max-width: 0;
   min-width: 0;
@@ -463,11 +484,11 @@ a {
 }
 
 .side-submenu {
-  margin: 1px 6px 2px 38px;
-  padding: 2px 0 2px 9px;
+  margin: 1px 5px 3px 24px;
+  padding: 3px 0 3px 9px;
   border-left: 1px solid rgb(168 206 226 / 22%);
   display: grid;
-  gap: 3px;
+  gap: 2px;
   max-height: 0;
   overflow: hidden;
   opacity: 0;
@@ -486,14 +507,21 @@ a {
 
 .side-submenu button {
   position: relative;
-  height: 30px;
-  padding: 0 8px 0 10px;
-  border-radius: 4px;
+  min-height: 30px;
+  padding: 0 7px 0 9px;
+  border-radius: 5px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(16px, max-content);
+  align-items: center;
+  gap: 6px;
   color: #b7cfdd;
+  background: transparent;
   font-size: 12px;
+  text-align: left;
+  transition:
+    color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .side-submenu button i {
@@ -508,37 +536,49 @@ a {
 }
 
 .side-submenu button span {
+  min-width: 0;
+  overflow: hidden;
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .side-submenu button em {
-  max-width: 72px;
-  min-width: 18px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
+  max-width: 58px;
+  min-width: 0;
+  padding: 0;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   overflow: hidden;
-  color: #8fb0c3;
-  background: rgb(255 255 255 / 4%);
+  color: #7fa2b6;
+  background: transparent;
   font-size: 11px;
   font-style: normal;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
+.side-submenu button em.is-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  justify-content: center;
+  color: #a9d8ec;
+  background: rgb(14 165 233 / 15%);
+  border-radius: 999px;
+}
+
 .side-submenu button:hover,
 .side-submenu button.is-child-active {
   color: #ffffff;
-  background: rgb(255 255 255 / 7%);
+  background: rgb(255 255 255 / 6%);
 }
 
 .side-submenu button.is-child-active {
-  background: rgb(14 165 233 / 16%);
-  box-shadow: inset 2px 0 0 #19b7e8;
+  background: linear-gradient(90deg, rgb(14 165 233 / 18%), rgb(255 255 255 / 5%));
+  box-shadow: inset 0 0 0 1px rgb(25 183 232 / 16%);
 }
 
 .side-submenu button.is-child-active i {
@@ -552,12 +592,20 @@ a {
 
 .sidebar-mock.collapsed .side-submenu {
   max-height: 0;
-  margin-left: 0;
-  padding-left: 0;
-  border-color: transparent;
+  margin: 0;
+  padding: 0;
+  border: 0;
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
   transform: translateY(-4px);
+}
+
+.sidebar-mock.collapsed .side-submenu button {
+  min-height: 0;
+  height: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 .side-nav b {
@@ -722,10 +770,13 @@ a {
   .sidebar-mock,
   .side-brand,
   .side-brand strong,
-  .side-nav button,
-  .side-nav span,
+  .side-nav-group,
+  .side-main-button,
+  .side-toggle-button,
+  .side-main-button span,
   .side-chevron,
   .side-submenu,
+  .side-submenu button,
   .host-groups,
   .collapse-side,
   .collapse-icon,
