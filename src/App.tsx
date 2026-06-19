@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   Activity,
   Bell,
@@ -1222,6 +1222,17 @@ function Sidebar({
     setOpenGroups((current) => ({ ...current, [key]: true }));
   };
 
+  const handleMainNavClick = (item: NavItem, hasActiveChild: boolean) => {
+    if (collapsed && hasActiveChild) {
+      setManuallyClosedActiveGroup(null);
+      setOpenGroups((current) => ({ ...current, [item.key]: true }));
+      onToggleCollapsed();
+      notify(`已展开${item.label}下拉项目`, "info");
+      return;
+    }
+    openNavPage(item.key, item.label);
+  };
+
   const openNavChild = (parent: NavItem, child: NavChild) => {
     setManuallyClosedActiveGroup(null);
     setPage(child.page ?? child.id, { message: `已打开${parent.label} / ${child.label}`, tone: "info" });
@@ -1259,9 +1270,9 @@ function Sidebar({
                 <button
                   className="side-main-button"
                   type="button"
-                  onClick={() => openNavPage(item.key, item.label)}
+                  onClick={() => handleMainNavClick(item, hasActiveChild)}
                   aria-current={parentCurrent ? "page" : undefined}
-                  aria-label={parentCurrent && activeChildLabel ? `${item.label}，当前页面：${activeChildLabel}` : undefined}
+                  aria-label={parentCurrent && activeChildLabel ? `${item.label}，当前页面：${activeChildLabel}${collapsed ? "，点击展开侧栏查看下拉项目" : ""}` : undefined}
                 >
                   <Icon size={17} />
                   <span>{item.label}</span>
@@ -1307,7 +1318,7 @@ function Sidebar({
                         <i />
                         <span className="side-child-copy">
                           <span className="side-child-label">{child.label}</span>
-                          {metaText && !child.badge && <em>{metaText}</em>}
+                          {metaText && <em>{metaText}</em>}
                         </span>
                         {child.badge && <strong className="side-child-badge">{child.badge}</strong>}
                       </button>
@@ -5033,9 +5044,43 @@ function FieldSelect({
   onChange?: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const reactId = useId();
+  const safeId = reactId.replace(/:/g, "");
+  const listboxId = `${safeId}-listbox`;
+  const buttonId = `${safeId}-button`;
+  const valueId = `${safeId}-value`;
+  const availableOptions = options ?? [];
+  const rawSelectedIndex = availableOptions.indexOf(value);
+  const hasSelectedOption = rawSelectedIndex >= 0;
+  const selectedIndex = hasSelectedOption ? rawSelectedIndex : 0;
+  const boundedActiveIndex = Math.min(activeIndex, Math.max(availableOptions.length - 1, 0));
+  const activeOptionId = open && availableOptions.length > 0 && hasSelectedOption ? `${safeId}-option-${boundedActiveIndex}` : undefined;
+  const focusButtonSoon = () => {
+    window.requestAnimationFrame(() => buttonRef.current?.focus());
+  };
+  const openMenu = () => {
+    if (!availableOptions.length) return;
+    setActiveIndex(selectedIndex);
+    setOpen(true);
+  };
+  const selectOption = (option: string) => {
+    onChange?.(option);
+    setOpen(false);
+    focusButtonSoon();
+  };
+  const commitActiveOption = () => {
+    const option = availableOptions[boundedActiveIndex];
+    if (option) selectOption(option);
+  };
+  const moveActiveOption = (direction: 1 | -1) => {
+    if (availableOptions.length === 0) return;
+    setActiveIndex((current) => (current + direction + availableOptions.length) % availableOptions.length);
+  };
 
   return (
-    <label
+    <div
       className={`field-select ${open ? "open" : ""}`}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) {
@@ -5044,24 +5089,83 @@ function FieldSelect({
       }}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
+          event.preventDefault();
           setOpen(false);
+          focusButtonSoon();
+          return;
+        }
+        if (!availableOptions.length) return;
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          if (!open) {
+            openMenu();
+            return;
+          }
+          moveActiveOption(1);
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          if (!open) {
+            openMenu();
+            return;
+          }
+          moveActiveOption(-1);
+        } else if (event.key === "Home") {
+          event.preventDefault();
+          if (!open) openMenu();
+          setActiveIndex(0);
+        } else if (event.key === "End") {
+          event.preventDefault();
+          if (!open) openMenu();
+          setActiveIndex(availableOptions.length - 1);
+        } else if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          if (!open) {
+            openMenu();
+            return;
+          }
+          commitActiveOption();
         }
       }}
     >
-      <span>{label}</span>
-      <button type="button" aria-expanded={open} aria-haspopup="listbox" onClick={() => setOpen((current) => !current)}>{value}<ChevronDown size={12} /></button>
-      {open && options && (
-        <div className="popover-panel" role="listbox">
-          {options.map((option) => (
+      <span id={`${safeId}-label`}>{label}</span>
+      <button
+        id={buttonId}
+        ref={buttonRef}
+        type="button"
+        role="combobox"
+        aria-labelledby={`${safeId}-label ${valueId}`}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-controls={open ? listboxId : undefined}
+        aria-activedescendant={activeOptionId}
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+            focusButtonSoon();
+          } else {
+            openMenu();
+          }
+        }}
+      >
+        <span id={valueId}>{value}</span><ChevronDown size={12} />
+      </button>
+      {open && availableOptions.length > 0 && (
+        <div className="popover-panel" id={listboxId} role="listbox" aria-labelledby={`${safeId}-label`}>
+          {availableOptions.map((option, index) => (
             <button
-              className={option === value ? "active" : ""}
+              className={[
+                index === boundedActiveIndex ? "active" : "",
+                option === value ? "selected" : "",
+              ].filter(Boolean).join(" ")}
+              id={`${safeId}-option-${index}`}
               key={option}
               role="option"
               aria-selected={option === value}
+              tabIndex={-1}
               type="button"
+              onMouseEnter={() => setActiveIndex(index)}
               onClick={() => {
-                onChange?.(option);
-                setOpen(false);
+                selectOption(option);
               }}
             >
               {option}
@@ -5069,7 +5173,7 @@ function FieldSelect({
           ))}
         </div>
       )}
-    </label>
+    </div>
   );
 }
 
