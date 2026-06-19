@@ -2213,7 +2213,44 @@ a {
 }
 
 .export-list p {
-  justify-content: space-between;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+}
+
+.export-list p > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.export-list p b,
+.export-list p em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.export-list p em {
+  color: #7d8f9e;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.export-list p strong {
+  justify-self: end;
+  white-space: nowrap;
+}
+
+.export-actions {
+  min-width: 94px;
+  flex-wrap: nowrap;
+}
+
+.export-actions button {
+  flex: 0 0 auto;
 }
 
 .export-list button {
