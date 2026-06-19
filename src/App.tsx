@@ -351,7 +351,8 @@ function viewContextForPage(page: PageKey): ViewContext | null {
     }
     case "acl": {
       const preset = aclPagePreset(page);
-      return { eyebrow, title, description: preset.subtitle, chips: [`视图 ${preset.tab === "users" ? "用户" : "角色"}`] };
+      const viewName = preset.tab === "users" ? "用户" : preset.tab === "roles" ? "角色" : "权限项";
+      return { eyebrow, title, description: preset.subtitle, chips: [`视图 ${viewName}`] };
     }
     case "settings": {
       const tab = settingsPagePreset(page);
@@ -498,12 +499,25 @@ type DeployJob = {
   duration: string;
 };
 
+type RollbackRecord = {
+  id: string;
+  app: string;
+  env: string;
+  fromVersion: string;
+  targetVersion: string;
+  status: "可回滚" | "回滚中" | "已回滚";
+  operator: string;
+  reason: string;
+  createdAt: string;
+};
+
 type ScheduleJob = {
   id: string;
   name: string;
   cron: string;
   command: string;
   enabled: boolean;
+  nextRun: string;
   lastRun: string;
   result: "成功" | "失败" | "未运行";
 };
@@ -535,6 +549,16 @@ type AclRole = {
   name: string;
   desc: string;
   permissions: string[];
+};
+
+type AclPolicy = {
+  id: string;
+  name: string;
+  module: string;
+  risk: "低" | "中" | "高";
+  desc: string;
+  roles: string[];
+  lastUpdated: string;
 };
 
 const initialOverviewNodes: OverviewNode[] = [
@@ -665,11 +689,18 @@ const initialDeployJobs: DeployJob[] = [
   { id: "dep-4", app: "worker", env: "开发", version: "dev-42", status: "失败", operator: "系统", duration: "18秒" },
 ];
 
+const initialRollbackRecords: RollbackRecord[] = [
+  { id: "rb-1", app: "stackpilot-api", env: "生产", fromVersion: "v2.8.1", targetVersion: "v2.8.0", status: "可回滚", operator: "张工", reason: "v2.8.0 为最近健康基线", createdAt: "今天 10:18" },
+  { id: "rb-2", app: "shop-web", env: "生产", fromVersion: "2026.06.18", targetVersion: "2026.06.15", status: "回滚中", operator: "李敏", reason: "支付页异常率升高", createdAt: "今天 09:42" },
+  { id: "rb-3", app: "admin-console", env: "预发", fromVersion: "rc-18", targetVersion: "rc-17", status: "已回滚", operator: "王工", reason: "菜单权限回归验证", createdAt: "昨天 18:30" },
+  { id: "rb-4", app: "worker", env: "开发", fromVersion: "dev-42", targetVersion: "dev-40", status: "可回滚", operator: "系统", reason: "构建失败保留上一版本", createdAt: "昨天 16:12" },
+];
+
 const initialScheduleJobs: ScheduleJob[] = [
-  { id: "sch-1", name: "每日数据备份", cron: "0 2 * * *", command: "backup:run --daily", enabled: true, lastRun: "今天 02:00", result: "成功" },
-  { id: "sch-2", name: "证书续期检查", cron: "15 3 * * 1", command: "certbot renew --dry-run", enabled: true, lastRun: "周一 03:15", result: "成功" },
-  { id: "sch-3", name: "日志清理", cron: "30 1 * * 0", command: "logs:prune --days=30", enabled: false, lastRun: "未运行", result: "未运行" },
-  { id: "sch-4", name: "服务健康探测", cron: "*/10 * * * *", command: "health:check", enabled: true, lastRun: "10 分钟前", result: "失败" },
+  { id: "sch-1", name: "每日数据备份", cron: "0 2 * * *", command: "backup:run --daily", enabled: true, nextRun: "02:00", lastRun: "今天 02:00", result: "成功" },
+  { id: "sch-2", name: "证书续期检查", cron: "15 3 * * 1", command: "certbot renew --dry-run", enabled: true, nextRun: "周一 03:15", lastRun: "周一 03:15", result: "成功" },
+  { id: "sch-3", name: "日志清理", cron: "30 1 * * 0", command: "logs:prune --days=30", enabled: false, nextRun: "停用", lastRun: "未运行", result: "未运行" },
+  { id: "sch-4", name: "服务健康探测", cron: "*/10 * * * *", command: "health:check", enabled: true, nextRun: "每 10 分钟", lastRun: "10 分钟前", result: "失败" },
 ];
 
 const initialAuditRecords: AuditRecord[] = auditRows.map((row) => ({
@@ -698,6 +729,17 @@ const initialAclRoles: AclRole[] = [
   { id: "role-2", name: "发布经理", desc: "负责网站发布和部署回滚", permissions: ["主机读写", "网站发布", "文件管理", "审计导出"] },
   { id: "role-3", name: "只读审计", desc: "只查看日志与状态，不可变更", permissions: ["审计导出"] },
   { id: "role-4", name: "发布机器人", desc: "供 CI/CD 自动发布使用", permissions: ["网站发布", "文件管理"] },
+];
+
+const initialAclPolicies: AclPolicy[] = [
+  { id: "pol-1", name: "主机读写", module: "主机", risk: "高", desc: "允许重启、备份、更新和修改主机配置。", roles: ["管理员", "发布经理"], lastUpdated: "今天 09:20" },
+  { id: "pol-2", name: "网站发布", module: "网站", risk: "高", desc: "允许发布站点、启停站点和续期证书。", roles: ["管理员", "发布经理", "发布机器人"], lastUpdated: "今天 08:42" },
+  { id: "pol-3", name: "数据库管理", module: "数据库", risk: "高", desc: "允许创建备份、恢复实例和查看慢查询明细。", roles: ["管理员"], lastUpdated: "昨天 22:15" },
+  { id: "pol-4", name: "文件管理", module: "文件", risk: "中", desc: "允许上传、重命名、删除和恢复站点目录文件。", roles: ["管理员", "发布经理", "发布机器人"], lastUpdated: "昨天 18:10" },
+  { id: "pol-5", name: "终端访问", module: "终端", risk: "高", desc: "允许连接主机终端并执行命令。", roles: ["管理员"], lastUpdated: "周一 11:06" },
+  { id: "pol-6", name: "防火墙管理", module: "防火墙", risk: "高", desc: "允许新增、禁用和删除访问规则。", roles: ["管理员"], lastUpdated: "周一 10:44" },
+  { id: "pol-7", name: "审计导出", module: "审计", risk: "中", desc: "允许导出审计日志和重新生成归档包。", roles: ["管理员", "发布经理", "只读审计"], lastUpdated: "昨天 16:01" },
+  { id: "pol-8", name: "权限管理", module: "权限", risk: "高", desc: "允许变更用户、角色和权限项绑定。", roles: ["管理员"], lastUpdated: "今天 10:02" },
 ];
 
 function hostPagePreset(page: PageKey) {
@@ -742,7 +784,7 @@ function firewallPagePreset(page: PageKey) {
 
 function deployPagePreset(page: PageKey) {
   if (page === "deploy-staging") return { env: "预发", mode: "list", subtitle: "预发环境视图，默认展示 rc 与验证发布任务。" };
-  if (page === "deploy-rollbacks") return { env: "生产", mode: "rollbacks", subtitle: "回滚记录视图，聚焦可回滚与回滚中的发布任务。" };
+  if (page === "deploy-rollbacks") return { env: "全部", mode: "rollbacks", subtitle: "回滚记录视图，聚焦可回滚基线、回滚进度和恢复原因。" };
   return { env: "生产", mode: "list", subtitle: "按环境查看发布任务，支持创建、完成、回滚、查看日志和重新部署。" };
 }
 
@@ -759,7 +801,8 @@ function auditPagePreset(page: PageKey) {
 }
 
 function aclPagePreset(page: PageKey) {
-  if (page === "acl-roles" || page === "acl-policies") return { tab: "roles" as const, subtitle: page === "acl-policies" ? "权限项视图，按角色勾选和保存权限项。" : "角色视图，管理不同角色的权限组合。" };
+  if (page === "acl-policies") return { tab: "policies" as const, subtitle: "权限项视图，按模块、风险级别和关联角色审查授权边界。" };
+  if (page === "acl-roles") return { tab: "roles" as const, subtitle: "角色视图，管理不同角色的权限组合。" };
   return { tab: "users" as const, subtitle: "管理用户启用状态、MFA 和角色权限勾选。" };
 }
 
@@ -984,7 +1027,7 @@ function Sidebar({
                 className="side-submenu"
                 id={`side-submenu-${item.key}`}
                 aria-hidden={!open}
-                style={{ "--side-submenu-open-height": `${item.children.length * 32 + 6}px` } as CSSProperties}
+                style={{ "--side-submenu-open-height": `${item.children.length * 34 + 12}px` } as CSSProperties}
               >
                 {item.children.map((child) => (
                   <button
@@ -998,7 +1041,7 @@ function Sidebar({
                   >
                     <i />
                     <span>{child.label}</span>
-                    <em className={child.badge ? "is-badge" : ""}>{child.badge ?? child.meta}</em>
+                    <em>{child.meta}</em>
                   </button>
                 ))}
               </div>
@@ -2382,11 +2425,16 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
 
 function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialDeployJobs);
+  const [rollbackRows, setRollbackRows] = useState(initialRollbackRecords);
   const deployPreset = deployPagePreset(page);
   const [env, setEnv] = useState(deployPreset.env);
-  const [drawer, setDrawer] = useState<DeployJob | null>(null);
-  const filteredRows = rows.filter((row) => row.env === env && (deployPreset.mode !== "rollbacks" || ["失败", "运行中", "待发布"].includes(row.status)));
+  const [drawer, setDrawer] = useState<{ type: "deploy"; row: DeployJob } | { type: "rollback"; row: RollbackRecord } | null>(null);
+  const isRollbackMode = deployPreset.mode === "rollbacks";
+  const deployEnvOptions = isRollbackMode ? ["全部", "生产", "预发", "开发"] : ["生产", "预发", "开发"];
+  const filteredRows = rows.filter((row) => row.env === env);
+  const filteredRollbackRows = rollbackRows.filter((row) => env === "全部" || row.env === env);
   const updateDeploy = (id: string, patch: Partial<DeployJob>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+  const updateRollback = (id: string, patch: Partial<RollbackRecord>) => setRollbackRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   const createDeploy = () => {
     const next: DeployJob = { id: `dep-${Date.now()}`, app: env === "生产" ? "shop-web" : "feature-service", env, version: `build-${rows.length + 1}`, status: "运行中", operator: "管理员", duration: "运行中" };
     setRows((current) => [next, ...current]);
@@ -2398,34 +2446,64 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
       title={resolvePageMeta(page).title}
       subtitle={deployPreset.subtitle}
       page={page}
-      actions={<button className="primary" type="button" onClick={createDeploy}><Plus size={15} /> 创建部署任务</button>}
-      filters={<div className="deploy-tabs">{["生产", "预发", "开发"].map((item) => <button key={item} className={item === env ? "active" : ""} type="button" onClick={() => setEnv(item)}>{item}</button>)}</div>}
-      metrics={<><MetricTile icon={CloudUpload} label="当前环境" value={env} tone="blue" /><MetricTile icon={Activity} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="成功" value={`${rows.filter((row) => row.status === "成功").length}`} tone="green" /></>}
+      actions={!isRollbackMode && <button className="primary" type="button" onClick={createDeploy}><Plus size={15} /> 创建部署任务</button>}
+      filters={<div className="deploy-tabs">{deployEnvOptions.map((item) => <button key={item} className={item === env ? "active" : ""} type="button" onClick={() => setEnv(item)}>{item}</button>)}</div>}
+      metrics={isRollbackMode
+        ? <><MetricTile icon={RefreshCw} label="可回滚" value={`${rollbackRows.filter((row) => row.status === "可回滚").length}`} tone="blue" /><MetricTile icon={Activity} label="回滚中" value={`${rollbackRows.filter((row) => row.status === "回滚中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="已回滚" value={`${rollbackRows.filter((row) => row.status === "已回滚").length}`} tone="green" /></>
+        : <><MetricTile icon={CloudUpload} label="当前环境" value={env} tone="blue" /><MetricTile icon={Activity} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="成功" value={`${rows.filter((row) => row.status === "成功").length}`} tone="green" /></>}
       side={drawer && (
-        <DetailDrawer title="部署日志" subtitle={`${drawer.app} ${drawer.version}`} onClose={() => setDrawer(null)}>
+        <DetailDrawer title={drawer.type === "rollback" ? "回滚日志" : "部署日志"} subtitle={drawer.type === "rollback" ? `${drawer.row.app} ${drawer.row.fromVersion} -> ${drawer.row.targetVersion}` : `${drawer.row.app} ${drawer.row.version}`} onClose={() => setDrawer(null)}>
           <div className="terminal-log compact-log">
-            <p>checkout {drawer.version}</p>
-            <p>install dependencies</p>
-            <p>build artifacts</p>
-            <p>{drawer.status === "失败" ? "deploy failed: health check timeout" : "deploy finished"}</p>
+            {drawer.type === "rollback" ? (
+              <>
+                <p>rollback requested by {drawer.row.operator}</p>
+                <p>current {drawer.row.fromVersion}</p>
+                <p>target {drawer.row.targetVersion}</p>
+                <p>{drawer.row.reason}</p>
+              </>
+            ) : (
+              <>
+                <p>checkout {drawer.row.version}</p>
+                <p>install dependencies</p>
+                <p>build artifacts</p>
+                <p>{drawer.row.status === "失败" ? "deploy failed: health check timeout" : "deploy finished"}</p>
+              </>
+            )}
           </div>
         </DetailDrawer>
       )}
     >
-      <DataTable
-        columns={[
-          { key: "app", label: "应用", width: "210px", render: (row) => <b className="blue-text">{row.app}</b> },
-          { key: "env", label: "环境", render: (row) => <span className="pill blue">{row.env}</span> },
-          { key: "version", label: "版本", render: (row) => row.version },
-          { key: "status", label: "状态", render: (row) => <span className={`pill ${row.status === "成功" ? "green" : row.status === "失败" ? "red" : "blue"}`}>{row.status}</span> },
-          { key: "operator", label: "操作人", render: (row) => row.operator },
-          { key: "duration", label: "耗时", render: (row) => row.duration },
-          { key: "ops", label: "操作", width: "260px", render: (row) => <span className="table-actions">{row.status === "运行中" && <button type="button" onClick={() => { updateDeploy(row.id, { status: "成功", duration: "1分02秒" }); notify(`${row.app} 部署已完成`); }}>完成</button>}<button type="button" onClick={() => { updateDeploy(row.id, { status: "运行中", duration: "回滚中" }); notify(`${row.app} 已开始回滚`, "warning"); }}>回滚</button><button type="button" onClick={() => setDrawer(row)}>日志</button><button type="button" onClick={() => { updateDeploy(row.id, { status: "运行中", duration: "运行中" }); notify(`${row.app} 已重新部署`, "info"); }}>重部署</button></span> },
-        ]}
-        rows={filteredRows}
-        emptyText="当前环境没有部署任务"
-        getRowKey={(row) => row.id}
-      />
+      {isRollbackMode ? (
+        <DataTable
+          columns={[
+            { key: "app", label: "应用", width: "190px", render: (row) => <b className="blue-text">{row.app}</b> },
+            { key: "env", label: "环境", render: (row) => <span className="pill blue">{row.env}</span> },
+            { key: "from", label: "当前版本", render: (row) => row.fromVersion },
+            { key: "target", label: "目标版本", render: (row) => row.targetVersion },
+            { key: "status", label: "状态", render: (row) => <span className={`pill ${row.status === "已回滚" ? "green" : row.status === "回滚中" ? "blue" : "orange"}`}>{row.status}</span> },
+            { key: "reason", label: "原因", render: (row) => row.reason },
+            { key: "ops", label: "操作", width: "220px", render: (row) => <span className="table-actions">{row.status !== "已回滚" && <button type="button" onClick={() => { updateRollback(row.id, { status: row.status === "回滚中" ? "已回滚" : "回滚中" }); notify(`${row.app} ${row.status === "回滚中" ? "回滚已完成" : "已开始回滚"}`, row.status === "回滚中" ? "success" : "warning"); }}>{row.status === "回滚中" ? "完成" : "执行"}</button>}<button type="button" onClick={() => setDrawer({ type: "rollback", row })}>日志</button>{row.status !== "已回滚" && <button type="button" onClick={() => { updateRollback(row.id, { status: "回滚中", createdAt: currentClock() }); notify(`${row.app} 已重新执行回滚`, "info"); }}>重试</button>}</span> },
+          ]}
+          rows={filteredRollbackRows}
+          emptyText="当前筛选没有回滚记录"
+          getRowKey={(row) => row.id}
+        />
+      ) : (
+        <DataTable
+          columns={[
+            { key: "app", label: "应用", width: "210px", render: (row) => <b className="blue-text">{row.app}</b> },
+            { key: "env", label: "环境", render: (row) => <span className="pill blue">{row.env}</span> },
+            { key: "version", label: "版本", render: (row) => row.version },
+            { key: "status", label: "状态", render: (row) => <span className={`pill ${row.status === "成功" ? "green" : row.status === "失败" ? "red" : "blue"}`}>{row.status}</span> },
+            { key: "operator", label: "操作人", render: (row) => row.operator },
+            { key: "duration", label: "耗时", render: (row) => row.duration },
+            { key: "ops", label: "操作", width: "260px", render: (row) => <span className="table-actions">{row.status === "运行中" && <button type="button" onClick={() => { updateDeploy(row.id, { status: "成功", duration: "1分02秒" }); notify(`${row.app} 部署已完成`); }}>完成</button>}<button type="button" onClick={() => { setRollbackRows((current) => [{ id: `rb-${Date.now()}`, app: row.app, env: row.env, fromVersion: row.version, targetVersion: "上一健康版本", status: "回滚中", operator: row.operator, reason: "从部署任务发起回滚", createdAt: currentClock() }, ...current]); updateDeploy(row.id, { status: "运行中", duration: "回滚中" }); notify(`${row.app} 已开始回滚`, "warning"); }}>回滚</button><button type="button" onClick={() => setDrawer({ type: "deploy", row })}>日志</button><button type="button" onClick={() => { updateDeploy(row.id, { status: "运行中", duration: "运行中" }); notify(`${row.app} 已重新部署`, "info"); }}>重部署</button></span> },
+          ]}
+          rows={filteredRows}
+          emptyText="当前环境没有部署任务"
+          getRowKey={(row) => row.id}
+        />
+      )}
     </ModulePageShell>
   );
 }
@@ -2454,7 +2532,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       updateJob(drawer.job.id, { cron: draft.cron, command: draft.command });
       notify(`${drawer.job.name} 已保存`);
     } else {
-      setRows((current) => [{ id: `sch-${Date.now()}`, name: draft.name.trim(), cron: draft.cron.trim(), command: draft.command.trim(), enabled: true, lastRun: "未运行", result: "未运行" }, ...current]);
+      setRows((current) => [{ id: `sch-${Date.now()}`, name: draft.name.trim(), cron: draft.cron.trim(), command: draft.command.trim(), enabled: true, nextRun: "待计算", lastRun: "未运行", result: "未运行" }, ...current]);
       notify("定时任务已新建");
     }
     setDrawer(null);
@@ -2478,7 +2556,8 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
     >
       {schedulePreset.mode === "calendar" && (
         <div className="schedule-calendar">
-          {rows.map((row, index) => <article key={row.id}><span>{["02:00", "03:15", "09:30", "每 10 分钟"][index] ?? "待定"}</span><strong>{row.name}</strong><em>{row.cron}</em><b className={row.result === "失败" ? "red-text" : "green-text"}>{row.result}</b></article>)}
+          {filteredRows.map((row) => <article key={row.id}><span>{row.nextRun}</span><strong>{row.name}</strong><em>{row.cron}</em><b className={row.result === "失败" ? "red-text" : row.result === "成功" ? "green-text" : "orange-text"}>{row.enabled ? row.result : "已停用"}</b></article>)}
+          {filteredRows.length === 0 && <p className="module-empty-card">当前筛选没有日历任务</p>}
         </div>
       )}
       <DataTable
@@ -2557,13 +2636,25 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
 
 function AclPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const aclPreset = aclPagePreset(page);
-  const [tab, setTab] = useState<"users" | "roles">(aclPreset.tab);
+  const [tab, setTab] = useState<"users" | "roles" | "policies">(aclPreset.tab);
   const [users, setUsers] = useState(initialAclUsers);
   const [roles, setRoles] = useState(initialAclRoles);
   const [search, setSearch] = useState("");
+  const [policyModule, setPolicyModule] = useState("全部");
+  const [policyRisk, setPolicyRisk] = useState("全部");
+  const [selectedPolicyId, setSelectedPolicyId] = useState(initialAclPolicies[0].id);
   const [roleId, setRoleId] = useState(initialAclRoles[0].id);
   const selectedRole = roles.find((role) => role.id === roleId) ?? roles[0];
   const filteredUsers = users.filter((user) => !search.trim() || `${user.name} ${user.email} ${user.role}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const filteredPolicies = initialAclPolicies.filter((policy) => {
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || `${policy.name} ${policy.module} ${policy.desc} ${policy.roles.join(" ")}`.toLowerCase().includes(query);
+    const matchModule = policyModule === "全部" || policy.module === policyModule;
+    const matchRisk = policyRisk === "全部" || policy.risk === policyRisk;
+    return matchSearch && matchModule && matchRisk;
+  });
+  const selectedPolicy = filteredPolicies.find((policy) => policy.id === selectedPolicyId) ?? filteredPolicies[0] ?? null;
+  const policyModules = ["全部", ...Array.from(new Set(initialAclPolicies.map((policy) => policy.module)))];
   const togglePermission = (permission: string) => {
     setRoles((current) => current.map((role) => {
       if (role.id !== selectedRole.id) return role;
@@ -2577,9 +2668,9 @@ function AclPage({ page, notify }: { page: PageKey; notify: Notify }) {
       title={resolvePageMeta(page).title}
       subtitle={aclPreset.subtitle}
       page={page}
-      actions={<button className="ghost" type="button" onClick={() => notify("权限变更已保存")}>保存权限</button>}
-      filters={<><div className="deploy-tabs"><button className={tab === "users" ? "active" : ""} type="button" onClick={() => setTab("users")}>用户</button><button className={tab === "roles" ? "active" : ""} type="button" onClick={() => setTab("roles")}>角色</button></div>{tab === "users" && <ModuleSearch value={search} placeholder="搜索用户、邮箱或角色" onChange={setSearch} />}</>}
-      metrics={<><MetricTile icon={UserRound} label="用户" value={`${users.length}`} tone="blue" /><MetricTile icon={Lock} label="角色" value={`${roles.length}`} tone="purple" /><MetricTile icon={Shield} label="MFA 异常" value={`${users.filter((user) => user.mfa !== "已启用").length}`} tone="orange" /></>}
+      actions={tab === "roles" ? <button className="ghost" type="button" onClick={() => notify(`${selectedRole.name} 权限已保存`)}>保存角色权限</button> : undefined}
+      filters={<><div className="deploy-tabs"><button className={tab === "users" ? "active" : ""} type="button" onClick={() => setTab("users")}>用户</button><button className={tab === "roles" ? "active" : ""} type="button" onClick={() => setTab("roles")}>角色</button><button className={tab === "policies" ? "active" : ""} type="button" onClick={() => setTab("policies")}>权限项</button></div>{tab === "users" && <ModuleSearch value={search} placeholder="搜索用户、邮箱或角色" onChange={setSearch} />}{tab === "policies" && <><ModuleSearch value={search} placeholder="搜索权限项、模块或角色" onChange={setSearch} /><FieldSelect label="模块" value={policyModule} options={policyModules} onChange={setPolicyModule} /><FieldSelect label="风险" value={policyRisk} options={["全部", "高", "中", "低"]} onChange={setPolicyRisk} /></>}</>}
+      metrics={<><MetricTile icon={UserRound} label="用户" value={`${users.length}`} tone="blue" /><MetricTile icon={Lock} label="角色" value={`${roles.length}`} tone="purple" /><MetricTile icon={Shield} label="高风险权限" value={`${initialAclPolicies.filter((policy) => policy.risk === "高").length}`} tone="orange" /></>}
     >
       {tab === "users" ? (
         <DataTable
@@ -2596,7 +2687,7 @@ function AclPage({ page, notify }: { page: PageKey; notify: Notify }) {
           emptyText="没有匹配的用户"
           getRowKey={(row) => row.id}
         />
-      ) : (
+      ) : tab === "roles" ? (
         <div className="acl-role-layout">
           <PanelCard title="角色列表">
             <div className="role-list">
@@ -2613,6 +2704,44 @@ function AclPage({ page, notify }: { page: PageKey; notify: Notify }) {
               ))}
             </div>
           </PanelCard>
+        </div>
+      ) : (
+        <div className="acl-policy-layout">
+          <div className="policy-catalog">
+            {filteredPolicies.map((policy) => (
+              <button key={policy.id} className={policy.id === selectedPolicy?.id ? "active" : ""} type="button" onClick={() => setSelectedPolicyId(policy.id)}>
+                <span><b>{policy.name}</b><i>{policy.module}</i></span>
+                <em className={policy.risk === "高" ? "red-text" : policy.risk === "中" ? "orange-text" : "blue-text"}>{policy.risk}风险</em>
+                <small>{policy.desc}</small>
+              </button>
+            ))}
+            {filteredPolicies.length === 0 && <p className="module-empty-card">没有匹配的权限项</p>}
+          </div>
+          {selectedPolicy ? (
+            <PanelCard title={`${selectedPolicy.name} 关联角色`} action="保存" onAction={() => notify(`${selectedPolicy.name} 权限项已保存`)}>
+              <div className="policy-detail">
+                <p><span>模块</span><b>{selectedPolicy.module}</b></p>
+                <p><span>风险级别</span><b>{selectedPolicy.risk}风险</b></p>
+                <p><span>最近更新</span><b>{selectedPolicy.lastUpdated}</b></p>
+                <p><span>说明</span><b>{selectedPolicy.desc}</b></p>
+              </div>
+              <div className="policy-role-list">
+                {roles.map((role) => {
+                  const checked = selectedPolicy.roles.includes(role.name);
+                  return (
+                    <button key={role.id} className={checked ? "checked" : ""} type="button" onClick={() => notify(`${role.name} ${checked ? "已保持关联" : "需要在角色页授予"} ${selectedPolicy.name}`, checked ? "info" : "warning")}>
+                      <span>{role.name}</span>
+                      <i>{checked ? "已关联" : "未关联"}</i>
+                    </button>
+                  );
+                })}
+              </div>
+            </PanelCard>
+          ) : (
+            <PanelCard title="权限项详情">
+              <p className="module-empty-card">没有可展示的权限项详情</p>
+            </PanelCard>
+          )}
         </div>
       )}
     </ModulePageShell>
