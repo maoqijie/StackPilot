@@ -1053,7 +1053,7 @@ function Sidebar({
                 {item.children.map((child) => (
                   <button
                     key={child.id}
-                    className={activeChild === child.id ? "is-child-active" : ""}
+                    className={["side-child", activeChild === child.id ? "is-child-active" : ""].filter(Boolean).join(" ")}
                     type="button"
                     tabIndex={open ? 0 : -1}
                     aria-current={open && activeChild === child.id ? "page" : undefined}
