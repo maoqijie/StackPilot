@@ -114,6 +114,44 @@ function activateOnKeyboard(event: React.KeyboardEvent<HTMLElement>, action: () 
   action();
 }
 
+const drawerFocusableSelector = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
+function isFocusableElement(element: HTMLElement) {
+  const style = window.getComputedStyle(element);
+  return style.display !== "none" && style.visibility !== "hidden" && element.offsetParent !== null;
+}
+
+function drawerFocusableElements(container: HTMLElement) {
+  return Array.from(container.querySelectorAll<HTMLElement>(drawerFocusableSelector)).filter(isFocusableElement);
+}
+
+function drawerRestoreFallback(drawer: HTMLElement) {
+  const layout = drawer.closest(".module-layout");
+  const scopes: Array<ParentNode | null> = [layout, document];
+  const selectors = [
+    ".module-main .module-row-link",
+    ".module-main .table-actions button:not([disabled])",
+    ".module-main button:not([disabled])",
+    ".module-head button:not([disabled])",
+  ];
+
+  for (const scope of scopes) {
+    if (!scope) continue;
+    for (const selector of selectors) {
+      const target = scope.querySelector<HTMLElement>(selector);
+      if (target && !drawer.contains(target) && isFocusableElement(target)) return target;
+    }
+  }
+  return null;
+}
+
 const pageMeta: Record<string, PageMeta> = {
   overview: { title: "首页总览", breadcrumb: "控制台", search: "搜索主机、网站、数据库、任务..." },
   "overview-health": { title: "集群状态", breadcrumb: "首页总览", search: "搜索节点、IP、服务、版本..." },
@@ -315,7 +353,7 @@ function navChildMetaText(child: NavChild) {
   if (!child.meta) return "";
   if (!child.badge) return child.meta;
   const escapedBadge = child.badge.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return child.meta.replace(new RegExp(`^${escapedBadge}\\s*(个|条|项|台|人|组)?\\s*`), "").trim();
+  return child.meta.replace(new RegExp(`^${escapedBadge}\\s*(个|条|项|台|人|组|风险|待执行)?\\s*`), "").trim();
 }
 
 function secondsFromDuration(value: string) {
@@ -2108,7 +2146,7 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
       filters={<><ModuleSearch value={search} placeholder="搜索节点、IP 或服务" onChange={setSearch} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={setEnvFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "健康", "警告", "维护"]} onChange={setStatusFilter} /></>}
       metrics={<><MetricTile icon={Server} label="节点总数" value={`${nodes.length}`} tone="blue" /><MetricTile icon={Activity} label="异常节点" value={`${warningCount}`} tone={warningCount ? "orange" : "green"} /><MetricTile icon={RefreshCw} label="待更新" value={`${updateCount}`} tone={updateCount ? "orange" : "green"} /></>}
       side={selected && (
-        <DetailDrawer title={selected.name} subtitle={`${selected.ip} · ${selected.env}`} onClose={() => setSelected(null)}>
+        <DetailDrawer title={selected.name} subtitle={`${selected.ip} · ${selected.env}`} onClose={() => setSelected(null)} autoFocus={false}>
           <div className="detail-kv">
             <p><span>状态</span><b><StatusLight tone={selected.status === "健康" ? "green" : selected.status === "警告" ? "orange" : "gray"} /> {selected.status}</b></p>
             <p><span>延迟</span><b>{selected.latency}</b></p>
@@ -2230,7 +2268,7 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
       filters={<><div className="deploy-tabs">{["全部", "队列中", "成功", "失败", "已取消"].map((item) => <button key={item} className={tab === item ? "active" : ""} type="button" onClick={() => setTab(item)}>{item}</button>)}</div><ModuleSearch value={search} placeholder="搜索任务、目标或操作人" onChange={setSearch} /></>}
       metrics={<><MetricTile icon={CalendarDays} label="任务总数" value={`${rows.length}`} tone="blue" /><MetricTile icon={Clock3} label="队列中" value={`${queueCount}`} tone={queueCount ? "orange" : "green"} /><MetricTile icon={Bell} label="失败任务" value={`${failedCount}`} tone={failedCount ? "red" : "green"} /></>}
       side={selected && (
-        <DetailDrawer title={selected.title} subtitle={`${selected.type} · ${selected.target}`} onClose={() => setSelected(null)}>
+        <DetailDrawer title={selected.title} subtitle={`${selected.type} · ${selected.target}`} onClose={() => setSelected(null)} autoFocus={false}>
           <div className="detail-kv">
             <p><span>状态</span><b><StatusLight tone={taskTone(selected.status)} /> {selected.status}</b></p>
             <p><span>优先级</span><b>{selected.priority}</b></p>
@@ -2352,7 +2390,7 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
       filters={<><ModuleSearch value={search} placeholder="搜索风险、目标或 trace id" onChange={setSearch} /><FieldSelect label="等级" value={levelFilter} options={["全部", "高危", "中危", "低危"]} onChange={setLevelFilter} /><FieldSelect label="状态" value={stateFilter} options={["全部", "待处理", "已处理", "已暂缓"]} onChange={setStateFilter} /></>}
       metrics={<><MetricTile icon={Shield} label="待处理风险" value={`${openCount}`} tone={openCount ? "orange" : "green"} /><MetricTile icon={KeyRound} label="高危风险" value={`${highCount}`} tone={highCount ? "red" : "green"} /><MetricTile icon={Clock3} label="暂缓项" value={`${postponedCount}`} tone="blue" /></>}
       side={selected && (
-        <DetailDrawer title={selected.title} subtitle={selected.traceId} onClose={() => setSelected(null)}>
+        <DetailDrawer title={selected.title} subtitle={selected.traceId} onClose={() => setSelected(null)} autoFocus={false}>
           <div className="detail-kv">
             <p><span>等级</span><b><StatusLight tone={riskTone(selected.level)} /> {selected.level}</b></p>
             <p><span>状态</span><b>{selected.status}</b></p>
@@ -2512,21 +2550,84 @@ function DetailDrawer({
   onClose,
   children,
   actions,
+  autoFocus = true,
 }: {
   title: string;
   subtitle?: string;
   onClose: () => void;
   children: React.ReactNode;
   actions?: React.ReactNode;
+  autoFocus?: boolean;
 }) {
+  const drawerRef = useRef<HTMLElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const titleId = useId();
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    const drawer = drawerRef.current;
+    if (!drawer) return;
+    let focusFrame = 0;
+    if (autoFocus) {
+      restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const focusable = drawerFocusableElements(drawer);
+      const firstBodyFocusTarget = focusable.find((element) => !element.classList.contains("drawer-close-button"));
+      focusFrame = window.requestAnimationFrame(() => {
+        if (document.contains(drawer)) {
+          (firstBodyFocusTarget ?? focusable[0] ?? drawer).focus({ preventScroll: true });
+        }
+      });
+    }
+
+    const handleDocumentKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || !document.contains(drawer)) return;
+      if (document.querySelector(".topbar-search-panel, .topbar-dropdown")) return;
+      onCloseRef.current();
+    };
+
+    document.addEventListener("keydown", handleDocumentKeyDown);
+    return () => {
+      if (focusFrame) window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", handleDocumentKeyDown);
+      const activeElement = document.activeElement;
+      const shouldRestoreFocus = !activeElement || activeElement === document.body || drawer.contains(activeElement);
+      if (!shouldRestoreFocus) return;
+      const restoreTarget = restoreFocusRef.current;
+      const fallbackTarget = restoreTarget && document.contains(restoreTarget) && isFocusableElement(restoreTarget)
+        ? restoreTarget
+        : drawerRestoreFallback(drawer);
+      if (fallbackTarget) {
+        fallbackTarget.focus({ preventScroll: true });
+      }
+    };
+  }, [autoFocus]);
+
+  const handleFocusCapture = (event: React.FocusEvent<HTMLElement>) => {
+    const previousFocus = event.relatedTarget;
+    if (previousFocus instanceof HTMLElement && !event.currentTarget.contains(previousFocus) && isFocusableElement(previousFocus)) {
+      restoreFocusRef.current = previousFocus;
+    }
+  };
+
   return (
-    <aside className="detail-drawer">
+    <aside
+      ref={drawerRef}
+      className="detail-drawer"
+      role="region"
+      aria-labelledby={titleId}
+      tabIndex={-1}
+      onFocusCapture={handleFocusCapture}
+    >
       <div className="drawer-head">
         <div>
-          <strong>{title}</strong>
+          <strong id={titleId}>{title}</strong>
           {subtitle && <span>{subtitle}</span>}
         </div>
-        <button type="button" className="icon-action" onClick={onClose} aria-label="关闭详情"><X size={16} /></button>
+        <button type="button" className="icon-action drawer-close-button" onClick={onClose} aria-label="关闭详情"><X size={16} /></button>
       </div>
       <div className="drawer-body">{children}</div>
       {actions && <div className="drawer-actions inline">{actions}</div>}
@@ -2914,7 +3015,7 @@ function FileUploadQueuePage({ page, notify }: { page: PageKey; notify: Notify }
       filters={<><ModuleSearch value={search} placeholder="搜索文件名、目标路径或上传人" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={["全部", "上传中", "等待", "已完成", "失败"]} onChange={setStatusFilter} /></>}
       metrics={<><MetricTile icon={CloudUpload} label="队列任务" value={`${uploads.length}`} tone="blue" /><MetricTile icon={Activity} label="上传中" value={`${uploads.filter((row) => row.status === "上传中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="已完成" value={`${uploads.filter((row) => row.status === "已完成").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${uploads.filter((row) => row.status === "失败").length}`} tone="red" /></>}
       side={selected && (
-        <DetailDrawer title="上传详情" subtitle={selected.name} onClose={() => setSelectedId("")} actions={<><button className="ghost" type="button" aria-label={`取消上传 ${selected.name}`} onClick={() => cancelUpload(selected)}>取消上传</button><button className="primary" type="button" aria-label={`完成上传 ${selected.name}`} onClick={() => completeUpload(selected)}>完成</button></>}>
+        <DetailDrawer title="上传详情" subtitle={selected.name} onClose={() => setSelectedId("")} autoFocus={false} actions={<><button className="ghost" type="button" aria-label={`取消上传 ${selected.name}`} onClick={() => cancelUpload(selected)}>取消上传</button><button className="primary" type="button" aria-label={`完成上传 ${selected.name}`} onClick={() => completeUpload(selected)}>完成</button></>}>
           <div className="detail-kv upload-detail">
             <p><span>目标路径</span><b>{selected.targetPath}</b></p>
             <p><span>大小</span><b>{selected.size}</b></p>
@@ -3024,7 +3125,7 @@ function FileTrashPage({
       filters={<><ModuleSearch value={search} placeholder="搜索文件、原路径、删除原因" onChange={setSearch} /><FieldSelect label="所有者" value={ownerFilter} options={ownerOptions} onChange={setOwnerFilter} /></>}
       metrics={<><MetricTile icon={Trash2} label="回收站文件" value={`${trashRows.length}`} tone="orange" /><MetricTile icon={RefreshCw} label="已恢复" value={`${restoredRows.length}`} tone="green" /><MetricTile icon={Clock3} label="保留策略" value="7天" tone="blue" /></>}
       side={selected && (
-        <DetailDrawer title="删除详情" subtitle={selected.name} onClose={() => setSelectedId("")} actions={<><button className="ghost" type="button" aria-label={`永久删除 ${selected.name}`} onClick={() => purgeFile(selected)}>永久删除</button><button className="primary" type="button" aria-label={`恢复 ${selected.name}`} onClick={() => restoreFile(selected)}>恢复</button></>}>
+        <DetailDrawer title="删除详情" subtitle={selected.name} onClose={() => setSelectedId("")} autoFocus={false} actions={<><button className="ghost" type="button" aria-label={`永久删除 ${selected.name}`} onClick={() => purgeFile(selected)}>永久删除</button><button className="primary" type="button" aria-label={`恢复 ${selected.name}`} onClick={() => restoreFile(selected)}>恢复</button></>}>
           <div className="detail-kv">
             <p><span>原路径</span><b>{selected.originalPath}</b></p>
             <p><span>大小</span><b>{selected.size}</b></p>
@@ -3354,7 +3455,7 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
       filters={<><ModuleSearch value={search} placeholder="搜索服务或主机" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={statusFilter} options={["全部", "active", "failed", "inactive"]} onChange={(value) => setStatusByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={CheckCircle2} label="active" value={`${rows.filter((row) => row.status === "active").length}`} tone="green" /><MetricTile icon={Shield} label="failed" value={`${rows.filter((row) => row.status === "failed").length}`} tone="red" /><MetricTile icon={Clock3} label="inactive" value={`${rows.filter((row) => row.status === "inactive").length}`} tone="gray" /></>}
       side={drawer && (
-        <DetailDrawer title="服务日志" subtitle={drawer.name} onClose={() => setDrawer(null)}>
+        <DetailDrawer title="服务日志" subtitle={drawer.name} onClose={() => setDrawer(null)} autoFocus={servicePreset.mode !== "logs"}>
           <div className="terminal-log compact-log">
             <p>systemd[1]: Started {drawer.name}</p>
             <p>{drawer.status === "failed" ? "exit-code=1 failed with result 'timeout'" : "status=0/SUCCESS"}</p>
@@ -4069,7 +4170,7 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
   const [levelFilter, setLevelFilter] = useState("全部");
   const [statusFilter, setStatusFilter] = useState("全部");
   const [timeRange, setTimeRange] = useState("近 24 小时");
-  const [drawerId, setDrawerId] = useState(initialDatabaseSlowQueries[0]?.id ?? "");
+  const [drawerId, setDrawerId] = useState<string | null>(initialDatabaseSlowQueries[0]?.id ?? null);
   const databaseOptions = ["全部", ...Array.from(new Set(queries.map((query) => query.database)))];
   const filteredQueries = queries.filter((query) => {
     const keyword = search.trim().toLowerCase();
@@ -4079,7 +4180,8 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
     const matchStatus = statusFilter === "全部" || query.status === statusFilter;
     return matchSearch && matchDatabase && matchLevel && matchStatus;
   });
-  const selectedQuery = queries.find((query) => query.id === drawerId) ?? filteredQueries[0] ?? null;
+  const selectedQuery = drawerId ? filteredQueries.find((query) => query.id === drawerId) ?? null : null;
+  const primaryQuery = selectedQuery ?? filteredQueries[0] ?? null;
   const pendingCount = queries.filter((query) => query.status !== "已处理").length;
   const highCount = queries.filter((query) => query.level === "高" && query.status !== "已处理").length;
   const affectedDatabases = new Set(queries.filter((query) => query.status !== "已处理").map((query) => query.database)).size;
@@ -4138,6 +4240,13 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
     if (status === "分析中") return "blue";
     return "orange";
   };
+  const handlePrimaryIndexAdvice = () => {
+    if (!primaryQuery) {
+      notify("没有可生成建议的慢查询", "warning");
+      return;
+    }
+    createIndexAdvice(primaryQuery);
+  };
 
   return (
     <ModulePageShell
@@ -4150,11 +4259,11 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
         description: "按 SQL 指纹聚合慢查询，支持 Explain、索引建议、终止会话和处理状态流转。",
         chips: [`窗口 ${timeRange}`, `待处理 ${pendingCount}`, `高危 ${highCount}`],
       }}
-      actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredQueries.length} 条慢查询`, "info")}><Download size={15} /> 导出慢查询</button><button className="ghost" type="button" onClick={() => { setTimeRange(timeRange === "近 24 小时" ? "近 7 天" : "近 24 小时"); notify("慢查询采样窗口已切换", "info"); }}><Clock3 size={15} /> 切换窗口</button><button className="primary" type="button" onClick={() => selectedQuery ? createIndexAdvice(selectedQuery) : notify("没有可生成建议的慢查询", "warning")}><Plus size={15} /> 生成索引建议</button></>}
+      actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredQueries.length} 条慢查询`, "info")}><Download size={15} /> 导出慢查询</button><button className="ghost" type="button" onClick={() => { setTimeRange(timeRange === "近 24 小时" ? "近 7 天" : "近 24 小时"); notify("慢查询采样窗口已切换", "info"); }}><Clock3 size={15} /> 切换窗口</button><button className="primary" type="button" disabled={!primaryQuery} onClick={handlePrimaryIndexAdvice}><Plus size={15} /> 生成索引建议</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索 SQL、指纹、数据库或负责人" onChange={setSearch} /><FieldSelect label="数据库" value={databaseFilter} options={databaseOptions} onChange={setDatabaseFilter} /><FieldSelect label="等级" value={levelFilter} options={["全部", "高", "中", "低"]} onChange={setLevelFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "待处理", "分析中", "已处理"]} onChange={setStatusFilter} /></>}
       metrics={<><MetricTile icon={Activity} label="慢查询指纹" value={`${queries.length}`} tone="orange" /><MetricTile icon={Clock3} label="P95 最高" value={highestP95?.p95Time ?? "-"} tone="red" /><MetricTile icon={Database} label="受影响实例" value={`${affectedDatabases}`} tone="blue" /><MetricTile icon={Shield} label="高风险待处理" value={`${highCount}`} tone={highCount ? "red" : "green"} /></>}
       side={selectedQuery && (
-        <DetailDrawer title="慢查询详情" subtitle={selectedQuery.fingerprint} onClose={() => setDrawerId("")} actions={<><button className="ghost" type="button" onClick={() => void copyFingerprint(selectedQuery.fingerprint)}>复制指纹</button><button className="primary" type="button" onClick={() => runExplain(selectedQuery.id)}>生成 Explain</button></>}>
+        <DetailDrawer title="慢查询详情" subtitle={selectedQuery.fingerprint} onClose={() => setDrawerId(null)} autoFocus={false} actions={<><button className="ghost" type="button" onClick={() => void copyFingerprint(selectedQuery.fingerprint)}>复制指纹</button><button className="primary" type="button" onClick={() => runExplain(selectedQuery.id)}>生成 Explain</button></>}>
           <div className="slow-query-drawer">
             <p><span>数据库</span><b>{selectedQuery.database}</b></p>
             <p><span>等级 / 状态</span><b>{selectedQuery.level} · {selectedQuery.status}</b></p>
