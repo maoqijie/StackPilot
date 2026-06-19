@@ -92,6 +92,14 @@ type TopbarPanel = "search" | "notifications" | "activity" | "help" | "user" | n
 type TopbarMenuPanel = Exclude<TopbarPanel, "search" | null>;
 type TopbarSearchResult = { id: string; label: string; detail: string; page: PageKey; kind: string };
 type NavChild = { id: string; label: string; meta: string; page?: PageKey; badge?: string };
+type BackupDraft = {
+  frequency: string;
+  runAt: string;
+  retention: string;
+  target: string;
+  location: string;
+  encryption: string;
+};
 type NavItem = {
   key: ParentPageKey;
   label: string;
@@ -4650,12 +4658,140 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
   const [activeTab, setActiveTab] = useState(settingsPagePreset(page));
   const [readOnly, setReadOnly] = useState(false);
   const [backupItems, setBackupItems] = useState(["面板数据", "审计日志"]);
+  const backupJobSequence = useRef(1);
+  const backupRunAtInputRef = useRef<HTMLInputElement>(null);
+  const backupLocationInputRef = useRef<HTMLInputElement>(null);
+  const [backupDraft, setBackupDraft] = useState<BackupDraft>({
+    frequency: "每日",
+    runAt: "02:30",
+    retention: "保留 14 份",
+    target: "S3 / MinIO",
+    location: "s3://stackpilot-backup/",
+    encryption: "启用（AES-256）",
+  });
+  const backupDraftRef = useRef<BackupDraft>(backupDraft);
+  const [backupConnection, setBackupConnection] = useState<{ status: "未测试" | "连接正常" | "需要检查"; detail: string; signature?: string }>({
+    status: "未测试",
+    detail: "保存前建议测试备份目标连接。",
+  });
+  const [backupTimeError, setBackupTimeError] = useState("");
+  const [backupVerification, setBackupVerification] = useState({
+    latest: "2025-08-12 03:01",
+    delay: "上次备份延迟 18 分钟",
+    delayTone: "warn",
+    drill: "恢复演练未完成",
+    drillTone: "error",
+  });
+  const [backupJobs, setBackupJobs] = useState([
+    { id: "backup-20250813", time: "2025-08-13 02:30", status: "成功", size: "1.24 GB", duration: "00:03:21" },
+    { id: "backup-20250812", time: "2025-08-12 02:30", status: "成功", size: "1.22 GB", duration: "00:03:05" },
+    { id: "backup-20250811", time: "2025-08-11 02:30", status: "成功", size: "1.18 GB", duration: "00:03:05" },
+    { id: "backup-20250810", time: "2025-08-10 02:30", status: "延迟", size: "1.18 GB", duration: "00:08:44" },
+    { id: "backup-20250809", time: "2025-08-09 02:30", status: "成功", size: "1.18 GB", duration: "00:03:05" },
+  ]);
   const [twoFactor, setTwoFactor] = useState(true);
   const [multiLogin, setMultiLogin] = useState(false);
   const [mailNotice, setMailNotice] = useState(true);
   const activeSettingsPage = settingsPageForTab(activeTab);
+  const backupTargetSignature = `${backupDraft.target}::${backupDraft.location.trim()}`;
+  const backupConnectionValid = backupConnection.status === "连接正常" && backupConnection.signature === backupTargetSignature;
+  const backupConnectionTone = backupConnection.status === "连接正常" ? "ok-line" : backupConnection.status === "需要检查" ? "error-line" : "warn-line";
+  const immediateBackupRunning = backupJobs.some((job) => job.status === "运行中");
+  const backupStateClass = (tone: string) => tone === "ok" ? "ok-line" : tone === "error" ? "error-line" : "warn-line";
+  useEffect(() => {
+    backupDraftRef.current = backupDraft;
+  }, [backupDraft]);
+  const readBackupDraft = () => ({
+    ...backupDraftRef.current,
+    runAt: backupRunAtInputRef.current?.value ?? backupDraftRef.current.runAt,
+    location: backupLocationInputRef.current?.value ?? backupDraftRef.current.location,
+  });
+  const syncBackupDraft = (draft: BackupDraft) => {
+    backupDraftRef.current = draft;
+    setBackupDraft(draft);
+  };
   const toggleBackupItem = (item: string) => {
     setBackupItems((current) => current.includes(item) ? current.filter((value) => value !== item) : [...current, item]);
+  };
+  const updateBackupDraft = (key: keyof typeof backupDraft, value: string) => {
+    const next = { ...backupDraftRef.current, [key]: value };
+    backupDraftRef.current = next;
+    setBackupDraft(next);
+    if (key === "runAt") {
+      setBackupTimeError("");
+    }
+    if (key === "target" || key === "location") {
+      setBackupConnection({ status: "未测试", detail: "备份目标已变更，需要重新测试连接。" });
+    }
+  };
+  const testBackupConnection = () => {
+    const draft = readBackupDraft();
+    syncBackupDraft(draft);
+    const signature = `${draft.target}::${draft.location.trim()}`;
+    if (!draft.location.trim()) {
+      setBackupConnection({ status: "需要检查", detail: "请先填写存储位置。" });
+      notify("存储位置不能为空", "danger");
+      return;
+    }
+    setBackupConnection({ status: "连接正常", detail: `${draft.target} 本地模拟验证通过，未连接真实后端。`, signature });
+    setBackupVerification((current) => ({ ...current, latest: "刚刚" }));
+    notify(`${draft.target} 本地模拟连接测试成功`);
+  };
+  const saveBackupPolicy = () => {
+    const draft = readBackupDraft();
+    syncBackupDraft(draft);
+    const signature = `${draft.target}::${draft.location.trim()}`;
+    const connectionValid = backupConnection.status === "连接正常" && backupConnection.signature === signature;
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.runAt.trim())) {
+      setBackupTimeError("请输入 00:00-23:59 的执行时间");
+      notify("执行时间格式不正确", "danger");
+      return;
+    }
+    if (!draft.runAt.trim() || !draft.location.trim()) {
+      notify("执行时间和存储位置不能为空", "danger");
+      return;
+    }
+    if (backupItems.length === 0) {
+      notify("至少选择一个备份范围", "danger");
+      return;
+    }
+    if (!connectionValid) {
+      setBackupConnection({ status: "需要检查", detail: "请先测试当前备份目标连接。" });
+      notify("请先测试当前备份目标连接", "danger");
+      return;
+    }
+    setBackupVerification((current) => ({
+      ...current,
+      delay: "下一次备份计划已校准",
+      delayTone: "ok",
+    }));
+    notify(`备份策略已保存：${draft.frequency} ${draft.runAt}`);
+  };
+  const createImmediateBackup = () => {
+    if (immediateBackupRunning) {
+      notify("已有立即备份任务正在运行", "warning");
+      return;
+    }
+    if (backupItems.length === 0) {
+      notify("请先选择备份范围", "danger");
+      return;
+    }
+    if (!backupConnectionValid) {
+      notify("请先测试当前备份目标连接", "danger");
+      return;
+    }
+    const sequence = backupJobSequence.current;
+    backupJobSequence.current += 1;
+    setBackupJobs((current) => [
+      { id: `manual-${Date.now()}-${sequence}`, time: `刚刚 #${sequence}`, status: "运行中", size: "计算中", duration: "00:00:08" },
+      ...current.slice(0, 4),
+    ]);
+    setBackupVerification((current) => ({ ...current, delay: "立即备份任务运行中", delayTone: "warn" }));
+    notify("已创建立即备份任务");
+  };
+  const startRestoreDrill = () => {
+    setBackupVerification((current) => ({ ...current, drill: "恢复演练已排队", drillTone: "warn" }));
+    notify("恢复演练已排队", "info");
   };
   return (
     <div className="settings-mock-page">
@@ -4708,31 +4844,36 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
         </PanelCard>}
         {activeTab === "备份" && <PanelCard title="备份策略">
           <div className="backup-grid">
-            <FormSelectLine label="备份频率" value="每日" />
-            <FormLine label=" " value="02:30" />
-            <FormSelectLine label="保留策略" value="保留 14 份" />
-            <FormSelectLine label="备份目标" value="S3 / MinIO" />
-            <FormLine label="存储位置" value="s3://stackpilot-backup/" />
-            <button className="ghost" type="button" onClick={() => notify("S3 / MinIO 连接测试成功")}>测试连接</button>
-            <FormSelectLine label="加密设置" value="启用（AES-256）" />
+            <FormSelectLine label="备份频率" value={backupDraft.frequency} options={["每日", "每周", "每 6 小时"]} onChange={(value) => updateBackupDraft("frequency", value)} />
+            <FormLine label="执行时间" value={backupDraft.runAt} onChange={(value) => updateBackupDraft("runAt", value)} hint="24 小时制，如 02:30" error={backupTimeError} inputRef={backupRunAtInputRef} />
+            <FormSelectLine label="保留策略" value={backupDraft.retention} options={["保留 7 份", "保留 14 份", "保留 30 份"]} onChange={(value) => updateBackupDraft("retention", value)} />
+            <FormSelectLine label="备份目标" value={backupDraft.target} options={["S3 / MinIO", "本地磁盘", "远端 SFTP"]} onChange={(value) => updateBackupDraft("target", value)} />
+            <FormLine label="存储位置" value={backupDraft.location} onChange={(value) => updateBackupDraft("location", value)} inputRef={backupLocationInputRef} />
+            <button className="ghost backup-test-button" type="button" onClick={testBackupConnection}>测试连接</button>
+            <FormSelectLine label="加密设置" value={backupDraft.encryption} options={["启用（AES-256）", "启用（KMS 托管）", "关闭"]} onChange={(value) => updateBackupDraft("encryption", value)} />
+          </div>
+          <div className="backup-policy-summary">
+            <p><span>当前策略</span><b>{backupDraft.frequency} {backupDraft.runAt}</b><em>{backupDraft.retention} · {backupDraft.encryption}</em></p>
+            <p><span>备份目标</span><b>{backupDraft.target}</b><em>{backupDraft.location || "未填写存储位置"}</em></p>
+            <p className={backupConnectionTone}><span>{backupConnectionValid ? "连接正常" : backupConnection.status}</span><b>{backupConnection.detail}</b></p>
           </div>
           <div className="check-row">
             {["面板数据", "审计日志", "上传文件"].map((item) => (
-              <button key={item} className={backupItems.includes(item) ? "checked" : ""} type="button" onClick={() => toggleBackupItem(item)}>{item}</button>
+              <button key={item} className={backupItems.includes(item) ? "checked" : ""} type="button" aria-pressed={backupItems.includes(item)} onClick={() => toggleBackupItem(item)}>{item}</button>
             ))}
           </div>
-          <div className="settings-buttons"><button className="primary" type="button" onClick={() => notify("备份策略已保存")}>保存策略</button><button className="primary" type="button" onClick={() => notify("已创建立即备份任务")}><Download size={14} /> 立即备份</button><button className="ghost" type="button" onClick={() => notify("恢复演练流程已打开", "info")}>恢复演练</button></div>
+          <div className="settings-buttons backup-actions"><button className="primary" type="button" onClick={saveBackupPolicy}>保存策略</button><button className="primary" type="button" disabled={immediateBackupRunning} onClick={createImmediateBackup}><Download size={14} /> 立即备份</button><button className="ghost" type="button" onClick={startRestoreDrill}>恢复演练</button></div>
         </PanelCard>}
         {activeTab === "备份" && <PanelCard title="验证状态" className="settings-card-wide">
           <div className="verify-box">
-            <p className="ok-line"><CheckCircle2 size={15} /> 最近验证成功：2025-08-12 03:01</p>
-            <p className="warn-line">上次备份延迟 18 分钟 <button type="button" onClick={() => notify("已打开备份延迟详情", "warning")}>查看详情</button></p>
-            <p className="error-line">恢复演练未完成 <button type="button" onClick={() => notify("恢复演练流程已打开", "warning")}>前往演练</button></p>
+            <p className="ok-line"><CheckCircle2 size={15} /> 最近验证成功：{backupVerification.latest}</p>
+            <p className={backupStateClass(backupVerification.delayTone)}>{backupVerification.delay} <button type="button" onClick={() => notify(`备份状态：${backupVerification.delay}`, "warning")}>查看详情</button></p>
+            <p className={backupStateClass(backupVerification.drillTone)}>{backupVerification.drill} <button type="button" onClick={startRestoreDrill}>前往演练</button></p>
           </div>
           <div className="backup-list">
             <div><strong>最近备份任务</strong><button type="button" onClick={() => notify("已打开全部备份任务", "info")}>查看全部</button></div>
-            {["2025-08-13 02:30", "2025-08-12 02:30", "2025-08-11 02:30", "2025-08-10 02:30", "2025-08-09 02:30"].map((time, index) => (
-              <p key={time}><span>{time}</span><StatusLight tone={index === 3 ? "orange" : "green"} /> <em>{index === 3 ? "延迟" : "成功"}</em><b>{index === 0 ? "1.24 GB" : index === 1 ? "1.22 GB" : "1.18 GB"}</b><small>{index === 0 ? "00:03:21" : "00:03:05"}</small></p>
+            {backupJobs.map((job) => (
+              <p key={job.id}><span>{job.time}</span><StatusLight tone={job.status === "延迟" || job.status === "运行中" ? "orange" : "green"} /> <em>{job.status}</em><b>{job.size}</b><small>{job.duration}</small></p>
             ))}
           </div>
           <div className="storage-bar"><span style={{ width: "48%" }} /><em>可用空间：482.36 GB / 1.00 TB (48%)</em></div>
@@ -6045,6 +6186,9 @@ function FormLine({
   hintButton,
   hintAction,
   strength,
+  error,
+  inputType = "text",
+  inputRef,
   onChange,
 }: {
   label: string;
@@ -6055,16 +6199,20 @@ function FormLine({
   hintButton?: string;
   hintAction?: () => void;
   strength?: boolean;
+  error?: string;
+  inputType?: string;
+  inputRef?: React.Ref<HTMLInputElement>;
   onChange?: (value: string) => void;
 }) {
   return (
     <label className="form-line">
       <span>{label}{required && <b>*</b>}</span>
       <div>
-        <input value={value} readOnly={!onChange} onChange={(event) => onChange?.(event.target.value)} />
+        <input ref={inputRef} type={inputType} value={value} readOnly={!onChange} aria-invalid={error ? "true" : undefined} onChange={(event) => onChange?.(event.target.value)} />
         {hint && <em>{hint}</em>}
         {hintButton && <button type="button" onClick={hintAction}>{hintButton}</button>}
         {success && <small><CheckCircle2 size={12} /> {success}</small>}
+        {error && <strong className="form-error">{error}</strong>}
       </div>
       {strength && <p className="password-strength"><i /><i /><i /><em>强</em></p>}
     </label>
