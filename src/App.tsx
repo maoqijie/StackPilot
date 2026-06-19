@@ -4997,12 +4997,27 @@ type MobileQuickAction = {
   targetHint: string;
   draft: string;
 };
+type MobileActionKind =
+  | "host-restart"
+  | "host-backup"
+  | "site-toggle"
+  | "site-renew"
+  | "task-rerun"
+  | "task-complete"
+  | "profile-refresh"
+  | "push-toggle"
+  | "mfa-toggle"
+  | "audit-view"
+  | "diagnostics"
+  | "notification-open"
+  | "terminal-open";
 type MobileSheetState =
   | { type: "menu" }
   | { type: "system" }
   | { type: "notifications" }
   | { type: "quick"; action: string }
   | { type: "module"; action: string }
+  | { type: "action"; action: MobileActionKind; targetId?: string; label?: string }
   | { type: "host"; hostId: string }
   | { type: "site"; siteId: string }
   | { type: "task"; taskId: string };
@@ -5092,6 +5107,16 @@ function MobileApp({ notify }: { notify: Notify }) {
   const selectedModuleAction = mobileSheet?.type === "module"
     ? mobileQuickActions.find((action) => action.label === mobileSheet.action) ?? null
     : null;
+  const selectedActionHost = mobileSheet?.type === "action" && mobileSheet.targetId
+    ? mobileHosts.find((host) => host.id === mobileSheet.targetId) ?? null
+    : null;
+  const selectedActionSite = mobileSheet?.type === "action" && mobileSheet.targetId
+    ? mobileSites.find((site) => site.id === mobileSheet.targetId) ?? null
+    : null;
+  const selectedActionTask = mobileSheet?.type === "action" && mobileSheet.targetId
+    ? mobileTasks.find((task) => task.id === mobileSheet.targetId) ?? null
+    : null;
+  const selectedActionLabel = mobileSheet?.type === "action" ? mobileSheet.label ?? "" : "";
   const closeMobileSheet = () => setMobileSheet(null);
   const updateHost = (id: string, patch: Partial<MobileHostRecord>) => {
     setMobileHosts((current) => current.map((host) => (host.id === id ? { ...host, ...patch } : host)));
@@ -5129,6 +5154,95 @@ function MobileApp({ notify }: { notify: Notify }) {
         ? current.filter((item) => item !== action.label)
         : [...current, action.label]
     ));
+  };
+  const runMobileAction = (action: MobileActionKind, targetId?: string) => {
+    if (action === "host-restart" && targetId) {
+      const host = mobileHosts.find((item) => item.id === targetId);
+      updateHost(targetId, { uptime: "刚刚重启", health: "健康" });
+      notify(`${host?.name ?? "主机"} 已重启`);
+      closeMobileSheet();
+      return;
+    }
+    if (action === "host-backup" && targetId) {
+      const host = mobileHosts.find((item) => item.id === targetId);
+      const nextTask: MobileTaskRecord = {
+        id: `mobile-backup-${targetId}-${Date.now()}`,
+        icon: Database,
+        title: `备份主机 ${host?.name ?? targetId}`,
+        operator: "admin 触发",
+        status: "成功",
+        time: "刚刚",
+      };
+      setMobileTasks((current) => [nextTask, ...current]);
+      notify(`${host?.name ?? "主机"} 已创建备份`, "info");
+      closeMobileSheet();
+      return;
+    }
+    if (action === "site-toggle" && targetId) {
+      const site = mobileSites.find((item) => item.id === targetId);
+      if (site) {
+        updateSite(targetId, { status: site.status === "已停止" ? "运行中" : "已停止" });
+        notify(`${site.domain} 已${site.status === "已停止" ? "启动" : "停止"}`);
+      }
+      closeMobileSheet();
+      return;
+    }
+    if (action === "site-renew" && targetId) {
+      const site = mobileSites.find((item) => item.id === targetId);
+      updateSite(targetId, { certDays: 90, status: "运行中" });
+      notify(`${site?.domain ?? "网站"} 证书已续期`);
+      closeMobileSheet();
+      return;
+    }
+    if (action === "task-rerun" && targetId) {
+      const task = mobileTasks.find((item) => item.id === targetId);
+      updateTask(targetId, { status: "运行中", time: "刚刚" });
+      notify(`已重新执行：${task?.title ?? "任务"}`);
+      closeMobileSheet();
+      return;
+    }
+    if (action === "task-complete" && targetId) {
+      updateTask(targetId, { status: "成功", time: "刚刚完成" });
+      notify("任务已标记完成");
+      closeMobileSheet();
+      return;
+    }
+    if (action === "profile-refresh") {
+      notify("移动端资料已刷新", "info");
+      closeMobileSheet();
+      return;
+    }
+    if (action === "push-toggle") {
+      setPushEnabled((value) => !value);
+      notify(`移动端推送已${pushEnabled ? "关闭" : "开启"}`);
+      closeMobileSheet();
+      return;
+    }
+    if (action === "mfa-toggle") {
+      setMfaEnabled((value) => !value);
+      notify(`MFA 已${mfaEnabled ? "暂停" : "启用"}`, "info");
+      closeMobileSheet();
+      return;
+    }
+    if (action === "audit-view") {
+      notify("已打开移动端审计记录", "info");
+      closeMobileSheet();
+      return;
+    }
+    if (action === "diagnostics") {
+      notify("移动端诊断摘要已复制", "info");
+      closeMobileSheet();
+      return;
+    }
+    if (action === "notification-open") {
+      notify(`已打开通知：${selectedActionLabel || "通知详情"}`, "info");
+      closeMobileSheet();
+      return;
+    }
+    if (action === "terminal-open") {
+      notify(`${selectedActionLabel || "主机"} 终端已准备`, "info");
+      closeMobileSheet();
+    }
   };
 
   useEffect(() => {
@@ -5256,8 +5370,8 @@ function MobileApp({ notify }: { notify: Notify }) {
                     <span>运行 <b>{host.uptime}</b></span>
                   </div>
                   <div className="mobile-row-actions">
-                    <button type="button" aria-label={`重启主机 ${host.name}`} onClick={() => { updateHost(host.id, { uptime: "刚刚重启", health: "健康" }); notify(`${host.name} 已重启`); }}>重启</button>
-                    <button type="button" aria-label={`备份主机 ${host.name}`} onClick={() => notify(`${host.name} 已创建备份`, "info")}>备份</button>
+                    <button type="button" aria-label={`重启主机 ${host.name}`} onClick={() => setMobileSheet({ type: "action", action: "host-restart", targetId: host.id })}>重启</button>
+                    <button type="button" aria-label={`备份主机 ${host.name}`} onClick={() => setMobileSheet({ type: "action", action: "host-backup", targetId: host.id })}>备份</button>
                     <button type="button" aria-label={`查看主机 ${host.name} 详情`} onClick={() => setMobileSheet({ type: "host", hostId: host.id })}>详情</button>
                   </div>
                 </article>
@@ -5290,8 +5404,8 @@ function MobileApp({ notify }: { notify: Notify }) {
                       <span>流量 <b>{site.traffic}</b></span>
                     </div>
                     <div className="mobile-row-actions">
-                      <button type="button" aria-label={`${site.status === "已停止" ? "启动" : "停止"}网站 ${site.domain}`} onClick={() => { updateSite(site.id, { status: site.status === "已停止" ? "运行中" : "已停止" }); notify(`${site.domain} 已${site.status === "已停止" ? "启动" : "停止"}`); }}>{site.status === "已停止" ? "启动" : "停止"}</button>
-                      <button type="button" aria-label={`续期网站 ${site.domain} 证书`} onClick={() => { updateSite(site.id, { certDays: 90, status: "运行中" }); notify(`${site.domain} 证书已续期`); }}>续期</button>
+                      <button type="button" aria-label={`${site.status === "已停止" ? "启动" : "停止"}网站 ${site.domain}`} onClick={() => setMobileSheet({ type: "action", action: "site-toggle", targetId: site.id })}>{site.status === "已停止" ? "启动" : "停止"}</button>
+                      <button type="button" aria-label={`续期网站 ${site.domain} 证书`} onClick={() => setMobileSheet({ type: "action", action: "site-renew", targetId: site.id })}>续期</button>
                       <button type="button" aria-label={`查看网站 ${site.domain} 日志`} onClick={() => setMobileSheet({ type: "site", siteId: site.id })}>日志</button>
                     </div>
                   </article>
@@ -5321,8 +5435,8 @@ function MobileApp({ notify }: { notify: Notify }) {
                     <p>{task.operator} · {task.time}</p>
                     <div className="mobile-row-actions">
                       <button type="button" aria-label={`查看任务 ${task.title} 日志`} onClick={() => setMobileSheet({ type: "task", taskId: task.id })}>日志</button>
-                      <button type="button" aria-label={`重跑任务 ${task.title}`} onClick={() => { updateTask(task.id, { status: "运行中", time: "刚刚" }); notify(`已重新执行：${task.title}`); }}>重跑</button>
-                      <button type="button" aria-label={`完成任务 ${task.title}`} onClick={() => { updateTask(task.id, { status: "成功", time: "刚刚完成" }); notify(`任务已标记完成`); }}>完成</button>
+                      <button type="button" aria-label={`重跑任务 ${task.title}`} onClick={() => setMobileSheet({ type: "action", action: "task-rerun", targetId: task.id })}>重跑</button>
+                      <button type="button" aria-label={`完成任务 ${task.title}`} onClick={() => setMobileSheet({ type: "action", action: "task-complete", targetId: task.id })}>完成</button>
                     </div>
                   </article>
                 );
@@ -5337,7 +5451,7 @@ function MobileApp({ notify }: { notify: Notify }) {
               <section className="mobile-profile-hero">
                 <b>U</b>
                 <div><strong>管理员</strong><span>Default Workspace · 超级管理员</span></div>
-                <button type="button" onClick={() => notify("移动端资料已刷新", "info")}><RefreshCw size={14} />刷新</button>
+                <button type="button" onClick={() => setMobileSheet({ type: "action", action: "profile-refresh" })}><RefreshCw size={14} />刷新</button>
               </section>
               <div className="mobile-row-meta">
                 <span>MFA <b>{mfaEnabled ? "已启用" : "未启用"}</b></span>
@@ -5351,7 +5465,7 @@ function MobileApp({ notify }: { notify: Notify }) {
                   type="button"
                   aria-label="通知推送"
                   aria-pressed={pushEnabled}
-                  onClick={() => { setPushEnabled((value) => !value); notify(`移动端推送已${pushEnabled ? "关闭" : "开启"}`); }}
+                  onClick={() => setMobileSheet({ type: "action", action: "push-toggle" })}
                 >
                   <span><Bell size={16} />通知推送</span><b>{pushEnabled ? "开启" : "关闭"}</b>
                 </button>
@@ -5359,14 +5473,14 @@ function MobileApp({ notify }: { notify: Notify }) {
                   type="button"
                   aria-label="MFA 验证"
                   aria-pressed={mfaEnabled}
-                  onClick={() => { setMfaEnabled((value) => !value); notify(`MFA 已${mfaEnabled ? "暂停" : "启用"}`, "info"); }}
+                  onClick={() => setMobileSheet({ type: "action", action: "mfa-toggle" })}
                 >
                   <span><KeyRound size={16} />MFA 验证</span><b>{mfaEnabled ? "启用" : "暂停"}</b>
                 </button>
-                <button type="button" onClick={() => notify("已打开移动端审计记录", "info")}>
+                <button type="button" onClick={() => setMobileSheet({ type: "action", action: "audit-view" })}>
                   <span><FileText size={16} />我的审计</span><b>128 条</b>
                 </button>
-                <button type="button" onClick={() => notify("已复制移动端诊断摘要", "info")}>
+                <button type="button" onClick={() => setMobileSheet({ type: "action", action: "diagnostics" })}>
                   <span><Activity size={16} />诊断摘要</span><b>正常</b>
                 </button>
               </div>
@@ -5401,9 +5515,10 @@ function MobileApp({ notify }: { notify: Notify }) {
                 : mobileSheet.type === "notifications" ? "通知中心"
                   : mobileSheet.type === "quick" ? mobileSheet.action
                     : mobileSheet.type === "module" ? selectedModuleAction?.target ?? "模块预览"
-                      : mobileSheet.type === "host" ? selectedHost?.name ?? "主机详情"
-                        : mobileSheet.type === "site" ? selectedSite?.domain ?? "网站日志"
-                          : selectedTask?.title ?? "任务详情"
+                      : mobileSheet.type === "action" ? mobileActionTitle(mobileSheet.action, selectedActionHost, selectedActionSite, selectedActionTask, pushEnabled, mfaEnabled, selectedActionLabel)
+                        : mobileSheet.type === "host" ? selectedHost?.name ?? "主机详情"
+                          : mobileSheet.type === "site" ? selectedSite?.domain ?? "网站日志"
+                            : selectedTask?.title ?? "任务详情"
           }
           onClose={closeMobileSheet}
         >
@@ -5420,7 +5535,7 @@ function MobileApp({ notify }: { notify: Notify }) {
             <>
               <div className="mobile-sheet-list">
                 {mobileNoticeRows.map((notice, index) => (
-                  <button key={notice.id} type="button" onClick={() => notify(`已打开通知：${notice.title}`, "info")}>
+                  <button key={notice.id} type="button" onClick={() => setMobileSheet({ type: "action", action: "notification-open", label: notice.title })}>
                     <StatusLight tone={notice.tone} />
                     <span>
                       <b>{notice.title}</b>
@@ -5482,6 +5597,23 @@ function MobileApp({ notify }: { notify: Notify }) {
               </div>
             </>
           )}
+          {mobileSheet.type === "action" && (
+            <>
+              <div className="mobile-action-summary">
+                {mobileActionSummary(mobileSheet.action, selectedActionHost, selectedActionSite, selectedActionTask, pushEnabled, mfaEnabled, selectedActionLabel).map((item) => (
+                  <p key={item[0]}><span>{item[0]}</span><b>{item[1]}</b></p>
+                ))}
+              </div>
+              <div className="mobile-action-impact">
+                <StatusLight tone={mobileActionTone(mobileSheet.action)} />
+                <span>{mobileActionImpact(mobileSheet.action, selectedActionHost, selectedActionSite, selectedActionTask, pushEnabled, mfaEnabled, selectedActionLabel)}</span>
+              </div>
+              <div className="mobile-sheet-actions split">
+                <button type="button" onClick={closeMobileSheet}>取消</button>
+                <button className={mobileActionTone(mobileSheet.action) === "orange" ? "warning" : ""} type="button" onClick={() => runMobileAction(mobileSheet.action, mobileSheet.targetId)}>确认执行</button>
+              </div>
+            </>
+          )}
           {mobileSheet.type === "host" && selectedHost && (
             <>
               <div className="mobile-sheet-kv">
@@ -5493,8 +5625,8 @@ function MobileApp({ notify }: { notify: Notify }) {
                 <p><span>运行</span><b>{selectedHost.uptime}</b></p>
               </div>
               <div className="mobile-sheet-actions">
-                <button type="button" onClick={() => { updateHost(selectedHost.id, { uptime: "刚刚重启", health: "健康" }); notify(`${selectedHost.name} 已重启`); }}>重启主机</button>
-                <button type="button" onClick={() => notify(`${selectedHost.name} 终端已准备`, "info")}>打开终端</button>
+                <button type="button" onClick={() => setMobileSheet({ type: "action", action: "host-restart", targetId: selectedHost.id })}>重启主机</button>
+                <button type="button" onClick={() => setMobileSheet({ type: "action", action: "terminal-open", targetId: selectedHost.id, label: selectedHost.name })}>打开终端</button>
               </div>
             </>
           )}
@@ -5596,6 +5728,103 @@ function MobileCard({
       {children}
     </section>
   );
+}
+
+function mobileActionTitle(
+  action: MobileActionKind,
+  host: MobileHostRecord | null,
+  site: MobileSiteRecord | null,
+  task: MobileTaskRecord | null,
+  pushEnabled: boolean,
+  mfaEnabled: boolean,
+  label = "",
+) {
+  const titles: Record<MobileActionKind, string> = {
+    "host-restart": `重启 ${host?.name ?? "主机"}`,
+    "host-backup": `备份 ${host?.name ?? "主机"}`,
+    "site-toggle": `${site?.status === "已停止" ? "启动" : "停止"} ${site?.domain ?? "网站"}`,
+    "site-renew": `续期 ${site?.domain ?? "网站"} 证书`,
+    "task-rerun": `重跑 ${task?.title ?? "任务"}`,
+    "task-complete": `完成 ${task?.title ?? "任务"}`,
+    "profile-refresh": "刷新资料",
+    "push-toggle": `${pushEnabled ? "关闭" : "开启"}通知推送`,
+    "mfa-toggle": `${mfaEnabled ? "暂停" : "启用"} MFA`,
+    "audit-view": "打开审计记录",
+    diagnostics: "复制诊断摘要",
+    "notification-open": `打开${label || "通知详情"}`,
+    "terminal-open": `连接 ${host?.name ?? (label || "主机")} 终端`,
+  };
+  return titles[action];
+}
+
+function mobileActionSummary(
+  action: MobileActionKind,
+  host: MobileHostRecord | null,
+  site: MobileSiteRecord | null,
+  task: MobileTaskRecord | null,
+  pushEnabled: boolean,
+  mfaEnabled: boolean,
+  label = "",
+) {
+  if (action === "notification-open") {
+    return [["对象", label || "通知详情"], ["来源", "通知中心"], ["动作", "打开详情"]];
+  }
+  if (action === "terminal-open") {
+    return [["对象", host?.name ?? (label || "主机")], ["IP", host?.ip ?? "-"], ["权限", "admin 会话"]];
+  }
+  if (action.startsWith("host")) {
+    return [["对象", host?.name ?? "主机"], ["环境", host?.env ?? "-"], ["IP", host?.ip ?? "-"]];
+  }
+  if (action.startsWith("site")) {
+    return [["对象", site?.domain ?? "网站"], ["运行时", site?.runtime ?? "-"], ["证书", site ? `${site.certDays} 天` : "-"]];
+  }
+  if (action.startsWith("task")) {
+    return [["对象", task?.title ?? "任务"], ["当前状态", task?.status ?? "-"], ["触发人", task?.operator ?? "-"]];
+  }
+  if (action === "push-toggle") {
+    return [["对象", "通知推送"], ["当前状态", pushEnabled ? "开启" : "关闭"], ["变更后", pushEnabled ? "关闭" : "开启"]];
+  }
+  if (action === "mfa-toggle") {
+    return [["对象", "MFA 验证"], ["当前状态", mfaEnabled ? "启用" : "暂停"], ["变更后", mfaEnabled ? "暂停" : "启用"]];
+  }
+  if (action === "audit-view") {
+    return [["范围", "我的审计"], ["记录数", "128 条"], ["筛选", "当前用户"]];
+  }
+  if (action === "diagnostics") {
+    return [["范围", "移动端诊断"], ["状态", "正常"], ["格式", "摘要文本"]];
+  }
+  return [["对象", "管理员资料"], ["会话", "3 台"], ["状态", "实时同步"]];
+}
+
+function mobileActionImpact(
+  action: MobileActionKind,
+  host: MobileHostRecord | null,
+  site: MobileSiteRecord | null,
+  task: MobileTaskRecord | null,
+  pushEnabled: boolean,
+  mfaEnabled: boolean,
+  label = "",
+) {
+  const impacts: Record<MobileActionKind, string> = {
+    "host-restart": `${host?.name ?? "该主机"} 将进入刚刚重启状态，告警会同步清除。`,
+    "host-backup": `${host?.name ?? "该主机"} 会新增一条备份任务记录。`,
+    "site-toggle": `${site?.domain ?? "该网站"} 将被${site?.status === "已停止" ? "启动" : "停止"}，列表状态会立即更新。`,
+    "site-renew": `${site?.domain ?? "该网站"} 证书会刷新为 90 天并恢复运行中。`,
+    "task-rerun": `${task?.title ?? "该任务"} 会进入运行中状态。`,
+    "task-complete": `${task?.title ?? "该任务"} 会被标记为成功完成。`,
+    "profile-refresh": "会刷新个人资料和会话摘要，不改变安全设置。",
+    "push-toggle": `通知推送会被${pushEnabled ? "关闭" : "开启"}，状态会同步到我的页面。`,
+    "mfa-toggle": `MFA 会被${mfaEnabled ? "暂停" : "启用"}，请确认这是预期的安全变更。`,
+    "audit-view": "会打开当前账号的审计记录入口。",
+    diagnostics: "会复制当前移动端诊断摘要，便于排障定位。",
+    "notification-open": `会打开「${label || "通知详情"}」的处理入口，并保留通知中心状态。`,
+    "terminal-open": `会为 ${host?.name ?? (label || "该主机")} 准备移动端终端会话。`,
+  };
+  return impacts[action];
+}
+
+function mobileActionTone(action: MobileActionKind): Tone {
+  return ["host-restart", "site-toggle", "mfa-toggle", "terminal-open"].includes(action) ? "orange" : "blue";
 }
 
 function MobileSheet({
