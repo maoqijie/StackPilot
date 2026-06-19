@@ -96,7 +96,9 @@ a {
 }
 
 .shot-canvas.mobile-canvas {
-  display: block;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
   height: 100dvh;
   min-height: 100vh;
   background: #f7fafc;
@@ -115,7 +117,7 @@ a {
 
 .mobile-app-shell {
   position: relative;
-  width: 100vw;
+  width: min(100vw, 430px);
   height: 100dvh;
   min-height: 100vh;
   border: 0;
@@ -3842,7 +3844,7 @@ a {
 .mobile-content {
   min-height: 0;
   height: auto;
-  padding: 16px 14px 18px;
+  padding: 14px 12px 18px;
   background: #f7fafc;
   overflow-x: hidden;
   overflow-y: auto;
@@ -3870,7 +3872,7 @@ a {
 
 .mobile-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -3946,12 +3948,13 @@ a {
   min-height: 92px;
   padding: 10px;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 
 .mobile-resource article {
   min-width: 0;
+  min-height: 72px;
   padding: 8px;
   border: 1px solid #eef3f7;
   border-radius: 6px;
@@ -4050,7 +4053,7 @@ a {
 .mobile-quick {
   padding: 10px;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -4145,6 +4148,11 @@ a {
 
 .mobile-tabbar button.active {
   color: #0ea5e9;
+}
+
+.mobile-canvas .action-toast {
+  right: max(10px, calc((100vw - 430px) / 2 + 10px));
+  max-width: min(410px, calc(100vw - 20px));
 }
 
 @media (max-width: 760px), (max-height: 900px) {
