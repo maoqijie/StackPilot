@@ -87,6 +87,7 @@ type ToastState = { message: string; tone: ToastTone };
 type Notify = (message: string, tone?: ToastTone) => void;
 type SetPage = (page: PageKey, toast?: ToastState) => void;
 type PageMeta = { title: string; breadcrumb: string; search: string };
+type ViewContext = { eyebrow: string; title: string; description: string; chips: string[] };
 type NavChild = { id: string; label: string; meta: string; page?: PageKey; badge?: string };
 type NavItem = {
   key: ParentPageKey;
@@ -127,6 +128,12 @@ const pageMeta: Record<string, PageMeta> = {
   audit: { title: "审计日志", breadcrumb: "安全管理", search: "搜索用户、对象、trace id..." },
   acl: { title: "权限", breadcrumb: "安全管理", search: "搜索用户、角色、权限..." },
   settings: { title: "面板设置", breadcrumb: "设置", search: "搜索主机、网站、数据库、文件..." },
+  "settings-general": { title: "基础设置", breadcrumb: "设置", search: "搜索基础设置..." },
+  "settings-security": { title: "安全策略", breadcrumb: "设置", search: "搜索安全设置..." },
+  "settings-proxy": { title: "代理设置", breadcrumb: "设置", search: "搜索代理设置..." },
+  "settings-notice": { title: "通知设置", breadcrumb: "设置", search: "搜索通知设置..." },
+  "settings-backup": { title: "备份策略", breadcrumb: "设置", search: "搜索备份策略..." },
+  "settings-audit": { title: "设置审计", breadcrumb: "设置", search: "搜索设置变更..." },
   mobile: { title: "移动端", breadcrumb: "预览", search: "搜索移动端模块..." },
 };
 
@@ -259,6 +266,9 @@ const navItems: NavItem[] = [
       { id: "settings-general", label: "基础设置", meta: "面板偏好" },
       { id: "settings-security", label: "安全策略", meta: "MFA / 白名单" },
       { id: "settings-backup", label: "备份策略", meta: "S3 / MinIO" },
+      { id: "settings-proxy", label: "代理设置", meta: "HTTP / NO_PROXY" },
+      { id: "settings-notice", label: "通知设置", meta: "Webhook / 邮件" },
+      { id: "settings-audit", label: "设置审计", meta: "配置变更" },
     ],
   },
 ];
@@ -278,6 +288,78 @@ function navPageFor(page: PageKey): ParentPageKey {
 function activeChildForPage(page: PageKey) {
   const exactChild = navItems.flatMap((item) => item.children).find((child) => (child.page ?? child.id) === page);
   return exactChild?.id;
+}
+
+function activeNavEntryForPage(page: PageKey) {
+  const parentKey = navPageFor(page);
+  const parent = navItems.find((item) => item.key === parentKey);
+  const child = parent?.children.find((item) => (item.page ?? item.id) === page);
+  return { parent, child };
+}
+
+function viewContextForPage(page: PageKey): ViewContext | null {
+  const { parent, child } = activeNavEntryForPage(page);
+  if (!parent) return null;
+  const eyebrow = child ? `${parent.label} / ${child.label}` : `${parent.label} / 默认视图`;
+  const title = child ? child.label : parent.label;
+  const baseChip = child?.meta ?? "全部";
+
+  switch (parent.key) {
+    case "overview":
+      return { eyebrow, title, description: child ? "首页总览子视图已从侧栏定位。" : "首页总览默认视图。", chips: [baseChip] };
+    case "hosts": {
+      const preset = hostPagePreset(page);
+      return { eyebrow, title, description: preset.subtitle, chips: [`环境 ${preset.env}`, `健康 ${preset.health}`] };
+    }
+    case "sites": {
+      const preset = sitesPagePreset(page);
+      const chips = [`状态 ${preset.status}`, `运行时 ${preset.runtime}`];
+      if (page === "sites-cert") chips.push("证书 < 14 天");
+      return { eyebrow, title, description: preset.subtitle, chips };
+    }
+    case "databases": {
+      const preset = databasePagePreset(page);
+      return { eyebrow, title, description: preset.subtitle, chips: [`类型 ${preset.type}`, `状态 ${preset.status}`, `主机 ${preset.host}`] };
+    }
+    case "files": {
+      const preset = filesPagePreset(page);
+      return { eyebrow, title, description: preset.subtitle, chips: [`路径 ${preset.path}`, `类型 ${preset.type}`] };
+    }
+    case "terminal": {
+      const preset = terminalPagePreset(page);
+      return { eyebrow, title, description: preset.subtitle, chips: [`面板 ${preset.panel === "sessions" ? "会话" : preset.panel === "snippets" ? "常用命令" : "执行历史"}`] };
+    }
+    case "systemd": {
+      const preset = systemdPagePreset(page);
+      return { eyebrow, title, description: preset.subtitle, chips: [`状态 ${preset.status}`] };
+    }
+    case "firewall": {
+      const preset = firewallPagePreset(page);
+      return { eyebrow, title, description: preset.subtitle, chips: [`协议 ${preset.protocol}`, `来源 ${preset.source}`] };
+    }
+    case "deploy": {
+      const preset = deployPagePreset(page);
+      return { eyebrow, title, description: preset.subtitle, chips: [`环境 ${preset.env}`, `模式 ${preset.mode === "rollbacks" ? "回滚" : "任务"}`] };
+    }
+    case "schedule": {
+      const preset = schedulePagePreset(page);
+      return { eyebrow, title, description: preset.subtitle, chips: [`状态 ${preset.state}`, `模式 ${preset.mode === "calendar" ? "日历" : "列表"}`] };
+    }
+    case "audit": {
+      const preset = auditPagePreset(page);
+      return { eyebrow, title, description: preset.subtitle, chips: [`用户 ${preset.user}`, `结果 ${preset.result}`, `模式 ${preset.mode === "exports" ? "导出" : "日志"}`] };
+    }
+    case "acl": {
+      const preset = aclPagePreset(page);
+      return { eyebrow, title, description: preset.subtitle, chips: [`视图 ${preset.tab === "users" ? "用户" : "角色"}`] };
+    }
+    case "settings": {
+      const tab = settingsPagePreset(page);
+      return { eyebrow, title, description: `当前定位到${tab}设置。`, chips: [`Tab ${tab}`] };
+    }
+    default:
+      return { eyebrow, title, description: child?.meta ?? pageMeta[parent.key].breadcrumb, chips: [baseChip] };
+  }
 }
 
 function resolvePageMeta(page: PageKey): PageMeta {
@@ -647,9 +729,9 @@ function terminalPagePreset(page: PageKey) {
 }
 
 function systemdPagePreset(page: PageKey) {
-  if (page === "systemd-failed") return { status: "failed", search: "", subtitle: "Failed 服务视图，聚焦需要处理的异常服务。" };
-  if (page === "systemd-logs") return { status: "全部", search: "", subtitle: "服务日志视图，可打开任意服务查看模拟 journal 输出。" };
-  return { status: page === "systemd-active" ? "active" : "全部", search: "", subtitle: "查看服务 active/failed/inactive 状态，并在本地模拟启停、重启和处理失败服务。" };
+  if (page === "systemd-failed") return { status: "failed", search: "", mode: "list", subtitle: "Failed 服务视图，聚焦需要处理的异常服务。" };
+  if (page === "systemd-logs") return { status: "全部", search: "", mode: "logs", subtitle: "服务日志视图，默认展开模拟 journal 输出。" };
+  return { status: page === "systemd-active" ? "active" : "全部", search: "", mode: "list", subtitle: "查看服务 active/failed/inactive 状态，并在本地模拟启停、重启和处理失败服务。" };
 }
 
 function firewallPagePreset(page: PageKey) {
@@ -689,8 +771,20 @@ function databasePagePreset(page: PageKey) {
 
 function settingsPagePreset(page: PageKey) {
   if (page === "settings-security") return "安全";
+  if (page === "settings-proxy") return "代理";
+  if (page === "settings-notice") return "通知";
   if (page === "settings-backup") return "备份";
+  if (page === "settings-audit") return "审计";
   return "基础";
+}
+
+function settingsPageForTab(tab: string): PageKey {
+  if (tab === "安全") return "settings-security";
+  if (tab === "代理") return "settings-proxy";
+  if (tab === "通知") return "settings-notice";
+  if (tab === "备份") return "settings-backup";
+  if (tab === "审计") return "settings-audit";
+  return "settings-general";
 }
 
 function readPageFromHash(): PageKey {
@@ -792,7 +886,7 @@ function DesktopShell({
         {activeModule === "schedule" && <SchedulePage key={page} page={page} notify={notify} />}
         {activeModule === "audit" && <AuditPage key={page} page={page} notify={notify} />}
         {activeModule === "acl" && <AclPage key={page} page={page} notify={notify} />}
-        {activeModule === "settings" && <SettingsPage key={page} page={page} notify={notify} />}
+        {activeModule === "settings" && <SettingsPage key={page} page={page} setPage={setPage} notify={notify} />}
       </div>
       {activeModule === "overview" && <DesktopFooter />}
     </section>
@@ -944,12 +1038,14 @@ function Sidebar({
 function TopBar({ page, white, notify }: { page: PageKey; white: boolean; notify: Notify }) {
   const [query, setQuery] = useState("");
   const meta = resolvePageMeta(page);
+  const activeModule = navPageFor(page);
+  const isSettings = activeModule === "settings";
 
   return (
     <header className={`topbar-mock ${white ? "white" : ""}`}>
       {page !== "overview" && (
         <div className="breadcrumb-title">
-          {page !== "settings" && <Menu size={16} />}
+          {!isSettings && <Menu size={16} />}
           <span>{meta.breadcrumb}</span>
           <em>/</em>
           <strong>{meta.title}</strong>
@@ -971,12 +1067,12 @@ function TopBar({ page, white, notify }: { page: PageKey; white: boolean; notify
       </label>
       {page !== "overview" && <div className="top-spacer" />}
       <div className="top-actions">
-        {page === "settings" && <StatusDot text="面板运行正常" />}
+        {isSettings && <StatusDot text="面板运行正常" />}
         <span className="notification-wrap">
           <button type="button" className="icon-action" onClick={() => notify("暂无新的未读通知", "info")} aria-label="通知">
             <Bell size={18} />
           </button>
-          <span className="red-badge">{page === "overview" ? "3" : page === "settings" ? "5" : "2"}</span>
+          <span className="red-badge">{page === "overview" ? "3" : isSettings ? "5" : "2"}</span>
         </span>
         {page !== "overview" && (
           <button type="button" className="icon-action" onClick={() => notify("已打开当前页操作记录", "info")} aria-label="操作记录">
@@ -1414,6 +1510,7 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
     <ModulePageShell
       title="集群状态"
       subtitle={`统一查看首页集群节点、延迟、备份和服务健康。最近刷新：${loading ? "加载中" : lastRefresh}`}
+      page="overview-health"
       actions={<><button className="ghost" type="button" onClick={createNodeFromApi}><Plus size={14} /> 新增节点</button><button className="primary" type="button" onClick={refreshHealthFromApi}><RefreshCw size={14} /> 刷新状态</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索节点、IP 或服务" onChange={setSearch} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={setEnvFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "健康", "警告", "维护"]} onChange={setStatusFilter} /></>}
       metrics={<><MetricTile icon={Server} label="节点总数" value={`${nodes.length}`} tone="blue" /><MetricTile icon={Activity} label="异常节点" value={`${warningCount}`} tone={warningCount ? "orange" : "green"} /><MetricTile icon={RefreshCw} label="待更新" value={`${updateCount}`} tone={updateCount ? "orange" : "green"} /></>}
@@ -1535,6 +1632,7 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
     <ModulePageShell
       title="任务流"
       subtitle={loading ? "正在从后端加载任务流。" : "集中处理首页总览中的最近任务、排队任务和失败任务。"}
+      page="overview-tasks"
       actions={<><button className="ghost" type="button" onClick={exportTasksFromApi}><Download size={14} /> 导出</button><button className="primary" type="button" onClick={createTaskFromApi}><Plus size={14} /> 新建任务</button></>}
       filters={<><div className="deploy-tabs">{["全部", "队列中", "成功", "失败", "已取消"].map((item) => <button key={item} className={tab === item ? "active" : ""} type="button" onClick={() => setTab(item)}>{item}</button>)}</div><ModuleSearch value={search} placeholder="搜索任务、目标或操作人" onChange={setSearch} /></>}
       metrics={<><MetricTile icon={CalendarDays} label="任务总数" value={`${rows.length}`} tone="blue" /><MetricTile icon={Clock3} label="队列中" value={`${queueCount}`} tone={queueCount ? "orange" : "green"} /><MetricTile icon={Bell} label="失败任务" value={`${failedCount}`} tone={failedCount ? "red" : "green"} /></>}
@@ -1656,6 +1754,7 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
     <ModulePageShell
       title="风险中心"
       subtitle={loading ? "正在从后端加载风险中心。" : `集中处理首页总览暴露的安全、证书和服务健康风险。最近扫描：${scannedAt}`}
+      page="overview-risks"
       actions={<><button className="ghost" type="button" onClick={exportRisksFromApi}><Download size={14} /> 导出报告</button><button className="primary" type="button" onClick={scanRisksFromApi}><RefreshCw size={14} /> 重新扫描</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索风险、目标或 trace id" onChange={setSearch} /><FieldSelect label="等级" value={levelFilter} options={["全部", "高危", "中危", "低危"]} onChange={setLevelFilter} /><FieldSelect label="状态" value={stateFilter} options={["全部", "待处理", "已处理", "已暂缓"]} onChange={setStateFilter} /></>}
       metrics={<><MetricTile icon={Shield} label="待处理风险" value={`${openCount}`} tone={openCount ? "orange" : "green"} /><MetricTile icon={KeyRound} label="高危风险" value={`${highCount}`} tone={highCount ? "red" : "green"} /><MetricTile icon={Clock3} label="暂缓项" value={`${postponedCount}`} tone="blue" /></>}
@@ -1725,6 +1824,8 @@ type TableColumn<T> = {
 function ModulePageShell({
   title,
   subtitle,
+  page,
+  viewContext,
   actions,
   filters,
   metrics,
@@ -1733,12 +1834,15 @@ function ModulePageShell({
 }: {
   title: string;
   subtitle: string;
+  page?: PageKey;
+  viewContext?: ViewContext | null;
   actions?: React.ReactNode;
   filters?: React.ReactNode;
   metrics?: React.ReactNode;
   side?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const effectiveViewContext = viewContext ?? (page ? viewContextForPage(page) : null);
   return (
     <div className="module-page">
       <div className="page-head module-head">
@@ -1750,11 +1854,27 @@ function ModulePageShell({
       </div>
       <div className={`module-layout ${side ? "has-side" : ""}`}>
         <section className="module-main">
+          {effectiveViewContext && <ModuleViewContext context={effectiveViewContext} />}
           {filters && <div className="module-filter-line">{filters}</div>}
           {metrics && <div className="module-metrics">{metrics}</div>}
           {children}
         </section>
         {side}
+      </div>
+    </div>
+  );
+}
+
+function ModuleViewContext({ context }: { context: ViewContext }) {
+  return (
+    <div className="module-view-context">
+      <div>
+        <span>{context.eyebrow}</span>
+        <strong>{context.title}</strong>
+        <p>{context.description}</p>
+      </div>
+      <div>
+        {context.chips.map((chip) => <em key={chip}>{chip}</em>)}
       </div>
     </div>
   );
@@ -1889,6 +2009,7 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={hostPreset.subtitle}
+      page={page}
       actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 台主机`, "info")}><Download size={15} /> 导出</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 新增主机</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索主机名或 IP" onChange={setSearch} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={setEnvFilter} /><FieldSelect label="健康" value={healthFilter} options={["全部", "健康", "警告", "离线"]} onChange={setHealthFilter} /></>}
       metrics={<><MetricTile icon={Server} label="主机总数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="健康" value={`${rows.filter((row) => row.health === "健康").length}`} tone="green" /><MetricTile icon={Shield} label="需关注" value={`${rows.filter((row) => row.health !== "健康").length}`} tone="orange" /></>}
@@ -1972,6 +2093,7 @@ function SitesPage({ page, notify }: { page: PageKey; notify: Notify }) {
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={sitePreset.subtitle}
+      page={page}
       actions={<><button className="ghost" type="button" onClick={() => notify("站点列表已刷新", "info")}><RefreshCw size={15} /> 刷新</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 添加网站</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索域名" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={["全部", "运行中", "已停止", "告警"]} onChange={setStatusFilter} /><FieldSelect label="运行时" value={runtimeFilter} options={runtimeOptions} onChange={setRuntimeFilter} /></>}
       metrics={<><MetricTile icon={Globe2} label="站点" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="green" /><MetricTile icon={Shield} label="证书告警" value={`${rows.filter((row) => row.certDays < 14).length}`} tone="orange" /></>}
@@ -2041,6 +2163,7 @@ function FilesPage({ page, notify }: { page: PageKey; notify: Notify }) {
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={filePreset.subtitle}
+      page={page}
       actions={<><button className="ghost" type="button" onClick={() => { setRows((current) => [{ id: `file-${Date.now()}`, name: `upload-${current.length + 1}.log`, type: "文件", path: currentPath, size: "12 KB", modified: currentClock(), owner: "admin" }, ...current]); notify("文件已上传到当前路径"); }}><CloudUpload size={15} /> 上传</button><button className="primary" type="button" onClick={() => { setDraftName("new-folder"); setDrawer({ type: "folder" }); }}><Plus size={15} /> 创建文件夹</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索文件名" onChange={setSearch} /><FieldSelect label="类型" value={typeFilter} options={["全部", "文件夹", "文件"]} onChange={setTypeFilter} /></>}
       side={drawer?.type === "folder" ? (
@@ -2100,6 +2223,7 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={terminalPreset.subtitle}
+      page={page}
       actions={<><button className="ghost" type="button" onClick={() => { setConnected(false); notify("终端会话已断开", "warning"); }}>断开</button><button className="primary" type="button" onClick={() => { setConnected(true); setLogs((current) => [...current, `reconnected to ${host}`]); notify(`已连接 ${host}`); }}>连接</button></>}
       filters={<><FieldSelect label="主机" value={host} options={initialHostRecords.map((item) => item.name)} onChange={(value) => { setHost(value); setLogs((current) => [...current, `switch host to ${value}`]); }} /><StatusDot text={connected ? "已连接" : "未连接"} /></>}
       metrics={<><MetricTile icon={TerminalSquare} label="当前主机" value={host} tone="blue" /><MetricTile icon={Clock3} label="会话行数" value={`${logs.length}`} tone="green" /><MetricTile icon={Shield} label="权限" value="sudo" tone="orange" /></>}
@@ -2142,13 +2266,15 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const servicePreset = systemdPagePreset(page);
   const [search, setSearch] = useState(servicePreset.search);
   const [statusFilter, setStatusFilter] = useState(servicePreset.status);
-  const [drawer, setDrawer] = useState<ServiceRecord | null>(null);
+  const [drawer, setDrawer] = useState<ServiceRecord | null>(servicePreset.mode === "logs" ? initialServiceRecords[0] : null);
   const filteredRows = rows.filter((row) => (!search.trim() || `${row.name} ${row.host}`.toLowerCase().includes(search.trim().toLowerCase())) && (statusFilter === "全部" || row.status === statusFilter));
   const updateService = (id: string, patch: Partial<ServiceRecord>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+  const logRows = servicePreset.mode === "logs" ? rows : drawer ? [drawer] : [];
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={servicePreset.subtitle}
+      page={page}
       actions={<button className="ghost" type="button" onClick={() => notify("服务状态已刷新", "info")}><RefreshCw size={15} /> 刷新</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索服务或主机" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={["全部", "active", "failed", "inactive"]} onChange={setStatusFilter} /></>}
       metrics={<><MetricTile icon={CheckCircle2} label="active" value={`${rows.filter((row) => row.status === "active").length}`} tone="green" /><MetricTile icon={Shield} label="failed" value={`${rows.filter((row) => row.status === "failed").length}`} tone="red" /><MetricTile icon={Clock3} label="inactive" value={`${rows.filter((row) => row.status === "inactive").length}`} tone="gray" /></>}
@@ -2162,20 +2288,35 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
         </DetailDrawer>
       )}
     >
-      <DataTable
-        columns={[
-          { key: "service", label: "服务", width: "220px", render: (row) => <><StatusLight tone={row.status === "active" ? "green" : row.status === "failed" ? "red" : "gray"} /> <b>{row.name}</b></> },
-          { key: "host", label: "主机", render: (row) => row.host },
-          { key: "status", label: "状态", render: (row) => <span className={`pill ${row.status === "active" ? "green" : row.status === "failed" ? "red" : "blue"}`}>{row.handled ? "已处理" : row.status}</span> },
-          { key: "restarts", label: "重启次数", render: (row) => row.restarts },
-          { key: "memory", label: "内存", render: (row) => row.memory },
-          { key: "updated", label: "最近更新", render: (row) => row.updated },
-          { key: "ops", label: "操作", width: "280px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { updateService(row.id, { status: "active", handled: false }); notify(`${row.name} 已启动`); }}>启动</button><button type="button" onClick={() => { updateService(row.id, { status: "inactive" }); notify(`${row.name} 已停止`, "warning"); }}>停止</button><button type="button" onClick={() => { updateService(row.id, { status: "active", restarts: row.restarts + 1, handled: false }); notify(`${row.name} 已重启`); }}>重启</button><button type="button" onClick={() => setDrawer(row)}>日志</button>{row.status === "failed" && <button type="button" onClick={() => { updateService(row.id, { handled: true, status: "inactive" }); notify(`${row.name} 已标记处理`); }}>处理</button>}</span> },
-        ]}
-        rows={filteredRows}
-        emptyText="没有匹配的服务"
-        getRowKey={(row) => row.id}
-      />
+      <div className={`systemd-content ${servicePreset.mode === "logs" ? "logs-mode" : ""}`}>
+        {servicePreset.mode === "logs" && (
+          <div className="systemd-log-stream">
+            {logRows.map((row) => (
+              <article key={row.id}>
+                <header><StatusLight tone={row.status === "failed" ? "red" : row.status === "active" ? "green" : "gray"} /> <strong>{row.name}</strong><span>{row.host}</span></header>
+                <p>systemd[1]: {row.status === "failed" ? "service entered failed state" : `Started ${row.name}`}</p>
+                <p>{row.status === "failed" ? "exit-code=1 failed with result 'timeout'" : "status=0/SUCCESS"}</p>
+                <p>memory current: {row.memory} · restarts: {row.restarts}</p>
+                <button type="button" onClick={() => setDrawer(row)}>打开详情</button>
+              </article>
+            ))}
+          </div>
+        )}
+        <DataTable
+          columns={[
+            { key: "service", label: "服务", width: "220px", render: (row) => <><StatusLight tone={row.status === "active" ? "green" : row.status === "failed" ? "red" : "gray"} /> <b>{row.name}</b></> },
+            { key: "host", label: "主机", render: (row) => row.host },
+            { key: "status", label: "状态", render: (row) => <span className={`pill ${row.status === "active" ? "green" : row.status === "failed" ? "red" : "blue"}`}>{row.handled ? "已处理" : row.status}</span> },
+            { key: "restarts", label: "重启次数", render: (row) => row.restarts },
+            { key: "memory", label: "内存", render: (row) => row.memory },
+            { key: "updated", label: "最近更新", render: (row) => row.updated },
+            { key: "ops", label: "操作", width: "280px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { updateService(row.id, { status: "active", handled: false }); notify(`${row.name} 已启动`); }}>启动</button><button type="button" onClick={() => { updateService(row.id, { status: "inactive" }); notify(`${row.name} 已停止`, "warning"); }}>停止</button><button type="button" onClick={() => { updateService(row.id, { status: "active", restarts: row.restarts + 1, handled: false }); notify(`${row.name} 已重启`); }}>重启</button><button type="button" onClick={() => setDrawer(row)}>日志</button>{row.status === "failed" && <button type="button" onClick={() => { updateService(row.id, { handled: true, status: "inactive" }); notify(`${row.name} 已标记处理`); }}>处理</button>}</span> },
+          ]}
+          rows={filteredRows}
+          emptyText="没有匹配的服务"
+          getRowKey={(row) => row.id}
+        />
+      </div>
     </ModulePageShell>
   );
 }
@@ -2207,6 +2348,7 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={firewallPreset.subtitle}
+      page={page}
       actions={<button className="primary" type="button" onClick={() => setDrawerOpen(true)}><Plus size={15} /> 新增规则</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索规则名或端口" onChange={setSearch} /><FieldSelect label="协议" value={protocolFilter} options={["全部", "TCP", "UDP"]} onChange={setProtocolFilter} /><FieldSelect label="来源" value={sourceFilter} options={["全部", ...Array.from(new Set(rows.map((row) => row.source)))]} onChange={setSourceFilter} /></>}
       metrics={<><MetricTile icon={Shield} label="规则数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Lock} label="停用" value={`${rows.filter((row) => !row.enabled).length}`} tone="orange" /></>}
@@ -2254,6 +2396,7 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={deployPreset.subtitle}
+      page={page}
       actions={<button className="primary" type="button" onClick={createDeploy}><Plus size={15} /> 创建部署任务</button>}
       filters={<div className="deploy-tabs">{["生产", "预发", "开发"].map((item) => <button key={item} className={item === env ? "active" : ""} type="button" onClick={() => setEnv(item)}>{item}</button>)}</div>}
       metrics={<><MetricTile icon={CloudUpload} label="当前环境" value={env} tone="blue" /><MetricTile icon={Activity} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="成功" value={`${rows.filter((row) => row.status === "成功").length}`} tone="green" /></>}
@@ -2320,6 +2463,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={schedulePreset.subtitle}
+      page={page}
       actions={<button className="primary" type="button" onClick={() => { setDraft({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" }); setDrawer({ type: "create" }); }}><Plus size={15} /> 新建任务</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索任务、cron 或命令" onChange={setSearch} /><FieldSelect label="状态" value={stateFilter} options={["全部", "已启用", "已停用"]} onChange={setStateFilter} /></>}
       metrics={<><MetricTile icon={CalendarDays} label="任务数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.result === "失败").length}`} tone="red" /></>}
@@ -2370,6 +2514,7 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={auditPreset.subtitle}
+      page={page}
       actions={<button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 条审计日志`, "info")}><Download size={15} /> 导出</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索关键字、对象或 trace id" onChange={setSearch} /><FieldSelect label="用户" value={userFilter} options={users} onChange={setUserFilter} /><FieldSelect label="结果" value={resultFilter} options={["全部", "成功", "失败"]} onChange={setResultFilter} /></>}
       metrics={<><MetricTile icon={FileText} label="日志" value={`${initialAuditRecords.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="成功" value={`${initialAuditRecords.filter((row) => row.result === "成功").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${initialAuditRecords.filter((row) => row.result === "失败").length}`} tone="red" /></>}
@@ -2430,6 +2575,7 @@ function AclPage({ page, notify }: { page: PageKey; notify: Notify }) {
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={aclPreset.subtitle}
+      page={page}
       actions={<button className="ghost" type="button" onClick={() => notify("权限变更已保存")}>保存权限</button>}
       filters={<><div className="deploy-tabs"><button className={tab === "users" ? "active" : ""} type="button" onClick={() => setTab("users")}>用户</button><button className={tab === "roles" ? "active" : ""} type="button" onClick={() => setTab("roles")}>角色</button></div>{tab === "users" && <ModuleSearch value={search} placeholder="搜索用户、邮箱或角色" onChange={setSearch} />}</>}
       metrics={<><MetricTile icon={UserRound} label="用户" value={`${users.length}`} tone="blue" /><MetricTile icon={Lock} label="角色" value={`${roles.length}`} tone="purple" /><MetricTile icon={Shield} label="MFA 异常" value={`${users.filter((user) => user.mfa !== "已启用").length}`} tone="orange" /></>}
@@ -2512,6 +2658,12 @@ function DatabasesPage({ page, notify }: { page: PageKey; notify: Notify }) {
       </div>
       <div className="database-layout">
         <section className="db-main">
+          <ModuleViewContext context={viewContextForPage(page) ?? {
+            eyebrow: "数据库 / 默认视图",
+            title: resolvePageMeta(page).title,
+            description: databasePreset.subtitle,
+            chips: [`类型 ${typeFilter}`, `状态 ${statusFilter}`, `主机 ${hostFilter}`],
+          }} />
           <div className="filter-line">
             <label>
               <Search size={14} />
@@ -2546,19 +2698,39 @@ function DatabasesPage({ page, notify }: { page: PageKey; notify: Notify }) {
               {["02:00 prod-postgres-01 成功", "02:10 billing-mysql-02 等待确认", "02:20 analytics-mysql-01 失败"].map((item) => <p key={item}><StatusLight tone={item.includes("失败") ? "red" : item.includes("等待") ? "orange" : "green"} /> {item}</p>)}
             </div>
           )}
-          <div className="db-bottom">
-            <PanelCard title="备份状态（最近 7 天）" action="查看备份计划" onAction={() => notify("已打开备份计划", "info")}>
-              <DonutCard />
-            </PanelCard>
-            <PanelCard title="连接健康（prod-postgres-01）" action="查看监控详情" onAction={() => notify("已打开连接监控详情", "info")}>
-              <HealthMini />
-            </PanelCard>
-            <PanelCard title="慢查询 TOP 5（analytics-mysql-01）">
-              <SlowSqlList />
-            </PanelCard>
-            <PanelCard title="审计日志（最近操作）" action="查看全部" onAction={() => notify("已打开数据库审计日志", "info")}>
-              <MiniAuditList />
-            </PanelCard>
+          <div className={`db-bottom ${databasePreset.mode === "slow" ? "slow-mode" : ""}`}>
+            {databasePreset.mode === "slow" ? (
+              <>
+                <PanelCard title="慢查询 TOP 5（analytics-mysql-01）" className="db-card-wide">
+                  <SlowSqlList />
+                </PanelCard>
+                <PanelCard title="慢查询治理建议">
+                  <div className="db-advice-list">
+                    <p><StatusLight tone="orange" /> orders.status 缺少组合索引，建议补充 status + created_at。</p>
+                    <p><StatusLight tone="red" /> invoices 批量更新命中 12 万行，建议拆分批次。</p>
+                    <p><StatusLight tone="green" /> users 聚合查询可迁移到只读副本。</p>
+                  </div>
+                </PanelCard>
+                <PanelCard title="连接健康（analytics-mysql-01）" action="查看监控详情" onAction={() => notify("已打开连接监控详情", "info")}>
+                  <HealthMini />
+                </PanelCard>
+              </>
+            ) : (
+              <>
+                <PanelCard title="备份状态（最近 7 天）" action="查看备份计划" onAction={() => notify("已打开备份计划", "info")}>
+                  <DonutCard />
+                </PanelCard>
+                <PanelCard title="连接健康（prod-postgres-01）" action="查看监控详情" onAction={() => notify("已打开连接监控详情", "info")}>
+                  <HealthMini />
+                </PanelCard>
+                <PanelCard title="慢查询 TOP 5（analytics-mysql-01）">
+                  <SlowSqlList />
+                </PanelCard>
+                <PanelCard title="审计日志（最近操作）" action="查看全部" onAction={() => notify("已打开数据库审计日志", "info")}>
+                  <MiniAuditList />
+                </PanelCard>
+              </>
+            )}
           </div>
         </section>
         <CreateDatabaseDrawer
@@ -2677,7 +2849,7 @@ function CreateDatabaseDrawer({
   );
 }
 
-function SettingsPage({ page, notify }: { page: PageKey; notify: Notify }) {
+function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; notify: Notify }) {
   const tabs = ["基础", "安全", "代理", "通知", "备份", "审计"];
   const [activeTab, setActiveTab] = useState(settingsPagePreset(page));
   const [readOnly, setReadOnly] = useState(false);
@@ -2685,6 +2857,8 @@ function SettingsPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [twoFactor, setTwoFactor] = useState(true);
   const [multiLogin, setMultiLogin] = useState(false);
   const [mailNotice, setMailNotice] = useState(true);
+  const [proxyEnabled, setProxyEnabled] = useState(false);
+  const activeSettingsPage = settingsPageForTab(activeTab);
   const toggleBackupItem = (item: string) => {
     setBackupItems((current) => current.includes(item) ? current.filter((value) => value !== item) : [...current, item]);
   };
@@ -2696,6 +2870,12 @@ function SettingsPage({ page, notify }: { page: PageKey; notify: Notify }) {
           <p>配置面板身份、访问令牌、备份与恢复策略、安全与通知等全局设置，确保系统安全、可审计、稳定运行。</p>
         </div>
       </div>
+      <ModuleViewContext context={viewContextForPage(activeSettingsPage) ?? {
+        eyebrow: "设置 / 基础设置",
+        title: activeTab,
+        description: `当前定位到${activeTab}设置。`,
+        chips: [`Tab ${activeTab}`],
+      }} />
       <div className="settings-tabs">
         {tabs.map((tab) => (
           <button
@@ -2704,7 +2884,7 @@ function SettingsPage({ page, notify }: { page: PageKey; notify: Notify }) {
             key={tab}
             onClick={() => {
               setActiveTab(tab);
-              notify(`已切换到${tab}设置`, "info");
+              setPage(settingsPageForTab(tab), { message: `已切换到${tab}设置`, tone: "info" });
             }}
           >
             {tab}
@@ -2712,7 +2892,7 @@ function SettingsPage({ page, notify }: { page: PageKey; notify: Notify }) {
         ))}
       </div>
       <div className="settings-layout">
-        <PanelCard title="面板身份">
+        {(activeTab === "基础" || activeTab === "代理") && <PanelCard title="面板身份" className="settings-card-tall">
           <div className="settings-form">
             <FormLine label="面板名称" value="StackPilot 控制面板" />
             <FormLine label="公网访问地址" value="https://panel.example.com" success="已验证" />
@@ -2723,15 +2903,15 @@ function SettingsPage({ page, notify }: { page: PageKey; notify: Notify }) {
             <ToggleLine label="只读模式" active={readOnly} onToggle={setReadOnly} hint="开启后所有操作将被强制转为只读" />
             <button className="primary save-button" type="button" onClick={() => notify("面板身份设置已保存")}>保存设置</button>
           </div>
-        </PanelCard>
-        <PanelCard title="访问令牌">
+        </PanelCard>}
+        {(activeTab === "基础" || activeTab === "代理") && <PanelCard title="访问令牌" className="settings-card-wide">
           <div className="token-title">
             <span>用于 API 访问、CI/CD 集成或第三方工具接入，请妥善保管令牌，避免泄露。</span>
             <div><button className="primary" type="button" onClick={() => notify("新访问令牌已生成")}><Plus size={14} /> 生成令牌</button><button className="danger-soft" type="button" onClick={() => notify("已进入令牌批量编辑模式", "warning")}><Trash2 size={14} /> 编辑清单中</button></div>
           </div>
           <TokenTable notify={notify} />
-        </PanelCard>
-        <PanelCard title="备份策略">
+        </PanelCard>}
+        {activeTab === "备份" && <PanelCard title="备份策略">
           <div className="backup-grid">
             <FormSelectLine label="备份频率" value="每日" />
             <FormLine label=" " value="02:30" />
@@ -2747,8 +2927,8 @@ function SettingsPage({ page, notify }: { page: PageKey; notify: Notify }) {
             ))}
           </div>
           <div className="settings-buttons"><button className="primary" type="button" onClick={() => notify("备份策略已保存")}>保存策略</button><button className="primary" type="button" onClick={() => notify("已创建立即备份任务")}><Download size={14} /> 立即备份</button><button className="ghost" type="button" onClick={() => notify("恢复演练流程已打开", "info")}>恢复演练</button></div>
-        </PanelCard>
-        <PanelCard title="验证状态">
+        </PanelCard>}
+        {activeTab === "备份" && <PanelCard title="验证状态" className="settings-card-wide">
           <div className="verify-box">
             <p className="ok-line"><CheckCircle2 size={15} /> 最近验证成功：2025-08-12 03:01</p>
             <p className="warn-line">上次备份延迟 18 分钟 <button type="button" onClick={() => notify("已打开备份延迟详情", "warning")}>查看详情</button></p>
@@ -2761,8 +2941,8 @@ function SettingsPage({ page, notify }: { page: PageKey; notify: Notify }) {
             ))}
           </div>
           <div className="storage-bar"><span style={{ width: "48%" }} /><em>可用空间：482.36 GB / 1.00 TB (48%)</em></div>
-        </PanelCard>
-        <PanelCard title="安全设置">
+        </PanelCard>}
+        {activeTab === "安全" && <PanelCard title="安全设置">
           <div className="right-settings">
             <ToggleLine label="强制启用两步验证（2FA）" active={twoFactor} onToggle={setTwoFactor} />
             <FormSelectLine label="会话超时时间" value="30 分钟" />
@@ -2770,17 +2950,32 @@ function SettingsPage({ page, notify }: { page: PageKey; notify: Notify }) {
             <ToggleLine label="允许多地同时登录" active={multiLogin} onToggle={setMultiLogin} />
             <FormSelectLine label="登录失败锁定" value="5 次 / 15 分钟" />
           </div>
-        </PanelCard>
-        <PanelCard title="通知设置">
+        </PanelCard>}
+        {activeTab === "安全" && <PanelCard title="安全验证">
+          <div className="verify-box">
+            <p className="ok-line"><CheckCircle2 size={15} /> MFA 覆盖率：100%</p>
+            <p className="warn-line">2 个 IP 白名单等待复核 <button type="button" onClick={() => notify("已打开 IP 白名单复核", "warning")}>查看</button></p>
+            <p className="ok-line"><CheckCircle2 size={15} /> 最近登录策略校验通过</p>
+          </div>
+        </PanelCard>}
+        {activeTab === "通知" && <PanelCard title="通知设置">
           <div className="right-settings">
             <FormLine label="Webhook 通知" value="https://hooks.example.com/stackpilot" hintButton="测试" hintAction={() => notify("Webhook 测试成功")} />
             <ToggleLine label="关键事件邮件通知" active={mailNotice} onToggle={setMailNotice} />
             <FormLine label="通知收件人" value="ops@example.com, dev@example.com" />
             <div className="connected-line"><CheckCircle2 size={14} /> 已连接（响应成本 45ms） <button type="button" onClick={() => notify("通知预览已发送")}>预览</button></div>
           </div>
-        </PanelCard>
+        </PanelCard>}
+        {activeTab === "代理" && <PanelCard title="代理设置">
+          <div className="right-settings">
+            <FormLine label="HTTP 代理" value="http://proxy.internal:7890" hintButton="测试" hintAction={() => notify("HTTP 代理连通")} />
+            <FormLine label="NO_PROXY" value="localhost,127.0.0.1,10.0.0.0/8" />
+            <ToggleLine label="部署任务使用代理" active={proxyEnabled} onToggle={setProxyEnabled} />
+            <div className="connected-line"><CheckCircle2 size={14} /> 最近探测成功 <button type="button" onClick={() => notify("代理探测已刷新")}>重新探测</button></div>
+          </div>
+        </PanelCard>}
       </div>
-      <PanelCard title="最近配置变更" action="查看审计日志" onAction={() => notify("已打开设置审计日志", "info")}>
+      {(activeTab === "审计" || activeTab === "基础") && <PanelCard title="最近配置变更" action="查看审计日志" onAction={() => notify("已打开设置审计日志", "info")}>
         <table className="mini-table changes-table">
           <tbody>
             {settingsChanges.map((row) => (
@@ -2788,7 +2983,7 @@ function SettingsPage({ page, notify }: { page: PageKey; notify: Notify }) {
             ))}
           </tbody>
         </table>
-      </PanelCard>
+      </PanelCard>}
     </div>
   );
 }
@@ -2934,6 +3129,7 @@ function PanelCard({
   action,
   tabs,
   activeTab,
+  className,
   onTabChange,
   onAction,
   children,
@@ -2942,12 +3138,13 @@ function PanelCard({
   action?: string;
   tabs?: string[];
   activeTab?: string;
+  className?: string;
   onTabChange?: (tab: string) => void;
   onAction?: () => void;
   children: React.ReactNode;
 }) {
   return (
-    <section className="panel-card">
+    <section className={`panel-card ${className ?? ""}`}>
       <header>
         <strong>{title}</strong>
         <div>
