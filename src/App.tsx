@@ -525,6 +525,29 @@ type FileRecord = {
   owner: string;
 };
 
+type FileUploadRecord = {
+  id: string;
+  name: string;
+  targetPath: string;
+  size: string;
+  progress: number;
+  status: "上传中" | "等待" | "已完成" | "失败";
+  speed: string;
+  owner: string;
+  startedAt: string;
+};
+
+type TrashFileRecord = {
+  id: string;
+  name: string;
+  originalPath: string;
+  size: string;
+  deletedAt: string;
+  expiresIn: string;
+  owner: string;
+  reason: string;
+};
+
 type ServiceRecord = {
   id: string;
   name: string;
@@ -812,6 +835,19 @@ const initialFileRecords: FileRecord[] = [
   { id: "file-10", name: "old-cache.tar", type: "文件", path: "/tmp", size: "128 MB", modified: "3 天前", owner: "www-data" },
 ];
 
+const initialFileUploads: FileUploadRecord[] = [
+  { id: "upload-1", name: "release-v2.8.2.zip", targetPath: "/var/www/html/releases", size: "128 MB", progress: 72, status: "上传中", speed: "18 MB/s", owner: "deploy", startedAt: "今天 10:44" },
+  { id: "upload-2", name: "avatar-batch.tar", targetPath: "/var/www/html/uploads", size: "42 MB", progress: 0, status: "等待", speed: "-", owner: "admin", startedAt: "今天 10:46" },
+  { id: "upload-3", name: "hotfix-nginx.conf", targetPath: "/etc/nginx/conf.d", size: "4 KB", progress: 100, status: "已完成", speed: "完成", owner: "root", startedAt: "今天 10:31" },
+  { id: "upload-4", name: "media-assets.zip", targetPath: "/var/www/html/uploads", size: "284 MB", progress: 38, status: "失败", speed: "中断", owner: "运营", startedAt: "昨天 21:18" },
+];
+
+const initialTrashFiles: TrashFileRecord[] = [
+  { id: "trash-1", name: "old-error.log", originalPath: "/tmp/old-error.log", size: "32 KB", deletedAt: "今天 09:42", expiresIn: "6 天", owner: "root", reason: "日志轮转清理" },
+  { id: "trash-2", name: "old-cache.tar", originalPath: "/tmp/old-cache.tar", size: "128 MB", deletedAt: "昨天 23:40", expiresIn: "5 天", owner: "www-data", reason: "缓存包过期" },
+  { id: "trash-3", name: "index.backup.html", originalPath: "/var/www/html/index.backup.html", size: "21 KB", deletedAt: "昨天 18:12", expiresIn: "5 天", owner: "deploy", reason: "发布后清理" },
+];
+
 const initialServiceRecords: ServiceRecord[] = [
   { id: "svc-1", name: "nginx.service", host: "panel-se-01", status: "active", restarts: 0, memory: "84 MB", updated: "3 分钟前" },
   { id: "svc-2", name: "mysql.service", host: "panel-hk-03", status: "failed", restarts: 6, memory: "1.2 GB", updated: "8 分钟前" },
@@ -1076,7 +1112,7 @@ function DesktopShell({
               ? <DatabaseSlowQueriesPage key={page} page={page} notify={notify} />
             : <DatabasesPage key={page} page={page} notify={notify} />
         )}
-        {activeModule === "files" && <FilesPage key={page} page={page} notify={notify} />}
+        {activeModule === "files" && <FilesModule page={page} notify={notify} />}
         {activeModule === "terminal" && <TerminalPage key={page} page={page} notify={notify} />}
         {activeModule === "systemd" && <SystemdPage key={page} page={page} notify={notify} />}
         {activeModule === "firewall" && <FirewallPage key={page} page={page} notify={notify} />}
@@ -1202,6 +1238,7 @@ function Sidebar({
                       className={[
                         "side-child",
                         child.badge ? "has-child-badge" : "",
+                        metaText ? "has-child-meta" : "",
                         activeChild === child.id ? "is-child-active" : "",
                       ].filter(Boolean).join(" ")}
                       type="button"
@@ -1213,9 +1250,9 @@ function Sidebar({
                       <i />
                       <span className="side-child-copy">
                         <span className="side-child-label">{child.label}</span>
-                        {metaText && <em>{metaText}</em>}
+                        {metaText && !child.badge && <em>{metaText}</em>}
                       </span>
-                      {child.badge && <strong className="side-child-badge">{child.badge}</strong>}
+                      {child.badge && <strong className="side-child-badge">{[child.badge, metaText].filter(Boolean).join(" ")}</strong>}
                     </button>
                   );
                 })}
@@ -2352,8 +2389,33 @@ function SitesPage({ page, notify }: { page: PageKey; notify: Notify }) {
   );
 }
 
-function FilesPage({ page, notify }: { page: PageKey; notify: Notify }) {
-  const [rows, setRows] = useState(initialFileRecords);
+function FilesModule({ page, notify }: { page: PageKey; notify: Notify }) {
+  const [files, setFiles] = useState(initialFileRecords);
+  const [trashRows, setTrashRows] = useState(initialTrashFiles);
+  const [restoredRows, setRestoredRows] = useState<FileRecord[]>([]);
+
+  if (page === "files-upload") {
+    return <FileUploadQueuePage page={page} notify={notify} />;
+  }
+  if (page === "files-trash") {
+    return <FileTrashPage page={page} notify={notify} trashRows={trashRows} setTrashRows={setTrashRows} restoredRows={restoredRows} setRestoredRows={setRestoredRows} setFiles={setFiles} />;
+  }
+  return <FilesPage page={page} notify={notify} rows={files} setRows={setFiles} setTrashRows={setTrashRows} />;
+}
+
+function FilesPage({
+  page,
+  notify,
+  rows,
+  setRows,
+  setTrashRows,
+}: {
+  page: PageKey;
+  notify: Notify;
+  rows: FileRecord[];
+  setRows: React.Dispatch<React.SetStateAction<FileRecord[]>>;
+  setTrashRows: React.Dispatch<React.SetStateAction<TrashFileRecord[]>>;
+}) {
   const filePreset = filesPagePreset(page);
   const [currentPath, setCurrentPath] = useState(filePreset.path);
   const [search, setSearch] = useState(filePreset.search);
@@ -2377,6 +2439,23 @@ function FilesPage({ page, notify }: { page: PageKey; notify: Notify }) {
     setRows((current) => current.map((row) => row.id === drawer.file?.id ? { ...row, name: draftName.trim(), modified: currentClock() } : row));
     setDrawer(null);
     notify("已重命名文件项");
+  };
+  const moveToTrash = (row: FileRecord) => {
+    if (row.type === "文件夹") {
+      notify("文件夹删除已加入回收站，请在回收站确认恢复或清理", "warning");
+    }
+    setRows((current) => current.filter((item) => item.id !== row.id));
+    setTrashRows((current) => [{
+      id: `trash-${Date.now()}`,
+      name: row.name,
+      originalPath: `${row.path === "/" ? "" : row.path}/${row.name}`,
+      size: row.size,
+      deletedAt: currentClock(),
+      expiresIn: "7 天",
+      owner: row.owner,
+      reason: "从文件管理删除",
+    }, ...current]);
+    notify(`${row.name} 已移入回收站`, "warning");
   };
 
   return (
@@ -2411,12 +2490,239 @@ function FilesPage({ page, notify }: { page: PageKey; notify: Notify }) {
           { key: "size", label: "大小", render: (row) => row.size },
           { key: "modified", label: "修改时间", render: (row) => row.modified },
           { key: "owner", label: "所有者", render: (row) => row.owner },
-          { key: "ops", label: "操作", width: "170px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { setDraftName(row.name); setDrawer({ type: "rename", file: row }); }}>重命名</button><button type="button" onClick={() => { setRows((current) => current.filter((item) => item.id !== row.id)); notify(`${row.name} 已删除`, "warning"); }}>删除</button></span> },
+          { key: "ops", label: "操作", width: "170px", render: (row) => <span className="table-actions"><button type="button" aria-label={`重命名 ${row.name}`} onClick={() => { setDraftName(row.name); setDrawer({ type: "rename", file: row }); }}>重命名</button><button type="button" aria-label={`删除 ${row.name} 到回收站`} onClick={() => moveToTrash(row)}>删除</button></span> },
         ]}
         rows={visibleRows}
         emptyText="当前路径没有匹配文件"
         getRowKey={(row) => row.id}
       />
+    </ModulePageShell>
+  );
+}
+
+function FileUploadQueuePage({ page, notify }: { page: PageKey; notify: Notify }) {
+  const [uploads, setUploads] = useState(initialFileUploads);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("全部");
+  const [selectedId, setSelectedId] = useState(initialFileUploads[0]?.id ?? "");
+  const selected = uploads.find((row) => row.id === selectedId) ?? null;
+  const filteredRows = uploads.filter((row) => {
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || `${row.name} ${row.targetPath} ${row.owner}`.toLowerCase().includes(query);
+    return matchSearch && (statusFilter === "全部" || row.status === statusFilter);
+  });
+  const updateUpload = (id: string, patch: Partial<FileUploadRecord>) => {
+    setUploads((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+  };
+  const addUpload = () => {
+    const next: FileUploadRecord = {
+      id: `upload-${Date.now()}`,
+      name: `manual-upload-${uploads.length + 1}.zip`,
+      targetPath: "/var/www/html/uploads",
+      size: "24 MB",
+      progress: 0,
+      status: "等待",
+      speed: "-",
+      owner: "admin",
+      startedAt: currentClock(),
+    };
+    setUploads((current) => [next, ...current]);
+    setSelectedId(next.id);
+    notify(`${next.name} 已加入上传队列`, "info");
+  };
+  const cancelUpload = (row: FileUploadRecord) => {
+    setUploads((current) => current.filter((item) => item.id !== row.id));
+    if (selectedId === row.id) setSelectedId("");
+    notify(`${row.name} 已从上传队列移除`, "warning");
+  };
+  const resumeUpload = (row: FileUploadRecord) => {
+    if (row.status === "已完成") {
+      notify(`${row.name} 已完成，无需继续上传`, "info");
+      return;
+    }
+    updateUpload(row.id, { status: "上传中", speed: "18 MB/s", progress: Math.max(row.progress, 12) });
+    notify(`${row.name} 已继续上传`);
+  };
+  const retryUpload = (row: FileUploadRecord) => {
+    updateUpload(row.id, { status: "上传中", progress: Math.max(row.progress, 12), speed: "16 MB/s" });
+    notify(`${row.name} 已重试`, "info");
+  };
+  const pauseUpload = (row: FileUploadRecord) => {
+    updateUpload(row.id, { status: "等待", speed: "-" });
+    notify(`${row.name} 已暂停`);
+  };
+  const completeUpload = (row: FileUploadRecord) => {
+    updateUpload(row.id, { status: "已完成", progress: 100, speed: "完成" });
+    notify(`${row.name} 已完成`);
+  };
+  const statusTone = (status: FileUploadRecord["status"]): Tone => {
+    if (status === "已完成") return "green";
+    if (status === "失败") return "red";
+    if (status === "上传中") return "blue";
+    return "orange";
+  };
+
+  return (
+    <ModulePageShell
+      title={resolvePageMeta(page).title}
+      subtitle="独立上传队列视图，支持暂停、继续、重试、完成和取消本地上传任务。"
+      page={page}
+      viewContext={{
+        eyebrow: "文件 / 上传队列",
+        title: "上传队列",
+        description: "按上传任务管理目标路径、传输进度、失败重试和完成清理。",
+        chips: [`任务 ${uploads.length}`, `上传中 ${uploads.filter((row) => row.status === "上传中").length}`, `失败 ${uploads.filter((row) => row.status === "失败").length}`],
+      }}
+      actions={<><button className="ghost" type="button" onClick={() => { setUploads((current) => current.filter((row) => row.status !== "已完成")); notify("已清理完成的上传记录", "info"); }}><Trash2 size={15} /> 清理完成</button><button className="primary" type="button" onClick={addUpload}><CloudUpload size={15} /> 添加上传</button></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索文件名、目标路径或上传人" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={["全部", "上传中", "等待", "已完成", "失败"]} onChange={setStatusFilter} /></>}
+      metrics={<><MetricTile icon={CloudUpload} label="队列任务" value={`${uploads.length}`} tone="blue" /><MetricTile icon={Activity} label="上传中" value={`${uploads.filter((row) => row.status === "上传中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="已完成" value={`${uploads.filter((row) => row.status === "已完成").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${uploads.filter((row) => row.status === "失败").length}`} tone="red" /></>}
+      side={selected && (
+        <DetailDrawer title="上传详情" subtitle={selected.name} onClose={() => setSelectedId("")} actions={<><button className="ghost" type="button" aria-label={`取消上传 ${selected.name}`} onClick={() => cancelUpload(selected)}>取消上传</button><button className="primary" type="button" aria-label={`完成上传 ${selected.name}`} onClick={() => completeUpload(selected)}>完成</button></>}>
+          <div className="detail-kv upload-detail">
+            <p><span>目标路径</span><b>{selected.targetPath}</b></p>
+            <p><span>大小</span><b>{selected.size}</b></p>
+            <p><span>状态</span><b>{selected.status}</b></p>
+            <p><span>速度</span><b>{selected.speed}</b></p>
+            <p><span>上传人</span><b>{selected.owner}</b></p>
+            <p><span>开始时间</span><b>{selected.startedAt}</b></p>
+            <div className="upload-progress-card"><span style={{ width: `${selected.progress}%` }} /><b>{selected.progress}%</b></div>
+          </div>
+        </DetailDrawer>
+      )}
+    >
+      <div className="file-upload-workspace">
+        <DataTable
+          columns={[
+            { key: "name", label: "文件", width: "230px", render: (row) => <button className="module-row-link" type="button" onClick={() => setSelectedId(row.id)}><FileBox size={15} /><b>{row.name}</b></button> },
+            { key: "target", label: "目标路径", render: (row) => <code>{row.targetPath}</code> },
+            { key: "size", label: "大小", width: "82px", render: (row) => row.size },
+            { key: "progress", label: "进度", width: "150px", render: (row) => <span className="upload-progress-inline"><i style={{ width: `${row.progress}%` }} /><b>{row.progress}%</b></span> },
+            { key: "status", label: "状态", width: "86px", render: (row) => <span className={`pill ${statusTone(row.status)}`}>{row.status}</span> },
+            { key: "speed", label: "速度", width: "86px", render: (row) => row.speed },
+            { key: "owner", label: "上传人", width: "80px", render: (row) => row.owner },
+            { key: "ops", label: "操作", width: "260px", render: (row) => (
+              <span className="table-actions">
+                {row.status === "上传中" && <button type="button" aria-label={`暂停上传 ${row.name}`} onClick={() => pauseUpload(row)}>暂停</button>}
+                {row.status === "等待" && <button type="button" aria-label={`继续上传 ${row.name}`} onClick={() => resumeUpload(row)}>继续</button>}
+                {row.status === "失败" && <button type="button" aria-label={`重试上传 ${row.name}`} onClick={() => retryUpload(row)}>重试</button>}
+                {row.status !== "已完成" && <button type="button" aria-label={`完成上传 ${row.name}`} onClick={() => completeUpload(row)}>完成</button>}
+                <button type="button" aria-label={`取消上传 ${row.name}`} onClick={() => cancelUpload(row)}>取消</button>
+              </span>
+            ) },
+          ]}
+          rows={filteredRows}
+          emptyText="没有匹配的上传任务"
+          getRowKey={(row) => row.id}
+        />
+        <section className="upload-lane-list">
+          {["准备上传", "传输中", "收尾校验"].map((label, index) => (
+            <article key={label}>
+              <span>{label}</span>
+              <strong>{index === 0 ? uploads.filter((row) => row.status === "等待").length : index === 1 ? uploads.filter((row) => row.status === "上传中").length : uploads.filter((row) => row.status === "已完成").length}</strong>
+              <em>{index === 0 ? "等待资源" : index === 1 ? "网络传输" : "落盘完成"}</em>
+            </article>
+          ))}
+        </section>
+      </div>
+    </ModulePageShell>
+  );
+}
+
+function FileTrashPage({
+  page,
+  notify,
+  trashRows,
+  setTrashRows,
+  restoredRows,
+  setRestoredRows,
+  setFiles,
+}: {
+  page: PageKey;
+  notify: Notify;
+  trashRows: TrashFileRecord[];
+  setTrashRows: React.Dispatch<React.SetStateAction<TrashFileRecord[]>>;
+  restoredRows: FileRecord[];
+  setRestoredRows: React.Dispatch<React.SetStateAction<FileRecord[]>>;
+  setFiles: React.Dispatch<React.SetStateAction<FileRecord[]>>;
+}) {
+  const [search, setSearch] = useState("");
+  const [ownerFilter, setOwnerFilter] = useState("全部");
+  const [selectedId, setSelectedId] = useState(initialTrashFiles[0]?.id ?? "");
+  const selected = trashRows.find((row) => row.id === selectedId) ?? null;
+  const ownerOptions = ["全部", ...Array.from(new Set(trashRows.map((row) => row.owner)))];
+  const filteredRows = trashRows.filter((row) => {
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || `${row.name} ${row.originalPath} ${row.reason} ${row.owner}`.toLowerCase().includes(query);
+    return matchSearch && (ownerFilter === "全部" || row.owner === ownerFilter);
+  });
+  const restoreFile = (row: TrashFileRecord) => {
+    const originalPathParts = row.originalPath.split("/");
+    const fileName = originalPathParts.pop() ?? row.name;
+    const parentPath = originalPathParts.join("/") || "/";
+    const restoredFile: FileRecord = { id: `restore-${Date.now()}`, name: fileName, type: "文件", path: parentPath, size: row.size, modified: currentClock(), owner: row.owner };
+    setRestoredRows((current) => [restoredFile, ...current]);
+    setFiles((current) => [restoredFile, ...current]);
+    setTrashRows((current) => current.filter((item) => item.id !== row.id));
+    if (selectedId === row.id) setSelectedId("");
+    notify(`${row.name} 已恢复到 ${parentPath}`);
+  };
+  const purgeFile = (row: TrashFileRecord) => {
+    setTrashRows((current) => current.filter((item) => item.id !== row.id));
+    if (selectedId === row.id) setSelectedId("");
+    notify(`${row.name} 已永久删除`, "warning");
+  };
+
+  return (
+    <ModulePageShell
+      title={resolvePageMeta(page).title}
+      subtitle="独立回收站视图，支持按所有者筛选、查看删除原因、恢复文件和永久删除。"
+      page={page}
+      viewContext={{
+        eyebrow: "文件 / 回收站",
+        title: "回收站",
+        description: "查看被删除文件的原路径、删除原因和保留期，支持恢复或永久清理。",
+        chips: [`待清理 ${trashRows.length}`, `已恢复 ${restoredRows.length}`, "保留 7 天"],
+      }}
+      actions={<><button className="ghost" type="button" onClick={() => { setTrashRows([]); setSelectedId(""); notify("回收站已清空", "warning"); }}><Trash2 size={15} /> 清空回收站</button><button className="ghost" type="button" onClick={() => notify(`最近恢复记录：${restoredRows.length} 个`, "info")}><RefreshCw size={15} /> 查看恢复记录</button></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索文件、原路径、删除原因" onChange={setSearch} /><FieldSelect label="所有者" value={ownerFilter} options={ownerOptions} onChange={setOwnerFilter} /></>}
+      metrics={<><MetricTile icon={Trash2} label="回收站文件" value={`${trashRows.length}`} tone="orange" /><MetricTile icon={RefreshCw} label="已恢复" value={`${restoredRows.length}`} tone="green" /><MetricTile icon={Clock3} label="保留策略" value="7天" tone="blue" /></>}
+      side={selected && (
+        <DetailDrawer title="删除详情" subtitle={selected.name} onClose={() => setSelectedId("")} actions={<><button className="ghost" type="button" aria-label={`永久删除 ${selected.name}`} onClick={() => purgeFile(selected)}>永久删除</button><button className="primary" type="button" aria-label={`恢复 ${selected.name}`} onClick={() => restoreFile(selected)}>恢复</button></>}>
+          <div className="detail-kv">
+            <p><span>原路径</span><b>{selected.originalPath}</b></p>
+            <p><span>大小</span><b>{selected.size}</b></p>
+            <p><span>删除时间</span><b>{selected.deletedAt}</b></p>
+            <p><span>剩余保留</span><b>{selected.expiresIn}</b></p>
+            <p><span>所有者</span><b>{selected.owner}</b></p>
+            <p><span>删除原因</span><b>{selected.reason}</b></p>
+          </div>
+        </DetailDrawer>
+      )}
+    >
+      <div className="file-trash-workspace">
+        <DataTable
+          columns={[
+            { key: "name", label: "文件", width: "220px", render: (row) => <button className="module-row-link" type="button" onClick={() => setSelectedId(row.id)}><Trash2 size={15} /><b>{row.name}</b></button> },
+            { key: "path", label: "原路径", render: (row) => <code>{row.originalPath}</code> },
+            { key: "size", label: "大小", width: "84px", render: (row) => row.size },
+            { key: "deleted", label: "删除时间", render: (row) => row.deletedAt },
+            { key: "expires", label: "剩余保留", width: "92px", render: (row) => <span className="pill orange">{row.expiresIn}</span> },
+            { key: "owner", label: "所有者", width: "84px", render: (row) => row.owner },
+            { key: "ops", label: "操作", width: "170px", render: (row) => <span className="table-actions"><button type="button" aria-label={`恢复 ${row.name}`} onClick={() => restoreFile(row)}>恢复</button><button type="button" aria-label={`永久删除 ${row.name}`} onClick={() => purgeFile(row)}>永久删除</button></span> },
+          ]}
+          rows={filteredRows}
+          emptyText="回收站没有匹配文件"
+          getRowKey={(row) => row.id}
+        />
+        <section className="trash-restore-panel">
+          <PanelCard title="最近恢复">
+            <div className="restore-mini-list">
+              {restoredRows.map((row) => <p key={row.id}><FileBox size={14} /><span>{row.name}</span><em>{row.path}</em></p>)}
+              {restoredRows.length === 0 && <p className="module-empty-card">还没有恢复记录</p>}
+            </div>
+          </PanelCard>
+        </section>
+      </div>
     </ModulePageShell>
   );
 }
