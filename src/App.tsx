@@ -1215,11 +1215,11 @@ function DesktopShell({
   const activeModule = navPageFor(page);
   const whiteTop = !["overview", "overview-health", "overview-tasks", "overview-risks"].includes(page);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
-    typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
+    typeof window !== "undefined" && window.matchMedia("(max-width: 680px)").matches
   ));
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(max-width: 773px)");
+    const mediaQuery = window.matchMedia("(max-width: 680px)");
     const syncSidebar = (event: MediaQueryListEvent | MediaQueryList) => {
       setSidebarCollapsed(event.matches);
     };
@@ -4991,6 +4991,21 @@ type MobileTaskRecord = {
   status: MobileTaskStatus;
   time: string;
 };
+type MobileQuickAction = {
+  label: string;
+  target: MobileTab | "数据库" | "文件" | "终端" | "系统服务" | "防火墙";
+  targetHint: string;
+  draft: string;
+};
+type MobileSheetState =
+  | { type: "menu" }
+  | { type: "system" }
+  | { type: "notifications" }
+  | { type: "quick"; action: string }
+  | { type: "module"; action: string }
+  | { type: "host"; hostId: string }
+  | { type: "site"; siteId: string }
+  | { type: "task"; taskId: string };
 
 type MobileTabIcon = (props: { size?: number }) => React.ReactNode;
 
@@ -5002,16 +5017,36 @@ const mobileTabs: Array<[MobileTabIcon, MobileTab]> = [
   [UserRound, "我的"],
 ];
 
+const mobileQuickActions: MobileQuickAction[] = [
+  { label: "添加主机", target: "主机", targetHint: "主机列表 / 新增主机", draft: "主机接入草稿" },
+  { label: "创建网站", target: "网站", targetHint: "网站列表 / 添加网站", draft: "站点配置草稿" },
+  { label: "新建数据库", target: "数据库", targetHint: "数据库模块 / 实例创建", draft: "数据库实例草稿" },
+  { label: "上传文件", target: "文件", targetHint: "文件模块 / 上传队列", draft: "文件上传草稿" },
+  { label: "终端连接", target: "终端", targetHint: "终端模块 / 会话连接", draft: "终端会话草稿" },
+  { label: "系统服务", target: "系统服务", targetHint: "systemd 服务 / 单元管理", draft: "服务变更草稿" },
+  { label: "计划任务", target: "任务", targetHint: "任务列表 / 定时任务", draft: "计划任务草稿" },
+  { label: "防火墙规则", target: "防火墙", targetHint: "防火墙模块 / 规则编辑", draft: "防火墙规则草稿" },
+];
+
+const mobileNoticeRows = [
+  { id: "cert", title: "证书即将过期", detail: "shop.example.com 证书剩余 11 天", tone: "orange" as Tone, time: "刚刚" },
+  { id: "host", title: "主机资源告警", detail: "db-01 内存使用率 62%", tone: "orange" as Tone, time: "8 分钟前" },
+  { id: "backup", title: "备份完成", detail: "shop_db 备份已写入对象存储", tone: "green" as Tone, time: "15 分钟前" },
+];
+
 function MobileApp({ notify }: { notify: Notify }) {
   const [activeTab, setActiveTab] = useState<MobileTab>("首页");
   const mobileContentRef = useRef<HTMLDivElement>(null);
   const [activeQuick, setActiveQuick] = useState("添加主机");
+  const [quickDrafts, setQuickDrafts] = useState<string[]>([]);
+  const [favoriteQuickActions, setFavoriteQuickActions] = useState<string[]>(["添加主机", "终端连接"]);
   const [hostFilter, setHostFilter] = useState("全部");
   const [siteFilter, setSiteFilter] = useState("全部");
   const [taskFilter, setTaskFilter] = useState("全部");
   const [unreadNoticeCount, setUnreadNoticeCount] = useState(3);
   const [pushEnabled, setPushEnabled] = useState(true);
   const [mfaEnabled, setMfaEnabled] = useState(true);
+  const [mobileSheet, setMobileSheet] = useState<MobileSheetState | null>(null);
   const [mobileHosts, setMobileHosts] = useState<MobileHostRecord[]>([
     { id: "web-01", name: "web-01", env: "生产环境", ip: "203.0.113.10", os: "Ubuntu 22.04", cpu: "12%", memory: "38%", uptime: "2 天", health: "健康" },
     { id: "web-02", name: "web-02", env: "生产环境", ip: "203.0.113.11", os: "Ubuntu 22.04", cpu: "22%", memory: "45%", uptime: "5 天", health: "健康" },
@@ -5048,6 +5083,16 @@ function MobileApp({ notify }: { notify: Notify }) {
     siteFilter === "全部" || mobileSiteDisplayStatus(site) === siteFilter
   ));
   const visibleTasks = mobileTasks.filter((task) => taskFilter === "全部" || task.status === taskFilter);
+  const selectedHost = mobileSheet?.type === "host" ? mobileHosts.find((host) => host.id === mobileSheet.hostId) ?? null : null;
+  const selectedSite = mobileSheet?.type === "site" ? mobileSites.find((site) => site.id === mobileSheet.siteId) ?? null : null;
+  const selectedTask = mobileSheet?.type === "task" ? mobileTasks.find((task) => task.id === mobileSheet.taskId) ?? null : null;
+  const selectedQuickAction = mobileSheet?.type === "quick"
+    ? mobileQuickActions.find((action) => action.label === mobileSheet.action) ?? null
+    : null;
+  const selectedModuleAction = mobileSheet?.type === "module"
+    ? mobileQuickActions.find((action) => action.label === mobileSheet.action) ?? null
+    : null;
+  const closeMobileSheet = () => setMobileSheet(null);
   const updateHost = (id: string, patch: Partial<MobileHostRecord>) => {
     setMobileHosts((current) => current.map((host) => (host.id === id ? { ...host, ...patch } : host)));
   };
@@ -5063,24 +5108,52 @@ function MobileApp({ notify }: { notify: Notify }) {
     if (status === "已停止") return "gray";
     return "green";
   };
+  const openQuickTarget = (action: MobileQuickAction) => {
+    if (["首页", "主机", "网站", "任务", "我的"].includes(action.target)) {
+      setActiveTab(action.target as MobileTab);
+      closeMobileSheet();
+      notify(`已打开${action.targetHint}`, "info");
+      return;
+    }
+    setMobileSheet({ type: "module", action: action.label });
+  };
+  const saveQuickDraft = (action: MobileQuickAction) => {
+    setQuickDrafts((current) => (
+      current.includes(action.label) ? current : [...current, action.label]
+    ));
+    notify(`${action.draft}已创建`, "info");
+  };
+  const toggleFavoriteQuick = (action: MobileQuickAction) => {
+    setFavoriteQuickActions((current) => (
+      current.includes(action.label)
+        ? current.filter((item) => item !== action.label)
+        : [...current, action.label]
+    ));
+  };
 
   useEffect(() => {
     mobileContentRef.current?.scrollTo({ top: 0 });
   }, [activeTab]);
 
+  useEffect(() => {
+    if (!mobileSheet) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMobileSheet();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileSheet]);
+
   return (
     <section className="mobile-app-shell">
       <header className="mobile-top">
-        <button type="button" className="mobile-icon-button" aria-label="打开菜单" onClick={() => notify("移动端菜单已打开", "info")}><Menu size={20} /></button>
+        <button type="button" className="mobile-icon-button" aria-label="打开菜单" onClick={() => setMobileSheet({ type: "menu" })}><Menu size={20} /></button>
         <div className="mobile-brand"><div className="brand-gem small" /><strong>StackPilot</strong></div>
         <div className="mobile-icons">
           <button
             type="button"
             aria-label={unreadNoticeCount > 0 ? `查看通知，${unreadNoticeCount} 条未读` : "查看通知，无未读"}
-            onClick={() => {
-              setUnreadNoticeCount(0);
-              notify("移动端通知已标记为已读", "info");
-            }}
+            onClick={() => setMobileSheet({ type: "notifications" })}
           >
             <Bell size={18} />
           </button>
@@ -5108,7 +5181,7 @@ function MobileApp({ notify }: { notify: Notify }) {
                 </article>
               ))}
             </div>
-            <MobileCard title="系统状态" action="查看详情" onAction={() => notify("已打开移动端系统状态详情", "info")}>
+            <MobileCard title="系统状态" action="查看详情" onAction={() => setMobileSheet({ type: "system" })}>
               <div className="mobile-resource">
                 {[
                   ["CPU", "18%", "负载 0.38", [18, 14, 23, 16, 28, 18, 22]],
@@ -5128,7 +5201,7 @@ function MobileApp({ notify }: { notify: Notify }) {
               <div className="mobile-task-list">
                 {mobileTasks.slice(0, 4).map((task) => {
                   const Icon = task.icon;
-                  const openTask = () => notify(`已打开任务：${task.title}`, "info");
+                  const openTask = () => setMobileSheet({ type: "task", taskId: task.id });
                   return (
                     <div key={task.id} role="button" tabIndex={0} onClick={openTask} onKeyDown={(event) => activateOnKeyboard(event, openTask)}>
                       <span className="mobile-task-icon"><Icon size={14} /></span>
@@ -5143,18 +5216,18 @@ function MobileApp({ notify }: { notify: Notify }) {
             </MobileCard>
             <MobileCard title="快捷操作">
               <div className="mobile-quick">
-                {["添加主机", "创建网站", "新建数据库", "上传文件", "终端连接", "系统服务", "计划任务", "防火墙规则"].map((item) => (
+                {mobileQuickActions.map((action) => (
                   <button
-                    className={item === activeQuick ? "active" : ""}
-                    key={item}
+                    className={action.label === activeQuick ? "active" : ""}
+                    key={action.label}
                     type="button"
-                    aria-pressed={item === activeQuick}
+                    aria-pressed={action.label === activeQuick}
                     onClick={() => {
-                      setActiveQuick(item);
-                      notify(`移动端已选择：${item}`, "info");
+                      setActiveQuick(action.label);
+                      setMobileSheet({ type: "quick", action: action.label });
                     }}
                   >
-                    {item}
+                    {action.label}
                   </button>
                 ))}
               </div>
@@ -5185,7 +5258,7 @@ function MobileApp({ notify }: { notify: Notify }) {
                   <div className="mobile-row-actions">
                     <button type="button" aria-label={`重启主机 ${host.name}`} onClick={() => { updateHost(host.id, { uptime: "刚刚重启", health: "健康" }); notify(`${host.name} 已重启`); }}>重启</button>
                     <button type="button" aria-label={`备份主机 ${host.name}`} onClick={() => notify(`${host.name} 已创建备份`, "info")}>备份</button>
-                    <button type="button" aria-label={`查看主机 ${host.name} 详情`} onClick={() => notify(`已打开 ${host.name} 详情`, "info")}>详情</button>
+                    <button type="button" aria-label={`查看主机 ${host.name} 详情`} onClick={() => setMobileSheet({ type: "host", hostId: host.id })}>详情</button>
                   </div>
                 </article>
               ))}
@@ -5219,7 +5292,7 @@ function MobileApp({ notify }: { notify: Notify }) {
                     <div className="mobile-row-actions">
                       <button type="button" aria-label={`${site.status === "已停止" ? "启动" : "停止"}网站 ${site.domain}`} onClick={() => { updateSite(site.id, { status: site.status === "已停止" ? "运行中" : "已停止" }); notify(`${site.domain} 已${site.status === "已停止" ? "启动" : "停止"}`); }}>{site.status === "已停止" ? "启动" : "停止"}</button>
                       <button type="button" aria-label={`续期网站 ${site.domain} 证书`} onClick={() => { updateSite(site.id, { certDays: 90, status: "运行中" }); notify(`${site.domain} 证书已续期`); }}>续期</button>
-                      <button type="button" aria-label={`查看网站 ${site.domain} 日志`} onClick={() => notify(`已打开 ${site.domain} 日志`, "info")}>日志</button>
+                      <button type="button" aria-label={`查看网站 ${site.domain} 日志`} onClick={() => setMobileSheet({ type: "site", siteId: site.id })}>日志</button>
                     </div>
                   </article>
                 );
@@ -5247,7 +5320,7 @@ function MobileApp({ notify }: { notify: Notify }) {
                     </header>
                     <p>{task.operator} · {task.time}</p>
                     <div className="mobile-row-actions">
-                      <button type="button" aria-label={`查看任务 ${task.title} 日志`} onClick={() => notify(`已打开任务日志：${task.title}`, "info")}>日志</button>
+                      <button type="button" aria-label={`查看任务 ${task.title} 日志`} onClick={() => setMobileSheet({ type: "task", taskId: task.id })}>日志</button>
                       <button type="button" aria-label={`重跑任务 ${task.title}`} onClick={() => { updateTask(task.id, { status: "运行中", time: "刚刚" }); notify(`已重新执行：${task.title}`); }}>重跑</button>
                       <button type="button" aria-label={`完成任务 ${task.title}`} onClick={() => { updateTask(task.id, { status: "成功", time: "刚刚完成" }); notify(`任务已标记完成`); }}>完成</button>
                     </div>
@@ -5320,6 +5393,142 @@ function MobileApp({ notify }: { notify: Notify }) {
           </button>
         ))}
       </nav>
+      {mobileSheet && (
+        <MobileSheet
+          title={
+            mobileSheet.type === "menu" ? "快捷菜单"
+              : mobileSheet.type === "system" ? "系统状态"
+                : mobileSheet.type === "notifications" ? "通知中心"
+                  : mobileSheet.type === "quick" ? mobileSheet.action
+                    : mobileSheet.type === "module" ? selectedModuleAction?.target ?? "模块预览"
+                      : mobileSheet.type === "host" ? selectedHost?.name ?? "主机详情"
+                        : mobileSheet.type === "site" ? selectedSite?.domain ?? "网站日志"
+                          : selectedTask?.title ?? "任务详情"
+          }
+          onClose={closeMobileSheet}
+        >
+          {mobileSheet.type === "menu" && (
+            <div className="mobile-sheet-actions">
+              {mobileTabs.map(([, label]) => (
+                <button key={label} type="button" onClick={() => { setActiveTab(label); closeMobileSheet(); notify(`已切换到移动端${label}`, "info"); }}>{label}</button>
+              ))}
+              <button type="button" onClick={() => { setMobileSheet({ type: "system" }); }}>系统状态</button>
+              <button type="button" onClick={() => { setMobileSheet({ type: "notifications" }); }}>通知中心</button>
+            </div>
+          )}
+          {mobileSheet.type === "notifications" && (
+            <>
+              <div className="mobile-sheet-list">
+                {mobileNoticeRows.map((notice, index) => (
+                  <button key={notice.id} type="button" onClick={() => notify(`已打开通知：${notice.title}`, "info")}>
+                    <StatusLight tone={notice.tone} />
+                    <span>
+                      <b>{notice.title}</b>
+                      <em>{notice.detail}</em>
+                    </span>
+                    <small>{index < unreadNoticeCount ? "未读" : notice.time}</small>
+                  </button>
+                ))}
+              </div>
+              <div className="mobile-sheet-actions split">
+                <button type="button" onClick={() => { setUnreadNoticeCount(0); notify("通知已全部标记为已读", "info"); }}>全部已读</button>
+                <button type="button" onClick={() => { setActiveTab("任务"); closeMobileSheet(); notify("已打开任务列表处理通知", "info"); }}>去处理</button>
+              </div>
+            </>
+          )}
+          {mobileSheet.type === "system" && (
+            <div className="mobile-sheet-metrics">
+              {[
+                ["CPU", "18%", "负载 0.38"],
+                ["内存", "42%", "3.2 / 7.6 GB"],
+                ["磁盘", "37%", "180 / 480 GB"],
+                ["在线主机", `${mobileHosts.filter((host) => host.health === "健康").length}/${mobileHosts.length}`, "实时同步"],
+              ].map(([label, value, desc]) => (
+                <p key={label}><span>{label}</span><b>{value}</b><em>{desc}</em></p>
+              ))}
+            </div>
+          )}
+          {mobileSheet.type === "quick" && selectedQuickAction && (
+            <>
+              <div className="mobile-sheet-kv">
+                <p><span>目标</span><b>{selectedQuickAction.targetHint}</b></p>
+                <p><span>草稿</span><b>{quickDrafts.includes(selectedQuickAction.label) ? "已创建" : "未创建"}</b></p>
+                <p><span>常用</span><b>{favoriteQuickActions.includes(selectedQuickAction.label) ? "已固定" : "未固定"}</b></p>
+              </div>
+              <div className="mobile-sheet-actions">
+                <button type="button" onClick={() => openQuickTarget(selectedQuickAction)}>打开模块</button>
+                <button type="button" onClick={() => saveQuickDraft(selectedQuickAction)}>创建草稿</button>
+                <button type="button" onClick={() => { toggleFavoriteQuick(selectedQuickAction); notify(`${selectedQuickAction.label}${favoriteQuickActions.includes(selectedQuickAction.label) ? "已取消常用" : "已加入常用"}`, "info"); }}>
+                  {favoriteQuickActions.includes(selectedQuickAction.label) ? "取消常用" : "设为常用"}
+                </button>
+              </div>
+            </>
+          )}
+          {mobileSheet.type === "module" && selectedModuleAction && (
+            <>
+              <div className="mobile-sheet-kv">
+                <p><span>入口</span><b>{selectedModuleAction.target}</b></p>
+                <p><span>位置</span><b>{selectedModuleAction.targetHint}</b></p>
+                <p><span>草稿</span><b>{quickDrafts.includes(selectedModuleAction.label) ? "已创建" : "未创建"}</b></p>
+              </div>
+              <div className="mobile-sheet-log">
+                <p>mobile module preview: {selectedModuleAction.target}</p>
+                <p>{selectedModuleAction.draft} ready for local prototype</p>
+                <p>source action: {selectedModuleAction.label}</p>
+              </div>
+              <div className="mobile-sheet-actions">
+                <button type="button" onClick={() => setMobileSheet({ type: "quick", action: selectedModuleAction.label })}>返回操作</button>
+                <button type="button" onClick={() => saveQuickDraft(selectedModuleAction)}>创建草稿</button>
+              </div>
+            </>
+          )}
+          {mobileSheet.type === "host" && selectedHost && (
+            <>
+              <div className="mobile-sheet-kv">
+                <p><span>环境</span><b>{selectedHost.env}</b></p>
+                <p><span>IP</span><b>{selectedHost.ip}</b></p>
+                <p><span>系统</span><b>{selectedHost.os}</b></p>
+                <p><span>CPU</span><b>{selectedHost.cpu}</b></p>
+                <p><span>内存</span><b>{selectedHost.memory}</b></p>
+                <p><span>运行</span><b>{selectedHost.uptime}</b></p>
+              </div>
+              <div className="mobile-sheet-actions">
+                <button type="button" onClick={() => { updateHost(selectedHost.id, { uptime: "刚刚重启", health: "健康" }); notify(`${selectedHost.name} 已重启`); }}>重启主机</button>
+                <button type="button" onClick={() => notify(`${selectedHost.name} 终端已准备`, "info")}>打开终端</button>
+              </div>
+            </>
+          )}
+          {mobileSheet.type === "site" && selectedSite && (
+            <>
+              <div className="mobile-sheet-kv">
+                <p><span>运行时</span><b>{selectedSite.runtime}</b></p>
+                <p><span>主机</span><b>{selectedSite.host}</b></p>
+                <p><span>证书</span><b>{selectedSite.certDays} 天</b></p>
+                <p><span>流量</span><b>{selectedSite.traffic}</b></p>
+              </div>
+              <div className="mobile-sheet-log">
+                <p>200 GET /login 24ms</p>
+                <p>{selectedSite.certDays <= 14 ? "tls certificate renewal recommended" : "tls certificate healthy"}</p>
+                <p>upstream {selectedSite.host} healthy</p>
+              </div>
+            </>
+          )}
+          {mobileSheet.type === "task" && selectedTask && (
+            <>
+              <div className="mobile-sheet-kv">
+                <p><span>状态</span><b>{selectedTask.status}</b></p>
+                <p><span>操作人</span><b>{selectedTask.operator}</b></p>
+                <p><span>时间</span><b>{selectedTask.time}</b></p>
+              </div>
+              <div className="mobile-sheet-log">
+                <p>queued by {selectedTask.operator}</p>
+                <p>{selectedTask.status === "警告" ? "warning: retry required" : "finished with status 0"}</p>
+                <p>trace id mobile-{selectedTask.id}</p>
+              </div>
+            </>
+          )}
+        </MobileSheet>
+      )}
     </section>
   );
 }
@@ -5386,6 +5595,35 @@ function MobileCard({
       <header><strong>{title}</strong>{action && <button type="button" onClick={onAction}>{action}</button>}</header>
       {children}
     </section>
+  );
+}
+
+function MobileSheet({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+  }, []);
+
+  return (
+    <div className="mobile-sheet-layer" role="presentation">
+      <button className="mobile-sheet-scrim" type="button" aria-label="关闭移动端面板" onClick={onClose} />
+      <section className="mobile-sheet" role="dialog" aria-modal="true" aria-label={title}>
+        <header>
+          <strong>{title}</strong>
+          <button ref={closeButtonRef} type="button" aria-label="关闭" onClick={onClose}><X size={18} /></button>
+        </header>
+        <div className="mobile-sheet-body">{children}</div>
+      </section>
+    </div>
   );
 }
 
