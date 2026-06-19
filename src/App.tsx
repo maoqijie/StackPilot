@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   Bell,
@@ -548,6 +548,42 @@ type TrashFileRecord = {
   reason: string;
 };
 
+type TerminalSessionRecord = {
+  id: string;
+  host: string;
+  ip: string;
+  user: string;
+  cwd: string;
+  status: "connected" | "disconnected";
+  latency: string;
+  startedAt: string;
+  lastCommand: string;
+  privilege: "sudo" | "user";
+};
+
+type TerminalSnippetRecord = {
+  id: string;
+  title: string;
+  command: string;
+  category: string;
+  risk: "只读" | "变更" | "危险";
+  description: string;
+  lastUsed: string;
+  favorite: boolean;
+};
+
+type TerminalHistoryRecord = {
+  id: string;
+  command: string;
+  host: string;
+  user: string;
+  status: "成功" | "失败";
+  duration: string;
+  time: string;
+  output: string;
+  pinned?: boolean;
+};
+
 type ServiceRecord = {
   id: string;
   name: string;
@@ -848,6 +884,27 @@ const initialTrashFiles: TrashFileRecord[] = [
   { id: "trash-3", name: "index.backup.html", originalPath: "/var/www/html/index.backup.html", size: "21 KB", deletedAt: "昨天 18:12", expiresIn: "5 天", owner: "deploy", reason: "发布后清理" },
 ];
 
+const initialTerminalSessions: TerminalSessionRecord[] = [
+  { id: "term-session-1", host: "panel-se-01", ip: "10.0.0.11", user: "root", cwd: "/var/www/html", status: "connected", latency: "38ms", startedAt: "今天 10:21", lastCommand: "systemctl status nginx", privilege: "sudo" },
+  { id: "term-session-2", host: "panel-bj-02", ip: "10.0.1.22", user: "deploy", cwd: "/srv/shop", status: "connected", latency: "52ms", startedAt: "今天 10:04", lastCommand: "tail -f storage/logs/laravel.log", privilege: "user" },
+  { id: "term-session-3", host: "panel-hk-03", ip: "10.0.2.33", user: "root", cwd: "/etc/mysql", status: "disconnected", latency: "-", startedAt: "昨天 22:18", lastCommand: "mysqladmin processlist", privilege: "sudo" },
+];
+
+const initialTerminalSnippets: TerminalSnippetRecord[] = [
+  { id: "term-snippet-1", title: "查看 Nginx 状态", command: "systemctl status nginx --no-pager", category: "服务", risk: "只读", description: "快速确认 Nginx 是否 active，并查看最近几行 systemd 输出。", lastUsed: "今天 10:31", favorite: true },
+  { id: "term-snippet-2", title: "磁盘占用", command: "df -h", category: "资源", risk: "只读", description: "查看挂载点容量、使用率和剩余空间。", lastUsed: "今天 09:48", favorite: true },
+  { id: "term-snippet-3", title: "最近错误日志", command: "tail -n 100 /var/log/nginx/error.log", category: "日志", risk: "只读", description: "读取 Nginx 最近 100 行错误日志用于排障。", lastUsed: "昨天 21:12", favorite: false },
+  { id: "term-snippet-4", title: "重启 Worker", command: "systemctl restart worker.service", category: "服务", risk: "变更", description: "重启异步任务 Worker，适合发布后刷新进程。", lastUsed: "周一 18:20", favorite: false },
+  { id: "term-snippet-5", title: "清理临时缓存", command: "rm -rf /tmp/stackpilot-cache/*", category: "文件", risk: "危险", description: "删除临时缓存目录，执行前应确认路径。", lastUsed: "未使用", favorite: false },
+];
+
+const initialTerminalHistory: TerminalHistoryRecord[] = [
+  { id: "term-history-1", command: "systemctl restart nginx", host: "panel-se-01", user: "root", status: "成功", duration: "1.2s", time: "今天 10:42", output: "nginx.service restarted", pinned: true },
+  { id: "term-history-2", command: "df -h", host: "panel-se-01", user: "root", status: "成功", duration: "0.2s", time: "今天 10:38", output: "/dev/vda1 62G 21G 41G 35% /" },
+  { id: "term-history-3", command: "mysqladmin processlist", host: "panel-hk-03", user: "root", status: "失败", duration: "5.0s", time: "昨天 22:18", output: "ERROR 2002: connection timed out" },
+  { id: "term-history-4", command: "tail -n 100 /var/log/nginx/error.log", host: "panel-bj-02", user: "deploy", status: "成功", duration: "0.7s", time: "昨天 21:12", output: "no critical errors" },
+];
+
 const initialServiceRecords: ServiceRecord[] = [
   { id: "svc-1", name: "nginx.service", host: "panel-se-01", status: "active", restarts: 0, memory: "84 MB", updated: "3 分钟前" },
   { id: "svc-2", name: "mysql.service", host: "panel-hk-03", status: "failed", restarts: 6, memory: "1.2 GB", updated: "8 分钟前" },
@@ -1113,7 +1170,7 @@ function DesktopShell({
             : <DatabasesPage key={page} page={page} notify={notify} />
         )}
         {activeModule === "files" && <FilesModule page={page} notify={notify} />}
-        {activeModule === "terminal" && <TerminalPage key={page} page={page} notify={notify} />}
+        {activeModule === "terminal" && <TerminalPage page={page} notify={notify} />}
         {activeModule === "systemd" && <SystemdPage key={page} page={page} notify={notify} />}
         {activeModule === "firewall" && <FirewallPage key={page} page={page} notify={notify} />}
         {activeModule === "deploy" && <DeployPage key={page} page={page} notify={notify} />}
@@ -1223,40 +1280,41 @@ function Sidebar({
                   </button>
                 )}
               </div>
-              <div
-                className="side-submenu"
-                id={`side-submenu-${item.key}`}
-                aria-hidden={!open}
-                style={{ "--side-submenu-open-height": `${item.children.length * 37 + 12}px` } as CSSProperties}
-              >
-                {item.children.map((child) => {
-                  const metaText = navChildMetaText(child);
-                  const labelDetail = [child.badge, metaText].filter(Boolean).join(" ");
-                  return (
-                    <button
-                      key={child.id}
-                      className={[
-                        "side-child",
-                        child.badge ? "has-child-badge" : "",
-                        metaText ? "has-child-meta" : "",
-                        activeChild === child.id ? "is-child-active" : "",
-                      ].filter(Boolean).join(" ")}
-                      type="button"
-                      tabIndex={open ? 0 : -1}
-                      aria-current={open && activeChild === child.id ? "page" : undefined}
-                      aria-label={[child.label, labelDetail].filter(Boolean).join("，")}
-                      onClick={() => openNavChild(item, child)}
-                    >
-                      <i />
-                      <span className="side-child-copy">
-                        <span className="side-child-label">{child.label}</span>
-                        {metaText && !child.badge && <em>{metaText}</em>}
-                      </span>
-                      {child.badge && <strong className="side-child-badge">{[child.badge, metaText].filter(Boolean).join(" ")}</strong>}
-                    </button>
-                  );
-                })}
-              </div>
+              {!collapsed && (
+                <div
+                  className="side-submenu"
+                  id={`side-submenu-${item.key}`}
+                  aria-hidden={!open}
+                >
+                  {item.children.map((child) => {
+                    const metaText = navChildMetaText(child);
+                    const labelDetail = [child.badge, metaText].filter(Boolean).join(" ");
+                    return (
+                      <button
+                        key={child.id}
+                        className={[
+                          "side-child",
+                          child.badge ? "has-child-badge" : "",
+                          metaText ? "has-child-meta" : "",
+                          activeChild === child.id ? "is-child-active" : "",
+                        ].filter(Boolean).join(" ")}
+                        type="button"
+                        tabIndex={open ? 0 : -1}
+                        aria-current={open && activeChild === child.id ? "page" : undefined}
+                        aria-label={[child.label, labelDetail].filter(Boolean).join("，")}
+                        onClick={() => openNavChild(item, child)}
+                      >
+                        <i />
+                        <span className="side-child-copy">
+                          <span className="side-child-label">{child.label}</span>
+                          {metaText && !child.badge && <em>{metaText}</em>}
+                        </span>
+                        {child.badge && <strong className="side-child-badge">{[child.badge, metaText].filter(Boolean).join(" ")}</strong>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           );
         })}
@@ -2729,59 +2787,266 @@ function FileTrashPage({
 
 function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const terminalPreset = terminalPagePreset(page);
-  const [host, setHost] = useState(initialHostRecords[0].name);
-  const [connected, setConnected] = useState(true);
+  const terminalMode = terminalPreset.panel;
+  const [sessions, setSessions] = useState(initialTerminalSessions);
+  const [snippets, setSnippets] = useState(initialTerminalSnippets);
+  const [historyRows, setHistoryRows] = useState(initialTerminalHistory);
+  const [selectedSessionId, setSelectedSessionId] = useState(initialTerminalSessions[0].id);
   const [command, setCommand] = useState("");
-  const [logs, setLogs] = useState<string[]>([`connected to ${initialHostRecords[0].name}`, "Last login: Thu Jun 18 10:21:03"]);
-  const runCommand = () => {
-    const next = command.trim();
+  const [sessionSearch, setSessionSearch] = useState("");
+  const [snippetSearch, setSnippetSearch] = useState("");
+  const [historySearch, setHistorySearch] = useState("");
+  const [sessionStatusFilter, setSessionStatusFilter] = useState("全部");
+  const [snippetCategoryFilter, setSnippetCategoryFilter] = useState("全部");
+  const [snippetRiskFilter, setSnippetRiskFilter] = useState("全部");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState("全部");
+  const [pendingSensitiveCommand, setPendingSensitiveCommand] = useState<{ command: string; sessionId: string } | null>(null);
+  const [logsBySession, setLogsBySession] = useState<Record<string, string[]>>(() => ({
+    [initialTerminalSessions[0].id]: [`connected to ${initialTerminalSessions[0].host}`, "Last login: Thu Jun 18 10:21:03"],
+    [initialTerminalSessions[1].id]: [`connected to ${initialTerminalSessions[1].host}`, "Last login: Thu Jun 18 10:04:19"],
+    [initialTerminalSessions[2].id]: [`disconnected from ${initialTerminalSessions[2].host}`],
+  }));
+  const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? sessions[0];
+  const connected = selectedSession.status === "connected";
+  const logs = logsBySession[selectedSession.id] ?? [];
+  const search = terminalMode === "snippets" ? snippetSearch : terminalMode === "history" ? historySearch : sessionSearch;
+  const snippetCategories = ["全部", ...Array.from(new Set(snippets.map((snippet) => snippet.category)))];
+
+  const filteredSessions = sessions.filter((session) => {
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || `${session.host} ${session.ip} ${session.user} ${session.cwd} ${session.lastCommand}`.toLowerCase().includes(query);
+    const matchStatus = sessionStatusFilter === "全部" || session.status === sessionStatusFilter;
+    return matchSearch && matchStatus;
+  });
+  const filteredSnippets = snippets.filter((snippet) => {
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || `${snippet.title} ${snippet.command} ${snippet.category} ${snippet.description}`.toLowerCase().includes(query);
+    const matchCategory = snippetCategoryFilter === "全部" || snippet.category === snippetCategoryFilter;
+    const matchRisk = snippetRiskFilter === "全部" || snippet.risk === snippetRiskFilter;
+    return matchSearch && matchCategory && matchRisk;
+  });
+  const filteredHistory = historyRows.filter((row) => {
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || `${row.command} ${row.host} ${row.user} ${row.output}`.toLowerCase().includes(query);
+    const matchStatus = historyStatusFilter === "全部" || row.status === historyStatusFilter;
+    return matchSearch && matchStatus;
+  });
+  const updateSession = (id: string, patch: Partial<TerminalSessionRecord>) => {
+    setSessions((current) => current.map((session) => session.id === id ? { ...session, ...patch } : session));
+  };
+  const appendLogs = (sessionId: string, lines: string[]) => {
+    setLogsBySession((current) => ({
+      ...current,
+      [sessionId]: [...(current[sessionId] ?? []), ...lines],
+    }));
+  };
+  const setSessionLogs = (sessionId: string, nextLogs: string[]) => {
+    setLogsBySession((current) => ({
+      ...current,
+      [sessionId]: nextLogs,
+    }));
+  };
+  const switchSession = (session: TerminalSessionRecord) => {
+    setSelectedSessionId(session.id);
+    appendLogs(session.id, [`session focused: ${session.user}@${session.host}`]);
+    notify(`已切换到 ${session.host}`, "info");
+  };
+  const connectSession = (session = selectedSession) => {
+    updateSession(session.id, { status: "connected", latency: session.latency === "-" ? "44ms" : session.latency });
+    setSelectedSessionId(session.id);
+    appendLogs(session.id, [`connected to ${session.host}`]);
+    notify(`已连接 ${session.host}`);
+  };
+  const disconnectSession = (session = selectedSession) => {
+    updateSession(session.id, { status: "disconnected", latency: "-" });
+    appendLogs(session.id, [`disconnected from ${session.host}`]);
+    notify(`${session.host} 会话已断开`, "warning");
+  };
+  const commandOutput = (next: string) => {
+    if (next.includes("systemctl status")) return "nginx.service active (running)";
+    if (next.includes("systemctl restart")) return "service restart queued, status=0/SUCCESS";
+    if (next.includes("df")) return "/dev/vda1  62G  21G  41G  35% /";
+    if (next.includes("top")) return "load average: 0.38, 0.42, 0.41";
+    if (next.includes("tail")) return "no critical errors in last 100 lines";
+    if (next.includes("mysqladmin")) return "ERROR 2002: connection timed out";
+    if (next.includes("rm -rf")) return "dangerous command blocked by local prototype";
+    return `command '${next}' executed`;
+  };
+  const isPrivilegedCommand = (next: string) => /(^|\s)(systemctl\s+restart|systemctl\s+stop|rm\s+-rf|ufw|iptables)\b/.test(next);
+  const isDestructiveCommand = (next: string) => /(^|\s)rm\s+-rf\b/.test(next);
+  const runCommand = (value = command, risk: TerminalSnippetRecord["risk"] | "自动" = "自动") => {
+    const next = value.trim();
     if (!next) return;
     if (!connected) {
       notify("终端未连接，请先连接主机", "danger");
       return;
     }
-    const output = next.includes("systemctl") ? "nginx.service active (running)" : next.includes("df") ? "/dev/vda1  62G  21G  41G  35% /" : next.includes("top") ? "load average: 0.38, 0.42, 0.41" : `command '${next}' executed`;
-    setLogs((current) => [...current, `$ ${next}`, output]);
+    if (risk === "危险" || isDestructiveCommand(next)) {
+      const output = "dangerous command blocked by local prototype";
+      appendLogs(selectedSession.id, [`$ ${next}`, output]);
+      setHistoryRows((current) => [{
+        id: `term-history-${Date.now()}`,
+        command: next,
+        host: selectedSession.host,
+        user: selectedSession.user,
+        status: "失败",
+        duration: "0.0s",
+        time: currentClock(),
+        output,
+      }, ...current]);
+      setPendingSensitiveCommand(null);
+      setCommand("");
+      notify("危险命令已强制阻止", "danger");
+      return;
+    }
+    const requiresSudo = risk === "变更" || isPrivilegedCommand(next);
+    if (requiresSudo && selectedSession.privilege !== "sudo") {
+      const output = "permission denied: sudo privilege required";
+      appendLogs(selectedSession.id, [`$ ${next}`, output]);
+      setHistoryRows((current) => [{
+        id: `term-history-${Date.now()}`,
+        command: next,
+        host: selectedSession.host,
+        user: selectedSession.user,
+        status: "失败",
+        duration: "0.1s",
+        time: currentClock(),
+        output,
+      }, ...current]);
+      setCommand("");
+      notify("当前会话权限不足，已阻止变更命令", "danger");
+      return;
+    }
+    if (requiresSudo && (pendingSensitiveCommand?.command !== next || pendingSensitiveCommand.sessionId !== selectedSession.id)) {
+      setPendingSensitiveCommand({ command: next, sessionId: selectedSession.id });
+      setCommand(next);
+      notify("变更命令需要二次确认，再次运行将执行", "warning");
+      return;
+    }
+    const output = commandOutput(next);
+    const failed = next.includes("mysqladmin") || next.includes("rm -rf");
+    appendLogs(selectedSession.id, [`$ ${next}`, output]);
+    setHistoryRows((current) => [{
+      id: `term-history-${Date.now()}`,
+      command: next,
+      host: selectedSession.host,
+      user: selectedSession.user,
+      status: failed ? "失败" : "成功",
+      duration: failed ? "5.0s" : "0.4s",
+      time: currentClock(),
+      output,
+    }, ...current]);
+    updateSession(selectedSession.id, { lastCommand: next });
+    setPendingSensitiveCommand(null);
     setCommand("");
+    notify(failed ? "命令已被原型拦截或执行失败" : "命令已执行", failed ? "danger" : "success");
   };
+  const fillSnippet = (snippet: TerminalSnippetRecord) => {
+    setCommand(snippet.command);
+    setSnippets((current) => current.map((item) => item.id === snippet.id ? { ...item, lastUsed: currentClock() } : item));
+    notify(`已填充命令：${snippet.title}`, "info");
+  };
+  const runSnippet = (snippet: TerminalSnippetRecord) => {
+    fillSnippet(snippet);
+    runCommand(snippet.command, snippet.risk);
+  };
+  const copyText = (value: string, successMessage: string) => {
+    if (!navigator.clipboard?.writeText) {
+      notify("复制失败，请检查浏览器剪贴板权限", "danger");
+      return;
+    }
+    void navigator.clipboard.writeText(value)
+      .then(() => notify(successMessage, "info"))
+      .catch(() => notify("复制失败，请检查浏览器剪贴板权限", "danger"));
+  };
+  const copyCommand = (value: string) => copyText(value, "命令已复制");
+  const terminalFilters = terminalMode === "snippets"
+    ? <><ModuleSearch value={snippetSearch} placeholder="搜索命令、分类或说明" onChange={setSnippetSearch} /><FieldSelect label="分类" value={snippetCategoryFilter} options={snippetCategories} onChange={setSnippetCategoryFilter} /><FieldSelect label="风险" value={snippetRiskFilter} options={["全部", "只读", "变更", "危险"]} onChange={setSnippetRiskFilter} /></>
+    : terminalMode === "history"
+      ? <><ModuleSearch value={historySearch} placeholder="搜索命令、主机或输出" onChange={setHistorySearch} /><FieldSelect label="结果" value={historyStatusFilter} options={["全部", "成功", "失败"]} onChange={setHistoryStatusFilter} /></>
+      : <><ModuleSearch value={sessionSearch} placeholder="搜索主机、IP、用户或路径" onChange={setSessionSearch} /><FieldSelect label="连接" value={sessionStatusFilter} options={["全部", "connected", "disconnected"]} onChange={setSessionStatusFilter} /></>;
 
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={terminalPreset.subtitle}
       page={page}
-      actions={<><button className="ghost" type="button" onClick={() => { setConnected(false); notify("终端会话已断开", "warning"); }}>断开</button><button className="primary" type="button" onClick={() => { setConnected(true); setLogs((current) => [...current, `reconnected to ${host}`]); notify(`已连接 ${host}`); }}>连接</button></>}
-      filters={<><FieldSelect label="主机" value={host} options={initialHostRecords.map((item) => item.name)} onChange={(value) => { setHost(value); setLogs((current) => [...current, `switch host to ${value}`]); }} /><StatusDot text={connected ? "已连接" : "未连接"} /></>}
-      metrics={<><MetricTile icon={TerminalSquare} label="当前主机" value={host} tone="blue" /><MetricTile icon={Clock3} label="会话行数" value={`${logs.length}`} tone="green" /><MetricTile icon={Shield} label="权限" value="sudo" tone="orange" /></>}
+      actions={<><button className="ghost" type="button" onClick={() => disconnectSession()} disabled={!connected}>断开当前</button><button className="primary" type="button" onClick={() => connectSession()}><RefreshCw size={15} /> 连接/重连</button></>}
+      filters={terminalFilters}
+      metrics={<><MetricTile icon={TerminalSquare} label="活动会话" value={`${sessions.filter((session) => session.status === "connected").length}`} tone="blue" /><MetricTile icon={Clock3} label="历史命令" value={`${historyRows.length}`} tone="green" /><MetricTile icon={Shield} label="高风险片段" value={`${snippets.filter((snippet) => snippet.risk !== "只读").length}`} tone="orange" /></>}
     >
-      <div className={`terminal-panel ${terminalPreset.panel !== "sessions" ? "has-terminal-extra" : ""}`}>
-        {terminalPreset.panel === "snippets" && (
-          <div className="snippet-grid">
-            {["systemctl status nginx", "df -h", "top -bn1", "journalctl -u mysql --since today"].map((snippet) => (
-              <button key={snippet} type="button" onClick={() => { setCommand(snippet); notify(`已填充命令：${snippet}`, "info"); }}>{snippet}</button>
-            ))}
+      <div className={`terminal-workbench terminal-${terminalMode}-view`}>
+        <section className="terminal-side-panel">
+          {terminalMode === "sessions" && (
+            <div className="terminal-session-list">
+              {filteredSessions.map((session) => (
+                <article key={session.id} className={session.id === selectedSession.id ? "active" : ""}>
+                  <button className="terminal-session-main" type="button" aria-label={`切换终端会话 ${session.host}`} onClick={() => switchSession(session)}>
+                    <span><StatusLight tone={session.status === "connected" ? "green" : "red"} /><b>{session.host}</b><em>{session.ip}</em></span>
+                    <strong>{session.user}</strong>
+                    <p>{session.cwd}</p>
+                    <small>{session.lastCommand}</small>
+                  </button>
+                  <div className="terminal-card-actions">
+                    <span>{session.latency}</span>
+                    <button type="button" aria-label={`${session.status === "connected" ? "断开" : "连接"} ${session.host}`} onClick={() => session.status === "connected" ? disconnectSession(session) : connectSession(session)}>{session.status === "connected" ? "断开" : "连接"}</button>
+                  </div>
+                </article>
+              ))}
+              {filteredSessions.length === 0 && <p className="module-empty-card">没有匹配的终端会话</p>}
+            </div>
+          )}
+          {terminalMode === "snippets" && (
+            <div className="terminal-snippet-library">
+              {filteredSnippets.map((snippet) => (
+                <article key={snippet.id} className={snippet.favorite ? "favorite" : ""}>
+                  <header><strong>{snippet.title}</strong><span className={`pill ${snippet.risk === "危险" ? "red" : snippet.risk === "变更" ? "orange" : "green"}`}>{snippet.risk}</span></header>
+                  <code>{snippet.command}</code>
+                  <p>{snippet.description}</p>
+                  <footer><span>{snippet.category} · {snippet.lastUsed}</span><div><button type="button" aria-label={`收藏 ${snippet.title}`} onClick={() => { setSnippets((current) => current.map((item) => item.id === snippet.id ? { ...item, favorite: !item.favorite } : item)); notify(`${snippet.title} 已${snippet.favorite ? "取消收藏" : "收藏"}`, "info"); }}>{snippet.favorite ? "取消收藏" : "收藏"}</button><button type="button" aria-label={`填充 ${snippet.title}`} onClick={() => fillSnippet(snippet)}>填充</button><button type="button" aria-label={`执行 ${snippet.title}`} onClick={() => runSnippet(snippet)}>执行</button></div></footer>
+                </article>
+              ))}
+              {filteredSnippets.length === 0 && <p className="module-empty-card">没有匹配的常用命令</p>}
+            </div>
+          )}
+          {terminalMode === "history" && (
+            <div className="terminal-history-list">
+              {filteredHistory.map((row) => (
+                <article key={row.id} className={row.pinned ? "pinned" : ""}>
+                  <header><span className={`pill ${row.status === "成功" ? "green" : "red"}`}>{row.status}</span><strong>{row.command}</strong></header>
+                  <p><b>{row.host}</b><span>{row.user} · {row.time} · {row.duration}</span></p>
+                  <code>{row.output}</code>
+                  <footer><button type="button" aria-label={`复制历史命令 ${row.command} ${row.host} ${row.time}`} onClick={() => copyCommand(row.command)}>复制</button><button type="button" aria-label={`重新执行 ${row.command} ${row.host} ${row.time}`} onClick={() => runCommand(row.command)}>重跑</button><button type="button" aria-label={`${row.pinned ? "取消固定" : "固定"} ${row.command} ${row.host} ${row.time}`} onClick={() => { setHistoryRows((current) => current.map((item) => item.id === row.id ? { ...item, pinned: !item.pinned } : item)); notify(`${row.command} 已${row.pinned ? "取消固定" : "固定"}`, "info"); }}>{row.pinned ? "取消固定" : "固定"}</button></footer>
+                </article>
+              ))}
+              {filteredHistory.length === 0 && <p className="module-empty-card">没有匹配的执行历史</p>}
+            </div>
+          )}
+        </section>
+        <section className="terminal-console-card">
+          <div className="terminal-console-head">
+            <div><span>{selectedSession.user}@{selectedSession.host}</span><strong>{selectedSession.cwd}</strong></div>
+            <StatusDot text={connected ? "已连接" : "未连接"} tone={connected ? "green" : "red"} />
           </div>
-        )}
-        {terminalPreset.panel === "history" && (
-          <div className="terminal-history">
-            {["systemctl restart nginx", "df -h", "tail -n 100 /var/log/nginx/error.log"].map((item, index) => <p key={item}><span>{index + 1}</span>{item}<b>今天</b></p>)}
+          <div className="terminal-panel">
+            <div className="terminal-toolbar">
+              <span><StatusLight tone={connected ? "green" : "red"} /> {connected ? "connected" : "disconnected"}</span>
+              <div>
+                <button type="button" onClick={() => { setSessionLogs(selectedSession.id, []); notify("终端已清屏", "info"); }}>清屏</button>
+                <button type="button" onClick={() => copyText(logs.join("\n"), "会话内容已复制")}>复制会话</button>
+                <button type="button" onClick={() => connectSession()}>重连</button>
+              </div>
+            </div>
+            <div className="terminal-log" role="log" aria-live="polite" aria-label={`${selectedSession.host} 终端输出`}>
+              {logs.length === 0 ? <p>terminal cleared</p> : logs.map((line, index) => <p key={`${line}-${index}`}>{line}</p>)}
+            </div>
+            <label className="terminal-input">
+              <span>{selectedSession.host}:~$</span>
+              <input aria-label="命令输入" value={command} disabled={!connected} placeholder={connected ? "输入命令后按 Enter" : "请先连接主机"} onChange={(event) => { setCommand(event.target.value); setPendingSensitiveCommand(null); }} onKeyDown={(event) => { if (event.key === "Enter") runCommand(); }} />
+              <button type="button" disabled={!connected || !command.trim()} onClick={() => runCommand()}>运行</button>
+            </label>
           </div>
-        )}
-        <div className="terminal-toolbar">
-          <span><StatusLight tone={connected ? "green" : "red"} /> {connected ? "connected" : "disconnected"}</span>
-          <div>
-            <button type="button" onClick={() => { setLogs([]); notify("终端已清屏", "info"); }}>清屏</button>
-            <button type="button" onClick={() => { void navigator.clipboard?.writeText(logs.join("\n")); notify("会话内容已复制", "info"); }}>复制会话</button>
-            <button type="button" onClick={() => { setConnected(true); setLogs((current) => [...current, `reconnected to ${host}`]); notify("终端已重连"); }}>重连</button>
-          </div>
-        </div>
-        <div className="terminal-log">
-          {logs.length === 0 ? <p>terminal cleared</p> : logs.map((line, index) => <p key={`${line}-${index}`}>{line}</p>)}
-        </div>
-        <label className="terminal-input">
-          <span>{host}:~$</span>
-          <input value={command} disabled={!connected} placeholder={connected ? "输入命令后按 Enter" : "请先连接主机"} onChange={(event) => setCommand(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runCommand(); }} />
-        </label>
+        </section>
       </div>
     </ModulePageShell>
   );
@@ -4673,8 +4938,8 @@ function StatusLight({ tone }: { tone: Tone | string }) {
   return <i className={`status-light ${tone}`} />;
 }
 
-function StatusDot({ text }: { text: string }) {
-  return <span className="status-dot"><StatusLight tone="green" />{text}</span>;
+function StatusDot({ text, tone = "green" }: { text: string; tone?: Tone | string }) {
+  return <span className="status-dot"><StatusLight tone={tone} />{text}</span>;
 }
 
 function FieldSelect({
