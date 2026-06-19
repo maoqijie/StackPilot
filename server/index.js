@@ -7,14 +7,26 @@ const host = process.env.HOST ?? "127.0.0.1";
 const nowTime = () => new Date().toLocaleString("zh-CN", { hour12: false });
 const makeId = (prefix) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
+const auditRows = [
+  ["05-22 10:24:31", "10.0.0.55", "李敏", "部署应用", "/api (sg-web-02)", "成功", "a1b2c3d4e5f6"],
+  ["05-22 10:23:11", "10.0.1.100", "王工", "更新防火墙", "panel-bj-02", "成功", "b2c3d4e5f6g7"],
+  ["05-22 10:22:05", "10.0.0.11", "系统", "备份数据库", "shop_db", "成功", "c3d4e5f6g7h8"],
+  ["05-22 10:18:42", "10.0.2.77", "王强", "重启服务", "nginx", "成功", "d4e5f6g7h8i9"],
+  ["05-22 10:15:19", "10.0.0.55", "系统", "上传文件", "/var/www/html", "成功", "e5f6g7h8i9j0"],
+  ["05-22 10:12:08", "10.0.1.23", "赵磊", "修改配置", "php.ini", "成功", "f6g7h8i9j0k1"],
+  ["05-22 10:08:33", "10.0.2.88", "陈晨", "删除文件", "/tmp/old.log", "失败", "h8i9j0k1l2m3"],
+];
+
 const state = {
+  selectedCluster: "panel-sg-01",
   lastRefresh: "2025-05-22 02:15",
+  scannedAt: "2025-05-22 10:24:31",
   updateCheck: {
     lastCheckedAt: "2025-05-22 02:15",
     availableUpdates: 2,
     message: "2 个组件可更新",
   },
-  healthNodes: [
+  nodes: [
     { id: "node-1", name: "panel-sg-01", ip: "10.0.0.11", env: "生产", status: "健康", latency: "38ms", cpu: "18%", memory: "42%", disk: "35%", version: "v2.8.1", uptime: "23 天 14 小时", backup: "今天 02:15", update: "已是最新", owner: "核心集群", services: ["nginx", "postgresql", "redis", "worker"] },
     { id: "node-2", name: "panel-bj-02", ip: "10.0.1.22", env: "预发", status: "健康", latency: "52ms", cpu: "27%", memory: "55%", disk: "62%", version: "v2.8.0", uptime: "18 天 9 小时", backup: "今天 02:20", update: "可更新 1", owner: "发布验证", services: ["nginx", "worker", "systemd-resolved"] },
     { id: "node-3", name: "panel-hk-03", ip: "10.0.2.33", env: "生产", status: "警告", latency: "126ms", cpu: "63%", memory: "78%", disk: "83%", version: "v2.8.0", uptime: "9 天 2 小时", backup: "昨天 02:18", update: "可更新 1", owner: "边缘站点", services: ["nginx", "mysql", "queue"] },
@@ -37,30 +49,56 @@ const state = {
   ],
 };
 
+function buildResources(tab) {
+  const multiplier = tab === "近30天" ? 1.18 : tab === "近7天" ? 1.08 : 1;
+  return [
+    { label: "CPU 使用率", value: `${Math.round(18 * multiplier)}%`, delta: tab === "今天" ? "+3%" : "+6%", values: [18, 16, 20, 14, 26, 17, 23, 15, 21, 18] },
+    { label: "内存使用率", value: `${Math.round(52 * multiplier)}%`, delta: tab === "今天" ? "+4%" : "+7%", values: [42, 48, 45, 52, 47, 55, 48, 52, 49, 57] },
+    { label: "磁盘使用率", value: `${Math.round(61 * multiplier)}%`, delta: tab === "今天" ? "+1%" : "+3%", values: [59, 61, 58, 63, 57, 62, 56, 61, 58, 64] },
+    { label: "网络流量", value: tab === "今天" ? "1.2 TB" : tab === "近7天" ? "8.9 TB" : "34.6 TB", delta: tab === "今天" ? "+8%" : "+13%", values: [20, 16, 26, 18, 30, 23, 19, 24, 21, 28] },
+  ];
+}
+
+function selectedNode() {
+  return state.nodes.find((node) => node.name === state.selectedCluster) ?? state.nodes[0];
+}
+
 function overviewPayload() {
-  const openRisks = state.risks.filter((risk) => risk.status === "待处理");
+  const node = selectedNode();
+  const healthyNodes = state.nodes.filter((item) => item.status === "健康");
   const queuedTasks = state.tasks.filter((task) => ["运行中", "等待"].includes(task.status));
-  const healthyNodes = state.healthNodes.filter((node) => node.status === "健康");
+  const openRisks = state.risks.filter((risk) => risk.status === "待处理");
+  const failedTasks = state.tasks.filter((task) => task.status === "失败");
+  const pendingUpdates = state.nodes.filter((item) => item.update !== "已是最新").length;
 
   return {
     lastRefresh: state.lastRefresh,
-    updateCheck: state.updateCheck,
     cluster: {
-      current: state.healthNodes[0]?.name ?? "",
-      status: openRisks.some((risk) => risk.level === "高危") ? "警告" : "健康",
-      latency: state.healthNodes[0]?.latency ?? "-",
-      version: state.healthNodes[0]?.version ?? "-",
-      uptime: state.healthNodes[0]?.uptime ?? "-",
-      pendingUpdates: state.healthNodes.filter((node) => node.update !== "已是最新").length,
+      current: node?.name ?? "",
+      health: node?.status ?? "维护",
+      latency: node?.latency ?? "-",
+      version: node?.version ?? "-",
+      uptime: node?.uptime ?? "-",
+      lastBackup: node?.backup ?? state.lastRefresh,
+      pendingUpdates,
     },
     metrics: [
-      { label: "在线主机", value: String(healthyNodes.length), suffix: `/ ${state.healthNodes.length}`, delta: `${Math.round((healthyNodes.length / state.healthNodes.length) * 100)}% 在线`, tone: "blue", line: [14, 20, 17, 24, 22, 31, 27, 29, 25, 30, 27, 29] },
-      { label: "待执行任务", value: String(queuedTasks.length), suffix: "", delta: `${queuedTasks.length} 队列中`, tone: "gray", line: [26, 31, 24, 16, 22, 28, 36, 18, 34, 25, 16, 12] },
-      { label: "风险项", value: String(openRisks.length), suffix: "", delta: `${openRisks.filter((risk) => risk.level === "高危").length} 高危`, tone: "orange", line: [10, 20, 21, 35, 16, 25, 22, 27, 23, 12, 12, 12] },
+      { label: "在线主机", value: String(healthyNodes.length), suffix: `/ ${state.nodes.length}`, delta: `${Math.round((healthyNodes.length / Math.max(state.nodes.length, 1)) * 100)}% 在线`, icon: "server", tone: "blue", line: [14, 20, 17, 24, 22, 31, 27, 29, 25, 30, 27, 29] },
+      { label: "网站", value: "48", suffix: "", delta: "12% 较昨日", icon: "globe", tone: "blue", line: [12, 13, 13, 13, 20, 28, 24, 21, 32, 22, 26, 24] },
+      { label: "数据库", value: "19", suffix: "", delta: "5% 较昨日", icon: "database", tone: "blue", line: [12, 13, 12, 14, 14, 26, 25, 31, 21, 33, 34, 36] },
+      { label: "待执行任务", value: String(queuedTasks.length), suffix: "", delta: `${queuedTasks.length} 队列中`, icon: "calendar", tone: "gray", line: [26, 31, 24, 16, 22, 28, 36, 18, 34, 25, 16, 12] },
+      { label: "风险项", value: String(openRisks.length), suffix: "", delta: `${openRisks.filter((risk) => risk.level === "高危").length} 高危`, icon: "shield", tone: "orange", line: [10, 20, 21, 35, 16, 25, 22, 27, 23, 12, 12, 12] },
+      { label: "今日告警", value: String(failedTasks.length), suffix: "", delta: `${failedTasks.length} 失败任务`, icon: "bell", tone: failedTasks.length ? "red" : "blue", line: [14, 28, 16, 34, 20, 27, 35, 30, 24, 18, 46, 14] },
     ],
-    healthNodes: state.healthNodes,
+    nodes: state.nodes,
     tasks: state.tasks,
+    audits: auditRows,
     risks: state.risks,
+    resources: {
+      今天: buildResources("今天"),
+      "近7天": buildResources("近7天"),
+      "近30天": buildResources("近30天"),
+    },
   };
 }
 
@@ -92,17 +130,6 @@ async function readJson(request) {
   }
 }
 
-function upsert(collection, prefix, payload) {
-  const record = { id: payload.id ?? makeId(prefix), ...payload };
-  const index = collection.findIndex((item) => item.id === record.id);
-  if (index >= 0) {
-    collection[index] = { ...collection[index], ...record };
-    return collection[index];
-  }
-  collection.unshift(record);
-  return record;
-}
-
 function patchById(collection, id, patch) {
   const index = collection.findIndex((item) => item.id === id);
   if (index === -1) return null;
@@ -110,24 +137,213 @@ function patchById(collection, id, patch) {
   return collection[index];
 }
 
-function listResource(name) {
-  if (name === "tasks") return state.tasks;
-  if (name === "health") return state.healthNodes;
-  if (name === "risks") return state.risks;
-  return null;
+function createNode(payload = {}) {
+  const id = makeId("node");
+  const node = {
+    id,
+    name: payload.name ?? `panel-new-${state.nodes.length + 1}`,
+    ip: payload.ip ?? `10.0.9.${state.nodes.length + 10}`,
+    env: payload.env ?? "生产",
+    status: payload.status ?? "健康",
+    latency: payload.latency ?? "44ms",
+    cpu: payload.cpu ?? "11%",
+    memory: payload.memory ?? "31%",
+    disk: payload.disk ?? "24%",
+    version: payload.version ?? "v2.8.1",
+    uptime: payload.uptime ?? "刚刚接入",
+    backup: payload.backup ?? state.lastRefresh,
+    update: payload.update ?? "已是最新",
+    owner: payload.owner ?? "未分配",
+    services: payload.services ?? ["nginx", "worker"],
+  };
+  state.nodes.unshift(node);
+  state.selectedCluster = node.name;
+  return node;
 }
 
-function prefixFor(name) {
-  if (name === "tasks") return "task";
-  if (name === "health") return "node";
-  return "risk";
+function createTask(payload = {}) {
+  const task = {
+    id: payload.id ?? makeId("task"),
+    type: payload.type ?? "巡检",
+    title: payload.title ?? "手动触发集群巡检",
+    target: payload.target ?? "全部主机",
+    status: payload.status ?? "运行中",
+    priority: payload.priority ?? "中",
+    operator: payload.operator ?? "管理员",
+    queuedAt: payload.queuedAt ?? "刚刚",
+    duration: payload.duration ?? "运行中",
+    logs: payload.logs ?? ["创建巡检任务", "正在采集节点状态"],
+  };
+  state.tasks.unshift(task);
+  return task;
 }
 
-function validateCreate(name, payload) {
-  if (name === "tasks" && !payload.title) return "任务 title 不能为空";
-  if (name === "health" && (!payload.name || !payload.ip)) return "健康节点 name 和 ip 不能为空";
-  if (name === "risks" && !payload.title) return "风险 title 不能为空";
-  return null;
+function createRisk(payload = {}) {
+  const risk = {
+    id: payload.id ?? makeId("risk"),
+    title: payload.title ?? "新风险项",
+    level: payload.level ?? "中危",
+    status: payload.status ?? "待处理",
+    target: payload.target ?? "未指定对象",
+    owner: payload.owner ?? "安全组",
+    impact: payload.impact ?? "等待后续评估",
+    detected: payload.detected ?? "刚刚",
+    suggestion: payload.suggestion ?? "查看详情并制定处理方案",
+    traceId: payload.traceId ?? makeId("risk-trace"),
+  };
+  state.risks.unshift(risk);
+  return risk;
+}
+
+function sendRecordOr404(response, key, record, message = "记录不存在") {
+  if (!record) {
+    sendError(response, 404, message);
+    return false;
+  }
+  sendJson(response, 200, record);
+  return true;
+}
+
+async function handleOverviewRoute(request, response, parts) {
+  if (request.method === "GET" && parts.length === 2) {
+    sendJson(response, 200, overviewPayload());
+    return;
+  }
+
+  if (request.method === "POST" && parts[2] === "refresh" && parts.length === 3) {
+    state.lastRefresh = nowTime();
+    sendJson(response, 200, overviewPayload());
+    return;
+  }
+
+  if (request.method === "POST" && parts[2] === "cluster" && parts.length === 3) {
+    const payload = await readJson(request);
+    const node = state.nodes.find((item) => item.name === payload.cluster);
+    if (!node) {
+      sendError(response, 404, "集群节点不存在");
+      return;
+    }
+    state.selectedCluster = node.name;
+    sendJson(response, 200, overviewPayload());
+    return;
+  }
+
+  if (request.method === "POST" && parts[2] === "check-updates" && parts.length === 3) {
+    state.updateCheck = {
+      lastCheckedAt: nowTime(),
+      availableUpdates: state.nodes.filter((node) => node.update !== "已是最新").length,
+      message: "检查完成",
+    };
+    sendJson(response, 200, {
+      message: `检查完成：${state.updateCheck.availableUpdates} 个组件可更新`,
+      tone: state.updateCheck.availableUpdates ? "warning" : "success",
+      overview: overviewPayload(),
+    });
+    return;
+  }
+
+  sendError(response, 404, "总览接口不存在");
+}
+
+async function handleHealthRoute(request, response, parts) {
+  if (request.method === "GET" && parts.length === 3) {
+    sendJson(response, 200, { nodes: state.nodes, lastRefresh: state.lastRefresh });
+    return;
+  }
+
+  if (request.method === "POST" && parts[3] === "refresh" && parts.length === 4) {
+    state.lastRefresh = nowTime();
+    sendJson(response, 200, { nodes: state.nodes, lastRefresh: state.lastRefresh });
+    return;
+  }
+
+  if (request.method === "POST" && parts[3] === "nodes" && parts.length === 4) {
+    createNode(await readJson(request));
+    sendJson(response, 201, {
+      nodes: state.nodes,
+      lastRefresh: state.lastRefresh,
+      message: "新增节点已接入",
+      tone: "info",
+    });
+    return;
+  }
+
+  if (request.method === "PATCH" && parts[3] === "nodes" && parts.length === 5) {
+    const node = patchById(state.nodes, parts[4], await readJson(request));
+    sendRecordOr404(response, "node", node ? { node, message: `${node.name} 已更新` } : null);
+    return;
+  }
+
+  if (request.method === "POST" && parts[3] === "nodes" && parts[5] === "restart" && parts.length === 6) {
+    const node = state.nodes.find((item) => item.id === parts[4]);
+    if (!node) {
+      sendError(response, 404, "节点不存在");
+      return;
+    }
+    node.uptime = "刚刚重启";
+    sendJson(response, 200, { message: `${node.name} 服务已重启`, tone: "info" });
+    return;
+  }
+
+  sendError(response, 404, "集群状态接口不存在");
+}
+
+async function handleTasksRoute(request, response, parts) {
+  if (request.method === "GET" && parts.length === 3) {
+    sendJson(response, 200, { tasks: state.tasks });
+    return;
+  }
+
+  if (request.method === "POST" && parts.length === 3) {
+    createTask(await readJson(request));
+    sendJson(response, 201, { tasks: state.tasks, message: "已创建巡检任务", tone: "info" });
+    return;
+  }
+
+  if (request.method === "POST" && parts[3] === "export" && parts.length === 4) {
+    sendJson(response, 200, { message: "已复制当前任务流摘要", tone: "info" });
+    return;
+  }
+
+  if (request.method === "PATCH" && parts.length === 4) {
+    const task = patchById(state.tasks, parts[3], await readJson(request));
+    sendRecordOr404(response, "task", task ? { task, message: `${task.title} 已更新` } : null);
+    return;
+  }
+
+  sendError(response, 404, "任务流接口不存在");
+}
+
+async function handleRisksRoute(request, response, parts) {
+  if (request.method === "GET" && parts.length === 3) {
+    sendJson(response, 200, { risks: state.risks, scannedAt: state.scannedAt });
+    return;
+  }
+
+  if (request.method === "POST" && parts.length === 3) {
+    createRisk(await readJson(request));
+    sendJson(response, 201, { risks: state.risks, scannedAt: state.scannedAt, message: "风险已创建", tone: "info" });
+    return;
+  }
+
+  if (request.method === "POST" && parts[3] === "scan" && parts.length === 4) {
+    state.scannedAt = nowTime();
+    sendJson(response, 200, { risks: state.risks, scannedAt: state.scannedAt, message: "已触发风险重新扫描", tone: "info" });
+    return;
+  }
+
+  if (request.method === "POST" && parts[3] === "export" && parts.length === 4) {
+    sendJson(response, 200, { message: "风险报告已导出", tone: "info" });
+    return;
+  }
+
+  if (request.method === "PATCH" && parts.length === 4) {
+    const risk = patchById(state.risks, parts[3], await readJson(request));
+    sendRecordOr404(response, "risk", risk ? { risk, message: `${risk.title} 已更新` } : null);
+    return;
+  }
+
+  sendError(response, 404, "风险中心接口不存在");
 }
 
 async function handleRequest(request, response) {
@@ -149,61 +365,22 @@ async function handleRequest(request, response) {
     return;
   }
 
-  if (request.method === "GET" && parts.length === 2) {
-    sendJson(response, 200, overviewPayload());
+  if (parts[2] === "health") {
+    await handleHealthRoute(request, response, parts);
     return;
   }
 
-  if (request.method === "POST" && parts[2] === "refresh" && parts.length === 3) {
-    state.lastRefresh = nowTime();
-    sendJson(response, 200, overviewPayload());
+  if (parts[2] === "tasks") {
+    await handleTasksRoute(request, response, parts);
     return;
   }
 
-  if (request.method === "POST" && parts[2] === "check-updates" && parts.length === 3) {
-    state.updateCheck = {
-      lastCheckedAt: nowTime(),
-      availableUpdates: state.healthNodes.filter((node) => node.update !== "已是最新").length,
-      message: "检查完成",
-    };
-    sendJson(response, 200, state.updateCheck);
+  if (parts[2] === "risks") {
+    await handleRisksRoute(request, response, parts);
     return;
   }
 
-  const resourceName = parts[2];
-  const collection = listResource(resourceName);
-  if (!collection) {
-    sendError(response, 404, "资源不存在");
-    return;
-  }
-
-  if (request.method === "GET" && parts.length === 3) {
-    sendJson(response, 200, collection);
-    return;
-  }
-
-  if (request.method === "POST" && parts.length === 3) {
-    const payload = await readJson(request);
-    const validationError = validateCreate(resourceName, payload);
-    if (validationError) {
-      sendError(response, 400, validationError);
-      return;
-    }
-    sendJson(response, 201, upsert(collection, prefixFor(resourceName), payload));
-    return;
-  }
-
-  if (request.method === "PATCH" && parts.length === 4) {
-    const patched = patchById(collection, parts[3], await readJson(request));
-    if (!patched) {
-      sendError(response, 404, "记录不存在");
-      return;
-    }
-    sendJson(response, 200, patched);
-    return;
-  }
-
-  sendError(response, 405, "方法不支持");
+  await handleOverviewRoute(request, response, parts);
 }
 
 const server = createServer((request, response) => {
