@@ -336,24 +336,20 @@ a {
 }
 
 .side-nav-group.open {
-  background: rgb(255 255 255 / 2.5%);
-  border-color: rgb(255 255 255 / 6%);
+  background: transparent;
+  border-color: transparent;
 }
 
 .side-nav-group.has-active-child {
-  background: rgb(14 165 233 / 5%);
-  border-color: rgb(25 183 232 / 12%);
-  box-shadow:
-    inset 1px 0 0 rgb(25 183 232 / 38%),
-    inset 0 0 0 1px rgb(255 255 255 / 5%);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .side-nav-group.has-active-child.open {
-  background: rgb(14 165 233 / 5%);
-  border-color: rgb(25 183 232 / 13%);
-  box-shadow:
-    inset 1px 0 0 rgb(25 183 232 / 34%),
-    inset 0 0 0 1px rgb(255 255 255 / 4%);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .side-nav-row {
@@ -479,7 +475,7 @@ a {
 }
 
 .side-nav-group.has-active-child.open .side-nav-row {
-  background: rgb(255 255 255 / 4%);
+  background: transparent;
 }
 
 .side-nav-group.has-active-child.open .side-toggle-button {
@@ -554,10 +550,10 @@ a {
 
 .side-submenu {
   position: relative;
-  margin: 0 7px 7px 10px;
-  padding: 4px 0 4px 11px;
+  margin: -2px 7px 6px 10px;
+  padding: 3px 0 3px 12px;
   display: grid;
-  gap: 1px;
+  gap: 0;
   max-height: 0;
   overflow: hidden;
   opacity: 0;
@@ -571,11 +567,11 @@ a {
 .side-submenu::before {
   content: "";
   position: absolute;
-  top: 5px;
-  bottom: 6px;
+  top: 7px;
+  bottom: 7px;
   left: 2px;
   width: 1px;
-  background: linear-gradient(180deg, rgb(82 178 219 / 10%), rgb(126 215 244 / 36%), rgb(82 178 219 / 10%));
+  background: linear-gradient(180deg, rgb(82 178 219 / 8%), rgb(126 215 244 / 30%), rgb(82 178 219 / 8%));
 }
 
 .side-nav-group:not(.open) .side-submenu {
@@ -592,13 +588,13 @@ a {
 
 .side-child {
   position: relative;
-  min-height: 30px;
-  padding: 0 5px 0 10px;
-  border-radius: 6px;
+  min-height: 28px;
+  padding: 0 6px 0 10px;
+  border-radius: 5px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 6px;
+  column-gap: 7px;
   color: #b7cfdd;
   background: transparent;
   font-size: 12px;
@@ -612,9 +608,9 @@ a {
 
 .side-child i {
   position: absolute;
-  left: -10px;
+  left: -9px;
   top: 50%;
-  width: 8px;
+  width: 6px;
   height: 1px;
   border-radius: 999px;
   background: rgb(126 215 244 / 24%);
@@ -628,9 +624,10 @@ a {
 
 .side-child-copy {
   min-width: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 
 .side-child-label {
@@ -643,19 +640,18 @@ a {
 }
 
 .side-child em {
-  max-width: 58px;
+  max-width: 78px;
   min-width: 0;
-  height: 18px;
-  padding: 0 6px;
-  display: inline-grid;
-  place-items: center;
+  height: auto;
+  padding: 0;
+  display: block;
   justify-self: start;
   overflow: hidden;
-  color: #8fb2c5;
-  background: rgb(255 255 255 / 4%);
-  border-radius: 999px;
+  color: #86a5b7;
+  background: transparent;
+  border-radius: 0;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   font-style: normal;
   line-height: 1;
   white-space: nowrap;
@@ -663,44 +659,48 @@ a {
 }
 
 .side-child-badge {
-  min-width: 0;
-  height: 18px;
-  padding: 0 6px;
+  min-width: 18px;
+  max-width: 34px;
+  height: 17px;
+  padding: 0 5px;
   border-radius: 999px;
   display: grid;
   place-items: center;
   justify-self: end;
-  color: #d7f3fd;
-  background: rgb(14 165 233 / 12%);
+  color: #bfeeff;
+  background: rgb(14 165 233 / 10%);
   font-size: 11px;
   font-weight: 800;
   line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   box-shadow: inset 0 0 0 1px rgb(25 183 232 / 18%);
 }
 
 .side-child:hover,
 .side-child.is-child-active {
   color: #ffffff;
-  background: rgb(255 255 255 / 6%);
+  background: rgb(255 255 255 / 4.5%);
 }
 
 .side-child.is-child-active {
-  background: rgb(14 165 233 / 14%);
+  background: rgb(14 165 233 / 11%);
   box-shadow:
-    inset 0 0 0 1px rgb(25 183 232 / 16%),
-    inset 2px 0 0 rgb(25 183 232 / 78%);
+    inset 0 0 0 1px rgb(25 183 232 / 13%),
+    inset 2px 0 0 rgb(25 183 232 / 68%);
 }
 
 .side-child.is-child-active i {
-  width: 9px;
+  width: 7px;
   height: 1px;
   background: #19b7e8;
   box-shadow: 0 0 8px rgb(25 183 232 / 42%);
 }
 
 .side-child.is-child-active em {
-  color: #d9f5ff;
-  background: rgb(14 165 233 / 14%);
+  color: #bfeeff;
+  background: transparent;
 }
 
 .side-child.is-child-active .side-child-badge {
