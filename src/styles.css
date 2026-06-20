@@ -5736,6 +5736,108 @@ a {
   white-space: nowrap;
 }
 
+.notice-policy-summary,
+.notice-status-grid {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  overflow: hidden;
+  background: #fbfdff;
+}
+
+.notice-status-grid {
+  margin: 14px 14px 0;
+}
+
+.notice-policy-summary p,
+.notice-status-grid p {
+  min-height: 38px;
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  color: #4a6073;
+  font-size: 12px;
+}
+
+.notice-policy-summary p:first-child,
+.notice-status-grid p:first-child {
+  border-top: 0;
+}
+
+.notice-policy-summary span,
+.notice-policy-summary em,
+.notice-status-grid span,
+.notice-status-grid em {
+  color: #7b8fa0;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.notice-policy-summary b,
+.notice-policy-summary em,
+.notice-status-grid b,
+.notice-status-grid em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notice-policy-summary .ok-line,
+.notice-policy-summary .warn-line,
+.notice-policy-summary .error-line {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+.notice-delivery-list {
+  margin: 12px 14px 0;
+}
+
+.notice-delivery-list > div {
+  height: 28px;
+  display: flex;
+  justify-content: space-between;
+  color: #263847;
+  font-size: 12px;
+}
+
+.notice-delivery-list > div button {
+  color: var(--blue);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.notice-delivery-list p {
+  min-height: 30px;
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: 54px 112px minmax(0, 1fr) 14px 86px;
+  align-items: center;
+  gap: 7px;
+  color: #52687a;
+  font-size: 11px;
+}
+
+.notice-delivery-list em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: normal;
+}
+
+.notice-delivery-list small {
+  color: #6c8192;
+  font-weight: 700;
+}
+
 .check-row {
   padding: 0 14px;
   display: flex;
@@ -5770,6 +5872,16 @@ a {
 .check-row button.checked::before {
   border-color: var(--blue);
   background: var(--blue);
+}
+
+.notice-event-row {
+  padding: 2px 0 0;
+  gap: 9px 14px;
+  flex-wrap: wrap;
+}
+
+.notice-event-row button {
+  min-height: 44px;
 }
 
 .settings-buttons {
@@ -5961,6 +6073,35 @@ a {
     grid-column: 2;
   }
 
+  .notice-policy-summary p,
+  .notice-status-grid p {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  .notice-policy-summary em,
+  .notice-status-grid em {
+    grid-column: 2;
+  }
+
+  .notice-policy-summary .ok-line,
+  .notice-policy-summary .warn-line,
+  .notice-policy-summary .error-line {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  .notice-delivery-list p {
+    grid-template-columns: 48px 96px minmax(0, 1fr) 12px 76px;
+  }
+
+  .notice-delivery-list p span,
+  .notice-delivery-list p b,
+  .notice-delivery-list p small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .settings-buttons {
     flex-wrap: wrap;
   }
@@ -6124,6 +6265,44 @@ a {
     grid-column: auto;
   }
 
+  .notice-policy-summary p,
+  .notice-status-grid p {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .notice-policy-summary em,
+  .notice-status-grid em {
+    grid-column: auto;
+  }
+
+  .notice-policy-summary .ok-line,
+  .notice-policy-summary .warn-line,
+  .notice-policy-summary .error-line {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .notice-status-grid {
+    margin: 12px 12px 0;
+  }
+
+  .notice-delivery-list {
+    margin: 12px 12px 0;
+  }
+
+  .notice-delivery-list p {
+    grid-template-columns: 45px minmax(78px, 0.85fr) minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .notice-delivery-list p .status-light {
+    display: none;
+  }
+
+  .notice-delivery-list p small {
+    grid-column: 2 / -1;
+  }
+
   .check-row {
     padding: 0 12px;
     flex-wrap: wrap;
@@ -6132,6 +6311,10 @@ a {
 
   .check-row button {
     min-height: 28px;
+  }
+
+  .notice-event-row button {
+    min-height: 44px;
   }
 
   .settings-buttons {

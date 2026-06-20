@@ -4702,6 +4702,36 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
   const [securityReview, setSecurityReview] = useState("2 个 IP 白名单等待复核");
   const [securityReviewTone, setSecurityReviewTone] = useState<"ok" | "warn">("warn");
   const [mailNotice, setMailNotice] = useState(true);
+  const noticeWebhookInputRef = useRef<HTMLInputElement>(null);
+  const noticeRecipientsInputRef = useRef<HTMLInputElement>(null);
+  const [noticeDraft, setNoticeDraft] = useState({
+    webhook: "https://hooks.example.com/stackpilot",
+    recipients: "ops@example.com, dev@example.com",
+    severity: "关键与告警",
+    digest: "每小时摘要",
+  });
+  const [savedNotice, setSavedNotice] = useState({
+    webhook: "https://hooks.example.com/stackpilot",
+    recipients: "ops@example.com, dev@example.com",
+    severity: "关键与告警",
+    digest: "每小时摘要",
+    mailEnabled: true,
+    events: ["高危告警", "备份失败", "部署完成"],
+  });
+  const [noticeErrors, setNoticeErrors] = useState({ webhook: "", recipients: "" });
+  const [noticeConnection, setNoticeConnection] = useState({
+    status: "已连接",
+    detail: "响应成本 45ms",
+    tone: "ok" as "ok" | "warn" | "error",
+    signature: "https://hooks.example.com/stackpilot::mail::ops@example.com, dev@example.com",
+  });
+  const [noticeSavedAt, setNoticeSavedAt] = useState("2025-08-12 18:43");
+  const [noticeEvents, setNoticeEvents] = useState(["高危告警", "备份失败", "部署完成"]);
+  const [noticeDeliveries, setNoticeDeliveries] = useState([
+    { id: "notice-1", time: "18:42", channel: "Webhook", target: "ops-alerts", result: "成功", latency: "45ms" },
+    { id: "notice-2", time: "18:20", channel: "邮件", target: "ops@example.com", result: "成功", latency: "1.2s" },
+    { id: "notice-3", time: "17:58", channel: "Webhook", target: "deploy-room", result: "重试中", latency: "3.4s" },
+  ]);
   const activeSettingsPage = settingsPageForTab(activeTab);
   const backupTargetSignature = `${backupDraft.target}::${backupDraft.location.trim()}`;
   const backupConnectionValid = backupConnection.status === "连接正常" && backupConnection.signature === backupTargetSignature;
@@ -4855,6 +4885,129 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     setSecurityReviewTone(review.tone);
     notify(review.ok ? "安全策略复核已完成" : "安全策略复核未通过", review.ok ? "success" : "warning");
   };
+  const readNoticeDraft = () => ({
+    ...noticeDraft,
+    webhook: noticeWebhookInputRef.current?.value ?? noticeDraft.webhook,
+    recipients: noticeRecipientsInputRef.current?.value ?? noticeDraft.recipients,
+  });
+  const noticeSignature = (draft: typeof noticeDraft, mailEnabled = mailNotice) => `${draft.webhook.trim()}::${mailEnabled ? `mail::${draft.recipients.trim()}` : "webhook-only"}`;
+  const validateNoticeDraft = (draft: typeof noticeDraft) => {
+    const webhook = draft.webhook.trim();
+    const recipients = draft.recipients.split(",").map((item) => item.trim()).filter(Boolean);
+    return {
+      webhook: /^https:\/\/[\w.-]+(?::\d+)?(?:\/[\w./?=&:%+-]*)?$/.test(webhook) ? "" : "请输入 https:// 开头的 Webhook 地址",
+      recipients: !mailNotice || recipients.length > 0 && recipients.every((item) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)) ? "" : "请输入有效邮箱，多个收件人用逗号分隔",
+    };
+  };
+  const updateNoticeDraft = (key: keyof typeof noticeDraft, value: string) => {
+    const next = { ...noticeDraft, [key]: value };
+    setNoticeDraft(next);
+    setNoticeErrors((current) => ({ ...current, [key]: "" }));
+    if (key === "webhook" || key === "recipients" && mailNotice) {
+      setNoticeConnection({
+        status: "待测试",
+        detail: "通知渠道已变更，需要重新测试连接。",
+        tone: "warn",
+        signature: "",
+      });
+      return;
+    }
+    setNoticeConnection((current) => ({
+      ...current,
+      status: "待保存",
+      detail: "通知策略已变更，保存后生效。",
+      tone: "warn",
+    }));
+  };
+  const toggleNoticeEvent = (eventName: string) => {
+    setNoticeEvents((current) => current.includes(eventName) ? current.filter((item) => item !== eventName) : [...current, eventName]);
+    setNoticeConnection((current) => ({
+      ...current,
+      status: "待保存",
+      detail: "事件范围已变更，保存后生效。",
+      tone: "warn",
+    }));
+  };
+  const testNoticeConnection = () => {
+    const draft = readNoticeDraft();
+    setNoticeDraft(draft);
+    const errors = validateNoticeDraft(draft);
+    setNoticeErrors(errors);
+    if (errors.webhook || errors.recipients) {
+      setNoticeConnection({ status: "需要检查", detail: errors.webhook || errors.recipients, tone: "error", signature: "" });
+      notify(errors.webhook ? "Webhook 地址格式不正确" : "通知收件人格式不正确", "danger");
+      return false;
+    }
+    const latency = `${38 + noticeDeliveries.length * 3}ms`;
+    setNoticeConnection({
+      status: "已连接",
+      detail: `本地模拟连接成功，响应成本 ${latency}`,
+      tone: "ok",
+      signature: noticeSignature(draft),
+    });
+    notify(`通知渠道测试成功：${latency}`);
+    return true;
+  };
+  const saveNoticeSettings = () => {
+    const draft = readNoticeDraft();
+    setNoticeDraft(draft);
+    const errors = validateNoticeDraft(draft);
+    setNoticeErrors(errors);
+    if (errors.webhook || errors.recipients) {
+      notify(errors.webhook ? "Webhook 地址格式不正确" : "通知收件人格式不正确", "danger");
+      return;
+    }
+    if (noticeEvents.length === 0) {
+      notify("至少选择一个通知事件", "danger");
+      return;
+    }
+    if (noticeConnection.signature !== noticeSignature(draft) || noticeConnection.tone !== "ok") {
+      setNoticeConnection({ status: "待测试", detail: "请先测试当前通知渠道连接。", tone: "warn", signature: "" });
+      notify("请先测试当前通知渠道连接", "warning");
+      return;
+    }
+    setNoticeSavedAt("刚刚");
+    setSavedNotice({ ...draft, mailEnabled: mailNotice, events: noticeEvents });
+    setNoticeConnection((current) => ({
+      ...current,
+      status: "已连接",
+      detail: "通知策略已保存，连接状态有效。",
+      tone: "ok",
+    }));
+    notify("通知设置已保存");
+  };
+  const sendNoticePreview = () => {
+    const draft = readNoticeDraft();
+    setNoticeDraft(draft);
+    const errors = validateNoticeDraft(draft);
+    setNoticeErrors(errors);
+    if (errors.webhook || errors.recipients) {
+      notify(errors.webhook ? "Webhook 地址格式不正确" : "通知收件人格式不正确", "danger");
+      return;
+    }
+    if (noticeEvents.length === 0) {
+      notify("至少选择一个通知事件", "danger");
+      return;
+    }
+    if (noticeConnection.signature !== noticeSignature(draft) || noticeConnection.tone !== "ok") {
+      setNoticeConnection({ status: "待测试", detail: "请先测试当前通知渠道连接。", tone: "warn", signature: "" });
+      notify("请先测试当前通知渠道连接", "warning");
+      return;
+    }
+    const recipients = draft.recipients.split(",").map((item) => item.trim()).filter(Boolean);
+    setNoticeDeliveries((current) => [
+      {
+        id: `notice-preview-${Date.now()}`,
+        time: "刚刚",
+        channel: mailNotice ? "邮件 + Webhook" : "Webhook",
+        target: mailNotice ? recipients[0] : "ops-alerts",
+        result: "成功",
+        latency: "52ms",
+      },
+      ...current.slice(0, 4),
+    ]);
+    notify("通知预览已发送");
+  };
   return (
     <div className="settings-mock-page">
       <div className="page-head settings-title">
@@ -4972,10 +5125,47 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
         </PanelCard>}
         {activeTab === "通知" && <PanelCard title="通知设置">
           <div className="right-settings">
-            <FormLine label="Webhook 通知" value="https://hooks.example.com/stackpilot" hintButton="测试" hintAction={() => notify("Webhook 测试成功")} />
-            <ToggleLine label="关键事件邮件通知" active={mailNotice} onToggle={setMailNotice} />
-            <FormLine label="通知收件人" value="ops@example.com, dev@example.com" />
-            <div className="connected-line"><CheckCircle2 size={14} /> 已连接（响应成本 45ms） <button type="button" onClick={() => notify("通知预览已发送")}>预览</button></div>
+            <FormLine label="Webhook 通知" value={noticeDraft.webhook} onChange={(value) => updateNoticeDraft("webhook", value)} error={noticeErrors.webhook} hintButton="测试" hintAction={testNoticeConnection} inputRef={noticeWebhookInputRef} />
+            <ToggleLine label="关键事件邮件通知" active={mailNotice} onToggle={(active) => {
+              const draft = readNoticeDraft();
+              setMailNotice(active);
+              setNoticeDraft(draft);
+              setNoticeErrors((current) => ({ ...current, recipients: active ? current.recipients : "" }));
+              setNoticeConnection((current) => {
+                if (!active && current.tone === "ok") {
+                  return { ...current, status: "已连接", detail: "邮件已关闭，Webhook 连接仍有效，保存后生效。", signature: noticeSignature(draft, false) };
+                }
+                return { status: "待测试", detail: "邮件通知状态已变更，需要重新测试渠道。", tone: "warn", signature: "" };
+              });
+            }} />
+            <FormLine label="通知收件人" value={noticeDraft.recipients} onChange={(value) => updateNoticeDraft("recipients", value)} error={noticeErrors.recipients} hint="多个邮箱用逗号分隔" inputRef={noticeRecipientsInputRef} />
+            <FormSelectLine label="通知级别" value={noticeDraft.severity} options={["仅高危", "关键与告警", "全部事件"]} onChange={(value) => updateNoticeDraft("severity", value)} />
+            <FormSelectLine label="摘要频率" value={noticeDraft.digest} options={["实时推送", "每小时摘要", "每日摘要"]} onChange={(value) => updateNoticeDraft("digest", value)} />
+            <div className="check-row notice-event-row">
+              {["高危告警", "备份失败", "部署完成", "登录异常"].map((item) => (
+                <button key={item} className={noticeEvents.includes(item) ? "checked" : ""} type="button" aria-pressed={noticeEvents.includes(item)} onClick={() => toggleNoticeEvent(item)}>{item}</button>
+              ))}
+            </div>
+            <div className="notice-policy-summary">
+              <p><span>渠道</span><b>{mailNotice ? "邮件 + Webhook" : "仅 Webhook"}</b><em>{noticeDraft.severity}</em></p>
+              <p><span>范围</span><b>{noticeEvents.length ? noticeEvents.join(" / ") : "未选择事件"}</b><em>{noticeDraft.digest}</em></p>
+              <p className={noticeConnection.tone === "ok" ? "ok-line" : noticeConnection.tone === "error" ? "error-line" : "warn-line"}><span>{noticeConnection.status}</span><b>{noticeConnection.detail}</b></p>
+            </div>
+            <div className="settings-buttons notice-actions"><button className="primary" type="button" onClick={saveNoticeSettings}>保存通知设置</button><button className="ghost" type="button" onClick={testNoticeConnection}>测试连接</button><button className="ghost" type="button" onClick={sendNoticePreview}>发送预览</button></div>
+          </div>
+        </PanelCard>}
+        {activeTab === "通知" && <PanelCard title="投递状态" className="settings-card-wide">
+          <div className="notice-status-grid">
+            <p><span>最近保存</span><b>{noticeSavedAt}</b><em>投递面板显示已保存配置</em></p>
+            <p><span>收件人</span><b>{savedNotice.mailEnabled ? savedNotice.recipients : "Webhook-only"}</b><em>{savedNotice.mailEnabled ? "邮件启用" : "邮件关闭"}</em></p>
+            <p><span>Webhook</span><b>{savedNotice.webhook}</b><em>{noticeConnection.status}</em></p>
+            <p><span>策略</span><b>{savedNotice.severity} · {savedNotice.digest}</b><em>{savedNotice.events.join(" / ")}</em></p>
+          </div>
+          <div className="notice-delivery-list">
+            <div><strong>最近投递</strong><button type="button" onClick={sendNoticePreview}>发送预览</button></div>
+            {noticeDeliveries.map((row) => (
+              <p key={row.id}><span>{row.time}</span><b>{row.channel}</b><em>{row.target}</em><StatusLight tone={row.result === "成功" ? "green" : "orange"} /><small>{row.result} · {row.latency}</small></p>
+            ))}
           </div>
         </PanelCard>}
       </div>
