@@ -4691,6 +4691,16 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
   ]);
   const [twoFactor, setTwoFactor] = useState(true);
   const [multiLogin, setMultiLogin] = useState(false);
+  const securityWhitelistInputRef = useRef<HTMLInputElement>(null);
+  const [securityDraft, setSecurityDraft] = useState({
+    sessionTimeout: "30 分钟",
+    ipWhitelist: "10.0.0.0/8, 172.16.0.0/12",
+    lockPolicy: "5 次 / 15 分钟",
+  });
+  const [securityError, setSecurityError] = useState("");
+  const [securitySavedAt, setSecuritySavedAt] = useState("2025-08-12 18:47");
+  const [securityReview, setSecurityReview] = useState("2 个 IP 白名单等待复核");
+  const [securityReviewTone, setSecurityReviewTone] = useState<"ok" | "warn">("warn");
   const [mailNotice, setMailNotice] = useState(true);
   const activeSettingsPage = settingsPageForTab(activeTab);
   const backupTargetSignature = `${backupDraft.target}::${backupDraft.location.trim()}`;
@@ -4793,6 +4803,58 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     setBackupVerification((current) => ({ ...current, drill: "恢复演练已排队", drillTone: "warn" }));
     notify("恢复演练已排队", "info");
   };
+  const updateSecurityDraft = (key: keyof typeof securityDraft, value: string) => {
+    setSecurityDraft((current) => ({ ...current, [key]: value }));
+    setSecurityError("");
+    setSecurityReview("安全策略已变更，等待复核");
+    setSecurityReviewTone("warn");
+  };
+  const isValidIpv4Cidr = (value: string) => {
+    const [ip, prefix] = value.split("/");
+    const octets = ip.split(".");
+    if (octets.length !== 4 || octets.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255)) return false;
+    if (prefix === undefined) return true;
+    return /^\d{1,2}$/.test(prefix) && Number(prefix) <= 32;
+  };
+  const validateSecurityWhitelist = (ipWhitelist: string) => {
+    const whitelistParts = ipWhitelist.split(",").map((item) => item.trim()).filter(Boolean);
+    if (whitelistParts.length === 0) return "至少保留一个 IP 或 CIDR 白名单";
+    if (whitelistParts.some((item) => !isValidIpv4Cidr(item))) return "仅支持 IPv4 或 CIDR，例如 10.0.0.0/8";
+    return "";
+  };
+  const securityReviewResult = (ipWhitelist: string) => {
+    const whitelistError = validateSecurityWhitelist(ipWhitelist);
+    if (whitelistError) return { ok: false, message: whitelistError, tone: "warn" as const };
+    if (!twoFactor) return { ok: false, message: "MFA 未强制启用，建议复核", tone: "warn" as const };
+    if (multiLogin) return { ok: false, message: "多地登录已开启，等待安全复核", tone: "warn" as const };
+    return { ok: true, message: "MFA 覆盖率 100%，白名单校验通过", tone: "ok" as const };
+  };
+  const saveSecurityPolicy = () => {
+    const ipWhitelist = securityWhitelistInputRef.current?.value ?? securityDraft.ipWhitelist;
+    setSecurityDraft((current) => ({ ...current, ipWhitelist }));
+    const whitelistError = validateSecurityWhitelist(ipWhitelist);
+    if (whitelistError) {
+      setSecurityError(whitelistError);
+      notify(whitelistError.includes("至少") ? "IP 白名单不能为空" : "IP 白名单格式不正确", "danger");
+      return;
+    }
+    const review = securityReviewResult(ipWhitelist);
+    setSecuritySavedAt("刚刚");
+    setSecurityReview(review.ok ? "安全策略已校准" : review.message);
+    setSecurityReviewTone(review.tone);
+    notify("安全策略已保存");
+  };
+  const runSecurityReview = () => {
+    const ipWhitelist = securityWhitelistInputRef.current?.value ?? securityDraft.ipWhitelist;
+    setSecurityDraft((current) => ({ ...current, ipWhitelist }));
+    const review = securityReviewResult(ipWhitelist);
+    if (!review.ok && validateSecurityWhitelist(ipWhitelist)) {
+      setSecurityError(review.message);
+    }
+    setSecurityReview(review.message);
+    setSecurityReviewTone(review.tone);
+    notify(review.ok ? "安全策略复核已完成" : "安全策略复核未通过", review.ok ? "success" : "warning");
+  };
   return (
     <div className="settings-mock-page">
       <div className="page-head settings-title">
@@ -4880,18 +4942,32 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
         </PanelCard>}
         {activeTab === "安全" && <PanelCard title="安全设置">
           <div className="right-settings">
-            <ToggleLine label="强制启用两步验证（2FA）" active={twoFactor} onToggle={setTwoFactor} />
-            <FormSelectLine label="会话超时时间" value="30 分钟" />
-            <FormLine label="IP 访问白名单" value="10.0.0.0/8, 172.16.0.0/12" />
-            <ToggleLine label="允许多地同时登录" active={multiLogin} onToggle={setMultiLogin} />
-            <FormSelectLine label="登录失败锁定" value="5 次 / 15 分钟" />
+            <ToggleLine label="强制启用两步验证（2FA）" active={twoFactor} onToggle={(active) => {
+              setTwoFactor(active);
+              setSecurityReview("安全策略已变更，等待复核");
+              setSecurityReviewTone("warn");
+            }} />
+            <FormSelectLine label="会话超时时间" value={securityDraft.sessionTimeout} options={["15 分钟", "30 分钟", "60 分钟"]} onChange={(value) => updateSecurityDraft("sessionTimeout", value)} />
+            <FormLine label="IP 访问白名单" value={securityDraft.ipWhitelist} onChange={(value) => updateSecurityDraft("ipWhitelist", value)} error={securityError} hint="逗号分隔，支持 IPv4 / CIDR" inputRef={securityWhitelistInputRef} />
+            <ToggleLine label="允许多地同时登录" active={multiLogin} onToggle={(active) => {
+              setMultiLogin(active);
+              setSecurityReview("安全策略已变更，等待复核");
+              setSecurityReviewTone("warn");
+            }} />
+            <FormSelectLine label="登录失败锁定" value={securityDraft.lockPolicy} options={["3 次 / 10 分钟", "5 次 / 15 分钟", "10 次 / 30 分钟"]} onChange={(value) => updateSecurityDraft("lockPolicy", value)} />
+            <div className="security-policy-summary">
+              <p><span>会话</span><b>{securityDraft.sessionTimeout}</b><em>{securityDraft.lockPolicy}</em></p>
+              <p><span>登录</span><b>{twoFactor ? "强制 MFA" : "未强制 MFA"}</b><em>{multiLogin ? "允许多地登录" : "禁止多地登录"}</em></p>
+              <p><span>保存</span><b>{securitySavedAt}</b><em>{securityReview}</em></p>
+            </div>
+            <div className="settings-buttons security-actions"><button className="primary" type="button" onClick={saveSecurityPolicy}>保存安全策略</button><button className="ghost" type="button" onClick={runSecurityReview}>立即复核</button></div>
           </div>
         </PanelCard>}
         {activeTab === "安全" && <PanelCard title="安全验证">
           <div className="verify-box">
-            <p className="ok-line"><CheckCircle2 size={15} /> MFA 覆盖率：100%</p>
-            <p className="warn-line">2 个 IP 白名单等待复核 <button type="button" onClick={() => notify("已打开 IP 白名单复核", "warning")}>查看</button></p>
-            <p className="ok-line"><CheckCircle2 size={15} /> 最近登录策略校验通过</p>
+            <p className={twoFactor ? "ok-line" : "warn-line"}><CheckCircle2 size={15} /> MFA 覆盖率：{twoFactor ? "100%" : "未强制"}</p>
+            <p className={securityReviewTone === "ok" ? "ok-line" : "warn-line"}>{securityReview} <button type="button" onClick={runSecurityReview}>复核</button></p>
+            <p className={securityReviewTone === "ok" ? "ok-line" : "warn-line"}><CheckCircle2 size={15} /> 登录策略：{securityReviewTone === "ok" ? "校验通过" : "等待复核"}</p>
           </div>
         </PanelCard>}
         {activeTab === "通知" && <PanelCard title="通知设置">
@@ -6204,18 +6280,25 @@ function FormLine({
   inputRef?: React.Ref<HTMLInputElement>;
   onChange?: (value: string) => void;
 }) {
+  const generatedId = useId();
+  const inputId = `form-line-${generatedId.replace(/:/g, "")}`;
+  const labelId = `${inputId}-label`;
+  const hintId = hint ? `${inputId}-hint` : undefined;
+  const errorId = error ? `${inputId}-error` : undefined;
+  const describedBy = [hintId, errorId].filter(Boolean).join(" ") || undefined;
+
   return (
-    <label className="form-line">
-      <span>{label}{required && <b>*</b>}</span>
+    <div className="form-line">
+      <label id={labelId} htmlFor={inputId}>{label}{required && <b>*</b>}</label>
       <div>
-        <input ref={inputRef} type={inputType} value={value} readOnly={!onChange} aria-invalid={error ? "true" : undefined} onChange={(event) => onChange?.(event.target.value)} />
-        {hint && <em>{hint}</em>}
+        <input id={inputId} ref={inputRef} type={inputType} value={value} readOnly={!onChange} aria-labelledby={labelId} aria-describedby={describedBy} aria-invalid={error ? "true" : undefined} onChange={(event) => onChange?.(event.target.value)} />
+        {hint && <em id={hintId}>{hint}</em>}
         {hintButton && <button type="button" onClick={hintAction}>{hintButton}</button>}
         {success && <small><CheckCircle2 size={12} /> {success}</small>}
-        {error && <strong className="form-error">{error}</strong>}
+        {error && <strong id={errorId} className="form-error">{error}</strong>}
       </div>
       {strength && <p className="password-strength"><i /><i /><i /><em>强</em></p>}
-    </label>
+    </div>
   );
 }
 
