@@ -2645,6 +2645,8 @@ type TableColumn<T> = {
   render: (row: T) => React.ReactNode;
 };
 
+type MobileCardRenderer<T> = (row: T) => React.ReactNode;
+
 function ModulePageShell({
   title,
   subtitle,
@@ -2709,11 +2711,13 @@ function DataTable<T>({
   rows,
   emptyText,
   getRowKey,
+  mobileCard,
 }: {
   columns: Array<TableColumn<T>>;
   rows: T[];
   emptyText: string;
   getRowKey: (row: T) => string;
+  mobileCard?: MobileCardRenderer<T>;
 }) {
   return (
     <div className="module-table-wrap">
@@ -2738,12 +2742,12 @@ function DataTable<T>({
       <div className="module-card-list">
         {rows.map((row) => (
           <article className="module-card-row" key={getRowKey(row)}>
-            {columns.map((column) => (
-              <div className="module-card-cell" key={column.key}>
-                <span>{column.label}</span>
-                <div>{column.render(row)}</div>
-              </div>
-            ))}
+            {mobileCard ? mobileCard(row) : columns.map((column) => (
+                <div className="module-card-cell" key={column.key}>
+                  <span>{column.label}</span>
+                  <div>{column.render(row)}</div>
+                </div>
+              ))}
           </article>
         ))}
         {rows.length === 0 && <div className="module-card-empty">{emptyText}</div>}
@@ -4852,6 +4856,25 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
           rows={filteredQueries}
           emptyText="没有匹配的慢查询指纹"
           getRowKey={(query) => query.id}
+          mobileCard={(query) => (
+            <>
+              <div className="module-card-head">
+                <button className="module-row-link" type="button" aria-label={`查看慢查询 ${query.fingerprint}`} onClick={() => openQuery(query)}><StatusLight tone={levelTone(query.level)} /><b>{query.fingerprint}</b></button>
+                <span className={`pill ${levelTone(query.level)}`}>{query.level}</span>
+              </div>
+              <code className="module-card-code">{query.sql}</code>
+              <div className="module-card-meta">
+                <span><b>数据库</b><em>{query.database}</em></span>
+                <span><b>平均</b><em>{query.avgTime}</em></span>
+                <span><b>P95</b><em className={query.level === "高" ? "red-text" : ""}>{query.p95Time}</em></span>
+                <span><b>调用</b><em>{query.calls}</em></span>
+              </div>
+              <div className="module-card-footer">
+                <span className={`pill ${statusTone(query.status)}`}>{query.status}</span>
+                <div className="table-actions"><button type="button" aria-label={`生成 ${query.fingerprint} Explain`} onClick={() => runExplain(query.id)}>Explain</button><button type="button" aria-label={`创建 ${query.fingerprint} 索引建议`} onClick={() => createIndexAdvice(query)}>索引</button><button type="button" aria-label={`标记 ${query.fingerprint} 已处理`} onClick={() => markResolved(query)}>处理</button><button type="button" aria-label={`打开 ${query.fingerprint} 详情`} onClick={() => openQuery(query)}>详情</button></div>
+              </div>
+            </>
+          )}
         />
         <section className="slow-query-lower">
           <PanelCard title="连接延迟实例" action="查看实例页" onAction={() => notify("实例详情已在数据库实例页保留", "info")}>
@@ -7032,7 +7055,7 @@ function FieldSelect({
   const hasSelectedOption = rawSelectedIndex >= 0;
   const selectedIndex = hasSelectedOption ? rawSelectedIndex : 0;
   const boundedActiveIndex = Math.min(activeIndex, Math.max(availableOptions.length - 1, 0));
-  const activeOptionId = open && availableOptions.length > 0 && hasSelectedOption ? `${safeId}-option-${boundedActiveIndex}` : undefined;
+  const activeOptionId = open && availableOptions.length > 0 ? `${safeId}-option-${boundedActiveIndex}` : undefined;
   const focusButtonSoon = () => {
     window.requestAnimationFrame(() => buttonRef.current?.focus());
   };
@@ -7220,35 +7243,132 @@ function FormSelectLine({
   onChange?: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const reactId = useId();
+  const safeId = reactId.replace(/:/g, "");
+  const labelId = `${safeId}-label`;
+  const listboxId = `${safeId}-listbox`;
+  const buttonId = `${safeId}-button`;
+  const valueId = `${safeId}-value`;
+  const availableOptions = options ?? [];
+  const selectedIndex = Math.max(availableOptions.indexOf(value), 0);
+  const boundedActiveIndex = Math.min(activeIndex, Math.max(availableOptions.length - 1, 0));
+  const activeOptionId = open && availableOptions.length > 0 ? `${safeId}-option-${boundedActiveIndex}` : undefined;
+  const focusButtonSoon = () => {
+    window.requestAnimationFrame(() => buttonRef.current?.focus());
+  };
+  const openMenu = () => {
+    if (disabled || !availableOptions.length) return;
+    setActiveIndex(selectedIndex);
+    setOpen(true);
+  };
+  const closeMenu = () => {
+    setOpen(false);
+  };
+  const selectOption = (option: string) => {
+    onChange?.(option);
+    closeMenu();
+    focusButtonSoon();
+  };
+  const commitActiveOption = () => {
+    const option = availableOptions[boundedActiveIndex];
+    if (option) selectOption(option);
+  };
+  const moveActiveOption = (direction: 1 | -1) => {
+    if (!availableOptions.length) return;
+    setActiveIndex((current) => (current + direction + availableOptions.length) % availableOptions.length);
+  };
 
   return (
-    <label
+    <div
       className="form-line"
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) {
-          setOpen(false);
+          closeMenu();
         }
       }}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
-          setOpen(false);
+          event.preventDefault();
+          closeMenu();
+          focusButtonSoon();
+          return;
+        }
+        if (disabled || !availableOptions.length) return;
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          if (!open) {
+            openMenu();
+            return;
+          }
+          moveActiveOption(1);
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          if (!open) {
+            openMenu();
+            return;
+          }
+          moveActiveOption(-1);
+        } else if (event.key === "Home") {
+          event.preventDefault();
+          if (!open) openMenu();
+          setActiveIndex(0);
+        } else if (event.key === "End") {
+          event.preventDefault();
+          if (!open) openMenu();
+          setActiveIndex(availableOptions.length - 1);
+        } else if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          if (!open) {
+            openMenu();
+            return;
+          }
+          commitActiveOption();
         }
       }}
     >
-      <span>{label}{required && <b>*</b>}</span>
-      <button className={`select-like ${open ? "open" : ""}`} type="button" disabled={disabled} aria-required={required ? "true" : undefined} aria-expanded={open} aria-haspopup="listbox" onClick={() => options && !disabled && setOpen((current) => !current)}>{icon}{value}<ChevronDown size={12} /></button>
-      {open && options && !disabled && (
-        <div className="select-menu" role="listbox">
-          {options.map((option) => (
+      <span id={labelId}>{label}{required && <b>*</b>}</span>
+      <button
+        id={buttonId}
+        ref={buttonRef}
+        className={`select-like ${open ? "open" : ""}`}
+        type="button"
+        role="combobox"
+        disabled={disabled}
+        aria-required={required ? "true" : undefined}
+        aria-labelledby={`${labelId} ${valueId}`}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-controls={open ? listboxId : undefined}
+        aria-activedescendant={activeOptionId}
+        onClick={() => {
+          if (!availableOptions.length || disabled) return;
+          if (open) {
+            closeMenu();
+            focusButtonSoon();
+          } else {
+            openMenu();
+          }
+        }}
+      >{icon}<span id={valueId}>{value}</span><ChevronDown size={12} /></button>
+      {open && availableOptions.length > 0 && !disabled && (
+        <div className="select-menu" id={listboxId} role="listbox" aria-labelledby={labelId}>
+          {availableOptions.map((option, index) => (
             <button
-              className={option === value ? "active" : ""}
+              className={[
+                index === boundedActiveIndex ? "active" : "",
+                option === value ? "selected" : "",
+              ].filter(Boolean).join(" ")}
+              id={`${safeId}-option-${index}`}
               key={option}
               role="option"
               aria-selected={option === value}
+              tabIndex={-1}
               type="button"
+              onMouseEnter={() => setActiveIndex(index)}
               onClick={() => {
-                onChange?.(option);
-                setOpen(false);
+                selectOption(option);
               }}
             >
               {option}
@@ -7256,7 +7376,7 @@ function FormSelectLine({
           ))}
         </div>
       )}
-    </label>
+    </div>
   );
 }
 
