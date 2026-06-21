@@ -4708,6 +4708,7 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
       ? null
       : initialDatabaseSlowQueries[0]?.id ?? null
   ));
+  const [drawerAutoFocus, setDrawerAutoFocus] = useState(false);
   const delayedInstances = dbRows.filter((instance) => instance.connectionHealth.startsWith("延迟") || instance.slowQueries > 0);
   const databaseOptions = ["全部", ...Array.from(new Set([...queries.map((query) => query.database), ...delayedInstances.map((instance) => instance.name)]))];
   const filteredQueries = queries.filter((query) => {
@@ -4742,6 +4743,7 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
     setQueries((current) => current.map((query) => query.id === id ? { ...query, ...patch } : query));
   };
   const openQuery = (query: DatabaseSlowQuery) => {
+    setDrawerAutoFocus(true);
     setDrawerId(query.id);
   };
   const runExplain = (queryId: string) => {
@@ -4751,6 +4753,7 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
       return;
     }
     const nextExplain = target.explain ?? `${target.database.toLowerCase().includes("mysql") ? "type=range" : "Bitmap Heap Scan"} · rows=${target.rows} · cost=high · 建议按指纹创建索引`;
+    setDrawerAutoFocus(true);
     setDrawerId(target.id);
     setQueries((current) => current.map((item) => (
       item.id === queryId
@@ -4765,6 +4768,7 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
   };
   const createIndexAdvice = (query: DatabaseSlowQuery) => {
     updateQuery(query.id, { suggestion: `${query.suggestion} · 已生成索引建议草案。`, status: query.status === "已处理" ? "已处理" : "分析中" });
+    setDrawerAutoFocus(true);
     setDrawerId(query.id);
     notify(`${query.database} 索引建议已生成`);
   };
@@ -4813,7 +4817,7 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
       filters={<><ModuleSearch value={search} placeholder="搜索 SQL、指纹、数据库或负责人" onChange={setSearch} /><FieldSelect label="数据库" value={databaseFilter} options={databaseOptions} onChange={setDatabaseFilter} /><FieldSelect label="等级" value={levelFilter} options={["全部", "高", "中", "低"]} onChange={setLevelFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "待处理", "分析中", "已处理"]} onChange={setStatusFilter} /></>}
       metrics={<><MetricTile icon={Activity} label="慢查询指纹" value={`${queries.length}`} tone="orange" /><MetricTile icon={Clock3} label="P95 最高" value={highestP95?.p95Time ?? "-"} tone="red" /><MetricTile icon={Database} label="受影响实例" value={`${affectedDatabases}`} tone="blue" /><MetricTile icon={Shield} label="高风险待处理" value={`${highCount}`} tone={highCount ? "red" : "green"} /></>}
       side={selectedQuery && (
-        <DetailDrawer title="慢查询详情" subtitle={selectedQuery.fingerprint} onClose={() => setDrawerId(null)} autoFocus={false} actions={<><button className="ghost" type="button" onClick={() => void copyFingerprint(selectedQuery.fingerprint)}>复制指纹</button><button className="primary" type="button" onClick={() => runExplain(selectedQuery.id)}>生成 Explain</button></>}>
+        <DetailDrawer title="慢查询详情" subtitle={selectedQuery.fingerprint} onClose={() => { setDrawerAutoFocus(false); setDrawerId(null); }} autoFocus={drawerAutoFocus} actions={<><button className="ghost" type="button" onClick={() => void copyFingerprint(selectedQuery.fingerprint)}>复制指纹</button><button className="primary" type="button" onClick={() => runExplain(selectedQuery.id)}>生成 Explain</button></>}>
           <div className="slow-query-drawer">
             <p><span>数据库</span><b>{selectedQuery.database}</b></p>
             <p><span>等级 / 状态</span><b>{selectedQuery.level} · {selectedQuery.status}</b></p>
@@ -6327,7 +6331,7 @@ function MobileApp({ notify }: { notify: Notify }) {
 
   return (
     <section className="mobile-app-shell">
-      <header className="mobile-top">
+      <header className="mobile-top" inert={Boolean(mobileSheet)} aria-hidden={mobileSheet ? "true" : undefined}>
         <button type="button" className="mobile-icon-button" aria-label="打开菜单" onClick={() => setMobileSheet({ type: "menu" })}><Menu size={20} /></button>
         <div className="mobile-brand"><div className="brand-gem small" /><strong>StackPilot</strong></div>
         <div className="mobile-icons">
@@ -6342,7 +6346,7 @@ function MobileApp({ notify }: { notify: Notify }) {
           <button type="button" aria-label="打开个人中心" onClick={() => { setActiveTab("我的"); notify("已切换到移动端我的", "info"); }}><b>U</b></button>
         </div>
       </header>
-      <div className="mobile-content" ref={mobileContentRef}>
+      <div className="mobile-content" ref={mobileContentRef} inert={Boolean(mobileSheet)} aria-hidden={mobileSheet ? "true" : undefined}>
         <h2>{activeTab === "首页" ? "上午好，管理员" : activeTab}</h2>
         <p>{activeTab} · {tabSummary[activeTab]}</p>
         {activeTab === "首页" && (
@@ -6555,7 +6559,7 @@ function MobileApp({ notify }: { notify: Notify }) {
           </>
         )}
       </div>
-      <nav className="mobile-tabbar" aria-label="移动端主导航">
+      <nav className="mobile-tabbar" aria-label="移动端主导航" inert={Boolean(mobileSheet)} aria-hidden={mobileSheet ? "true" : undefined}>
         {mobileTabs.map(([Icon, label]) => (
           <button
             className={label === activeTab ? "active" : ""}
