@@ -4365,7 +4365,7 @@ a {
   }
 
   .top-actions {
-    max-width: min(128px, 100%);
+    max-width: min(146px, 100%);
     justify-content: flex-end;
   }
 
@@ -4379,7 +4379,7 @@ a {
 
   .top-actions .notification-wrap,
   .top-actions .user-menu-button {
-    flex: 0 0 40px;
+    flex: 0 0 44px;
   }
 
   .module-page {
@@ -4656,6 +4656,44 @@ a {
     padding: 0;
     justify-content: center;
     gap: 0;
+  }
+
+  .side-main-button,
+  .side-toggle-button,
+  .collapse-side,
+  .icon-action,
+  .user-menu-button,
+  .notification-wrap,
+  .primary,
+  .ghost,
+  .danger-soft,
+  .panel-card > header button,
+  .form-line input,
+  .select-like,
+  .toggle-line {
+    min-height: 44px;
+  }
+
+  .side-main-button,
+  .side-toggle-button {
+    height: 44px;
+  }
+
+  .icon-action,
+  .notification-wrap {
+    width: 44px;
+    min-width: 44px;
+    flex-basis: 44px;
+    height: 44px;
+  }
+
+  .user-menu-button {
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .panel-card > header button {
+    padding-inline: 12px;
   }
 
   .topbar-mock.white .mock-search {
@@ -7741,7 +7779,7 @@ a {
 
 .mobile-sheet-layer {
   position: absolute;
-  z-index: 90;
+  z-index: 130;
   inset: 0;
   display: grid;
   align-items: end;
