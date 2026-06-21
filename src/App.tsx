@@ -140,6 +140,13 @@ function currentDateTime() {
   ].join(" ");
 }
 
+function createLocalId(prefix: string) {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function activateOnKeyboard(event: React.KeyboardEvent<HTMLElement>, action: () => void) {
   if (event.key !== "Enter" && event.key !== " ") return;
   event.preventDefault();
@@ -544,15 +551,15 @@ const auditRows = [
   ["05-22 10:08:33", "10.0.2.88", "陈晨", "删除文件", "/tmp/old.log", "失败", "h8i9j0k1l2m3"],
 ];
 
-const dbRows = [
-  ["prod-postgres-01", "PostgreSQL 15.5", "10.0.12.24", "5432", "正常", "成功", "2", "2025-03-08 02:14", "读写", "DBA"],
-  ["billing-mysql-02", "MySQL 8.0.36", "10.0.12.31", "3306", "延迟 180ms", "等待确认", "9", "2025-03-07 23:10", "读写", "研发"],
-  ["staging-pg-03", "PostgreSQL 16.2", "10.0.14.18", "5432", "正常", "成功", "0", "2025-03-08 01:32", "读写", "研发"],
-  ["analytics-mysql-01", "MySQL 8.0.32", "10.0.13.15", "3306", "延迟 560ms", "失败", "23", "2025-03-07 20:45", "读写", "运维"],
-  ["archive-pg-02", "PostgreSQL 14.9", "10.0.15.22", "5432", "正常", "成功", "1", "2025-03-07 22:30", "只读", "研发"],
-  ["test-mysql-01", "MySQL 8.0.30", "10.0.16.11", "3306", "正常", "成功", "0", "2025-03-08 00:22", "读写", "仅团队"],
-  ["metrics-pg-01", "PostgreSQL 15.3", "10.0.13.21", "5432", "延迟 220ms", "成功", "6", "2025-03-07 21:05", "读写", "运维"],
-  ["logs-mysql-02", "MySQL 8.0.28", "10.0.17.19", "3306", "正常", "成功", "0", "2025-03-08 02:00", "仅备份", "运维"],
+const dbRows: DatabaseInstance[] = [
+  { id: "db-prod-postgres-01", name: "prod-postgres-01", engine: "PostgreSQL 15.5", host: "10.0.12.24", port: "5432", connectionHealth: "正常", backupStatus: "成功", slowQueries: 2, lastBackup: "2025-03-08 02:14", access: "读写", owner: "DBA", storage: "18.6 GB", connections: "42 / 160", latency: "38ms", region: "新加坡", autoBackup: true, remoteAccess: false },
+  { id: "db-billing-mysql-02", name: "billing-mysql-02", engine: "MySQL 8.0.36", host: "10.0.12.31", port: "3306", connectionHealth: "延迟 180ms", backupStatus: "等待确认", slowQueries: 9, lastBackup: "2025-03-07 23:10", access: "读写", owner: "研发", storage: "7.8 GB", connections: "68 / 120", latency: "180ms", region: "北京", autoBackup: true, remoteAccess: false },
+  { id: "db-staging-pg-03", name: "staging-pg-03", engine: "PostgreSQL 16.2", host: "10.0.14.18", port: "5432", connectionHealth: "正常", backupStatus: "成功", slowQueries: 0, lastBackup: "2025-03-08 01:32", access: "读写", owner: "研发", storage: "3.2 GB", connections: "16 / 80", latency: "41ms", region: "预发", autoBackup: true, remoteAccess: false },
+  { id: "db-analytics-mysql-01", name: "analytics-mysql-01", engine: "MySQL 8.0.32", host: "10.0.13.15", port: "3306", connectionHealth: "延迟 560ms", backupStatus: "失败", slowQueries: 23, lastBackup: "2025-03-07 20:45", access: "读写", owner: "运维", storage: "34.5 GB", connections: "96 / 140", latency: "560ms", region: "香港", autoBackup: true, remoteAccess: false },
+  { id: "db-archive-pg-02", name: "archive-pg-02", engine: "PostgreSQL 14.9", host: "10.0.15.22", port: "5432", connectionHealth: "正常", backupStatus: "成功", slowQueries: 1, lastBackup: "2025-03-07 22:30", access: "只读", owner: "研发", storage: "46.2 GB", connections: "9 / 60", latency: "55ms", region: "归档", autoBackup: true, remoteAccess: false },
+  { id: "db-test-mysql-01", name: "test-mysql-01", engine: "MySQL 8.0.30", host: "10.0.16.11", port: "3306", connectionHealth: "正常", backupStatus: "成功", slowQueries: 0, lastBackup: "2025-03-08 00:22", access: "读写", owner: "仅团队", storage: "1.8 GB", connections: "11 / 40", latency: "29ms", region: "测试", autoBackup: true, remoteAccess: false },
+  { id: "db-metrics-pg-01", name: "metrics-pg-01", engine: "PostgreSQL 15.3", host: "10.0.13.21", port: "5432", connectionHealth: "延迟 220ms", backupStatus: "成功", slowQueries: 6, lastBackup: "2025-03-07 21:05", access: "读写", owner: "运维", storage: "12.4 GB", connections: "53 / 100", latency: "220ms", region: "监控", autoBackup: true, remoteAccess: false },
+  { id: "db-logs-mysql-02", name: "logs-mysql-02", engine: "MySQL 8.0.28", host: "10.0.17.19", port: "3306", connectionHealth: "正常", backupStatus: "成功", slowQueries: 0, lastBackup: "2025-03-08 02:00", access: "仅备份", owner: "运维", storage: "28.1 GB", connections: "21 / 90", latency: "33ms", region: "日志", autoBackup: true, remoteAccess: false },
 ];
 
 const initialDatabaseBackupPlans: DatabaseBackupPlan[] = [
@@ -835,6 +842,26 @@ type ProxyRouteRule = {
   enabled: boolean;
 };
 
+type DatabaseInstance = {
+  id: string;
+  name: string;
+  engine: string;
+  host: string;
+  port: string;
+  connectionHealth: string;
+  backupStatus: "成功" | "失败" | "等待确认" | "运行中";
+  slowQueries: number;
+  lastBackup: string;
+  access: "读写" | "只读" | "仅备份";
+  owner: string;
+  storage: string;
+  connections: string;
+  latency: string;
+  region: string;
+  autoBackup: boolean;
+  remoteAccess: boolean;
+};
+
 type DatabaseBackupPlan = {
   id: string;
   name: string;
@@ -868,6 +895,8 @@ type DatabaseRestorePoint = {
   checksum: "已校验" | "待校验";
   drillStatus: "未演练" | "演练中" | "已完成";
 };
+
+type DatabaseBackupDrawer = { type: "plan"; id: string } | { type: "restore"; id: string };
 
 type DatabaseSlowQuery = {
   id: string;
@@ -1116,7 +1145,7 @@ function hostPagePreset(page: PageKey) {
   if (page === "hosts-alert") {
     return { env: "全部", health: "警告", search: "", subtitle: "健康告警视图，聚焦需要处理的主机。" };
   }
-  return { env: "全部", health: "全部", search: "", subtitle: "统一查看各环境主机健康、资源负载、备份和系统更新状态。" };
+  return { env: "全部", health: "全部", search: "", subtitle: "" };
 }
 
 function sitesPagePreset(page: PageKey) {
@@ -1254,11 +1283,11 @@ function DesktopShell({
   const activeModule = navPageFor(page);
   const whiteTop = !["overview", "overview-health", "overview-tasks", "overview-risks"].includes(page);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
-    typeof window !== "undefined" && window.matchMedia("(max-width: 680px)").matches
+    typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
   ));
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(max-width: 680px)");
+    const mediaQuery = window.matchMedia("(max-width: 773px)");
     const syncSidebar = (event: MediaQueryListEvent | MediaQueryList) => {
       setSidebarCollapsed(event.matches);
     };
@@ -1284,32 +1313,32 @@ function DesktopShell({
         onExpandCollapsed={expandSidebar}
       />
       <div className="desktop-main">
-        <TopBar key={page} page={page} setPage={setPage} white={whiteTop} notify={notify} />
+        <TopBar key={`topbar-${page}`} page={page} setPage={setPage} white={whiteTop} notify={notify} />
         {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
         {page === "overview-health" && <OverviewHealthPage notify={notify} />}
         {page === "overview-tasks" && <OverviewTasksPage notify={notify} />}
         {page === "overview-risks" && <OverviewRisksPage notify={notify} />}
-        {activeModule === "hosts" && <HostsPage key={page} page={page} notify={notify} />}
-        {activeModule === "sites" && <SitesPage key={page} page={page} notify={notify} />}
+        {activeModule === "hosts" && <HostsPage key={`page-${page}`} page={page} notify={notify} />}
+        {activeModule === "sites" && <SitesPage key={`page-${page}`} page={page} notify={notify} />}
         {activeModule === "databases" && (
           page === "databases-backups"
-            ? <DatabaseBackupsPage key={page} page={page} notify={notify} />
+            ? <DatabaseBackupsPage key={`page-${page}`} page={page} notify={notify} />
             : page === "databases-slow"
-              ? <DatabaseSlowQueriesPage key={page} page={page} notify={notify} />
-            : <DatabasesPage key={page} page={page} notify={notify} />
+              ? <DatabaseSlowQueriesPage key={`page-${page}`} page={page} notify={notify} />
+            : <DatabasesPage key={`page-${page}`} page={page} setPage={setPage} notify={notify} />
         )}
         {activeModule === "files" && <FilesModule page={page} notify={notify} />}
         {activeModule === "terminal" && <TerminalPage page={page} notify={notify} />}
         {activeModule === "systemd" && <SystemdPage page={page} notify={notify} />}
-        {activeModule === "firewall" && <FirewallPage key={page} page={page} notify={notify} />}
-        {activeModule === "deploy" && <DeployPage key={page} page={page} notify={notify} />}
+        {activeModule === "firewall" && <FirewallPage key={`page-${page}`} page={page} notify={notify} />}
+        {activeModule === "deploy" && <DeployPage key={`page-${page}`} page={page} notify={notify} />}
         {activeModule === "schedule" && <SchedulePage page={page} notify={notify} />}
-        {activeModule === "audit" && <AuditPage key={page} page={page} notify={notify} />}
+        {activeModule === "audit" && <AuditPage key={`page-${page}`} page={page} notify={notify} />}
         {activeModule === "acl" && <AclPage page={page} setPage={setPage} notify={notify} />}
         {activeModule === "settings" && (
           page === "settings-proxy"
-            ? <SettingsProxyPage key={page} page={page} notify={notify} />
-            : <SettingsPage key={page} page={page} setPage={setPage} notify={notify} />
+            ? <SettingsProxyPage key={`page-${page}`} page={page} notify={notify} />
+            : <SettingsPage key={`page-${page}`} page={page} setPage={setPage} notify={notify} />
         )}
       </div>
       {activeModule === "overview" && <DesktopFooter />}
@@ -2503,7 +2532,7 @@ function ModulePageShell({
   children,
 }: {
   title: string;
-  subtitle: string;
+  subtitle?: string | null;
   page?: PageKey;
   viewContext?: ViewContext | null;
   actions?: React.ReactNode;
@@ -2518,7 +2547,7 @@ function ModulePageShell({
       <div className="page-head module-head">
         <div>
           <h1>{title}</h1>
-          <p>{subtitle}</p>
+          {subtitle && <p>{subtitle}</p>}
         </div>
         {actions && <div>{actions}</div>}
       </div>
@@ -2541,7 +2570,7 @@ function ModuleViewContext({ context }: { context: ViewContext }) {
       <div>
         <span>{context.eyebrow}</span>
         <strong>{context.title}</strong>
-        <p>{context.description}</p>
+        {context.description && <p>{context.description}</p>}
       </div>
       <div>
         {context.chips.map((chip) => <em key={chip}>{chip}</em>)}
@@ -2757,7 +2786,7 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
-      subtitle={hostPreset.subtitle}
+      subtitle={null}
       page={page}
       actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 台主机`, "info")}><Download size={15} /> 导出</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 新增主机</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索主机名或 IP" onChange={setSearch} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={setEnvFilter} /><FieldSelect label="健康" value={healthFilter} options={["全部", "健康", "警告", "离线"]} onChange={setHealthFilter} /></>}
@@ -4086,7 +4115,7 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
   );
 }
 
-function DatabasesPage({ page, notify }: { page: PageKey; notify: Notify }) {
+function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; notify: Notify }) {
   const databasePreset = databasePagePreset(page);
   const [search, setSearch] = useState(databasePreset.search);
   const [typeFilter, setTypeFilter] = useState(databasePreset.type);
@@ -4094,126 +4123,341 @@ function DatabasesPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [hostFilter, setHostFilter] = useState(databasePreset.host);
   const [rows, setRows] = useState(dbRows);
   const [lastSync, setLastSync] = useState(currentClock());
+  const [drawer, setDrawer] = useState<{ type: "create" } | { type: "detail"; id: string; focus?: "actions" } | null>(null);
+  const hostOptions = ["全部主机", ...Array.from(new Set(rows.map((row) => row.host)))];
+  const selectedInstance = drawer?.type === "detail" ? rows.find((row) => row.id === drawer.id) ?? null : null;
   const filteredRows = rows.filter((row) => {
-    const matchSearch = row[0].toLowerCase().includes(search.toLowerCase());
-    const matchType = typeFilter === "全部" || row[1].includes(typeFilter);
-    const matchStatus = statusFilter === "全部" || (statusFilter === "告警" ? row[4].startsWith("延迟") || row[5] === "失败" : row[4] === "正常");
-    const matchHost = hostFilter === "全部主机" || row[2] === hostFilter;
-    const matchSlow = page === "databases-slow" ? Number(row[6]) > 0 || row[4].startsWith("延迟") : true;
+    const keyword = search.trim().toLowerCase();
+    const matchSearch = !keyword || `${row.name} ${row.engine} ${row.host} ${row.owner} ${row.access} ${row.region}`.toLowerCase().includes(keyword);
+    const matchType = typeFilter === "全部" || row.engine.includes(typeFilter);
+    const matchStatus = statusFilter === "全部" || (statusFilter === "告警" ? row.connectionHealth.startsWith("延迟") || row.backupStatus === "失败" : row.connectionHealth === "正常");
+    const matchHost = hostFilter === "全部主机" || row.host === hostFilter;
+    const matchSlow = page === "databases-slow" ? row.slowQueries > 0 || row.connectionHealth.startsWith("延迟") : true;
     return matchSearch && matchType && matchStatus && matchHost && matchSlow;
   });
+  const totalCount = rows.length;
+  const postgresCount = rows.filter((row) => row.engine.includes("PostgreSQL")).length;
+  const mysqlCount = rows.filter((row) => row.engine.includes("MySQL")).length;
+  const healthyCount = rows.filter((row) => row.connectionHealth === "正常").length;
+  const alertCount = rows.filter((row) => row.connectionHealth.startsWith("延迟") || row.backupStatus === "失败").length;
+  const backupSuccessRate = totalCount ? Math.round((rows.filter((row) => row.backupStatus === "成功").length / totalCount) * 100) : 0;
+  const slowQueryCount = rows.reduce((sum, row) => sum + row.slowQueries, 0);
+  const updateInstance = (id: string, patch: Partial<DatabaseInstance>) => {
+    setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+  };
+  const openDetail = (instance: DatabaseInstance, focus?: "actions") => {
+    setDrawer({ type: "detail", id: instance.id, focus });
+  };
+  const runBackup = (instance: DatabaseInstance) => {
+    const backupTime = currentDateTime().slice(0, 16);
+    updateInstance(instance.id, { backupStatus: "成功", lastBackup: backupTime });
+    setDrawer({ type: "detail", id: instance.id, focus: "actions" });
+    notify(`${instance.name} 备份已完成`);
+  };
+  const toggleReadOnly = (instance: DatabaseInstance) => {
+    if (instance.access === "仅备份") {
+      notify(`${instance.name} 为仅备份实例，不能切换读写权限`, "warning");
+      return;
+    }
+    setRows((current) => current.map((row) => {
+      if (row.id !== instance.id) return row;
+      if (row.access === "仅备份") return row;
+      const nextAccess = row.access === "只读" ? "读写" : "只读";
+      return { ...row, access: nextAccess };
+    }));
+    notify(`${instance.name} 已切换为${instance.access === "只读" ? "读写" : "只读"}`);
+  };
+  const clearSlowQueries = (instance: DatabaseInstance) => {
+    updateInstance(instance.id, { slowQueries: 0 });
+    notify(`${instance.name} 慢查询计数已清零`);
+  };
+  const copyConnection = async (instance: DatabaseInstance) => {
+    const connection = `${instance.engine.split(" ")[0].toLowerCase()}://${instance.host}:${instance.port}/${instance.name}`;
+    try {
+      if (!navigator.clipboard?.writeText) {
+        notify("当前浏览器不支持复制连接信息", "warning");
+        return;
+      }
+      await navigator.clipboard.writeText(connection);
+      notify(`${instance.name} 连接信息已复制`, "info");
+    } catch {
+      notify("浏览器未允许复制连接信息", "warning");
+    }
+  };
+  const createInstance = (draft: { name: string; type: string; port: string; host: string; owner: string; autoBackup: boolean; remoteAccess: boolean }) => {
+    const engine = draft.type === "PostgreSQL" ? "PostgreSQL 16.2" : "MySQL 8.0.36";
+    const next: DatabaseInstance = {
+      id: createLocalId("db"),
+      name: draft.name,
+      engine,
+      host: draft.host,
+      port: draft.port,
+      connectionHealth: "正常",
+      backupStatus: draft.autoBackup ? "成功" : "等待确认",
+      slowQueries: 0,
+      lastBackup: draft.autoBackup ? "刚刚" : "未启用",
+      access: "读写",
+      owner: draft.owner,
+      storage: "0.4 GB",
+      connections: "0 / 80",
+      latency: "新建",
+      region: draft.host === "10.0.12.24" ? "新加坡" : "默认",
+      autoBackup: draft.autoBackup,
+      remoteAccess: draft.remoteAccess,
+    };
+    setRows((current) => [next, ...current]);
+    setSearch("");
+    setTypeFilter("全部");
+    setStatusFilter("全部");
+    setHostFilter("全部主机");
+    setDrawer({ type: "detail", id: next.id });
+    notify(`数据库 ${draft.name} 已创建`);
+  };
+
   return (
-    <div className="database-page">
-      <div className="page-head">
-        <div>
-          <h1>{resolvePageMeta(page).title}</h1>
-          <p>{databasePreset.subtitle} · 最近同步 {lastSync}</p>
-        </div>
-        <div>
-          <button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 条数据库记录`, "info")}><Download size={15} /> 导出</button>
-          <button
-            className="ghost"
-            type="button"
-            onClick={() => {
-              setLastSync(currentClock());
-              notify("数据库状态已刷新");
-            }}
-          >
-            <RefreshCw size={15} /> 刷新
-          </button>
-          <button className="primary" type="button" onClick={() => notify("请在右侧抽屉填写数据库信息", "info")}><Plus size={15} /> 创建数据库</button>
-        </div>
-      </div>
-      <div className="database-layout">
-        <section className="db-main">
-          <ModuleViewContext context={viewContextForPage(page) ?? {
-            eyebrow: "数据库 / 默认视图",
-            title: resolvePageMeta(page).title,
-            description: databasePreset.subtitle,
-            chips: [`类型 ${typeFilter}`, `状态 ${statusFilter}`, `主机 ${hostFilter}`],
-          }} />
-          <div className="filter-line">
-            <label>
-              <Search size={14} />
-              <input value={search} placeholder="搜索数据库名称" onChange={(event) => setSearch(event.target.value)} />
-            </label>
-            <FieldSelect label="类型" value={typeFilter} options={["全部", "PostgreSQL", "MySQL"]} onChange={setTypeFilter} />
-            <FieldSelect label="状态" value={statusFilter} options={["全部", "正常", "告警"]} onChange={setStatusFilter} />
-            <FieldSelect label="主机" value={hostFilter} options={["全部主机", "10.0.12.24", "10.0.12.31", "10.0.13.15"]} onChange={setHostFilter} />
-          </div>
-          <div className="db-metrics">
-            {[
-              [Database, "PostgreSQL", "8", "实例", "blue"],
-              [Database, "MySQL", "6", "实例", "blue"],
-              [Activity, "运行中", "13", "实例", "green"],
-              [Shield, "告警", "2", "实例", "orange"],
-              [Activity, "备份成功率", "96.4%", "最近 7 天", "green"],
-              [Clock3, "今日慢查询", "17", "较昨日 +5", "orange"],
-            ].map(([Icon, label, value, desc, tone]) => (
-              <article key={label as string}>
-                <Icon className={tone as string} size={34} />
-                <div>
-                  <span>{label as string}</span>
-                  <strong>{value as string}</strong>
-                  <em>{desc as string}</em>
-                </div>
-              </article>
-            ))}
-          </div>
-          <DatabaseTable rows={filteredRows} notify={notify} />
-          {databasePreset.mode === "backups" && (
-            <div className="backup-timeline">
-              {["02:00 prod-postgres-01 成功", "02:10 billing-mysql-02 等待确认", "02:20 analytics-mysql-01 失败"].map((item) => <p key={item}><StatusLight tone={item.includes("失败") ? "red" : item.includes("等待") ? "orange" : "green"} /> {item}</p>)}
-            </div>
-          )}
-          <div className={`db-bottom ${databasePreset.mode === "slow" ? "slow-mode" : ""}`}>
-            {databasePreset.mode === "slow" ? (
-              <>
-                <PanelCard title="慢查询 TOP 5（analytics-mysql-01）" className="db-card-wide">
-                  <SlowSqlList />
-                </PanelCard>
-                <PanelCard title="慢查询治理建议">
-                  <div className="db-advice-list">
-                    <p><StatusLight tone="orange" /> orders.status 缺少组合索引，建议补充 status + created_at。</p>
-                    <p><StatusLight tone="red" /> invoices 批量更新命中 12 万行，建议拆分批次。</p>
-                    <p><StatusLight tone="green" /> users 聚合查询可迁移到只读副本。</p>
-                  </div>
-                </PanelCard>
-                <PanelCard title="连接健康（analytics-mysql-01）" action="查看监控详情" onAction={() => notify("已打开连接监控详情", "info")}>
-                  <HealthMini />
-                </PanelCard>
-              </>
-            ) : (
-              <>
-                <PanelCard title="备份状态（最近 7 天）" action="查看备份计划" onAction={() => notify("已打开备份计划", "info")}>
-                  <DonutCard />
-                </PanelCard>
-                <PanelCard title="连接健康（prod-postgres-01）" action="查看监控详情" onAction={() => notify("已打开连接监控详情", "info")}>
-                  <HealthMini />
-                </PanelCard>
-                <PanelCard title="慢查询 TOP 5（analytics-mysql-01）">
-                  <SlowSqlList />
-                </PanelCard>
-                <PanelCard title="审计日志（最近操作）" action="查看全部" onAction={() => notify("已打开数据库审计日志", "info")}>
-                  <MiniAuditList />
-                </PanelCard>
-              </>
-            )}
-          </div>
-        </section>
-        <CreateDatabaseDrawer
-          notify={notify}
-          onCreate={(draft) => {
-            const engine = draft.type === "PostgreSQL" ? "PostgreSQL 16.2" : "MySQL 8.0.36";
-            setRows((current) => [
-              [draft.name, engine, "10.0.12.24", draft.port, "正常", "成功", "0", currentClock(), "读写", "研发"],
-              ...current,
-            ]);
-            notify(`数据库 ${draft.name} 已创建`);
+    <ModulePageShell
+      title={resolvePageMeta(page).title}
+      subtitle={`${databasePreset.subtitle} · 最近同步 ${lastSync}`}
+      page={page}
+      viewContext={{
+        eyebrow: "数据库 / 实例列表",
+        title: "数据库实例",
+        description: "集中管理实例连接、备份状态、慢查询和权限边界，所有操作在本地状态中模拟生效。",
+        chips: [`筛选 ${filteredRows.length}/${rows.length}`, `告警 ${alertCount}`, `慢查询 ${slowQueryCount}`],
+      }}
+      actions={<>
+        <button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 条数据库记录`, "info")}><Download size={15} /> 导出</button>
+        <button
+          className="ghost"
+          type="button"
+          onClick={() => {
+            setLastSync(currentClock());
+            notify("数据库状态已刷新");
           }}
+        >
+          <RefreshCw size={15} /> 刷新
+        </button>
+        <button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 创建数据库</button>
+      </>}
+      filters={<>
+        <ModuleSearch value={search} placeholder="搜索数据库、主机、负责人或权限" onChange={setSearch} />
+        <FieldSelect label="类型" value={typeFilter} options={["全部", "PostgreSQL", "MySQL"]} onChange={setTypeFilter} />
+        <FieldSelect label="状态" value={statusFilter} options={["全部", "正常", "告警"]} onChange={setStatusFilter} />
+        <FieldSelect label="主机" value={hostFilter} options={hostOptions} onChange={setHostFilter} />
+      </>}
+      metrics={<>
+        <MetricTile icon={Database} label="PostgreSQL" value={`${postgresCount}`} tone="blue" />
+        <MetricTile icon={Database} label="MySQL" value={`${mysqlCount}`} tone="blue" />
+        <MetricTile icon={Activity} label="运行中" value={`${healthyCount}`} tone="green" />
+        <MetricTile icon={Shield} label="告警" value={`${alertCount}`} tone={alertCount ? "orange" : "green"} />
+        <MetricTile icon={CheckCircle2} label="备份成功率" value={`${backupSuccessRate}%`} tone="green" />
+        <MetricTile icon={Clock3} label="今日慢查询" value={`${slowQueryCount}`} tone={slowQueryCount ? "orange" : "green"} />
+      </>}
+      side={drawer?.type === "create" ? (
+        <CreateDatabaseDrawer notify={notify} onClose={() => setDrawer(null)} onCreate={createInstance} />
+      ) : selectedInstance ? (
+        <DetailDrawer
+          title="数据库详情"
+          subtitle={selectedInstance.name}
+          onClose={() => setDrawer(null)}
+          actions={<>
+            <button className="ghost" type="button" onClick={() => void copyConnection(selectedInstance)}>复制连接</button>
+            <button className="primary" type="button" onClick={() => runBackup(selectedInstance)}>立即备份</button>
+          </>}
+        >
+          <DatabaseInstanceDetail
+            instance={selectedInstance}
+            actionFocus={drawer?.type === "detail" ? drawer.focus : undefined}
+            onBackup={() => runBackup(selectedInstance)}
+            onToggleReadOnly={() => toggleReadOnly(selectedInstance)}
+            onClearSlowQueries={() => clearSlowQueries(selectedInstance)}
+            onCopy={() => void copyConnection(selectedInstance)}
+          />
+        </DetailDrawer>
+      ) : null}
+    >
+      <div className="database-instance-content">
+        <DataTable
+          columns={[
+            { key: "name", label: "名称", width: "180px", render: (row) => <button className="module-row-link" type="button" aria-label={`查看数据库 ${row.name}`} onClick={() => openDetail(row)}><StatusLight tone={databaseHealthTone(row)} /><b>{row.name}</b></button> },
+            { key: "engine", label: "类型", width: "150px", render: (row) => <span className="database-engine"><Database size={15} /> {row.engine}</span> },
+            { key: "host", label: "主机", width: "126px", render: (row) => <code>{row.host}</code> },
+            { key: "port", label: "端口", width: "70px", render: (row) => row.port },
+            { key: "health", label: "连接健康", width: "110px", render: (row) => <span><StatusLight tone={databaseHealthTone(row)} /> {row.connectionHealth}</span> },
+            { key: "backup", label: "备份", width: "96px", render: (row) => <span><StatusLight tone={databaseBackupTone(row.backupStatus)} /> {row.backupStatus}</span> },
+            { key: "slow", label: "慢查询", width: "78px", render: (row) => <b className={row.slowQueries > 0 ? "red-text" : "green-text"}>{row.slowQueries}</b> },
+            { key: "lastBackup", label: "最近备份", width: "142px", render: (row) => row.lastBackup },
+            { key: "access", label: "权限", width: "134px", render: (row) => <span className="database-pill-group"><span className={`pill ${row.access === "读写" ? "blue" : row.access === "只读" ? "gray" : "orange"}`}>{row.access}</span><span className="pill green">{row.owner}</span></span> },
+            { key: "ops", label: "操作", width: "250px", render: (row) => <span className="table-actions"><button type="button" aria-label={`查看 ${row.name} 详情`} onClick={() => openDetail(row)}>查看详情</button><button type="button" aria-label={`立即备份 ${row.name}`} onClick={() => runBackup(row)}>立即备份</button><button type="button" aria-label={`打开 ${row.name} 更多操作`} onClick={() => openDetail(row, "actions")}>更多操作 <MoreVertical size={15} /></button></span> },
+          ]}
+          rows={filteredRows}
+          emptyText="没有匹配的数据库实例"
+          getRowKey={(row) => row.id}
         />
+        {filteredRows.length ? (
+          <section className="database-instance-lower">
+            <PanelCard title="备份状态（最近 7 天）" action="查看备份计划" onAction={() => setPage("databases-backups", { message: "已打开数据库 / 备份计划", tone: "info" })}>
+              <DonutCard />
+            </PanelCard>
+            <PanelCard title="连接健康（prod-postgres-01）" action="查看监控详情" onAction={() => notify("已打开连接监控详情", "info")}>
+              <HealthMini />
+            </PanelCard>
+            <PanelCard title="慢查询 TOP 5（analytics-mysql-01）">
+              <SlowSqlList />
+            </PanelCard>
+            <PanelCard title="审计日志（最近操作）" action="查看全部" onAction={() => notify("已打开数据库审计日志", "info")}>
+              <MiniAuditList />
+            </PanelCard>
+          </section>
+        ) : (
+          <p className="module-empty-card">调整搜索或筛选条件后，可继续查看备份、连接健康和慢查询概览。</p>
+        )}
+      </div>
+    </ModulePageShell>
+  );
+}
+
+function databaseHealthTone(instance: DatabaseInstance): Tone {
+  return instance.connectionHealth.startsWith("延迟") ? "orange" : "green";
+}
+
+function databaseBackupTone(status: DatabaseInstance["backupStatus"]): Tone {
+  if (status === "失败") return "red";
+  if (status === "等待确认" || status === "运行中") return "orange";
+  return "green";
+}
+
+function DatabaseInstanceDetail({
+  instance,
+  actionFocus,
+  onBackup,
+  onToggleReadOnly,
+  onClearSlowQueries,
+  onCopy,
+}: {
+  instance: DatabaseInstance;
+  actionFocus?: "actions";
+  onBackup: () => void;
+  onToggleReadOnly: () => void;
+  onClearSlowQueries: () => void;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="database-detail">
+      <div className="database-detail-grid">
+        <p><span>引擎</span><b>{instance.engine}</b></p>
+        <p><span>主机 / 端口</span><b>{instance.host}:{instance.port}</b></p>
+        <p><span>连接健康</span><b><StatusLight tone={databaseHealthTone(instance)} /> {instance.connectionHealth}</b></p>
+        <p><span>备份状态</span><b><StatusLight tone={databaseBackupTone(instance.backupStatus)} /> {instance.backupStatus}</b></p>
+        <p><span>最近备份</span><b>{instance.lastBackup}</b></p>
+        <p><span>慢查询</span><b className={instance.slowQueries ? "red-text" : "green-text"}>{instance.slowQueries} 条</b></p>
+        <p><span>权限范围</span><b>{instance.access} · {instance.owner}</b></p>
+        <p><span>存储 / 连接</span><b>{instance.storage} · {instance.connections}</b></p>
+        <p><span>区域</span><b>{instance.region}</b></p>
+        <p><span>延迟</span><b>{instance.latency}</b></p>
+        <p><span>自动备份</span><b>{instance.autoBackup ? "已启用" : "未启用"}</b></p>
+        <p><span>远程连接</span><b>{instance.remoteAccess ? "允许白名单" : "未开放"}</b></p>
+      </div>
+      <div className="database-detail-actions" data-focused={actionFocus === "actions" ? "true" : undefined}>
+        <button type="button" onClick={onBackup}><RefreshCw size={14} /> 立即备份</button>
+        <button
+          type="button"
+          disabled={instance.access === "仅备份"}
+          title={instance.access === "仅备份" ? "仅备份实例不能切换读写权限" : undefined}
+          onClick={onToggleReadOnly}
+        >
+          <Lock size={14} /> {instance.access === "仅备份" ? "权限锁定" : instance.access === "只读" ? "恢复读写" : "设为只读"}
+        </button>
+        <button type="button" onClick={onClearSlowQueries}><CheckCircle2 size={14} /> 清空慢查询</button>
+        <button type="button" onClick={onCopy}><Download size={14} /> 复制连接</button>
+      </div>
+      <div className={instance.backupStatus === "失败" ? "drawer-warning" : "drawer-tip"}>
+        {instance.backupStatus === "失败"
+          ? "最近一次备份失败，建议立即执行备份并确认备份计划。"
+          : "实例详情中的操作仅更新本地原型状态，刷新页面后恢复初始数据。"}
       </div>
     </div>
+  );
+}
+
+function CreateDatabaseDrawer({
+  notify,
+  onClose,
+  onCreate,
+}: {
+  notify: Notify;
+  onClose: () => void;
+  onCreate: (draft: { name: string; type: string; port: string; host: string; owner: string; autoBackup: boolean; remoteAccess: boolean }) => void;
+}) {
+  const [name, setName] = useState("newdb_app");
+  const [type, setType] = useState("PostgreSQL");
+  const [host, setHost] = useState("10.0.12.24");
+  const [port, setPort] = useState("5432");
+  const [owner, setOwner] = useState("研发");
+  const [autoBackup, setAutoBackup] = useState(true);
+  const [remote, setRemote] = useState(false);
+  const [errors, setErrors] = useState<{ name?: string; port?: string }>({});
+  const nameRef = useRef<HTMLInputElement>(null);
+  const portRef = useRef<HTMLInputElement>(null);
+
+  const resetDraft = () => {
+    setName("newdb_app");
+    setType("PostgreSQL");
+    setHost("10.0.12.24");
+    setPort("5432");
+    setOwner("研发");
+    setAutoBackup(true);
+    setRemote(false);
+    setErrors({});
+  };
+  const submit = () => {
+    const nextErrors = {
+      name: name.trim() ? undefined : "请输入数据库名",
+      port: port.trim() ? undefined : "请输入端口",
+    };
+    setErrors(nextErrors);
+    if (nextErrors.name || nextErrors.port) {
+      notify("数据库名和端口为必填项", "danger");
+      window.requestAnimationFrame(() => (nextErrors.name ? nameRef.current : portRef.current)?.focus());
+      return;
+    }
+    onCreate({ name: name.trim(), type, port: port.trim(), host, owner, autoBackup, remoteAccess: remote });
+  };
+
+  return (
+    <DetailDrawer
+      title="创建数据库"
+      subtitle="本地实例原型"
+      onClose={onClose}
+      actions={<><button className="ghost" type="button" onClick={resetDraft}>重置</button><button className="primary" type="button" onClick={submit}>创建数据库</button></>}
+    >
+      <div className="create-database-form">
+        <FormLine label="数据库名" required value={name} inputRef={nameRef} error={errors.name} onChange={(value) => {
+          setName(value);
+          if (errors.name && value.trim()) setErrors((current) => ({ ...current, name: undefined }));
+        }} />
+        <FormSelectLine label="类型" required value={type} options={["PostgreSQL", "MySQL"]} onChange={(next) => {
+          setType(next);
+          setPort(next === "PostgreSQL" ? "5432" : "3306");
+          setErrors((current) => ({ ...current, port: undefined }));
+        }} icon={<Database size={14} />} />
+        <FormSelectLine label="绑定主机" required value={host} options={["10.0.12.24", "10.0.12.31", "10.0.13.15", "10.0.14.18"]} onChange={setHost} />
+        <FormLine label="端口" required value={port} inputRef={portRef} error={errors.port} onChange={(value) => {
+          setPort(value);
+          if (errors.port && value.trim()) setErrors((current) => ({ ...current, port: undefined }));
+        }} hint={`默认 ${type === "PostgreSQL" ? "5432" : "3306"}`} />
+        <FormSelectLine label="负责人" value={owner} options={["DBA", "研发", "运维", "仅团队"]} onChange={setOwner} />
+        <FormLine label="用户名" required value={name || "newdb_app"} />
+        <FormLine label="初始密码" required value="••••••••••••••••" strength />
+        <FormSelectLine label="字符集" value="UTF8" />
+        <FormSelectLine label="时区" value="Asia/Shanghai" />
+        <FormTagLine label="权限范围" />
+        <ToggleLine label="自动备份" active={autoBackup} onToggle={setAutoBackup} hint="每天 02:00 执行，备份保留 7 天" />
+        <ToggleLine label="允许远程连接" active={remote} onToggle={setRemote} hint="仅允许白名单 IP 访问" />
+        <div className="drawer-tip">创建后会插入实例列表顶部，并自动打开新实例详情。</div>
+        <div className="drawer-warning">危险操作不会接入真实后端，本页仅模拟本地状态。</div>
+      </div>
+    </DetailDrawer>
   );
 }
 
@@ -4224,8 +4468,13 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
   const [levelFilter, setLevelFilter] = useState("全部");
   const [statusFilter, setStatusFilter] = useState("全部");
   const [timeRange, setTimeRange] = useState("近 24 小时");
-  const [drawerId, setDrawerId] = useState<string | null>(initialDatabaseSlowQueries[0]?.id ?? null);
-  const databaseOptions = ["全部", ...Array.from(new Set(queries.map((query) => query.database)))];
+  const [drawerId, setDrawerId] = useState<string | null>(() => (
+    typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
+      ? null
+      : initialDatabaseSlowQueries[0]?.id ?? null
+  ));
+  const delayedInstances = dbRows.filter((instance) => instance.connectionHealth.startsWith("延迟") || instance.slowQueries > 0);
+  const databaseOptions = ["全部", ...Array.from(new Set([...queries.map((query) => query.database), ...delayedInstances.map((instance) => instance.name)]))];
   const filteredQueries = queries.filter((query) => {
     const keyword = search.trim().toLowerCase();
     const matchSearch = !keyword || `${query.database} ${query.fingerprint} ${query.sql} ${query.owner}`.toLowerCase().includes(keyword);
@@ -4234,11 +4483,23 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
     const matchStatus = statusFilter === "全部" || query.status === statusFilter;
     return matchSearch && matchDatabase && matchLevel && matchStatus;
   });
+  const filteredDelayedInstances = delayedInstances.filter((instance) => {
+    const keyword = search.trim().toLowerCase();
+    const matchSearch = !keyword || `${instance.name} ${instance.engine} ${instance.host} ${instance.connectionHealth} ${instance.owner}`.toLowerCase().includes(keyword);
+    const matchDatabase = databaseFilter === "全部" || instance.name === databaseFilter;
+    const matchLevel = levelFilter === "全部" || (levelFilter === "高" ? instance.connectionHealth.startsWith("延迟") || instance.slowQueries >= 10 : levelFilter === "中" ? instance.slowQueries > 0 : false);
+    const matchStatus = statusFilter === "全部" || statusFilter === "待处理";
+    return matchSearch && matchDatabase && matchLevel && matchStatus;
+  });
   const selectedQuery = drawerId ? filteredQueries.find((query) => query.id === drawerId) ?? null : null;
   const primaryQuery = selectedQuery ?? filteredQueries[0] ?? null;
   const pendingCount = queries.filter((query) => query.status !== "已处理").length;
-  const highCount = queries.filter((query) => query.level === "高" && query.status !== "已处理").length;
-  const affectedDatabases = new Set(queries.filter((query) => query.status !== "已处理").map((query) => query.database)).size;
+  const highLatencyCount = delayedInstances.filter((instance) => instance.connectionHealth.startsWith("延迟") || instance.slowQueries >= 10).length;
+  const highCount = queries.filter((query) => query.level === "高" && query.status !== "已处理").length + highLatencyCount;
+  const affectedDatabases = new Set([
+    ...queries.filter((query) => query.status !== "已处理").map((query) => query.database),
+    ...delayedInstances.map((instance) => instance.name),
+  ]).size;
   const highestP95 = queries.reduce((max, query) => (
     secondsFromDuration(query.p95Time) > secondsFromDuration(max.p95Time) ? query : max
   ), queries[0]);
@@ -4310,8 +4571,8 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
       viewContext={{
         eyebrow: "数据库 / 慢查询",
         title: "慢查询中心",
-        description: "按 SQL 指纹聚合慢查询，支持 Explain、索引建议、终止会话和处理状态流转。",
-        chips: [`窗口 ${timeRange}`, `待处理 ${pendingCount}`, `高危 ${highCount}`],
+        description: "按 SQL 指纹和连接延迟实例聚合治理入口，支持 Explain、索引建议、终止会话和处理状态流转。",
+        chips: [`窗口 ${timeRange}`, `待处理 ${pendingCount + delayedInstances.length}`, `延迟实例 ${delayedInstances.filter((instance) => instance.connectionHealth.startsWith("延迟")).length}`],
       }}
       actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredQueries.length} 条慢查询`, "info")}><Download size={15} /> 导出慢查询</button><button className="ghost" type="button" onClick={() => { setTimeRange(timeRange === "近 24 小时" ? "近 7 天" : "近 24 小时"); notify("慢查询采样窗口已切换", "info"); }}><Clock3 size={15} /> 切换窗口</button><button className="primary" type="button" disabled={!primaryQuery} onClick={handlePrimaryIndexAdvice}><Plus size={15} /> 生成索引建议</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索 SQL、指纹、数据库或负责人" onChange={setSearch} /><FieldSelect label="数据库" value={databaseFilter} options={databaseOptions} onChange={setDatabaseFilter} /><FieldSelect label="等级" value={levelFilter} options={["全部", "高", "中", "低"]} onChange={setLevelFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "待处理", "分析中", "已处理"]} onChange={setStatusFilter} /></>}
@@ -4354,6 +4615,18 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
           getRowKey={(query) => query.id}
         />
         <section className="slow-query-lower">
+          <PanelCard title="连接延迟实例" action="查看实例页" onAction={() => notify("实例详情已在数据库实例页保留", "info")}>
+            <div className="slow-instance-list">
+              {filteredDelayedInstances.map((instance) => (
+                <article key={instance.id}>
+                  <span><StatusLight tone={instance.connectionHealth.startsWith("延迟") ? "orange" : "blue"} /><b>{instance.name}</b></span>
+                  <em>{instance.connectionHealth} · 慢查询 {instance.slowQueries} · {instance.host}</em>
+                  <button type="button" onClick={() => notify(`${instance.name} 已加入慢查询治理队列`, "info")}>治理</button>
+                </article>
+              ))}
+              {filteredDelayedInstances.length === 0 && <p className="module-card-empty">没有匹配的连接延迟实例</p>}
+            </div>
+          </PanelCard>
           <PanelCard title="治理队列" action="刷新采样" onAction={() => notify("慢查询采样已刷新")}>
             <div className="slow-remediation-list">
               {queries.filter((query) => query.status !== "已处理").map((query) => (
@@ -4391,8 +4664,11 @@ function DatabaseBackupsPage({ page, notify }: { page: PageKey; notify: Notify }
   const [tasks, setTasks] = useState(initialDatabaseBackupTasks);
   const [restorePoints, setRestorePoints] = useState(initialDatabaseRestorePoints);
   const [restorePointId, setRestorePointId] = useState(initialDatabaseRestorePoints[0]?.id ?? "");
-  const [drawer, setDrawer] = useState<DatabaseBackupPlan | DatabaseRestorePoint | null>(null);
+  const [drawer, setDrawer] = useState<DatabaseBackupDrawer | null>(null);
+  const [lastSync, setLastSync] = useState(currentClock());
   const selectedRestorePoint = restorePoints.find((point) => point.id === restorePointId) ?? restorePoints[0];
+  const selectedDrawerPlan = drawer?.type === "plan" ? plans.find((plan) => plan.id === drawer.id) ?? null : null;
+  const selectedDrawerRestorePoint = drawer?.type === "restore" ? restorePoints.find((point) => point.id === drawer.id) ?? null : null;
   const filteredPlans = plans.filter((plan) => {
     const keyword = search.trim().toLowerCase();
     const matchSearch = !keyword || `${plan.name} ${plan.database} ${plan.schedule}`.toLowerCase().includes(keyword);
@@ -4416,11 +4692,10 @@ function DatabaseBackupsPage({ page, notify }: { page: PageKey; notify: Notify }
   };
   const updateRestorePoint = (id: string, patch: Partial<DatabaseRestorePoint>) => {
     setRestorePoints((current) => current.map((point) => point.id === id ? { ...point, ...patch } : point));
-    setDrawer((current) => current && !("schedule" in current) && current.id === id ? { ...current, ...patch } : current);
   };
   const runPlanNow = (plan: DatabaseBackupPlan) => {
     const task: DatabaseBackupTask = {
-      id: `db-bkp-task-${Date.now()}`,
+      id: createLocalId("db-bkp-task"),
       planId: plan.id,
       database: plan.database,
       storage: plan.storage,
@@ -4430,12 +4705,12 @@ function DatabaseBackupsPage({ page, notify }: { page: PageKey; notify: Notify }
       duration: "0秒",
     };
     setTasks((current) => [task, ...current]);
-    updatePlan(plan.id, { enabled: true, lastRun: "刚刚" });
+    updatePlan(plan.id, { lastRun: "刚刚" });
     notify(`${plan.database} 已开始立即备份`);
   };
   const createPlan = () => {
     const next: DatabaseBackupPlan = {
-      id: `db-bkp-plan-${Date.now()}`,
+      id: createLocalId("db-bkp-plan"),
       name: "新建备份计划",
       database: "staging-pg-03",
       storage: "S3",
@@ -4450,14 +4725,14 @@ function DatabaseBackupsPage({ page, notify }: { page: PageKey; notify: Notify }
     setSearch("");
     setStatusFilter("全部");
     setStorageFilter("全部");
-    setDrawer(next);
+    setDrawer({ type: "plan", id: next.id });
     notify("备份计划已创建，默认处于暂停状态", "info");
   };
 
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
-      subtitle={`${preset.subtitle} · 最近同步 ${currentClock()}`}
+      subtitle={`${preset.subtitle} · 最近同步 ${lastSync}`}
       page={page}
       viewContext={{
         eyebrow: "数据库 / 备份计划",
@@ -4465,39 +4740,41 @@ function DatabaseBackupsPage({ page, notify }: { page: PageKey; notify: Notify }
         description: "独立管理数据库备份策略、最近任务和恢复点演练，不混入实例创建流程。",
         chips: [`计划 ${plans.length}`, `失败 ${failedTasks}`, `恢复点 ${restorePoints.length}`],
       }}
-      actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredPlans.length} 条备份计划`, "info")}><Download size={15} /> 导出</button><button className="ghost" type="button" onClick={() => notify("备份计划状态已刷新", "info")}><RefreshCw size={15} /> 刷新</button><button className="primary" type="button" onClick={createPlan}><Plus size={15} /> 新建计划</button></>}
+      actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredPlans.length} 条备份计划`, "info")}><Download size={15} /> 导出</button><button className="ghost" type="button" onClick={() => { setLastSync(currentClock()); notify("备份计划状态已刷新", "info"); }}><RefreshCw size={15} /> 刷新</button><button className="primary" type="button" onClick={createPlan}><Plus size={15} /> 新建计划</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索计划、数据库或 cron" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={["全部", "已启用", "已暂停", "告警"]} onChange={setStatusFilter} /><FieldSelect label="存储" value={storageFilter} options={["全部", "S3", "MinIO", "本地"]} onChange={setStorageFilter} /></>}
       metrics={<><MetricTile icon={CalendarDays} label="备份计划" value={`${plans.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="任务成功率" value={`${successRate}%`} tone="green" /><MetricTile icon={Shield} label="失败任务" value={`${failedTasks}`} tone={failedTasks ? "red" : "gray"} /></>}
-      side={drawer && (
+      side={(selectedDrawerPlan || selectedDrawerRestorePoint) && (
         <DetailDrawer
-          title={"schedule" in drawer ? "备份计划详情" : "恢复演练"}
-          subtitle={drawer.database}
+          title={selectedDrawerPlan ? "备份计划详情" : "恢复演练"}
+          subtitle={(selectedDrawerPlan ?? selectedDrawerRestorePoint)?.database}
           onClose={() => setDrawer(null)}
-          actions={"schedule" in drawer ? (
-            <><button className="ghost" type="button" onClick={() => setDrawer(null)}>关闭</button><button className="primary" type="button" onClick={() => { runPlanNow(drawer); setDrawer(null); }}>立即备份</button></>
-          ) : (
-            <><button className="ghost" type="button" aria-label={`校验恢复点 ${drawer.database}`} onClick={() => { updateRestorePoint(drawer.id, { checksum: "已校验" }); notify(`${drawer.database} 校验已完成`, "info"); }}>校验</button><button className="primary" type="button" aria-label={`${drawer.drillStatus === "演练中" ? "完成" : "开始"}恢复演练 ${drawer.database}`} onClick={() => { updateRestorePoint(drawer.id, { drillStatus: drawer.drillStatus === "演练中" ? "已完成" : "演练中" }); notify(`${drawer.database} 恢复演练已${drawer.drillStatus === "演练中" ? "完成" : "创建"}`); }}>{drawer.drillStatus === "演练中" ? "完成演练" : "开始演练"}</button></>
-          )}
+          actions={selectedDrawerPlan ? (
+            <><button className="ghost" type="button" onClick={() => setDrawer(null)}>关闭</button><button className="primary" type="button" onClick={() => { runPlanNow(selectedDrawerPlan); setDrawer(null); }}>立即备份</button></>
+          ) : selectedDrawerRestorePoint ? (
+            <><button className="ghost" type="button" aria-label={`校验恢复点 ${selectedDrawerRestorePoint.database}`} onClick={() => { updateRestorePoint(selectedDrawerRestorePoint.id, { checksum: "已校验" }); notify(`${selectedDrawerRestorePoint.database} 校验已完成`, "info"); }}>校验</button><button className="primary" type="button" aria-label={`${selectedDrawerRestorePoint.drillStatus === "演练中" ? "完成" : "开始"}恢复演练 ${selectedDrawerRestorePoint.database}`} onClick={() => { updateRestorePoint(selectedDrawerRestorePoint.id, { drillStatus: selectedDrawerRestorePoint.drillStatus === "演练中" ? "已完成" : "演练中" }); notify(`${selectedDrawerRestorePoint.database} 恢复演练已${selectedDrawerRestorePoint.drillStatus === "演练中" ? "完成" : "创建"}`); }}>{selectedDrawerRestorePoint.drillStatus === "演练中" ? "完成演练" : "开始演练"}</button></>
+          ) : null}
         >
-          {"schedule" in drawer ? (
+          {selectedDrawerPlan ? (
             <div className="backup-drawer-body">
-              <p><span>计划名称</span><b>{drawer.name}</b></p>
-              <p><span>执行周期</span><b>{drawer.schedule}</b></p>
-              <p><span>保留策略</span><b>{drawer.retention}</b></p>
-              <p><span>存储目标</span><b>{drawer.storage}</b></p>
-              <p><span>成功率</span><b>{drawer.successRate}%</b></p>
+              <p><span>计划名称</span><b>{selectedDrawerPlan.name}</b></p>
+              <p><span>执行周期</span><b>{selectedDrawerPlan.schedule}</b></p>
+              <p><span>保留策略</span><b>{selectedDrawerPlan.retention}</b></p>
+              <p><span>存储目标</span><b>{selectedDrawerPlan.storage}</b></p>
+              <p><span>状态</span><b>{selectedDrawerPlan.enabled ? selectedDrawerPlan.health : "暂停"}</b></p>
+              <p><span>最近执行</span><b>{selectedDrawerPlan.lastRun}</b></p>
+              <p><span>成功率</span><b>{selectedDrawerPlan.successRate}%</b></p>
               <div className="drawer-tip">编辑计划会记录到审计日志，本地原型仅模拟保存状态。</div>
             </div>
-          ) : (
+          ) : selectedDrawerRestorePoint ? (
             <div className="backup-drawer-body">
-              <p><span>恢复点</span><b>{drawer.createdAt}</b></p>
-              <p><span>存储位置</span><b>{drawer.storage}</b></p>
-              <p><span>大小</span><b>{drawer.size}</b></p>
-              <p><span>校验</span><b>{drawer.checksum}</b></p>
-              <p><span>演练状态</span><b>{drawer.drillStatus}</b></p>
+              <p><span>恢复点</span><b>{selectedDrawerRestorePoint.createdAt}</b></p>
+              <p><span>存储位置</span><b>{selectedDrawerRestorePoint.storage}</b></p>
+              <p><span>大小</span><b>{selectedDrawerRestorePoint.size}</b></p>
+              <p><span>校验</span><b>{selectedDrawerRestorePoint.checksum}</b></p>
+              <p><span>演练状态</span><b>{selectedDrawerRestorePoint.drillStatus}</b></p>
               <div className="drawer-warning">恢复演练不会覆盖生产库，原型中仅生成本地状态反馈。</div>
             </div>
-          )}
+          ) : null}
         </DetailDrawer>
       )}
     >
@@ -4505,14 +4782,14 @@ function DatabaseBackupsPage({ page, notify }: { page: PageKey; notify: Notify }
         <section className="backup-plan-section">
           <DataTable
             columns={[
-              { key: "plan", label: "备份计划", width: "240px", render: (plan) => <button className="module-row-link" type="button" aria-label={`查看 ${plan.name} 详情`} onClick={() => setDrawer(plan)}><StatusLight tone={backupPlanTone(plan)} /><b>{plan.name}</b></button> },
+              { key: "plan", label: "备份计划", width: "240px", render: (plan) => <button className="module-row-link" type="button" aria-label={`查看 ${plan.name} 详情`} onClick={() => setDrawer({ type: "plan", id: plan.id })}><StatusLight tone={backupPlanTone(plan)} /><b>{plan.name}</b></button> },
               { key: "database", label: "数据库", render: (plan) => <code>{plan.database}</code> },
               { key: "schedule", label: "周期", render: (plan) => plan.schedule },
               { key: "storage", label: "存储", render: (plan) => <span className="pill blue">{plan.storage}</span> },
               { key: "retention", label: "保留", render: (plan) => plan.retention },
               { key: "status", label: "状态", render: (plan) => <span className={`pill ${backupPlanTone(plan)}`}>{plan.enabled ? plan.health : "暂停"}</span> },
               { key: "success", label: "成功率", render: (plan) => <span className={plan.successRate < 90 ? "red-text" : "green-text"}>{plan.successRate}%</span> },
-              { key: "ops", label: "操作", width: "230px", render: (plan) => <span className="table-actions"><button type="button" aria-label={`立即备份 ${plan.name}`} onClick={() => runPlanNow(plan)}>立即</button><button type="button" aria-label={`${plan.enabled ? "暂停" : "启用"} ${plan.name}`} onClick={() => { const enabled = !plan.enabled; updatePlan(plan.id, { enabled }); notify(`${plan.name} 已${enabled ? "启用" : "暂停"}`, enabled ? "success" : "warning"); }}>{plan.enabled ? "暂停" : "启用"}</button><button type="button" aria-label={`打开 ${plan.name} 详情`} onClick={() => setDrawer(plan)}>详情</button></span> },
+              { key: "ops", label: "操作", width: "230px", render: (plan) => <span className="table-actions"><button type="button" aria-label={`立即备份 ${plan.name}`} onClick={() => runPlanNow(plan)}>立即</button><button type="button" aria-label={`${plan.enabled ? "暂停" : "启用"} ${plan.name}`} onClick={() => { const enabled = !plan.enabled; updatePlan(plan.id, { enabled }); notify(`${plan.name} 已${enabled ? "启用" : "暂停"}`, enabled ? "success" : "warning"); }}>{plan.enabled ? "暂停" : "启用"}</button><button type="button" aria-label={`打开 ${plan.name} 详情`} onClick={() => setDrawer({ type: "plan", id: plan.id })}>详情</button></span> },
             ]}
             rows={filteredPlans}
             emptyText="没有匹配的备份计划"
@@ -4551,13 +4828,13 @@ function DatabaseBackupsPage({ page, notify }: { page: PageKey; notify: Notify }
           </PanelCard>
           <PanelCard title="恢复点演练" action="开始演练" onAction={() => {
             if (selectedRestorePoint) {
-              setDrawer(selectedRestorePoint);
+              setDrawer({ type: "restore", id: selectedRestorePoint.id });
               notify(`${selectedRestorePoint.database} 恢复演练已准备`, "info");
             }
           }}>
             <div className="restore-point-list">
               {restorePoints.map((point) => (
-                <button key={point.id} className={point.id === restorePointId ? "active" : ""} type="button" aria-label={`选择恢复点 ${point.database} ${point.createdAt}`} aria-pressed={point.id === restorePointId} onClick={() => { setRestorePointId(point.id); setDrawer(point); }}>
+                <button key={point.id} className={point.id === restorePointId ? "active" : ""} type="button" aria-label={`选择恢复点 ${point.database} ${point.createdAt}`} aria-pressed={point.id === restorePointId} onClick={() => { setRestorePointId(point.id); setDrawer({ type: "restore", id: point.id }); }}>
                   <span><b>{point.database}</b><i>{point.createdAt}</i></span>
                   <em>{point.size}</em>
                   <strong>{point.checksum} · {point.drillStatus}</strong>
@@ -4584,105 +4861,6 @@ function backupTaskTone(status: DatabaseBackupTask["status"]) {
   return "gray";
 }
 
-function DatabaseTable({ rows, notify }: { rows: string[][]; notify: Notify }) {
-  return (
-    <table className="mini-table database-table">
-      <thead>
-        <tr>
-          <th>名称</th>
-          <th>类型</th>
-          <th>主机</th>
-          <th>端口</th>
-          <th>连接健康</th>
-          <th>备份</th>
-          <th>慢查询</th>
-          <th>最近备份</th>
-          <th>权限</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row[0]}>
-            <td><StatusLight tone={row[4].startsWith("延迟") ? "orange" : "green"} /> <b className="blue-text">{row[0]}</b></td>
-            <td><Database size={15} /> {row[1]}</td>
-            <td>{row[2]}</td>
-            <td>{row[3]}</td>
-            <td><StatusLight tone={row[4].startsWith("延迟") ? "orange" : "green"} /> {row[4]}</td>
-            <td><StatusLight tone={row[5] === "失败" ? "red" : row[5] === "等待确认" ? "orange" : "green"} /> {row[5]}</td>
-            <td className={Number(row[6]) > 0 ? "red-text" : ""}>{row[6]}</td>
-            <td>{row[7]}</td>
-            <td><span className="pill blue">{row[8]}</span> <span className="pill green">{row[9]}</span></td>
-            <td className="table-actions">
-              <button type="button" onClick={() => notify(`正在查看 ${row[0]}`, "info")}>查看</button>
-              <button type="button" onClick={() => notify(`已触发 ${row[0]} 备份`)}>备份</button>
-              <button type="button" onClick={() => notify(`${row[0]} 更多操作已展开`, "info")}><MoreVertical size={15} /></button>
-            </td>
-          </tr>
-        ))}
-        {rows.length === 0 && (
-          <tr>
-            <td colSpan={10} className="empty-row">没有匹配的数据库实例</td>
-          </tr>
-        )}
-      </tbody>
-    </table>
-  );
-}
-
-function CreateDatabaseDrawer({
-  notify,
-  onCreate,
-}: {
-  notify: Notify;
-  onCreate: (draft: { name: string; type: string; port: string }) => void;
-}) {
-  const [name, setName] = useState("newdb_app");
-  const [type, setType] = useState("PostgreSQL");
-  const [port, setPort] = useState("5432");
-  const [autoBackup, setAutoBackup] = useState(true);
-  const [remote, setRemote] = useState(false);
-
-  return (
-    <aside className="create-drawer">
-      <div className="drawer-head">
-        <strong>创建数据库</strong>
-        <button type="button" className="icon-action" onClick={() => notify("创建抽屉保持固定展示，已清空草稿", "info")}><X size={16} /></button>
-      </div>
-      <FormLine label="数据库名" required value={name} onChange={setName} />
-      <FormSelectLine label="类型" required value={type} options={["PostgreSQL", "MySQL"]} onChange={(next) => {
-        setType(next);
-        setPort(next === "PostgreSQL" ? "5432" : "3306");
-      }} icon={<Database size={14} />} />
-      <FormSelectLine label="绑定主机" required value="10.0.12.24 (prod-db-01)" />
-      <FormLine label="端口" required value={port} onChange={setPort} hint={`默认 ${type === "PostgreSQL" ? "5432" : "3306"}`} />
-      <FormLine label="用户名" required value="newdb_app" />
-      <FormLine label="初始密码" required value="••••••••••••••••" strength />
-      <FormSelectLine label="字符集" value="UTF8" />
-      <FormSelectLine label="时区" value="Asia/Shanghai" />
-      <FormTagLine label="权限范围" />
-      <ToggleLine label="自动备份" active={autoBackup} onToggle={setAutoBackup} hint="每天 02:00 执行，备份保留 7 天" />
-      <ToggleLine label="允许远程连接" active={remote} onToggle={setRemote} hint="仅允许白名单 IP 访问" />
-      <div className="drawer-tip">备份保留 7 天，周期将自动清理。审计日志记录所有变更操作。</div>
-      <div className="drawer-warning">删除数据库为危险操作，执行后将无法恢复。请务必谨慎操作！</div>
-      <div className="drawer-actions">
-        <button className="ghost" type="button" onClick={() => {
-          setName("newdb_app");
-          setType("PostgreSQL");
-          setPort("5432");
-          notify("数据库草稿已重置", "info");
-        }}>取消</button>
-        <button className="primary" type="button" onClick={() => {
-          if (!name.trim()) {
-            notify("数据库名不能为空", "danger");
-            return;
-          }
-          onCreate({ name: name.trim(), type, port });
-        }}>创建数据库</button>
-      </div>
-    </aside>
-  );
-}
 
 function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; notify: Notify }) {
   const tabs = ["基础", "安全", "通知", "备份", "审计"];
