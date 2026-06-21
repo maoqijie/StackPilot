@@ -1318,27 +1318,27 @@ function DesktopShell({
         {page === "overview-health" && <OverviewHealthPage notify={notify} />}
         {page === "overview-tasks" && <OverviewTasksPage notify={notify} />}
         {page === "overview-risks" && <OverviewRisksPage notify={notify} />}
-        {activeModule === "hosts" && <HostsPage key={`page-${page}`} page={page} notify={notify} />}
-        {activeModule === "sites" && <SitesPage key={`page-${page}`} page={page} notify={notify} />}
+        {activeModule === "hosts" && <HostsPage page={page} notify={notify} />}
+        {activeModule === "sites" && <SitesPage page={page} notify={notify} />}
         {activeModule === "databases" && (
           page === "databases-backups"
-            ? <DatabaseBackupsPage key={`page-${page}`} page={page} notify={notify} />
+            ? <DatabaseBackupsPage page={page} notify={notify} />
             : page === "databases-slow"
-              ? <DatabaseSlowQueriesPage key={`page-${page}`} page={page} notify={notify} />
-            : <DatabasesPage key={`page-${page}`} page={page} setPage={setPage} notify={notify} />
+              ? <DatabaseSlowQueriesPage page={page} notify={notify} />
+            : <DatabasesPage page={page} setPage={setPage} notify={notify} />
         )}
         {activeModule === "files" && <FilesModule page={page} notify={notify} />}
         {activeModule === "terminal" && <TerminalPage page={page} notify={notify} />}
         {activeModule === "systemd" && <SystemdPage page={page} notify={notify} />}
-        {activeModule === "firewall" && <FirewallPage key={`page-${page}`} page={page} notify={notify} />}
-        {activeModule === "deploy" && <DeployPage key={`page-${page}`} page={page} notify={notify} />}
+        {activeModule === "firewall" && <FirewallPage page={page} notify={notify} />}
+        {activeModule === "deploy" && <DeployPage page={page} notify={notify} />}
         {activeModule === "schedule" && <SchedulePage page={page} notify={notify} />}
-        {activeModule === "audit" && <AuditPage key={`page-${page}`} page={page} notify={notify} />}
+        {activeModule === "audit" && <AuditPage page={page} notify={notify} />}
         {activeModule === "acl" && <AclPage page={page} setPage={setPage} notify={notify} />}
         {activeModule === "settings" && (
           page === "settings-proxy"
-            ? <SettingsProxyPage key={`page-${page}`} page={page} notify={notify} />
-            : <SettingsPage key={`page-${page}`} page={page} setPage={setPage} notify={notify} />
+            ? <SettingsProxyPage page={page} notify={notify} />
+            : <SettingsPage page={page} setPage={setPage} notify={notify} />
         )}
       </div>
       {activeModule === "overview" && <DesktopFooter />}
@@ -2741,11 +2741,15 @@ function MetricTile({ icon: Icon, label, value, tone }: { icon: LucideIcon; labe
 function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialHostRecords);
   const hostPreset = hostPagePreset(page);
-  const [search, setSearch] = useState(hostPreset.search);
-  const [envFilter, setEnvFilter] = useState(hostPreset.env);
-  const [healthFilter, setHealthFilter] = useState(hostPreset.health);
+  const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
+  const [envByPage, setEnvByPage] = useState<Record<string, string>>({});
+  const [healthByPage, setHealthByPage] = useState<Record<string, string>>({});
   const [drawer, setDrawer] = useState<{ type: "detail" | "create"; host?: HostRecord } | null>(null);
   const [draft, setDraft] = useState({ name: "panel-new-05", ip: "10.0.4.55", env: "开发" });
+  const search = searchByPage[page] ?? hostPreset.search;
+  const envFilter = envByPage[page] ?? hostPreset.env;
+  const healthFilter = healthByPage[page] ?? hostPreset.health;
+
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
     const matchSearch = !query || row.name.toLowerCase().includes(query) || row.ip.includes(query);
@@ -2789,7 +2793,7 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
       subtitle={null}
       page={page}
       actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 台主机`, "info")}><Download size={15} /> 导出</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 新增主机</button></>}
-      filters={<><ModuleSearch value={search} placeholder="搜索主机名或 IP" onChange={setSearch} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={setEnvFilter} /><FieldSelect label="健康" value={healthFilter} options={["全部", "健康", "警告", "离线"]} onChange={setHealthFilter} /></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索主机名或 IP" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={(value) => setEnvByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="健康" value={healthFilter} options={["全部", "健康", "警告", "离线"]} onChange={(value) => setHealthByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={Server} label="主机总数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="健康" value={`${rows.filter((row) => row.health === "健康").length}`} tone="green" /><MetricTile icon={Shield} label="需关注" value={`${rows.filter((row) => row.health !== "健康").length}`} tone="orange" /></>}
       side={drawer?.type === "detail" && drawer.host ? (
         <DetailDrawer title={drawer.host.name} subtitle={`${drawer.host.ip} · ${drawer.host.env}`} onClose={() => setDrawer(null)}>
@@ -2844,12 +2848,16 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
 function SitesPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialSiteRecords);
   const sitePreset = sitesPagePreset(page);
-  const [search, setSearch] = useState(sitePreset.search);
-  const [statusFilter, setStatusFilter] = useState(sitePreset.status);
-  const [runtimeFilter, setRuntimeFilter] = useState(sitePreset.runtime);
+  const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
+  const [statusByPage, setStatusByPage] = useState<Record<string, string>>({});
+  const [runtimeByPage, setRuntimeByPage] = useState<Record<string, string>>({});
   const [drawer, setDrawer] = useState<{ type: "create" | "logs"; site?: SiteRecord } | null>(null);
   const [draft, setDraft] = useState({ domain: "new.example.com", runtime: "Node 20", host: "panel-se-01" });
   const runtimeOptions = ["全部", ...Array.from(new Set(rows.map((row) => row.runtime)))];
+  const search = searchByPage[page] ?? sitePreset.search;
+  const statusFilter = statusByPage[page] ?? sitePreset.status;
+  const runtimeFilter = runtimeByPage[page] ?? sitePreset.runtime;
+
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
     const matchCert = page === "sites-cert" ? row.certDays < 14 : true;
@@ -2873,7 +2881,7 @@ function SitesPage({ page, notify }: { page: PageKey; notify: Notify }) {
       subtitle={sitePreset.subtitle}
       page={page}
       actions={<><button className="ghost" type="button" onClick={() => notify("站点列表已刷新", "info")}><RefreshCw size={15} /> 刷新</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 添加网站</button></>}
-      filters={<><ModuleSearch value={search} placeholder="搜索域名" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={["全部", "运行中", "已停止", "告警"]} onChange={setStatusFilter} /><FieldSelect label="运行时" value={runtimeFilter} options={runtimeOptions} onChange={setRuntimeFilter} /></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索域名" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={statusFilter} options={["全部", "运行中", "已停止", "告警"]} onChange={(value) => setStatusByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="运行时" value={runtimeFilter} options={runtimeOptions} onChange={(value) => setRuntimeByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={Globe2} label="站点" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="green" /><MetricTile icon={Shield} label="证书告警" value={`${rows.filter((row) => row.certDays < 14).length}`} tone="orange" /></>}
       side={drawer?.type === "create" ? (
         <DetailDrawer title="添加网站" subtitle="创建本地站点记录" onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={addSite}>添加网站</button></>}>
@@ -3337,21 +3345,28 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
   };
   const isPrivilegedCommand = (next: string) => /(^|\s)(systemctl\s+restart|systemctl\s+stop|rm\s+-rf|ufw|iptables)\b/.test(next);
   const isDestructiveCommand = (next: string) => /(^|\s)rm\s+-rf\b/.test(next);
-  const runCommand = (value = command, risk: TerminalSnippetRecord["risk"] | "自动" = "自动") => {
+  const runCommand = (
+    value = command,
+    risk: TerminalSnippetRecord["risk"] | "自动" = "自动",
+    targetSession = selectedSession,
+  ) => {
     const next = value.trim();
     if (!next) return;
-    if (!connected) {
-      notify("终端未连接，请先连接主机", "danger");
+    setSelectedSessionId(targetSession.id);
+    const targetConnected = targetSession.status === "connected";
+    if (!targetConnected) {
+      setPendingSensitiveCommand(null);
+      notify(`${targetSession.host} 未连接，请先连接目标主机`, "danger");
       return;
     }
     if (risk === "危险" || isDestructiveCommand(next)) {
       const output = "dangerous command blocked by local prototype";
-      appendLogs(selectedSession.id, [`$ ${next}`, output]);
+      appendLogs(targetSession.id, [`$ ${next}`, output]);
       setHistoryRows((current) => [{
         id: `term-history-${Date.now()}`,
         command: next,
-        host: selectedSession.host,
-        user: selectedSession.user,
+        host: targetSession.host,
+        user: targetSession.user,
         status: "失败",
         duration: "0.0s",
         time: currentClock(),
@@ -3363,46 +3378,47 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
       return;
     }
     const requiresSudo = risk === "变更" || isPrivilegedCommand(next);
-    if (requiresSudo && selectedSession.privilege !== "sudo") {
+    if (requiresSudo && targetSession.privilege !== "sudo") {
       const output = "permission denied: sudo privilege required";
-      appendLogs(selectedSession.id, [`$ ${next}`, output]);
+      appendLogs(targetSession.id, [`$ ${next}`, output]);
       setHistoryRows((current) => [{
         id: `term-history-${Date.now()}`,
         command: next,
-        host: selectedSession.host,
-        user: selectedSession.user,
+        host: targetSession.host,
+        user: targetSession.user,
         status: "失败",
         duration: "0.1s",
         time: currentClock(),
         output,
       }, ...current]);
+      setPendingSensitiveCommand(null);
       setCommand("");
       notify("当前会话权限不足，已阻止变更命令", "danger");
       return;
     }
-    if (requiresSudo && (pendingSensitiveCommand?.command !== next || pendingSensitiveCommand.sessionId !== selectedSession.id)) {
-      setPendingSensitiveCommand({ command: next, sessionId: selectedSession.id });
+    if (requiresSudo && (pendingSensitiveCommand?.command !== next || pendingSensitiveCommand.sessionId !== targetSession.id)) {
+      setPendingSensitiveCommand({ command: next, sessionId: targetSession.id });
       setCommand(next);
       notify("变更命令需要二次确认，再次运行将执行", "warning");
       return;
     }
     const output = commandOutput(next);
     const failed = next.includes("mysqladmin") || next.includes("rm -rf");
-    appendLogs(selectedSession.id, [`$ ${next}`, output]);
+    appendLogs(targetSession.id, [`$ ${next}`, output]);
     setHistoryRows((current) => [{
       id: `term-history-${Date.now()}`,
       command: next,
-      host: selectedSession.host,
-      user: selectedSession.user,
+      host: targetSession.host,
+      user: targetSession.user,
       status: failed ? "失败" : "成功",
       duration: failed ? "5.0s" : "0.4s",
       time: currentClock(),
       output,
     }, ...current]);
-    updateSession(selectedSession.id, { lastCommand: next });
+    updateSession(targetSession.id, { lastCommand: next });
     setPendingSensitiveCommand(null);
     setCommand("");
-    notify(failed ? "命令已被原型拦截或执行失败" : "命令已执行", failed ? "danger" : "success");
+    notify(failed ? `${targetSession.host} 命令执行失败` : `${targetSession.host} 命令已执行`, failed ? "danger" : "success");
   };
   const fillSnippet = (snippet: TerminalSnippetRecord) => {
     setCommand(snippet.command);
@@ -3412,6 +3428,15 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const runSnippet = (snippet: TerminalSnippetRecord) => {
     fillSnippet(snippet);
     runCommand(snippet.command, snippet.risk);
+  };
+  const rerunHistory = (row: TerminalHistoryRecord) => {
+    const targetSession = sessions.find((session) => session.host === row.host && session.user === row.user);
+    if (!targetSession) {
+      setPendingSensitiveCommand(null);
+      notify(`未找到 ${row.user}@${row.host} 的终端会话`, "danger");
+      return;
+    }
+    runCommand(row.command, "自动", targetSession);
   };
   const copyText = (value: string, successMessage: string) => {
     if (!navigator.clipboard?.writeText) {
@@ -3479,7 +3504,7 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
                   <header><span className={`pill ${row.status === "成功" ? "green" : "red"}`}>{row.status}</span><strong>{row.command}</strong></header>
                   <p><b>{row.host}</b><span>{row.user} · {row.time} · {row.duration}</span></p>
                   <code>{row.output}</code>
-                  <footer><button type="button" aria-label={`复制历史命令 ${row.command} ${row.host} ${row.time}`} onClick={() => copyCommand(row.command)}>复制</button><button type="button" aria-label={`重新执行 ${row.command} ${row.host} ${row.time}`} onClick={() => runCommand(row.command)}>重跑</button><button type="button" aria-label={`${row.pinned ? "取消固定" : "固定"} ${row.command} ${row.host} ${row.time}`} onClick={() => { setHistoryRows((current) => current.map((item) => item.id === row.id ? { ...item, pinned: !item.pinned } : item)); notify(`${row.command} 已${row.pinned ? "取消固定" : "固定"}`, "info"); }}>{row.pinned ? "取消固定" : "固定"}</button></footer>
+                  <footer><button type="button" aria-label={`复制历史命令 ${row.command} ${row.host} ${row.time}`} onClick={() => copyCommand(row.command)}>复制</button><button type="button" aria-label={`重新执行 ${row.command} ${row.host} ${row.time}`} onClick={() => rerunHistory(row)}>重跑</button><button type="button" aria-label={`${row.pinned ? "取消固定" : "固定"} ${row.command} ${row.host} ${row.time}`} onClick={() => { setHistoryRows((current) => current.map((item) => item.id === row.id ? { ...item, pinned: !item.pinned } : item)); notify(`${row.command} 已${row.pinned ? "取消固定" : "固定"}`, "info"); }}>{row.pinned ? "取消固定" : "固定"}</button></footer>
                 </article>
               ))}
               {filteredHistory.length === 0 && <p className="module-empty-card">没有匹配的执行历史</p>}
@@ -3583,11 +3608,15 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
 function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialFirewallRules);
   const firewallPreset = firewallPagePreset(page);
-  const [search, setSearch] = useState(firewallPreset.search);
-  const [protocolFilter, setProtocolFilter] = useState(firewallPreset.protocol);
-  const [sourceFilter, setSourceFilter] = useState(firewallPreset.source);
+  const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
+  const [protocolByPage, setProtocolByPage] = useState<Record<string, string>>({});
+  const [sourceByPage, setSourceByPage] = useState<Record<string, string>>({});
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [draft, setDraft] = useState({ name: "临时调试端口", port: "", protocol: "TCP", source: "10.0.0.0/8" });
+  const search = searchByPage[page] ?? firewallPreset.search;
+  const protocolFilter = protocolByPage[page] ?? firewallPreset.protocol;
+  const sourceFilter = sourceByPage[page] ?? firewallPreset.source;
+
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
     const matchDeny = page === "firewall-deny" ? !row.enabled || row.protocol === "UDP" : true;
@@ -3609,9 +3638,9 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
       subtitle={firewallPreset.subtitle}
       page={page}
       actions={<button className="primary" type="button" onClick={() => setDrawerOpen(true)}><Plus size={15} /> 新增规则</button>}
-      filters={<><ModuleSearch value={search} placeholder="搜索规则名或端口" onChange={setSearch} /><FieldSelect label="协议" value={protocolFilter} options={["全部", "TCP", "UDP"]} onChange={setProtocolFilter} /><FieldSelect label="来源" value={sourceFilter} options={["全部", ...Array.from(new Set(rows.map((row) => row.source)))]} onChange={setSourceFilter} /></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索规则名或端口" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="协议" value={protocolFilter} options={["全部", "TCP", "UDP"]} onChange={(value) => setProtocolByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="来源" value={sourceFilter} options={["全部", ...Array.from(new Set(rows.map((row) => row.source)))]} onChange={(value) => setSourceByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={Shield} label="规则数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Lock} label="停用" value={`${rows.filter((row) => !row.enabled).length}`} tone="orange" /></>}
-      side={drawerOpen && (
+      side={drawerOpen && page !== "firewall-deny" && (
         <DetailDrawer title="新增规则" subtitle="空端口会被阻止提交" onClose={() => setDrawerOpen(false)} actions={<><button className="ghost" type="button" onClick={() => setDrawerOpen(false)}>取消</button><button className="primary" type="button" onClick={addRule}>保存规则</button></>}>
           <FormLine label="规则名" value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
           <FormLine label="端口" required value={draft.port} onChange={(value) => setDraft((current) => ({ ...current, port: value }))} />
@@ -3642,18 +3671,24 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialDeployJobs);
   const [rollbackRows, setRollbackRows] = useState(initialRollbackRecords);
   const deployPreset = deployPagePreset(page);
-  const [env, setEnv] = useState(deployPreset.env);
+  const [envByPage, setEnvByPage] = useState<Record<string, string>>({});
   const [drawer, setDrawer] = useState<{ type: "deploy"; row: DeployJob } | { type: "rollback"; row: RollbackRecord } | null>(null);
   const isRollbackMode = deployPreset.mode === "rollbacks";
+  const env = envByPage[page] ?? deployPreset.env;
   const deployEnvOptions = isRollbackMode ? ["全部", "生产", "预发", "开发"] : ["生产", "预发", "开发"];
   const filteredRows = rows.filter((row) => row.env === env);
   const filteredRollbackRows = rollbackRows.filter((row) => env === "全部" || row.env === env);
   const updateDeploy = (id: string, patch: Partial<DeployJob>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   const updateRollback = (id: string, patch: Partial<RollbackRecord>) => setRollbackRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+
   const createDeploy = () => {
     const next: DeployJob = { id: `dep-${Date.now()}`, app: env === "生产" ? "shop-web" : "feature-service", env, version: `build-${rows.length + 1}`, status: "运行中", operator: "管理员", duration: "运行中" };
     setRows((current) => [next, ...current]);
     notify(`${env} 部署任务已创建`, "info");
+  };
+  const startDeploy = (row: DeployJob) => {
+    updateDeploy(row.id, { status: "运行中", duration: "运行中" });
+    notify(`${row.app} 已开始发布`, "info");
   };
 
   return (
@@ -3662,11 +3697,11 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
       subtitle={deployPreset.subtitle}
       page={page}
       actions={!isRollbackMode && <button className="primary" type="button" onClick={createDeploy}><Plus size={15} /> 创建部署任务</button>}
-      filters={<div className="deploy-tabs">{deployEnvOptions.map((item) => <button key={item} className={item === env ? "active" : ""} type="button" onClick={() => setEnv(item)}>{item}</button>)}</div>}
+      filters={<div className="deploy-tabs">{deployEnvOptions.map((item) => <button key={item} className={item === env ? "active" : ""} type="button" onClick={() => setEnvByPage((current) => ({ ...current, [page]: item }))}>{item}</button>)}</div>}
       metrics={isRollbackMode
         ? <><MetricTile icon={RefreshCw} label="可回滚" value={`${rollbackRows.filter((row) => row.status === "可回滚").length}`} tone="blue" /><MetricTile icon={Activity} label="回滚中" value={`${rollbackRows.filter((row) => row.status === "回滚中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="已回滚" value={`${rollbackRows.filter((row) => row.status === "已回滚").length}`} tone="green" /></>
         : <><MetricTile icon={CloudUpload} label="当前环境" value={env} tone="blue" /><MetricTile icon={Activity} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="成功" value={`${rows.filter((row) => row.status === "成功").length}`} tone="green" /></>}
-      side={drawer && (
+      side={drawer && (isRollbackMode ? drawer.type === "rollback" : drawer.type === "deploy") && (
         <DetailDrawer title={drawer.type === "rollback" ? "回滚日志" : "部署日志"} subtitle={drawer.type === "rollback" ? `${drawer.row.app} ${drawer.row.fromVersion} -> ${drawer.row.targetVersion}` : `${drawer.row.app} ${drawer.row.version}`} onClose={() => setDrawer(null)}>
           <div className="terminal-log compact-log">
             {drawer.type === "rollback" ? (
@@ -3712,7 +3747,7 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
             { key: "status", label: "状态", render: (row) => <span className={`pill ${row.status === "成功" ? "green" : row.status === "失败" ? "red" : "blue"}`}>{row.status}</span> },
             { key: "operator", label: "操作人", render: (row) => row.operator },
             { key: "duration", label: "耗时", render: (row) => row.duration },
-            { key: "ops", label: "操作", width: "260px", render: (row) => <span className="table-actions">{row.status === "运行中" && <button type="button" onClick={() => { updateDeploy(row.id, { status: "成功", duration: "1分02秒" }); notify(`${row.app} 部署已完成`); }}>完成</button>}<button type="button" onClick={() => { setRollbackRows((current) => [{ id: `rb-${Date.now()}`, app: row.app, env: row.env, fromVersion: row.version, targetVersion: "上一健康版本", status: "回滚中", operator: row.operator, reason: "从部署任务发起回滚", createdAt: currentClock() }, ...current]); updateDeploy(row.id, { status: "运行中", duration: "回滚中" }); notify(`${row.app} 已开始回滚`, "warning"); }}>回滚</button><button type="button" onClick={() => setDrawer({ type: "deploy", row })}>日志</button><button type="button" onClick={() => { updateDeploy(row.id, { status: "运行中", duration: "运行中" }); notify(`${row.app} 已重新部署`, "info"); }}>重部署</button></span> },
+            { key: "ops", label: "操作", width: "290px", render: (row) => <span className="table-actions">{row.status === "待发布" && <button type="button" onClick={() => startDeploy(row)}>开始</button>}{row.status === "运行中" && <button type="button" onClick={() => { updateDeploy(row.id, { status: "成功", duration: "1分02秒" }); notify(`${row.app} 部署已完成`); }}>完成</button>}<button type="button" onClick={() => { setRollbackRows((current) => [{ id: `rb-${Date.now()}`, app: row.app, env: row.env, fromVersion: row.version, targetVersion: "上一健康版本", status: "回滚中", operator: row.operator, reason: "从部署任务发起回滚", createdAt: currentClock() }, ...current]); updateDeploy(row.id, { status: "运行中", duration: "回滚中" }); notify(`${row.app} 已开始回滚`, "warning"); }}>回滚</button><button type="button" onClick={() => setDrawer({ type: "deploy", row })}>日志</button><button type="button" onClick={() => { updateDeploy(row.id, { status: "运行中", duration: "运行中" }); notify(`${row.app} 已重新部署`, "info"); }}>重部署</button></span> },
           ]}
           rows={filteredRows}
           emptyText="当前环境没有部署任务"
@@ -3798,15 +3833,19 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
 function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const auditPreset = auditPagePreset(page);
   const [exportRows, setExportRows] = useState(initialAuditExports);
-  const [search, setSearch] = useState(auditPreset.search);
-  const [userFilter, setUserFilter] = useState(auditPreset.user);
-  const [resultFilter, setResultFilter] = useState(auditPreset.result);
+  const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
+  const [userByPage, setUserByPage] = useState<Record<string, string>>({});
+  const [resultByPage, setResultByPage] = useState<Record<string, string>>({});
   const [formatFilter, setFormatFilter] = useState("全部");
   const [exportStatusFilter, setExportStatusFilter] = useState("全部");
   const [selected, setSelected] = useState<AuditRecord | null>(null);
   const [selectedExport, setSelectedExport] = useState<AuditExportRecord | null>(null);
   const isExportMode = auditPreset.mode === "exports";
   const users = ["全部", ...Array.from(new Set(initialAuditRecords.map((row) => row.user)))];
+  const search = searchByPage[page] ?? auditPreset.search;
+  const userFilter = userByPage[page] ?? auditPreset.user;
+  const resultFilter = resultByPage[page] ?? auditPreset.result;
+
   const filteredRows = initialAuditRecords.filter((row) => {
     const query = search.trim().toLowerCase();
     const matchSearch = !query || `${row.user} ${row.action} ${row.object} ${row.result} ${row.traceId} ${row.ip}`.toLowerCase().includes(query);
@@ -3836,6 +3875,13 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
     notify(`${next.name} 已创建`, "success");
   };
   const regenerateExport = (row: AuditExportRecord) => {
+    setExportRows((current) => current.map((item) => item.id === row.id ? {
+      ...item,
+      status: "生成中",
+      size: "生成中",
+      createdAt: currentClock(),
+      expiresAt: "7 天后",
+    } : item));
     notify(`${row.name} 已加入重新生成队列`, row.status === "失败" ? "warning" : "info");
   };
   const handleExportPrimaryAction = (row: AuditExportRecord) => {
@@ -3852,12 +3898,12 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
       page={page}
       actions={<button className="ghost" type="button" onClick={() => isExportMode ? createExport() : notify(`已导出 ${filteredRows.length} 条审计日志`, "info")}><Download size={15} /> {isExportMode ? "新建导出" : "导出"}</button>}
       filters={isExportMode
-        ? <><ModuleSearch value={search} placeholder="搜索导出名称、范围或 trace id" onChange={setSearch} /><FieldSelect label="格式" value={formatFilter} options={["全部", "CSV", "JSON", "ZIP"]} onChange={setFormatFilter} /><FieldSelect label="状态" value={exportStatusFilter} options={["全部", "可下载", "生成中", "失败"]} onChange={setExportStatusFilter} /></>
-        : <><ModuleSearch value={search} placeholder="搜索关键字、对象或 trace id" onChange={setSearch} /><FieldSelect label="用户" value={userFilter} options={users} onChange={setUserFilter} /><FieldSelect label="结果" value={resultFilter} options={["全部", "成功", "失败"]} onChange={setResultFilter} /></>}
+        ? <><ModuleSearch value={search} placeholder="搜索导出名称、范围或 trace id" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="格式" value={formatFilter} options={["全部", "CSV", "JSON", "ZIP"]} onChange={setFormatFilter} /><FieldSelect label="状态" value={exportStatusFilter} options={["全部", "可下载", "生成中", "失败"]} onChange={setExportStatusFilter} /></>
+        : <><ModuleSearch value={search} placeholder="搜索关键字、对象或 trace id" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="用户" value={userFilter} options={users} onChange={(value) => setUserByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="结果" value={resultFilter} options={["全部", "成功", "失败"]} onChange={(value) => setResultByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={isExportMode
         ? <><MetricTile icon={Download} label="导出任务" value={`${exportRows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="可下载" value={`${exportRows.filter((row) => row.status === "可下载").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${exportRows.filter((row) => row.status === "失败").length}`} tone="red" /></>
         : <><MetricTile icon={FileText} label="日志" value={`${initialAuditRecords.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="成功" value={`${initialAuditRecords.filter((row) => row.result === "成功").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${initialAuditRecords.filter((row) => row.result === "失败").length}`} tone="red" /></>}
-      side={selectedExport ? (
+      side={isExportMode && selectedExport ? (
         <DetailDrawer title="导出详情" subtitle={selectedExport.traceId} onClose={() => setSelectedExport(null)}>
           <div className="detail-kv">
             <p><span>名称</span><b>{selectedExport.name}</b></p>
@@ -3868,7 +3914,7 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
             <p><span>过期</span><b>{selectedExport.expiresAt}</b></p>
           </div>
         </DetailDrawer>
-      ) : selected && (
+      ) : !isExportMode && selected && (
         <DetailDrawer title="审计详情" subtitle={selected.traceId} onClose={() => setSelected(null)}>
           <div className="detail-kv">
             <p><span>时间</span><b>{selected.time}</b></p>
@@ -4864,7 +4910,7 @@ function backupTaskTone(status: DatabaseBackupTask["status"]) {
 
 function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; notify: Notify }) {
   const tabs = ["基础", "安全", "通知", "备份", "审计"];
-  const [activeTab, setActiveTab] = useState(settingsPagePreset(page));
+  const activeTab = settingsPagePreset(page);
   const [readOnly, setReadOnly] = useState(false);
   const [identityDraft, setIdentityDraft] = useState({
     panelName: "StackPilot 控制面板",
@@ -5385,7 +5431,6 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
             type="button"
             key={tab}
             onClick={() => {
-              setActiveTab(tab);
               setPage(settingsPageForTab(tab), { message: `已切换到${tab}设置`, tone: "info" });
             }}
           >
@@ -5628,6 +5673,22 @@ function SettingsProxyPage({ page, notify }: { page: PageKey; notify: Notify }) 
     `STACKPILOT_TERMINAL_PROXY=${terminalProxy ? "enabled" : "disabled"}`,
     `NODE_TLS_REJECT_UNAUTHORIZED=${strictTls ? "1" : "0"}`,
   ];
+  const copyProxyText = (value: string, successMessage: string) => {
+    if (!navigator.clipboard?.writeText) {
+      notify("复制失败，请检查浏览器剪贴板权限", "danger");
+      return;
+    }
+    void navigator.clipboard.writeText(value)
+      .then(() => notify(successMessage, "info"))
+      .catch(() => notify("复制失败，请检查浏览器剪贴板权限", "danger"));
+  };
+  const shellQuote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
+  const diagnosticForEndpoint = (endpoint: ProxyEndpoint) => [
+    `curl -x ${shellQuote(endpoint.url)} https://api.github.com -I`,
+    `scope=${endpoint.scope}`,
+    `status=${endpoint.status}`,
+    `latency=${endpoint.latency}`,
+  ].join("\n");
 
   return (
     <ModulePageShell
@@ -5651,7 +5712,7 @@ function SettingsProxyPage({ page, notify }: { page: PageKey; notify: Notify }) 
           <FormSelectLine label="用途" required value={draft.scope} options={["全局", "部署", "终端", "仓库"]} onChange={(value) => setDraft((current) => ({ ...current, scope: value }))} />
         </DetailDrawer>
       ) : selectedDrawerEndpoint ? (
-        <DetailDrawer title="代理探测" subtitle={selectedDrawerEndpoint.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => notify(`${selectedDrawerEndpoint.name} curl 诊断已复制`, "info")}>复制诊断</button><button className="primary" type="button" onClick={() => runProbe(selectedDrawerEndpoint)}>重新探测</button></>}>
+        <DetailDrawer title="代理探测" subtitle={selectedDrawerEndpoint.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => copyProxyText(diagnosticForEndpoint(selectedDrawerEndpoint), `${selectedDrawerEndpoint.name} curl 诊断已复制`)}>复制诊断</button><button className="primary" type="button" onClick={() => runProbe(selectedDrawerEndpoint)}>重新探测</button></>}>
           <div className="proxy-test-panel">
             <p><span>协议</span><b>{selectedDrawerEndpoint.protocol}</b></p>
             <p><span>地址</span><b>{selectedDrawerEndpoint.url}</b></p>
@@ -5718,7 +5779,7 @@ function SettingsProxyPage({ page, notify }: { page: PageKey; notify: Notify }) 
               </div>
               <div className="settings-buttons">
                 <button className="primary" type="button" onClick={() => notify("代理运行时策略已保存")}>保存策略</button>
-                <button className="ghost" type="button" onClick={() => { void navigator.clipboard?.writeText(envPreview.join("\n")); notify("环境变量已复制", "info"); }}>复制环境变量</button>
+                <button className="ghost" type="button" onClick={() => copyProxyText(envPreview.join("\n"), "环境变量已复制")}>复制环境变量</button>
               </div>
             </div>
           </PanelCard>
