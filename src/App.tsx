@@ -765,7 +765,7 @@ type ScheduleJob = {
   enabled: boolean;
   nextRun: string;
   lastRun: string;
-  result: "成功" | "失败" | "未运行";
+  result: "成功" | "失败" | "未运行" | "运行中";
 };
 
 type AuditRecord = {
@@ -846,6 +846,7 @@ type DatabaseInstance = {
   id: string;
   name: string;
   engine: string;
+  username?: string;
   host: string;
   port: string;
   connectionHealth: string;
@@ -1232,6 +1233,7 @@ function readPageFromHash(): PageKey {
 function App() {
   const [page, setPageState] = useState<PageKey>(readPageFromHash);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [topbarUnreadCount, setTopbarUnreadCount] = useState(3);
 
   useEffect(() => {
     const onHashChange = () => setPageState(readPageFromHash());
@@ -1264,7 +1266,7 @@ function App() {
       {page === "mobile" ? (
         <MobileApp notify={notify} />
       ) : (
-        <DesktopShell page={page} setPage={setPage} notify={notify} />
+        <DesktopShell page={page} setPage={setPage} notify={notify} topbarUnreadCount={topbarUnreadCount} setTopbarUnreadCount={setTopbarUnreadCount} />
       )}
       {toast && <ActionToast toast={toast} />}
     </main>
@@ -1275,10 +1277,14 @@ function DesktopShell({
   page,
   setPage,
   notify,
+  topbarUnreadCount,
+  setTopbarUnreadCount,
 }: {
   page: PageKey;
   setPage: SetPage;
   notify: Notify;
+  topbarUnreadCount: number;
+  setTopbarUnreadCount: React.Dispatch<React.SetStateAction<number>>;
 }) {
   const activeModule = navPageFor(page);
   const whiteTop = !["overview", "overview-health", "overview-tasks", "overview-risks"].includes(page);
@@ -1313,7 +1319,7 @@ function DesktopShell({
         onExpandCollapsed={expandSidebar}
       />
       <div className="desktop-main">
-        <TopBar key={`topbar-${page}`} page={page} setPage={setPage} white={whiteTop} notify={notify} />
+        <TopBar page={page} setPage={setPage} white={whiteTop} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} />
         {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
         {page === "overview-health" && <OverviewHealthPage notify={notify} />}
         {page === "overview-tasks" && <OverviewTasksPage notify={notify} />}
@@ -1519,10 +1525,24 @@ function Sidebar({
   );
 }
 
-function TopBar({ page, setPage, white, notify }: { page: PageKey; setPage: SetPage; white: boolean; notify: Notify }) {
+function TopBar({
+  page,
+  setPage,
+  white,
+  notify,
+  unreadCount,
+  setUnreadCount,
+}: {
+  page: PageKey;
+  setPage: SetPage;
+  white: boolean;
+  notify: Notify;
+  unreadCount: number;
+  setUnreadCount: React.Dispatch<React.SetStateAction<number>>;
+}) {
   const [query, setQuery] = useState("");
   const [openPanel, setOpenPanel] = useState<TopbarPanel>(null);
-  const [unreadCount, setUnreadCount] = useState(() => (page === "overview" ? 3 : navPageFor(page) === "settings" ? 5 : 2));
+  const [activeSearchIndex, setActiveSearchIndex] = useState(0);
   const topbarRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -1531,16 +1551,20 @@ function TopBar({ page, setPage, white, notify }: { page: PageKey; setPage: SetP
   const isSettings = activeModule === "settings";
   const userName = page === "overview" ? "admin" : page === "databases" ? "张工" : "管理员";
   const searchResults = topbarSearchResults(query);
+  const boundedSearchIndex = searchResults.length > 0 ? Math.min(activeSearchIndex, searchResults.length - 1) : 0;
+  const activeSearchOptionId = openPanel === "search" && searchResults.length > 0 ? `topbar-search-option-${boundedSearchIndex}` : undefined;
   const togglePanel = (panel: TopbarMenuPanel) => {
     setOpenPanel((current) => (current === panel ? null : panel));
   };
   const openSearchPanel = () => {
+    setActiveSearchIndex(0);
     setOpenPanel("search");
     window.requestAnimationFrame(() => searchInputRef.current?.focus());
   };
   const openSearchResult = (result: TopbarSearchResult) => {
     setOpenPanel(null);
     setQuery("");
+    setActiveSearchIndex(0);
     searchInputRef.current?.blur();
     window.requestAnimationFrame(() => {
       setPage(result.page, { message: `已打开${result.label}`, tone: "info" });
@@ -1595,19 +1619,43 @@ function TopBar({ page, setPage, white, notify }: { page: PageKey; setPage: SetP
           }}
           onChange={(event) => {
             setQuery(event.target.value);
+            setActiveSearchIndex(0);
             setOpenPanel("search");
           }}
           onKeyDown={(event) => {
+            if (event.key === "ArrowDown" && searchResults.length > 0) {
+              event.preventDefault();
+              setOpenPanel("search");
+              setActiveSearchIndex((current) => (current + 1) % searchResults.length);
+              return;
+            }
+            if (event.key === "ArrowUp" && searchResults.length > 0) {
+              event.preventDefault();
+              setOpenPanel("search");
+              setActiveSearchIndex((current) => (current - 1 + searchResults.length) % searchResults.length);
+              return;
+            }
+            if (event.key === "Home" && searchResults.length > 0) {
+              event.preventDefault();
+              setActiveSearchIndex(0);
+              return;
+            }
+            if (event.key === "End" && searchResults.length > 0) {
+              event.preventDefault();
+              setActiveSearchIndex(searchResults.length - 1);
+              return;
+            }
             if (event.key === "Enter") {
-              const firstResult = searchResults[0];
-              if (firstResult) {
+              const result = searchResults[boundedSearchIndex];
+              if (result) {
                 event.preventDefault();
-                openSearchResult(firstResult);
+                openSearchResult(result);
               }
             }
           }}
           aria-expanded={openPanel === "search"}
           aria-controls="topbar-search-panel"
+          aria-activedescendant={activeSearchOptionId}
         />
         <kbd>⌘K</kbd>
         {openPanel === "search" && (
@@ -1617,13 +1665,15 @@ function TopBar({ page, setPage, white, notify }: { page: PageKey; setPage: SetP
               <em>{searchResults.length} 项</em>
             </div>
             {searchResults.length > 0 ? (
-              searchResults.map((result) => (
+              searchResults.map((result, index) => (
                 <button
                   key={result.id}
+                  id={`topbar-search-option-${index}`}
                   type="button"
                   role="option"
-                  aria-selected="false"
+                  aria-selected={index === boundedSearchIndex}
                   onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setActiveSearchIndex(index)}
                   onClick={() => openSearchResult(result)}
                 >
                   <b>{result.kind}</b>
@@ -1641,17 +1691,19 @@ function TopBar({ page, setPage, white, notify }: { page: PageKey; setPage: SetP
       </div>
       {page !== "overview" && <div className="top-spacer" />}
       <div className="top-actions" ref={topbarRef}>
-        <button
-          type="button"
-          className={`icon-action compact-search-trigger ${openPanel === "search" ? "active" : ""}`}
-          onClick={openSearchPanel}
-          aria-label="打开全局搜索"
-          aria-haspopup="listbox"
-          aria-expanded={openPanel === "search"}
-          aria-controls="topbar-search-panel"
-        >
-          <Search size={17} />
-        </button>
+        {page !== "overview" && (
+          <button
+            type="button"
+            className={`icon-action compact-search-trigger ${openPanel === "search" ? "active" : ""}`}
+            onClick={openSearchPanel}
+            aria-label="打开全局搜索"
+            aria-haspopup="listbox"
+            aria-expanded={openPanel === "search"}
+            aria-controls="topbar-search-panel"
+          >
+            <Search size={17} />
+          </button>
+        )}
         {isSettings && <StatusDot text="面板运行正常" />}
         <span className="notification-wrap">
           <button
@@ -2540,6 +2592,12 @@ function riskTone(level: OverviewRiskRecord["level"]): Tone {
   if (level === "高危") return "red";
   if (level === "中危") return "orange";
   return "blue";
+}
+
+function isLikelyCronExpression(value: string) {
+  const parts = value.trim().split(/\s+/);
+  if (parts.length !== 5) return false;
+  return parts.every((part) => /^[\dA-Z*/?,-]+$/i.test(part));
 }
 
 type TableColumn<T> = {
@@ -3588,14 +3646,14 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
       title={resolvePageMeta(page).title}
       subtitle={servicePreset.subtitle}
       page={page}
-      actions={<button className="ghost" type="button" onClick={() => notify("服务状态已刷新", "info")}><RefreshCw size={15} /> 刷新</button>}
+      actions={<button className="ghost" type="button" onClick={() => { setRows((current) => current.map((row) => ({ ...row, updated: "刚刚" }))); notify("服务状态已刷新", "info"); }}><RefreshCw size={15} /> 刷新</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索服务或主机" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={statusFilter} options={["全部", "active", "failed", "inactive"]} onChange={(value) => setStatusByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={CheckCircle2} label="active" value={`${rows.filter((row) => row.status === "active").length}`} tone="green" /><MetricTile icon={Shield} label="failed" value={`${rows.filter((row) => row.status === "failed").length}`} tone="red" /><MetricTile icon={Clock3} label="inactive" value={`${rows.filter((row) => row.status === "inactive").length}`} tone="gray" /></>}
       side={drawer && (
         <DetailDrawer title="服务日志" subtitle={drawer.name} onClose={() => setDrawer(null)} autoFocus={servicePreset.mode !== "logs"}>
           <div className="terminal-log compact-log">
-            <p>systemd[1]: Started {drawer.name}</p>
-            <p>{drawer.status === "failed" ? "exit-code=1 failed with result 'timeout'" : "status=0/SUCCESS"}</p>
+            <p>systemd[1]: {drawer.status === "inactive" ? `Stopped ${drawer.name}` : drawer.status === "failed" ? `${drawer.name} entered failed state` : `Started ${drawer.name}`}</p>
+            <p>{drawer.status === "failed" ? "exit-code=1 failed with result 'timeout'" : drawer.status === "inactive" ? "inactive/dead after operator action" : "status=0/SUCCESS"}</p>
             <p>memory current: {drawer.memory}</p>
           </div>
         </DetailDrawer>
@@ -3607,8 +3665,8 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
             {logRows.map((row) => (
               <article key={row.id}>
                 <header><StatusLight tone={row.status === "failed" ? "red" : row.status === "active" ? "green" : "gray"} /> <strong>{row.name}</strong><span>{row.host}</span></header>
-                <p>systemd[1]: {row.status === "failed" ? "service entered failed state" : `Started ${row.name}`}</p>
-                <p>{row.status === "failed" ? "exit-code=1 failed with result 'timeout'" : "status=0/SUCCESS"}</p>
+                <p>systemd[1]: {row.status === "inactive" ? `Stopped ${row.name}` : row.status === "failed" ? "service entered failed state" : `Started ${row.name}`}</p>
+                <p>{row.status === "failed" ? "exit-code=1 failed with result 'timeout'" : row.status === "inactive" ? "inactive/dead after operator action" : "status=0/SUCCESS"}</p>
                 <p>memory current: {row.memory} · restarts: {row.restarts}</p>
                 <button type="button" onClick={() => setDrawer(row)}>打开详情</button>
               </article>
@@ -3623,7 +3681,7 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
             { key: "restarts", label: "重启次数", render: (row) => row.restarts },
             { key: "memory", label: "内存", render: (row) => row.memory },
             { key: "updated", label: "最近更新", render: (row) => row.updated },
-            { key: "ops", label: "操作", width: "280px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { updateService(row.id, { status: "active", handled: false }); notify(`${row.name} 已启动`); }}>启动</button><button type="button" onClick={() => { updateService(row.id, { status: "inactive" }); notify(`${row.name} 已停止`, "warning"); }}>停止</button><button type="button" onClick={() => { updateService(row.id, { status: "active", restarts: row.restarts + 1, handled: false }); notify(`${row.name} 已重启`); }}>重启</button><button type="button" onClick={() => setDrawer(row)}>日志</button>{row.status === "failed" && <button type="button" onClick={() => { updateService(row.id, { handled: true, status: "inactive" }); notify(`${row.name} 已标记处理`); }}>处理</button>}</span> },
+            { key: "ops", label: "操作", width: "280px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { updateService(row.id, { status: "active", handled: false, updated: "刚刚" }); notify(`${row.name} 已启动`); }}>启动</button><button type="button" onClick={() => { updateService(row.id, { status: "inactive", updated: "刚刚" }); notify(`${row.name} 已停止`, "warning"); }}>停止</button><button type="button" onClick={() => { updateService(row.id, { status: "active", restarts: row.restarts + 1, handled: false, updated: "刚刚" }); notify(`${row.name} 已重启`); }}>重启</button><button type="button" onClick={() => setDrawer(row)}>日志</button>{row.status === "failed" && <button type="button" onClick={() => { updateService(row.id, { handled: true, status: "inactive", updated: "刚刚" }); notify(`${row.name} 已标记处理`); }}>处理</button>}</span> },
           ]}
           rows={filteredRows}
           emptyText="没有匹配的服务"
@@ -3805,15 +3863,22 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
   });
   const updateJob = (id: string, patch: Partial<ScheduleJob>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   const saveJob = () => {
-    if (!draft.name.trim() || !draft.cron.trim()) {
-      notify("任务名和 cron 不能为空", "danger");
+    const nextName = draft.name.trim();
+    const nextCron = draft.cron.trim();
+    const nextCommand = draft.command.trim();
+    if (!nextName || !nextCron || !nextCommand) {
+      notify("任务名、cron 和命令不能为空", "danger");
+      return;
+    }
+    if (!isLikelyCronExpression(nextCron)) {
+      notify("cron 需要是 5 段表达式，例如 0 4 * * *", "danger");
       return;
     }
     if (drawer?.type === "edit" && drawer.job) {
-      updateJob(drawer.job.id, { name: draft.name.trim(), cron: draft.cron.trim(), command: draft.command.trim() });
-      notify(`${draft.name.trim()} 已保存`);
+      updateJob(drawer.job.id, { name: nextName, cron: nextCron, command: nextCommand });
+      notify(`${nextName} 已保存`);
     } else {
-      setRows((current) => [{ id: `sch-${Date.now()}`, name: draft.name.trim(), cron: draft.cron.trim(), command: draft.command.trim(), enabled: true, nextRun: "待计算", lastRun: "未运行", result: "未运行" }, ...current]);
+      setRows((current) => [{ id: `sch-${Date.now()}`, name: nextName, cron: nextCron, command: nextCommand, enabled: true, nextRun: "待计算", lastRun: "未运行", result: "未运行" }, ...current]);
       notify("定时任务已新建");
     }
     setDrawer(null);
@@ -3824,14 +3889,14 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       title={resolvePageMeta(page).title}
       subtitle={schedulePreset.subtitle}
       page={page}
-      actions={<button className="primary" type="button" onClick={() => { setDraft({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" }); setDrawer({ type: "create" }); }}><Plus size={15} /> 新建任务</button>}
+      actions={page === "schedule-failed" ? undefined : <button className="primary" type="button" onClick={() => { setDraft({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" }); setDrawer({ type: "create" }); }}><Plus size={15} /> 新建任务</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索任务、cron 或命令" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={stateFilter} options={["全部", "已启用", "已停用"]} onChange={(value) => setStateByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={CalendarDays} label="任务数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.result === "失败").length}`} tone="red" /></>}
       side={drawer && (
         <DetailDrawer title={drawer.type === "edit" ? "编辑 cron" : "新建任务"} subtitle={drawer.job?.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={saveJob}>保存</button></>}>
           <FormLine label="任务名" required value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
           <FormLine label="cron" required value={draft.cron} onChange={(value) => setDraft((current) => ({ ...current, cron: value }))} />
-          <FormLine label="命令" value={draft.command} onChange={(value) => setDraft((current) => ({ ...current, command: value }))} />
+          <FormLine label="命令" required value={draft.command} onChange={(value) => setDraft((current) => ({ ...current, command: value }))} />
         </DetailDrawer>
       )}
     >
@@ -3849,7 +3914,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
           { key: "enabled", label: "启用", render: (row) => <span className={`pill ${row.enabled ? "green" : "blue"}`}>{row.enabled ? "启用" : "停用"}</span> },
           { key: "last", label: "最近执行", render: (row) => row.lastRun },
           { key: "result", label: "结果", render: (row) => <span className={`pill ${row.result === "成功" ? "green" : row.result === "失败" ? "red" : "blue"}`}>{row.result}</span> },
-          { key: "ops", label: "操作", width: "300px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { updateJob(row.id, { enabled: !row.enabled }); notify(`${row.name} 已${row.enabled ? "停用" : "启用"}`); }}>{row.enabled ? "停用" : "启用"}</button><button type="button" onClick={() => { updateJob(row.id, { lastRun: currentClock(), result: "成功" }); notify(`${row.name} 已立即执行`); }}>执行</button><button type="button" onClick={() => { setDraft({ name: row.name, cron: row.cron, command: row.command }); setDrawer({ type: "edit", job: row }); }}>编辑</button><button type="button" onClick={() => { setRows((current) => current.filter((item) => item.id !== row.id)); notify(`${row.name} 已删除`, "warning"); }}>删除</button></span> },
+          { key: "ops", label: "操作", width: "320px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { updateJob(row.id, { enabled: !row.enabled, nextRun: row.enabled ? "停用" : "待计算", result: row.enabled && row.result === "运行中" ? "未运行" : row.result }); notify(`${row.name} 已${row.enabled ? "停用" : "启用"}`); }}>{row.enabled ? "停用" : "启用"}</button>{row.result === "运行中" && row.enabled ? <button type="button" onClick={() => { updateJob(row.id, { lastRun: currentClock(), result: "成功", nextRun: "待计算" }); notify(`${row.name} 执行已完成`); }}>完成</button> : <button type="button" disabled={!row.enabled} onClick={() => { updateJob(row.id, { lastRun: "刚刚", result: "运行中", nextRun: "运行中" }); notify(`${row.name} 已开始执行`, "info"); }}>执行</button>}<button type="button" onClick={() => { setDraft({ name: row.name, cron: row.cron, command: row.command }); setDrawer({ type: "edit", job: row }); }}>编辑</button><button type="button" onClick={() => { setRows((current) => current.filter((item) => item.id !== row.id)); notify(`${row.name} 已删除`, "warning"); }}>删除</button></span> },
         ]}
         rows={filteredRows}
         emptyText="没有匹配的定时任务"
@@ -4247,7 +4312,8 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
     notify(`${instance.name} 慢查询计数已清零`);
   };
   const copyConnection = async (instance: DatabaseInstance) => {
-    const connection = `${instance.engine.split(" ")[0].toLowerCase()}://${instance.host}:${instance.port}/${instance.name}`;
+    const auth = instance.username ? `${encodeURIComponent(instance.username)}@` : "";
+    const connection = `${instance.engine.split(" ")[0].toLowerCase()}://${auth}${instance.host}:${instance.port}/${instance.name}`;
     try {
       if (!navigator.clipboard?.writeText) {
         notify("当前浏览器不支持复制连接信息", "warning");
@@ -4259,19 +4325,20 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
       notify("浏览器未允许复制连接信息", "warning");
     }
   };
-  const createInstance = (draft: { name: string; type: string; port: string; host: string; owner: string; autoBackup: boolean; remoteAccess: boolean }) => {
+  const createInstance = (draft: { name: string; type: string; port: string; host: string; owner: string; username: string; password: string; access: DatabaseInstance["access"]; autoBackup: boolean; remoteAccess: boolean }) => {
     const engine = draft.type === "PostgreSQL" ? "PostgreSQL 16.2" : "MySQL 8.0.36";
     const next: DatabaseInstance = {
       id: createLocalId("db"),
       name: draft.name,
       engine,
+      username: draft.username,
       host: draft.host,
       port: draft.port,
       connectionHealth: "正常",
       backupStatus: draft.autoBackup ? "成功" : "等待确认",
       slowQueries: 0,
       lastBackup: draft.autoBackup ? "刚刚" : "未启用",
-      access: "读写",
+      access: draft.access,
       owner: draft.owner,
       storage: "0.4 GB",
       connections: "0 / 80",
@@ -4286,7 +4353,7 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
     setStatusFilter("全部");
     setHostFilter("全部主机");
     setDrawer({ type: "detail", id: next.id });
-    notify(`数据库 ${draft.name} 已创建`);
+    notify(`数据库 ${draft.name} 已创建，用户 ${draft.username} 已生成`);
   };
 
   return (
@@ -4421,6 +4488,7 @@ function DatabaseInstanceDetail({
     <div className="database-detail">
       <div className="database-detail-grid">
         <p><span>引擎</span><b>{instance.engine}</b></p>
+        <p><span>用户名</span><b>{instance.username ?? "默认管理员"}</b></p>
         <p><span>主机 / 端口</span><b>{instance.host}:{instance.port}</b></p>
         <p><span>连接健康</span><b><StatusLight tone={databaseHealthTone(instance)} /> {instance.connectionHealth}</b></p>
         <p><span>备份状态</span><b><StatusLight tone={databaseBackupTone(instance.backupStatus)} /> {instance.backupStatus}</b></p>
@@ -4462,18 +4530,23 @@ function CreateDatabaseDrawer({
 }: {
   notify: Notify;
   onClose: () => void;
-  onCreate: (draft: { name: string; type: string; port: string; host: string; owner: string; autoBackup: boolean; remoteAccess: boolean }) => void;
+  onCreate: (draft: { name: string; type: string; port: string; host: string; owner: string; username: string; password: string; access: DatabaseInstance["access"]; autoBackup: boolean; remoteAccess: boolean }) => void;
 }) {
   const [name, setName] = useState("newdb_app");
   const [type, setType] = useState("PostgreSQL");
   const [host, setHost] = useState("10.0.12.24");
   const [port, setPort] = useState("5432");
   const [owner, setOwner] = useState("研发");
+  const [username, setUsername] = useState("newdb_app");
+  const [password, setPassword] = useState("ChangeMe-2026!");
+  const [access, setAccess] = useState<DatabaseInstance["access"]>("读写");
   const [autoBackup, setAutoBackup] = useState(true);
   const [remote, setRemote] = useState(false);
-  const [errors, setErrors] = useState<{ name?: string; port?: string }>({});
+  const [errors, setErrors] = useState<{ name?: string; port?: string; username?: string; password?: string }>({});
   const nameRef = useRef<HTMLInputElement>(null);
   const portRef = useRef<HTMLInputElement>(null);
+  const usernameRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   const resetDraft = () => {
     setName("newdb_app");
@@ -4481,22 +4554,33 @@ function CreateDatabaseDrawer({
     setHost("10.0.12.24");
     setPort("5432");
     setOwner("研发");
+    setUsername("newdb_app");
+    setPassword("ChangeMe-2026!");
+    setAccess("读写");
     setAutoBackup(true);
     setRemote(false);
     setErrors({});
   };
   const submit = () => {
+    const portNumber = Number(port.trim());
     const nextErrors = {
       name: name.trim() ? undefined : "请输入数据库名",
-      port: port.trim() ? undefined : "请输入端口",
+      port: Number.isInteger(portNumber) && portNumber > 0 && portNumber <= 65535 ? undefined : "端口必须是 1-65535 的数字",
+      username: username.trim() ? undefined : "请输入用户名",
+      password: password.trim().length >= 8 ? undefined : "初始密码至少 8 位",
     };
     setErrors(nextErrors);
-    if (nextErrors.name || nextErrors.port) {
-      notify("数据库名和端口为必填项", "danger");
-      window.requestAnimationFrame(() => (nextErrors.name ? nameRef.current : portRef.current)?.focus());
+    if (nextErrors.name || nextErrors.port || nextErrors.username || nextErrors.password) {
+      notify("请完善数据库创建表单", "danger");
+      window.requestAnimationFrame(() => {
+        if (nextErrors.name) nameRef.current?.focus();
+        else if (nextErrors.port) portRef.current?.focus();
+        else if (nextErrors.username) usernameRef.current?.focus();
+        else passwordRef.current?.focus();
+      });
       return;
     }
-    onCreate({ name: name.trim(), type, port: port.trim(), host, owner, autoBackup, remoteAccess: remote });
+    onCreate({ name: name.trim(), type, port: port.trim(), host, owner, username: username.trim(), password: password.trim(), access, autoBackup, remoteAccess: remote });
   };
 
   return (
@@ -4508,7 +4592,9 @@ function CreateDatabaseDrawer({
     >
       <div className="create-database-form">
         <FormLine label="数据库名" required value={name} inputRef={nameRef} error={errors.name} onChange={(value) => {
+          const shouldSyncUsername = username === name || username === "newdb_app";
           setName(value);
+          if (shouldSyncUsername) setUsername(value || "newdb_app");
           if (errors.name && value.trim()) setErrors((current) => ({ ...current, name: undefined }));
         }} />
         <FormSelectLine label="类型" required value={type} options={["PostgreSQL", "MySQL"]} onChange={(next) => {
@@ -4519,14 +4605,20 @@ function CreateDatabaseDrawer({
         <FormSelectLine label="绑定主机" required value={host} options={["10.0.12.24", "10.0.12.31", "10.0.13.15", "10.0.14.18"]} onChange={setHost} />
         <FormLine label="端口" required value={port} inputRef={portRef} error={errors.port} onChange={(value) => {
           setPort(value);
-          if (errors.port && value.trim()) setErrors((current) => ({ ...current, port: undefined }));
+          if (errors.port && Number.isInteger(Number(value.trim()))) setErrors((current) => ({ ...current, port: undefined }));
         }} hint={`默认 ${type === "PostgreSQL" ? "5432" : "3306"}`} />
         <FormSelectLine label="负责人" value={owner} options={["DBA", "研发", "运维", "仅团队"]} onChange={setOwner} />
-        <FormLine label="用户名" required value={name || "newdb_app"} />
-        <FormLine label="初始密码" required value="••••••••••••••••" strength />
+        <FormLine label="用户名" required value={username} inputRef={usernameRef} error={errors.username} onChange={(value) => {
+          setUsername(value);
+          if (errors.username && value.trim()) setErrors((current) => ({ ...current, username: undefined }));
+        }} />
+        <FormLine label="初始密码" required value={password} inputRef={passwordRef} error={errors.password} inputType="password" strength onChange={(value) => {
+          setPassword(value);
+          if (errors.password && value.trim().length >= 8) setErrors((current) => ({ ...current, password: undefined }));
+        }} />
         <FormSelectLine label="字符集" value="UTF8" />
         <FormSelectLine label="时区" value="Asia/Shanghai" />
-        <FormTagLine label="权限范围" />
+        <FormSelectLine label="权限范围" required value={access} options={["读写", "只读", "仅备份"]} onChange={(value) => setAccess(value as DatabaseInstance["access"])} />
         <ToggleLine label="自动备份" active={autoBackup} onToggle={setAutoBackup} hint="每天 02:00 执行，备份保留 7 天" />
         <ToggleLine label="允许远程连接" active={remote} onToggle={setRemote} hint="仅允许白名单 IP 访问" />
         <div className="drawer-tip">创建后会插入实例列表顶部，并自动打开新实例详情。</div>
@@ -6095,7 +6187,23 @@ function MobileApp({ notify }: { notify: Notify }) {
       return;
     }
     if (action === "diagnostics") {
-      notify("移动端诊断摘要已复制", "info");
+      const summary = [
+        "StackPilot mobile diagnostics",
+        `hosts=${mobileHosts.length}`,
+        `alerts=${mobileHosts.filter((host) => host.health === "告警").length}`,
+        `sites=${mobileSites.length}`,
+        `tasks=${mobileTasks.length}`,
+        `push=${pushEnabled ? "enabled" : "disabled"}`,
+        `mfa=${mfaEnabled ? "enabled" : "paused"}`,
+      ].join("\n");
+      if (!navigator.clipboard?.writeText) {
+        notify("当前浏览器不支持复制诊断摘要", "warning");
+        closeMobileSheet();
+        return;
+      }
+      void navigator.clipboard.writeText(summary)
+        .then(() => notify("移动端诊断摘要已复制", "info"))
+        .catch(() => notify("复制诊断摘要失败，请检查剪贴板权限", "danger"));
       closeMobileSheet();
       return;
     }
@@ -6988,7 +7096,7 @@ function FormLine({
     <div className="form-line">
       <label id={labelId} htmlFor={inputId}>{label}{required && <b>*</b>}</label>
       <div>
-        <input id={inputId} ref={inputRef} type={inputType} value={value} readOnly={!onChange} aria-labelledby={labelId} aria-describedby={describedBy} aria-invalid={error ? "true" : undefined} onChange={(event) => onChange?.(event.target.value)} />
+        <input id={inputId} ref={inputRef} type={inputType} value={value} readOnly={!onChange} required={required} aria-required={required ? "true" : undefined} aria-labelledby={labelId} aria-describedby={describedBy} aria-invalid={error ? "true" : undefined} onChange={(event) => onChange?.(event.target.value)} />
         {hint && <em id={hintId}>{hint}</em>}
         {hintButton && <button type="button" onClick={hintAction}>{hintButton}</button>}
         {success && <small><CheckCircle2 size={12} /> {success}</small>}
@@ -7033,7 +7141,7 @@ function FormSelectLine({
       }}
     >
       <span>{label}{required && <b>*</b>}</span>
-      <button className={`select-like ${open ? "open" : ""}`} type="button" disabled={disabled} aria-expanded={open} aria-haspopup="listbox" onClick={() => options && !disabled && setOpen((current) => !current)}>{icon}{value}<ChevronDown size={12} /></button>
+      <button className={`select-like ${open ? "open" : ""}`} type="button" disabled={disabled} aria-required={required ? "true" : undefined} aria-expanded={open} aria-haspopup="listbox" onClick={() => options && !disabled && setOpen((current) => !current)}>{icon}{value}<ChevronDown size={12} /></button>
       {open && options && !disabled && (
         <div className="select-menu" role="listbox">
           {options.map((option) => (
@@ -7053,15 +7161,6 @@ function FormSelectLine({
           ))}
         </div>
       )}
-    </label>
-  );
-}
-
-function FormTagLine({ label }: { label: string }) {
-  return (
-    <label className="form-line">
-      <span>{label}<b>*</b></span>
-      <div className="tag-input"><em>读写 ×</em><em>仅团队 ×</em></div>
     </label>
   );
 }

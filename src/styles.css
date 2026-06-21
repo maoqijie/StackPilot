@@ -1060,7 +1060,8 @@ a {
 }
 
 .topbar-search-panel button:hover,
-.topbar-search-panel button:focus-visible {
+.topbar-search-panel button:focus-visible,
+.topbar-search-panel button[aria-selected="true"] {
   color: var(--blue);
   background: #eef8ff;
 }
@@ -1234,7 +1235,8 @@ a {
 }
 
 .topbar-mock:not(.white) .topbar-search-panel button:hover,
-.topbar-mock:not(.white) .topbar-search-panel button:focus-visible {
+.topbar-mock:not(.white) .topbar-search-panel button:focus-visible,
+.topbar-mock:not(.white) .topbar-search-panel button[aria-selected="true"] {
   color: #8fdbff;
   background: rgb(14 165 233 / 14%);
 }
@@ -4334,10 +4336,10 @@ a {
   .icon-action,
   .user-menu-button,
   .notification-wrap {
-    width: 40px;
-    min-width: 40px;
-    flex-basis: 40px;
-    height: 40px;
+    width: 44px;
+    min-width: 44px;
+    flex-basis: 44px;
+    height: 44px;
   }
 
   .user-menu-button .avatar-mini {
@@ -4360,10 +4362,10 @@ a {
   }
 
   .user-menu-button {
-    width: 40px;
-    max-width: 40px;
+    width: 44px;
+    max-width: 44px;
     padding: 0;
-    flex-basis: 40px;
+    flex-basis: 44px;
     justify-content: center;
     background: transparent;
   }
@@ -4384,6 +4386,16 @@ a {
   .top-actions .notification-wrap,
   .top-actions .user-menu-button {
     flex: 0 0 44px;
+  }
+
+  .side-main-button,
+  .side-toggle-button {
+    height: 44px;
+  }
+
+  .side-child {
+    min-height: 44px;
+    padding: 4px 8px 4px 0;
   }
 
   .module-page {
@@ -4730,6 +4742,13 @@ a {
   }
 
   .breadcrumb-title + .mock-search.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .breadcrumb-title + .mock-search.active > svg,
+  .breadcrumb-title + .mock-search.active input,
+  .breadcrumb-title + .mock-search.active kbd {
     opacity: 1;
     pointer-events: auto;
   }
@@ -8090,6 +8109,7 @@ a {
 }
 
 .mobile-canvas .action-toast {
+  z-index: 180;
   right: max(10px, calc((100vw - 430px) / 2 + 10px));
   max-width: min(410px, calc(100vw - 20px));
 }
