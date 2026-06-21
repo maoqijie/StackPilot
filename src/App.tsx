@@ -1382,8 +1382,8 @@ function Sidebar({
     setOpenGroups((current) => ({ ...current, [key]: true }));
   };
 
-  const handleMainNavClick = (item: NavItem, hasActiveChild: boolean) => {
-    if (collapsed && hasActiveChild) {
+  const handleMainNavClick = (item: NavItem) => {
+    if (collapsed && item.children.length > 0) {
       setManuallyClosedActiveGroup(null);
       setOpenGroups((current) => ({ ...current, [item.key]: true }));
       onExpandCollapsed();
@@ -1430,7 +1430,7 @@ function Sidebar({
                 <button
                   className="side-main-button"
                   type="button"
-                  onClick={() => handleMainNavClick(item, hasActiveChild)}
+                  onClick={() => handleMainNavClick(item)}
                   aria-current={parentCurrent ? "page" : undefined}
                   aria-label={parentCurrent && activeChildLabel ? `${item.label}，当前页面：${activeChildLabel}${collapsed ? "，点击展开侧栏查看下拉项目" : ""}` : undefined}
                 >
@@ -1534,6 +1534,10 @@ function TopBar({ page, setPage, white, notify }: { page: PageKey; setPage: SetP
   const togglePanel = (panel: TopbarMenuPanel) => {
     setOpenPanel((current) => (current === panel ? null : panel));
   };
+  const openSearchPanel = () => {
+    setOpenPanel("search");
+    window.requestAnimationFrame(() => searchInputRef.current?.focus());
+  };
   const openSearchResult = (result: TopbarSearchResult) => {
     setOpenPanel(null);
     setQuery("");
@@ -1551,8 +1555,7 @@ function TopBar({ page, setPage, white, notify }: { page: PageKey; setPage: SetP
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setOpenPanel("search");
-        searchInputRef.current?.focus();
+        openSearchPanel();
         return;
       }
       if (event.key === "Escape") setOpenPanel(null);
@@ -1638,6 +1641,17 @@ function TopBar({ page, setPage, white, notify }: { page: PageKey; setPage: SetP
       </div>
       {page !== "overview" && <div className="top-spacer" />}
       <div className="top-actions" ref={topbarRef}>
+        <button
+          type="button"
+          className={`icon-action compact-search-trigger ${openPanel === "search" ? "active" : ""}`}
+          onClick={openSearchPanel}
+          aria-label="打开全局搜索"
+          aria-haspopup="listbox"
+          aria-expanded={openPanel === "search"}
+          aria-controls="topbar-search-panel"
+        >
+          <Search size={17} />
+        </button>
         {isSettings && <StatusDot text="面板运行正常" />}
         <span className="notification-wrap">
           <button
@@ -1651,7 +1665,7 @@ function TopBar({ page, setPage, white, notify }: { page: PageKey; setPage: SetP
           >
             <Bell size={18} />
           </button>
-          {unreadCount > 0 && <span className="red-badge">{unreadCount}</span>}
+          {unreadCount > 0 && <span className="red-badge" aria-hidden="true">{unreadCount}</span>}
         </span>
         {page !== "overview" && (
           <button
@@ -1728,15 +1742,30 @@ function TopbarDropdown({
   onMarkRead: () => void;
   notify: Notify;
 }) {
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const firstControl = dropdownRef.current?.querySelector<HTMLElement>('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])');
+    firstControl?.focus();
+  }, [panel]);
+
   if (panel === "user") {
     return (
-      <div className="topbar-dropdown user-dropdown" id="topbar-user-panel" role="menu" aria-label="用户菜单">
+      <div ref={dropdownRef} className="topbar-dropdown user-dropdown" id="topbar-user-panel" role="menu" aria-label="用户菜单">
         <div className="topbar-dropdown-head">
           <span>当前账号</span>
           <strong>{userName}</strong>
         </div>
         {["个人资料", "访问令牌", "登录记录"].map((item) => (
           <button key={item} type="button" role="menuitem" onClick={() => { notify(`已打开${item}`, "info"); onClose(); }}>
+            {item}
+          </button>
+        ))}
+        {[
+          ["操作记录", "已打开操作记录"],
+          ["帮助中心", "帮助文档已打开"],
+        ].map(([item, message]) => (
+          <button key={item} type="button" role="menuitem" onClick={() => { notify(message, "info"); onClose(); }}>
             {item}
           </button>
         ))}
@@ -1755,7 +1784,7 @@ function TopbarDropdown({
   const items = panel === "notifications" ? topbarNotifications : panel === "activity" ? topbarActivities : topbarHelpLinks;
 
   return (
-    <div className={`topbar-dropdown ${panel}-dropdown`} id={`topbar-${panel}-panel`} role="dialog" aria-label={panelMeta.title}>
+    <div ref={dropdownRef} className={`topbar-dropdown ${panel}-dropdown`} id={`topbar-${panel}-panel`} role="dialog" aria-label={panelMeta.title}>
       <div className="topbar-dropdown-head">
         <span>{panelMeta.title}</span>
         <button
@@ -5893,7 +5922,7 @@ function MobileApp({ notify }: { notify: Notify }) {
   const [hostFilter, setHostFilter] = useState("全部");
   const [siteFilter, setSiteFilter] = useState("全部");
   const [taskFilter, setTaskFilter] = useState("全部");
-  const [unreadNoticeCount, setUnreadNoticeCount] = useState(3);
+  const [unreadNoticeIds, setUnreadNoticeIds] = useState(() => mobileNoticeRows.map((notice) => notice.id));
   const [pushEnabled, setPushEnabled] = useState(true);
   const [mfaEnabled, setMfaEnabled] = useState(true);
   const [mobileSheet, setMobileSheet] = useState<MobileSheetState | null>(null);
@@ -5933,6 +5962,7 @@ function MobileApp({ notify }: { notify: Notify }) {
     siteFilter === "全部" || mobileSiteDisplayStatus(site) === siteFilter
   ));
   const visibleTasks = mobileTasks.filter((task) => taskFilter === "全部" || task.status === taskFilter);
+  const unreadNoticeCount = unreadNoticeIds.length;
   const selectedHost = mobileSheet?.type === "host" ? mobileHosts.find((host) => host.id === mobileSheet.hostId) ?? null : null;
   const selectedSite = mobileSheet?.type === "site" ? mobileSites.find((site) => site.id === mobileSheet.siteId) ?? null : null;
   const selectedTask = mobileSheet?.type === "task" ? mobileTasks.find((task) => task.id === mobileSheet.taskId) ?? null : null;
@@ -6070,6 +6100,9 @@ function MobileApp({ notify }: { notify: Notify }) {
       return;
     }
     if (action === "notification-open") {
+      if (targetId) {
+        setUnreadNoticeIds((current) => current.filter((id) => id !== targetId));
+      }
       notify(`已打开通知：${selectedActionLabel || "通知详情"}`, "info");
       closeMobileSheet();
       return;
@@ -6106,7 +6139,7 @@ function MobileApp({ notify }: { notify: Notify }) {
           >
             <Bell size={18} />
           </button>
-          {unreadNoticeCount > 0 && <i>{unreadNoticeCount}</i>}
+          {unreadNoticeCount > 0 && <i aria-hidden="true">{unreadNoticeCount}</i>}
           <button type="button" aria-label="打开个人中心" onClick={() => { setActiveTab("我的"); notify("已切换到移动端我的", "info"); }}><b>U</b></button>
         </div>
       </header>
@@ -6369,19 +6402,19 @@ function MobileApp({ notify }: { notify: Notify }) {
           {mobileSheet.type === "notifications" && (
             <>
               <div className="mobile-sheet-list">
-                {mobileNoticeRows.map((notice, index) => (
-                  <button key={notice.id} type="button" onClick={() => setMobileSheet({ type: "action", action: "notification-open", label: notice.title })}>
+                {mobileNoticeRows.map((notice) => (
+                  <button key={notice.id} type="button" onClick={() => setMobileSheet({ type: "action", action: "notification-open", targetId: notice.id, label: notice.title })}>
                     <StatusLight tone={notice.tone} />
                     <span>
                       <b>{notice.title}</b>
                       <em>{notice.detail}</em>
                     </span>
-                    <small>{index < unreadNoticeCount ? "未读" : notice.time}</small>
+                    <small>{unreadNoticeIds.includes(notice.id) ? "未读" : notice.time}</small>
                   </button>
                 ))}
               </div>
               <div className="mobile-sheet-actions split">
-                <button type="button" onClick={() => { setUnreadNoticeCount(0); notify("通知已全部标记为已读", "info"); }}>全部已读</button>
+                <button type="button" onClick={() => { setUnreadNoticeIds([]); notify("通知已全部标记为已读", "info"); }}>全部已读</button>
                 <button type="button" onClick={() => { setActiveTab("任务"); closeMobileSheet(); notify("已打开任务列表处理通知", "info"); }}>去处理</button>
               </div>
             </>
@@ -6671,16 +6704,62 @@ function MobileSheet({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const sheetRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     closeButtonRef.current?.focus();
+  }, [title]);
+
+  useEffect(() => () => {
+    restoreFocusRef.current?.focus();
   }, []);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab") return;
+
+    const focusable = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((element) => !element.hasAttribute("disabled") && element.offsetParent !== null);
+
+    if (focusable.length === 0) {
+      event.preventDefault();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+
+    if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
 
   return (
     <div className="mobile-sheet-layer" role="presentation">
       <button className="mobile-sheet-scrim" type="button" aria-label="关闭移动端面板" onClick={onClose} />
-      <section className="mobile-sheet" role="dialog" aria-modal="true" aria-label={title}>
+      <section ref={sheetRef} className="mobile-sheet" role="dialog" aria-modal="true" aria-label={title} onKeyDown={handleKeyDown}>
         <header>
           <strong>{title}</strong>
           <button ref={closeButtonRef} type="button" aria-label="关闭" onClick={onClose}><X size={18} /></button>
