@@ -1212,6 +1212,7 @@ function databasePagePreset(page: PageKey) {
 }
 
 function settingsPagePreset(page: PageKey) {
+  if (page === "settings-proxy") return "代理";
   if (page === "settings-security") return "安全";
   if (page === "settings-notice") return "通知";
   if (page === "settings-backup") return "备份";
@@ -1220,6 +1221,7 @@ function settingsPagePreset(page: PageKey) {
 }
 
 function settingsPageForTab(tab: string): PageKey {
+  if (tab === "代理") return "settings-proxy";
   if (tab === "安全") return "settings-security";
   if (tab === "通知") return "settings-notice";
   if (tab === "备份") return "settings-backup";
@@ -1229,7 +1231,11 @@ function settingsPageForTab(tab: string): PageKey {
 
 function readPageFromHash(): PageKey {
   const key = window.location.hash.replace("#", "");
-  return routePageKeys.has(key) ? key : "overview";
+  if (!key) return "overview";
+  if (routePageKeys.has(key)) return key;
+  const nextUrl = `${window.location.pathname}${window.location.search}#overview`;
+  window.history.replaceState(null, "", nextUrl);
+  return "overview";
 }
 
 function readQuickIntent(): QuickIntent | null {
@@ -1326,13 +1332,18 @@ function DesktopShell({
 }) {
   const activeModule = navPageFor(page);
   const whiteTop = !["overview", "overview-health", "overview-tasks", "overview-risks"].includes(page);
+  const [isNarrowSidebar, setIsNarrowSidebar] = useState(() => (
+    typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
+  ));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
     typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
   ));
+  const sidebarOverlayOpen = isNarrowSidebar && !sidebarCollapsed;
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 773px)");
     const syncSidebar = (event: MediaQueryListEvent | MediaQueryList) => {
+      setIsNarrowSidebar(event.matches);
       setSidebarCollapsed(event.matches);
     };
 
@@ -1341,13 +1352,55 @@ function DesktopShell({
     return () => mediaQuery.removeEventListener("change", syncSidebar);
   }, []);
 
+  useEffect(() => {
+    if (!sidebarOverlayOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSidebarCollapsed(true);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const sidebar = document.querySelector<HTMLElement>(".sidebar-mock:not(.collapsed)");
+      if (!sidebar) return;
+      const controls = drawerFocusableElements(sidebar);
+      if (controls.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      const active = document.activeElement;
+      if (!sidebar.contains(active)) {
+        event.preventDefault();
+        first.focus();
+        return;
+      }
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+        return;
+      }
+      if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.requestAnimationFrame(() => {
+      const sidebar = document.querySelector<HTMLElement>(".sidebar-mock:not(.collapsed)");
+      const focusTarget = sidebar ? drawerFocusableElements(sidebar)[0] : null;
+      focusTarget?.focus();
+    });
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [sidebarOverlayOpen]);
+
   const expandSidebar = () => setSidebarCollapsed(false);
   const collapseSidebar = () => setSidebarCollapsed(true);
   const toggleSidebar = () => setSidebarCollapsed((current) => !current);
 
   return (
     <section className={`desktop-frame ${whiteTop ? "white-top" : "dark-top"} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-      {!sidebarCollapsed && <button className="sidebar-backdrop" type="button" aria-label="收起侧栏" onClick={collapseSidebar} />}
+      {sidebarOverlayOpen && <button className="sidebar-backdrop" type="button" aria-label="收起侧栏" onClick={collapseSidebar} tabIndex={-1} />}
       <Sidebar
         page={page}
         setPage={setPage}
@@ -1356,7 +1409,7 @@ function DesktopShell({
         onToggleCollapsed={toggleSidebar}
         onExpandCollapsed={expandSidebar}
       />
-      <div className="desktop-main">
+      <div className="desktop-main" inert={sidebarOverlayOpen} aria-hidden={sidebarOverlayOpen ? "true" : undefined}>
         <TopBar page={page} setPage={setPage} white={whiteTop} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} />
         {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
         {page === "overview-health" && <OverviewHealthPage notify={notify} />}
@@ -1381,7 +1434,7 @@ function DesktopShell({
         {activeModule === "acl" && <AclPage page={page} setPage={setPage} notify={notify} />}
         {activeModule === "settings" && (
           page === "settings-proxy"
-            ? <SettingsProxyPage page={page} notify={notify} />
+            ? <SettingsProxyPage page={page} setPage={setPage} notify={notify} />
             : <SettingsPage page={page} setPage={setPage} notify={notify} />
         )}
       </div>
@@ -1580,10 +1633,12 @@ function TopBar({
 }) {
   const [query, setQuery] = useState("");
   const [openPanel, setOpenPanel] = useState<TopbarPanel>(null);
+  const [lastMenuTrigger, setLastMenuTrigger] = useState<TopbarMenuPanel | null>(null);
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
   const topbarRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const menuTriggerRefs = useRef<Partial<Record<TopbarMenuPanel, HTMLButtonElement | null>>>({});
   const meta = resolvePageMeta(page);
   const activeModule = navPageFor(page);
   const isSettings = activeModule === "settings";
@@ -1592,7 +1647,13 @@ function TopBar({
   const boundedSearchIndex = searchResults.length > 0 ? Math.min(activeSearchIndex, searchResults.length - 1) : 0;
   const activeSearchOptionId = openPanel === "search" && searchResults.length > 0 ? `topbar-search-option-${boundedSearchIndex}` : undefined;
   const togglePanel = (panel: TopbarMenuPanel) => {
+    setLastMenuTrigger(panel);
     setOpenPanel((current) => (current === panel ? null : panel));
+  };
+  const closeMenuPanel = () => {
+    const trigger = lastMenuTrigger ? menuTriggerRefs.current[lastMenuTrigger] : null;
+    setOpenPanel(null);
+    window.requestAnimationFrame(() => trigger?.focus());
   };
   const openSearchPanel = () => {
     setActiveSearchIndex(0);
@@ -1647,6 +1708,7 @@ function TopBar({
           ref={searchInputRef}
           value={query}
           placeholder={meta.search}
+          tabIndex={page !== "overview" && openPanel !== "search" ? -1 : 0}
           aria-labelledby="topbar-search-label"
           role="combobox"
           aria-haspopup="listbox"
@@ -1709,6 +1771,7 @@ function TopBar({
                   id={`topbar-search-option-${index}`}
                   type="button"
                   role="option"
+                  tabIndex={-1}
                   aria-selected={index === boundedSearchIndex}
                   onMouseDown={(event) => event.preventDefault()}
                   onMouseEnter={() => setActiveSearchIndex(index)}
@@ -1745,6 +1808,7 @@ function TopBar({
         {isSettings && <StatusDot text="面板运行正常" />}
         <span className="notification-wrap">
           <button
+            ref={(node) => { menuTriggerRefs.current.notifications = node; }}
             type="button"
             className={`icon-action ${openPanel === "notifications" ? "active" : ""}`}
             onClick={() => togglePanel("notifications")}
@@ -1759,6 +1823,7 @@ function TopBar({
         </span>
         {page !== "overview" && (
           <button
+            ref={(node) => { menuTriggerRefs.current.activity = node; }}
             type="button"
             className={`icon-action ${openPanel === "activity" ? "active" : ""}`}
             onClick={() => togglePanel("activity")}
@@ -1771,6 +1836,7 @@ function TopBar({
           </button>
         )}
         <button
+          ref={(node) => { menuTriggerRefs.current.help = node; }}
           type="button"
           className={`icon-action ${openPanel === "help" ? "active" : ""}`}
           onClick={() => togglePanel("help")}
@@ -1782,6 +1848,7 @@ function TopBar({
           <CircleHelp size={17} />
         </button>
         <button
+          ref={(node) => { menuTriggerRefs.current.user = node; }}
           type="button"
           className={`user-menu-button ${openPanel === "user" ? "active" : ""}`}
           onClick={() => togglePanel("user")}
@@ -1802,7 +1869,7 @@ function TopBar({
             page={page}
             userName={userName}
             unreadCount={unreadCount}
-            onClose={() => setOpenPanel(null)}
+            onClose={closeMenuPanel}
             onMarkRead={() => {
               setUnreadCount(0);
               notify("通知已全部标记为已读", "info");
@@ -1835,13 +1902,46 @@ function TopbarDropdown({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const firstControl = dropdownRef.current?.querySelector<HTMLElement>('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])');
+    const firstControl = dropdownRef.current ? drawerFocusableElements(dropdownRef.current)[0] : null;
     firstControl?.focus();
   }, [panel]);
 
+  const trapDropdownFocus = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const controls = dropdownRef.current ? drawerFocusableElements(dropdownRef.current) : [];
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if ((event.key === "ArrowDown" || event.key === "ArrowUp") && panel === "user") {
+      event.preventDefault();
+      if (controls.length === 0) return;
+      const currentIndex = Math.max(controls.indexOf(document.activeElement as HTMLElement), 0);
+      const nextIndex = event.key === "ArrowDown"
+        ? (currentIndex + 1) % controls.length
+        : (currentIndex - 1 + controls.length) % controls.length;
+      controls[nextIndex]?.focus();
+      return;
+    }
+    if (event.key !== "Tab" || !dropdownRef.current) return;
+    if (controls.length === 0) return;
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    const active = document.activeElement;
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+    if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   if (panel === "user") {
     return (
-      <div ref={dropdownRef} className="topbar-dropdown user-dropdown" id="topbar-user-panel" role="menu" aria-label="用户菜单">
+      <div ref={dropdownRef} className="topbar-dropdown user-dropdown" id="topbar-user-panel" role="menu" aria-label="用户菜单" onKeyDown={trapDropdownFocus}>
         <div className="topbar-dropdown-head">
           <span>当前账号</span>
           <strong>{userName}</strong>
@@ -1874,7 +1974,7 @@ function TopbarDropdown({
   const items = panel === "notifications" ? topbarNotifications : panel === "activity" ? topbarActivities : topbarHelpLinks;
 
   return (
-    <div ref={dropdownRef} className={`topbar-dropdown ${panel}-dropdown`} id={`topbar-${panel}-panel`} role="dialog" aria-label={panelMeta.title}>
+    <div ref={dropdownRef} className={`topbar-dropdown ${panel}-dropdown`} id={`topbar-${panel}-panel`} role="dialog" aria-label={panelMeta.title} onKeyDown={trapDropdownFocus}>
       <div className="topbar-dropdown-head">
         <span>{panelMeta.title}</span>
         <button
@@ -2652,6 +2752,7 @@ function ModulePageShell({
   subtitle,
   page,
   viewContext,
+  tabs,
   actions,
   filters,
   metrics,
@@ -2662,6 +2763,7 @@ function ModulePageShell({
   subtitle?: string | null;
   page?: PageKey;
   viewContext?: ViewContext | null;
+  tabs?: React.ReactNode;
   actions?: React.ReactNode;
   filters?: React.ReactNode;
   metrics?: React.ReactNode;
@@ -2681,6 +2783,7 @@ function ModulePageShell({
       <div className={`module-layout ${side ? "has-side" : ""}`}>
         <section className="module-main">
           {effectiveViewContext && <ModuleViewContext context={effectiveViewContext} />}
+          {tabs}
           {filters && <div className="module-filter-line">{filters}</div>}
           {metrics && <div className="module-metrics">{metrics}</div>}
           {children}
@@ -2969,6 +3072,30 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
         rows={filteredRows}
         emptyText="没有匹配的主机"
         getRowKey={(row) => row.id}
+        mobileCard={(row) => (
+          <>
+            <div className="module-card-head">
+              <button className="module-row-link" type="button" aria-label={`查看主机 ${row.name}`} onClick={() => setDrawer({ type: "detail", host: row })}><StatusLight tone={row.health === "健康" ? "green" : row.health === "警告" ? "orange" : "red"} /><b>{row.name}</b></button>
+              <span className={`pill ${row.health === "健康" ? "green" : row.health === "警告" ? "orange" : "red"}`}>{row.health}</span>
+            </div>
+            <code className="module-card-code">{row.ip}</code>
+            <div className="module-card-meta">
+              <span><b>环境</b><em>{row.env}</em></span>
+              <span><b>CPU</b><em>{row.cpu}</em></span>
+              <span><b>内存</b><em>{row.memory}</em></span>
+              <span><b>磁盘</b><em>{row.disk}</em></span>
+            </div>
+            <div className="module-card-footer">
+              <span className={row.update === "已是最新" ? "green-text" : "orange-text"}>{row.update}</span>
+              <div className="table-actions">
+                <button type="button" onClick={() => setDrawer({ type: "detail", host: row })}>查看</button>
+                <button type="button" onClick={() => { updateHost(row.id, { health: "健康", uptime: "刚刚重启" }); notify(`${row.name} 已重启`); }}>重启</button>
+                <button type="button" onClick={() => { updateHost(row.id, { backup: currentClock() }); notify(`${row.name} 已创建备份`); }}>备份</button>
+                <button type="button" onClick={() => { updateHost(row.id, { update: "已是最新" }); notify(`${row.name} 已更新`); }}>更新</button>
+              </div>
+            </div>
+          </>
+        )}
       />
     </ModulePageShell>
   );
@@ -3048,6 +3175,28 @@ function SitesPage({ page, notify }: { page: PageKey; notify: Notify }) {
         rows={filteredRows}
         emptyText="没有匹配的网站"
         getRowKey={(row) => row.id}
+        mobileCard={(row) => (
+          <>
+            <div className="module-card-head">
+              <span className="module-card-title"><StatusLight tone={row.status === "运行中" ? "green" : row.status === "告警" ? "orange" : "gray"} /><b>{row.domain}</b></span>
+              <span className={`pill ${row.status === "运行中" ? "green" : row.status === "告警" ? "red" : "blue"}`}>{row.status}</span>
+            </div>
+            <code className="module-card-code">{row.host}</code>
+            <div className="module-card-meta">
+              <span><b>运行时</b><em>{row.runtime}</em></span>
+              <span><b>证书</b><em className={row.certDays < 14 ? "orange-text" : "green-text"}>{row.certDays} 天</em></span>
+              <span><b>流量</b><em>{row.traffic}</em></span>
+              <span><b>负责人</b><em>{row.owner}</em></span>
+            </div>
+            <div className="module-card-footer">
+              <div className="table-actions actions-3">
+                <button type="button" onClick={() => { updateSite(row.id, { status: row.status === "已停止" ? "运行中" : "已停止" }); notify(`${row.domain} 已${row.status === "已停止" ? "启动" : "停止"}`); }}>{row.status === "已停止" ? "启动" : "停止"}</button>
+                <button type="button" onClick={() => { updateSite(row.id, { certDays: 90 }); notify(`${row.domain} 证书已续期`); }}>续期</button>
+                <button type="button" onClick={() => setDrawer({ type: "logs", site: row })}>日志</button>
+              </div>
+            </div>
+          </>
+        )}
       />
     </ModulePageShell>
   );
@@ -3159,6 +3308,31 @@ function FilesPage({
         rows={visibleRows}
         emptyText="当前路径没有匹配文件"
         getRowKey={(row) => row.id}
+        mobileCard={(row) => (
+          <>
+            <div className="module-card-head">
+              {row.type === "文件夹" ? (
+                <button className="module-row-link" type="button" onClick={() => setCurrentPath(`${currentPath === "/" ? "" : currentPath}/${row.name}`)}><Folder size={15} /> <b>{row.name}</b></button>
+              ) : (
+                <span className="module-card-title"><FileBox size={15} /><b>{row.name}</b></span>
+              )}
+              <span className="pill blue">{row.type}</span>
+            </div>
+            <code className="module-card-code">{currentPath}</code>
+            <div className="module-card-meta">
+              <span><b>大小</b><em>{row.size}</em></span>
+              <span><b>修改</b><em>{row.modified}</em></span>
+              <span><b>所有者</b><em>{row.owner}</em></span>
+              <span><b>路径</b><em>{row.path}</em></span>
+            </div>
+            <div className="module-card-footer">
+              <div className="table-actions actions-2">
+                <button type="button" aria-label={`重命名 ${row.name}`} onClick={() => { setDraftName(row.name); setDrawer({ type: "rename", file: row }); }}>重命名</button>
+                <button type="button" aria-label={`删除 ${row.name} 到回收站`} onClick={() => moveToTrash(row)}>删除</button>
+              </div>
+            </div>
+          </>
+        )}
       />
     </ModulePageShell>
   );
@@ -3277,6 +3451,31 @@ function FileUploadQueuePage({ page, notify }: { page: PageKey; notify: Notify }
           rows={filteredRows}
           emptyText="没有匹配的上传任务"
           getRowKey={(row) => row.id}
+          mobileCard={(row) => (
+            <>
+              <div className="module-card-head">
+                <button className="module-row-link" type="button" onClick={() => setSelectedId(row.id)}><FileBox size={15} /><b>{row.name}</b></button>
+                <span className={`pill ${statusTone(row.status)}`}>{row.status}</span>
+              </div>
+              <code className="module-card-code">{row.targetPath}</code>
+              <div className="module-card-meta">
+                <span><b>大小</b><em>{row.size}</em></span>
+                <span><b>进度</b><em>{row.progress}%</em></span>
+                <span><b>速度</b><em>{row.speed}</em></span>
+                <span><b>上传人</b><em>{row.owner}</em></span>
+              </div>
+              <div className="module-card-footer">
+                <span className="upload-progress-inline"><i style={{ width: `${row.progress}%` }} /><b>{row.progress}%</b></span>
+                <div className={`table-actions ${row.status === "已完成" ? "actions-1" : "actions-3"}`}>
+                  {row.status === "上传中" && <button type="button" aria-label={`暂停上传 ${row.name}`} onClick={() => pauseUpload(row)}>暂停</button>}
+                  {row.status === "等待" && <button type="button" aria-label={`继续上传 ${row.name}`} onClick={() => resumeUpload(row)}>继续</button>}
+                  {row.status === "失败" && <button type="button" aria-label={`重试上传 ${row.name}`} onClick={() => retryUpload(row)}>重试</button>}
+                  {row.status !== "已完成" && <button type="button" aria-label={`完成上传 ${row.name}`} onClick={() => completeUpload(row)}>完成</button>}
+                  <button type="button" aria-label={`取消上传 ${row.name}`} onClick={() => cancelUpload(row)}>取消</button>
+                </div>
+              </div>
+            </>
+          )}
         />
         <section className="upload-lane-list">
           {["准备上传", "传输中", "收尾校验"].map((label, index) => (
@@ -3377,6 +3576,27 @@ function FileTrashPage({
           rows={filteredRows}
           emptyText="回收站没有匹配文件"
           getRowKey={(row) => row.id}
+          mobileCard={(row) => (
+            <>
+              <div className="module-card-head">
+                <button className="module-row-link" type="button" onClick={() => setSelectedId(row.id)}><Trash2 size={15} /><b>{row.name}</b></button>
+                <span className="pill orange">{row.expiresIn}</span>
+              </div>
+              <code className="module-card-code">{row.originalPath}</code>
+              <div className="module-card-meta">
+                <span><b>大小</b><em>{row.size}</em></span>
+                <span><b>删除</b><em>{row.deletedAt}</em></span>
+                <span><b>所有者</b><em>{row.owner}</em></span>
+                <span className="module-card-span-2"><b>原因</b><em>{row.reason}</em></span>
+              </div>
+              <div className="module-card-footer">
+                <div className="table-actions actions-2">
+                  <button type="button" aria-label={`恢复 ${row.name}`} onClick={() => restoreFile(row)}>恢复</button>
+                  <button type="button" aria-label={`永久删除 ${row.name}`} onClick={() => purgeFile(row)}>永久删除</button>
+                </div>
+              </div>
+            </>
+          )}
         />
         <section className="trash-restore-panel">
           <PanelCard title="最近恢复">
@@ -3745,6 +3965,30 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
           rows={filteredRows}
           emptyText="没有匹配的服务"
           getRowKey={(row) => row.id}
+          mobileCard={(row) => (
+            <>
+              <div className="module-card-head">
+                <span className="module-card-title"><StatusLight tone={row.status === "active" ? "green" : row.status === "failed" ? "red" : "gray"} /><b>{row.name}</b></span>
+                <span className={`pill ${row.status === "active" ? "green" : row.status === "failed" ? "red" : "blue"}`}>{row.handled ? "已处理" : row.status}</span>
+              </div>
+              <code className="module-card-code">{row.host}</code>
+              <div className="module-card-meta">
+                <span><b>重启</b><em>{row.restarts}</em></span>
+                <span><b>内存</b><em>{row.memory}</em></span>
+                <span><b>更新</b><em>{row.updated}</em></span>
+                <span><b>状态</b><em>{row.handled ? "已处理" : row.status}</em></span>
+              </div>
+              <div className="module-card-footer">
+                <div className={`table-actions ${row.status === "failed" ? "actions-5" : "actions-4"}`}>
+                  <button type="button" onClick={() => { updateService(row.id, { status: "active", handled: false, updated: "刚刚" }); notify(`${row.name} 已启动`); }}>启动</button>
+                  <button type="button" onClick={() => { updateService(row.id, { status: "inactive", updated: "刚刚" }); notify(`${row.name} 已停止`, "warning"); }}>停止</button>
+                  <button type="button" onClick={() => { updateService(row.id, { status: "active", restarts: row.restarts + 1, handled: false, updated: "刚刚" }); notify(`${row.name} 已重启`); }}>重启</button>
+                  <button type="button" onClick={() => setDrawer(row)}>日志</button>
+                  {row.status === "failed" && <button type="button" onClick={() => { updateService(row.id, { handled: true, status: "inactive", updated: "刚刚" }); notify(`${row.name} 已标记处理`); }}>处理</button>}
+                </div>
+              </div>
+            </>
+          )}
         />
       </div>
     </ModulePageShell>
@@ -3808,6 +4052,27 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
         rows={filteredRows}
         emptyText="没有匹配的防火墙规则"
         getRowKey={(row) => row.id}
+        mobileCard={(row) => (
+          <>
+            <div className="module-card-head">
+              <span className="module-card-title"><StatusLight tone={row.enabled ? "green" : "gray"} /><b>{row.name}</b></span>
+              <span className={`pill ${row.enabled ? "green" : "blue"}`}>{row.enabled ? "启用" : "停用"}</span>
+            </div>
+            <code className="module-card-code">{`${row.source} -> ${row.target}`}</code>
+            <div className="module-card-meta">
+              <span><b>端口</b><em>{row.port}</em></span>
+              <span><b>协议</b><em>{row.protocol}</em></span>
+              <span><b>来源</b><em>{row.source}</em></span>
+              <span><b>目标</b><em>{row.target}</em></span>
+            </div>
+            <div className="module-card-footer">
+              <div className="table-actions actions-2">
+                <button type="button" onClick={() => { setRows((current) => current.map((item) => item.id === row.id ? { ...item, enabled: !item.enabled } : item)); notify(`${row.name} 已${row.enabled ? "禁用" : "启用"}`); }}>{row.enabled ? "禁用" : "启用"}</button>
+                <button type="button" onClick={() => { setRows((current) => current.filter((item) => item.id !== row.id)); notify(`${row.name} 已删除`, "warning"); }}>删除</button>
+              </div>
+            </div>
+          </>
+        )}
       />
     </ModulePageShell>
   );
@@ -3883,6 +4148,28 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
           rows={filteredRollbackRows}
           emptyText="当前筛选没有回滚记录"
           getRowKey={(row) => row.id}
+          mobileCard={(row) => (
+            <>
+              <div className="module-card-head">
+                <span className="module-card-title"><RefreshCw size={15} /><b>{row.app}</b></span>
+                <span className={`pill ${row.status === "已回滚" ? "green" : row.status === "回滚中" ? "blue" : "orange"}`}>{row.status}</span>
+              </div>
+              <code className="module-card-code">{`${row.fromVersion} -> ${row.targetVersion}`}</code>
+              <div className="module-card-meta">
+                <span><b>环境</b><em>{row.env}</em></span>
+                <span><b>操作人</b><em>{row.operator}</em></span>
+                <span><b>时间</b><em>{row.createdAt}</em></span>
+                <span className="module-card-span-2"><b>原因</b><em>{row.reason}</em></span>
+              </div>
+              <div className="module-card-footer">
+                <div className={`table-actions ${row.status === "已回滚" ? "actions-1" : "actions-3"}`}>
+                  {row.status !== "已回滚" && <button type="button" onClick={() => { updateRollback(row.id, { status: row.status === "回滚中" ? "已回滚" : "回滚中" }); notify(`${row.app} ${row.status === "回滚中" ? "回滚已完成" : "已开始回滚"}`, row.status === "回滚中" ? "success" : "warning"); }}>{row.status === "回滚中" ? "完成" : "执行"}</button>}
+                  <button type="button" onClick={() => setDrawer({ type: "rollback", row })}>日志</button>
+                  {row.status !== "已回滚" && <button type="button" onClick={() => { updateRollback(row.id, { status: "回滚中", createdAt: currentClock() }); notify(`${row.app} 已重新执行回滚`, "info"); }}>重试</button>}
+                </div>
+              </div>
+            </>
+          )}
         />
       ) : (
         <DataTable
@@ -3898,6 +4185,30 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
           rows={filteredRows}
           emptyText="当前环境没有部署任务"
           getRowKey={(row) => row.id}
+          mobileCard={(row) => (
+            <>
+              <div className="module-card-head">
+                <span className="module-card-title"><CloudUpload size={15} /><b>{row.app}</b></span>
+                <span className={`pill ${row.status === "成功" ? "green" : row.status === "失败" ? "red" : "blue"}`}>{row.status}</span>
+              </div>
+              <code className="module-card-code">{row.version}</code>
+              <div className="module-card-meta">
+                <span><b>环境</b><em>{row.env}</em></span>
+                <span><b>操作人</b><em>{row.operator}</em></span>
+                <span><b>耗时</b><em>{row.duration}</em></span>
+                <span><b>状态</b><em>{row.status}</em></span>
+              </div>
+              <div className="module-card-footer">
+                <div className={`table-actions ${row.status === "待发布" || row.status === "运行中" ? "" : "actions-3"}`}>
+                  {row.status === "待发布" && <button type="button" onClick={() => startDeploy(row)}>开始</button>}
+                  {row.status === "运行中" && <button type="button" onClick={() => { updateDeploy(row.id, { status: "成功", duration: "1分02秒" }); notify(`${row.app} 部署已完成`); }}>完成</button>}
+                  <button type="button" onClick={() => { setRollbackRows((current) => [{ id: `rb-${Date.now()}`, app: row.app, env: row.env, fromVersion: row.version, targetVersion: "上一健康版本", status: "回滚中", operator: row.operator, reason: "从部署任务发起回滚", createdAt: currentClock() }, ...current]); updateDeploy(row.id, { status: "运行中", duration: "回滚中" }); notify(`${row.app} 已开始回滚`, "warning"); }}>回滚</button>
+                  <button type="button" onClick={() => setDrawer({ type: "deploy", row })}>日志</button>
+                  <button type="button" onClick={() => { updateDeploy(row.id, { status: "运行中", duration: "运行中" }); notify(`${row.app} 已重新部署`, "info"); }}>重部署</button>
+                </div>
+              </div>
+            </>
+          )}
         />
       )}
     </ModulePageShell>
@@ -3985,6 +4296,29 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
         rows={filteredRows}
         emptyText="没有匹配的定时任务"
         getRowKey={(row) => row.id}
+        mobileCard={(row) => (
+          <>
+            <div className="module-card-head">
+              <span className="module-card-title"><CalendarDays size={15} /><b>{row.name}</b></span>
+              <span className={`pill ${row.result === "成功" ? "green" : row.result === "失败" ? "red" : "blue"}`}>{row.result}</span>
+            </div>
+            <code className="module-card-code">{row.cron} · {row.command}</code>
+            <div className="module-card-meta">
+              <span><b>状态</b><em>{row.enabled ? "启用" : "停用"}</em></span>
+              <span><b>最近</b><em>{row.lastRun}</em></span>
+              <span><b>下次</b><em>{row.nextRun}</em></span>
+              <span><b>结果</b><em>{row.result}</em></span>
+            </div>
+            <div className="module-card-footer">
+              <div className="table-actions">
+                <button type="button" onClick={() => { updateJob(row.id, { enabled: !row.enabled, nextRun: row.enabled ? "停用" : "待计算", result: row.enabled && row.result === "运行中" ? "未运行" : row.result }); notify(`${row.name} 已${row.enabled ? "停用" : "启用"}`); }}>{row.enabled ? "停用" : "启用"}</button>
+                {row.result === "运行中" && row.enabled ? <button type="button" onClick={() => { updateJob(row.id, { lastRun: currentClock(), result: "成功", nextRun: "待计算" }); notify(`${row.name} 执行已完成`); }}>完成</button> : <button type="button" disabled={!row.enabled} onClick={() => { updateJob(row.id, { lastRun: "刚刚", result: "运行中", nextRun: "运行中" }); notify(`${row.name} 已开始执行`, "info"); }}>执行</button>}
+                <button type="button" onClick={() => { setDraft({ name: row.name, cron: row.cron, command: row.command }); setDrawer({ type: "edit", job: row }); }}>编辑</button>
+                <button type="button" onClick={() => { setRows((current) => current.filter((item) => item.id !== row.id)); notify(`${row.name} 已删除`, "warning"); }}>删除</button>
+              </div>
+            </div>
+          </>
+        )}
       />
     </ModulePageShell>
   );
@@ -4112,6 +4446,27 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
             rows={filteredExports}
             emptyText="没有匹配的导出记录"
             getRowKey={(row) => row.id}
+            mobileCard={(row) => (
+              <>
+                <div className="module-card-head">
+                  <span className="module-card-title"><Download size={15} /><b>{row.name}</b></span>
+                  <span className={`pill ${row.status === "可下载" ? "green" : row.status === "生成中" ? "blue" : "red"}`}>{row.status}</span>
+                </div>
+                <code className="module-card-code">{row.traceId}</code>
+                <div className="module-card-meta">
+                  <span><b>格式</b><em>{row.format}</em></span>
+                  <span><b>记录数</b><em>{row.rows.toLocaleString("zh-CN")}</em></span>
+                  <span><b>大小</b><em>{row.size}</em></span>
+                  <span><b>创建人</b><em>{row.creator}</em></span>
+                </div>
+                <div className="module-card-footer">
+                  <div className="table-actions actions-2">
+                    <button type="button" onClick={() => setSelectedExport(row)}>详情</button>
+                    <button type="button" onClick={() => handleExportPrimaryAction(row)}>{row.status === "可下载" ? "下载" : "重试"}</button>
+                  </div>
+                </div>
+              </>
+            )}
           />
         </>
       ) : (
@@ -4129,6 +4484,24 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
           rows={filteredRows}
           emptyText="没有匹配的审计日志"
           getRowKey={(row) => row.id}
+          mobileCard={(row) => (
+            <>
+              <div className="module-card-head">
+                <span className="module-card-title"><FileText size={15} /><b>{row.action}</b></span>
+                <span className={`pill ${row.result === "成功" ? "green" : "red"}`}>{row.result}</span>
+              </div>
+              <code className="module-card-code">{row.traceId}</code>
+              <div className="module-card-meta">
+                <span><b>用户</b><em>{row.user}</em></span>
+                <span><b>对象</b><em>{row.object}</em></span>
+                <span><b>IP</b><em>{row.ip}</em></span>
+                <span><b>时间</b><em>{row.time}</em></span>
+              </div>
+              <div className="module-card-footer">
+                <div className="table-actions actions-1"><button type="button" onClick={() => setSelected(row)}>详情</button></div>
+              </div>
+            </>
+          )}
         />
       )}
     </ModulePageShell>
@@ -4259,6 +4632,27 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
           rows={filteredUsers}
           emptyText="没有匹配的用户"
           getRowKey={(row) => row.id}
+          mobileCard={(row) => (
+            <>
+              <div className="module-card-head">
+                <span className="module-card-title"><UserRound size={15} /><b>{row.name}</b></span>
+                <span className={`pill ${row.enabled ? "green" : "red"}`}>{row.enabled ? "启用" : "禁用"}</span>
+              </div>
+              <code className="module-card-code">{row.email}</code>
+              <div className="module-card-meta">
+                <span><b>角色</b><em>{row.role}</em></span>
+                <span><b>MFA</b><em className={row.mfa === "已启用" ? "green-text" : "orange-text"}>{row.mfa}</em></span>
+                <span><b>最近登录</b><em>{row.lastLogin}</em></span>
+                <span><b>状态</b><em>{row.enabled ? "启用" : "禁用"}</em></span>
+              </div>
+              <div className="module-card-footer">
+                <div className="table-actions actions-2">
+                  <button type="button" onClick={() => { setUsers((current) => current.map((item) => item.id === row.id ? { ...item, enabled: !item.enabled } : item)); notify(`${row.name} 已${row.enabled ? "禁用" : "启用"}`); }}>{row.enabled ? "禁用" : "启用"}</button>
+                  <button type="button" onClick={() => resetUserMfa(row)}>重置 MFA</button>
+                </div>
+              </div>
+            </>
+          )}
         />
       ) : tab === "roles" ? (
         <div className="acl-role-layout">
@@ -4707,11 +5101,7 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
   const [levelFilter, setLevelFilter] = useState("全部");
   const [statusFilter, setStatusFilter] = useState("全部");
   const [timeRange, setTimeRange] = useState("近 24 小时");
-  const [drawerId, setDrawerId] = useState<string | null>(() => (
-    typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
-      ? null
-      : initialDatabaseSlowQueries[0]?.id ?? null
-  ));
+  const [drawerId, setDrawerId] = useState<string | null>(null);
   const [drawerAutoFocus, setDrawerAutoFocus] = useState(false);
   const delayedInstances = dbRows.filter((instance) => instance.connectionHealth.startsWith("延迟") || instance.slowQueries > 0);
   const databaseOptions = ["全部", ...Array.from(new Set([...queries.map((query) => query.database), ...delayedInstances.map((instance) => instance.name)]))];
@@ -4871,7 +5261,7 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
               </div>
               <div className="module-card-footer">
                 <span className={`pill ${statusTone(query.status)}`}>{query.status}</span>
-                <div className="table-actions"><button type="button" aria-label={`生成 ${query.fingerprint} Explain`} onClick={() => runExplain(query.id)}>Explain</button><button type="button" aria-label={`创建 ${query.fingerprint} 索引建议`} onClick={() => createIndexAdvice(query)}>索引</button><button type="button" aria-label={`标记 ${query.fingerprint} 已处理`} onClick={() => markResolved(query)}>处理</button><button type="button" aria-label={`打开 ${query.fingerprint} 详情`} onClick={() => openQuery(query)}>详情</button></div>
+                <div className="table-actions actions-4"><button type="button" aria-label={`生成 ${query.fingerprint} Explain`} onClick={() => runExplain(query.id)}>Explain</button><button type="button" aria-label={`创建 ${query.fingerprint} 索引建议`} onClick={() => createIndexAdvice(query)}>索引</button><button type="button" aria-label={`标记 ${query.fingerprint} 已处理`} onClick={() => markResolved(query)}>处理</button><button type="button" aria-label={`打开 ${query.fingerprint} 详情`} onClick={() => openQuery(query)}>详情</button></div>
               </div>
             </>
           )}
@@ -5125,7 +5515,6 @@ function backupTaskTone(status: DatabaseBackupTask["status"]) {
 
 
 function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; notify: Notify }) {
-  const tabs = ["基础", "安全", "通知", "备份", "审计"];
   const activeTab = settingsPagePreset(page);
   const [readOnly, setReadOnly] = useState(false);
   const [identityDraft, setIdentityDraft] = useState({
@@ -5656,20 +6045,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
         description: `当前定位到${activeTab}设置。`,
         chips: [`Tab ${activeTab}`],
       }} />
-      <div className="settings-tabs">
-        {tabs.map((tab) => (
-          <button
-            className={tab === activeTab ? "active" : ""}
-            type="button"
-            key={tab}
-            onClick={() => {
-              setPage(settingsPageForTab(tab), { message: `已切换到${tab}设置`, tone: "info" });
-            }}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+      <SettingsTabs activeTab={activeTab} setPage={setPage} />
       <div className={`settings-layout ${activeTab === "基础" ? "base-settings-layout" : ""}`}>
         {activeTab === "基础" && <PanelCard title="面板身份" className="settings-card-tall">
           <div className="settings-form">
@@ -5820,6 +6196,15 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
               ))}
             </tbody>
           </table>
+          <div className="settings-change-card-list">
+            {settingsAuditRows.map((row) => (
+              <article key={row.join("-")}>
+                <div><b>{row[2]}</b><span>{row[3]}</span></div>
+                <p>{row[4]}</p>
+                <em>{row[0]} · {row[1]} · {row[5]}</em>
+              </article>
+            ))}
+          </div>
         </div>
       </PanelCard>}
       {generatedToken && (
@@ -5833,7 +6218,30 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
   );
 }
 
-function SettingsProxyPage({ page, notify }: { page: PageKey; notify: Notify }) {
+const settingsTabs = ["基础", "安全", "代理", "通知", "备份", "审计"];
+
+function SettingsTabs({ activeTab, setPage }: { activeTab: string; setPage: SetPage }) {
+  return (
+    <div className="settings-tabs" role="tablist" aria-label="设置分区">
+      {settingsTabs.map((tab) => (
+        <button
+          className={tab === activeTab ? "active" : ""}
+          type="button"
+          role="tab"
+          aria-selected={tab === activeTab}
+          key={tab}
+          onClick={() => {
+            setPage(settingsPageForTab(tab), { message: `已切换到${tab}设置`, tone: "info" });
+          }}
+        >
+          {tab}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SettingsProxyPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; notify: Notify }) {
   const [endpoints, setEndpoints] = useState(initialProxyEndpoints);
   const [rules, setRules] = useState(initialProxyRules);
   const [search, setSearch] = useState("");
@@ -5932,7 +6340,7 @@ function SettingsProxyPage({ page, notify }: { page: PageKey; notify: Notify }) 
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
-      subtitle="独立管理 HTTP / HTTPS / SOCKS5 代理节点、路由规则、NO_PROXY 和运行时环境变量。"
+      subtitle="管理代理节点、路由规则和运行时环境变量。"
       page={page}
       viewContext={{
         eyebrow: "设置 / 代理设置",
@@ -5940,6 +6348,7 @@ function SettingsProxyPage({ page, notify }: { page: PageKey; notify: Notify }) 
         description: "配置控制台访问外部网络时的代理策略、状态检查和规则切换。",
         chips: [`可用 ${healthyEndpoints.length}`, `告警 ${warningEndpoints.length}`, `规则 ${rules.length}`],
       }}
+      tabs={<SettingsTabs activeTab={settingsPagePreset(page)} setPage={setPage} />}
       actions={<><button className="ghost" type="button" onClick={() => { setEndpoints((current) => current.map((endpoint) => endpoint.enabled ? { ...endpoint, latency: endpoint.latency === "-" || endpoint.latency === "未探测" ? "54ms" : endpoint.latency, lastCheck: "刚刚" } : endpoint)); notify("已批量刷新代理检查时间"); }}><RefreshCw size={15} /> 批量刷新</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 新增代理</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索代理名称、地址或用途" onChange={setSearch} /><FieldSelect label="用途" value={scopeFilter} options={["全部", "全局", "部署", "终端", "仓库"]} onChange={setScopeFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "可用", "告警", "未验证", "停用"]} onChange={setStatusFilter} /></>}
       metrics={<><MetricTile icon={Shield} label="可用节点" value={`${healthyEndpoints.length}`} tone="green" /><MetricTile icon={TerminalSquare} label="终端代理" value={terminalProxy ? "启用" : "停用"} tone={terminalProxy ? "blue" : "gray"} /><MetricTile icon={Globe2} label="部署代理" value={deployProxy ? "启用" : "停用"} tone={deployProxy ? "blue" : "gray"} /></>}
@@ -5977,6 +6386,31 @@ function SettingsProxyPage({ page, notify }: { page: PageKey; notify: Notify }) 
           rows={filteredEndpoints}
           emptyText="没有匹配的代理节点"
           getRowKey={(endpoint) => endpoint.id}
+          mobileCard={(endpoint) => (
+            <>
+              <div className="module-card-head">
+                <button className="module-row-link" type="button" aria-label={`查看代理 ${endpoint.name}`} onClick={() => setDrawer({ type: "test", endpointId: endpoint.id })}>
+                  <StatusLight tone={proxyStatusTone(endpoint)} />
+                  <b>{endpoint.name}</b>
+                </button>
+                <span className={`pill ${proxyStatusTone(endpoint)}`}>{endpoint.status}</span>
+              </div>
+              <code className="module-card-code">{endpoint.url}</code>
+              <div className="module-card-meta">
+                <span><b>协议</b><em>{endpoint.protocol}</em></span>
+                <span><b>用途</b><em>{endpoint.scope}</em></span>
+                <span><b>延迟</b><em>{endpoint.latency}</em></span>
+                <span><b>探测</b><em>{endpoint.lastCheck}</em></span>
+              </div>
+              <div className="module-card-footer">
+                <div className="table-actions actions-3">
+                  <button type="button" aria-label={`检查代理 ${endpoint.name}`} onClick={() => runProbe(endpoint)}>检查</button>
+                  <button type="button" aria-label={`${endpoint.enabled ? "停用" : "启用"}代理 ${endpoint.name}`} onClick={() => { const enabled = !endpoint.enabled; updateEndpoint(endpoint.id, { enabled, status: enabled ? "未验证" : "停用", latency: enabled ? "未探测" : "-" }); notify(`${endpoint.name} 已${enabled ? "启用，等待检查" : "停用"}`, enabled ? "success" : "warning"); }}>{endpoint.enabled ? "停用" : "启用"}</button>
+                  <button type="button" aria-label={`打开代理 ${endpoint.name} 详情`} onClick={() => setDrawer({ type: "test", endpointId: endpoint.id })}>详情</button>
+                </div>
+              </div>
+            </>
+          )}
         />
         <section className="proxy-lower-grid">
           <PanelCard title="代理路由规则" action="新增规则" onAction={() => {
@@ -6106,6 +6540,18 @@ const mobileTabs: Array<[MobileTabIcon, MobileTab]> = [
   [UserRound, "我的"],
 ];
 
+const mobileTabValues = mobileTabs.map(([, label]) => label);
+
+function isMobileTab(value: string): value is MobileTab {
+  return mobileTabValues.includes(value as MobileTab);
+}
+
+function readMobileTabFromUrl(): MobileTab {
+  if (typeof window === "undefined") return "首页";
+  const tab = new URLSearchParams(window.location.search).get("mobileTab");
+  return tab && isMobileTab(tab) ? tab : "首页";
+}
+
 const mobileQuickActions: MobileQuickAction[] = [
   { label: "添加主机", target: "主机", targetHint: "主机列表 / 新增主机", draft: "主机接入草稿" },
   { label: "创建网站", target: "网站", targetHint: "网站列表 / 添加网站", draft: "站点配置草稿" },
@@ -6124,7 +6570,7 @@ const mobileNoticeRows = [
 ];
 
 function MobileApp({ notify }: { notify: Notify }) {
-  const [activeTab, setActiveTab] = useState<MobileTab>("首页");
+  const [activeTab, setActiveTab] = useState<MobileTab>(() => readMobileTabFromUrl());
   const mobileContentRef = useRef<HTMLDivElement>(null);
   const [activeQuick, setActiveQuick] = useState("添加主机");
   const [quickDrafts, setQuickDrafts] = useState<string[]>([]);
@@ -6193,6 +6639,20 @@ function MobileApp({ notify }: { notify: Notify }) {
     : null;
   const selectedActionLabel = mobileSheet?.type === "action" ? mobileSheet.label ?? "" : "";
   const closeMobileSheet = () => setMobileSheet(null);
+  const setMobileTab = (tab: MobileTab, shouldNotify = true) => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (tab === "首页") {
+        url.searchParams.delete("mobileTab");
+      } else {
+        url.searchParams.set("mobileTab", tab);
+      }
+      url.hash = "mobile";
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+    if (shouldNotify) notify(`已切换到移动端${tab}`, "info");
+  };
   const updateHost = (id: string, patch: Partial<MobileHostRecord>) => {
     setMobileHosts((current) => current.map((host) => (host.id === id ? { ...host, ...patch } : host)));
   };
@@ -6210,7 +6670,7 @@ function MobileApp({ notify }: { notify: Notify }) {
   };
   const openQuickTarget = (action: MobileQuickAction) => {
     if (["首页", "主机", "网站", "任务", "我的"].includes(action.target)) {
-      setActiveTab(action.target as MobileTab);
+      setMobileTab(action.target as MobileTab, false);
       closeMobileSheet();
       notify(`已打开${action.targetHint}`, "info");
       return;
@@ -6343,15 +6803,6 @@ function MobileApp({ notify }: { notify: Notify }) {
     mobileContentRef.current?.scrollTo({ top: 0 });
   }, [activeTab]);
 
-  useEffect(() => {
-    if (!mobileSheet) return undefined;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeMobileSheet();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mobileSheet]);
-
   return (
     <section className="mobile-app-shell">
       <header className="mobile-top" inert={Boolean(mobileSheet)} aria-hidden={mobileSheet ? "true" : undefined}>
@@ -6366,7 +6817,7 @@ function MobileApp({ notify }: { notify: Notify }) {
             <Bell size={18} />
           </button>
           {unreadNoticeCount > 0 && <i aria-hidden="true">{unreadNoticeCount}</i>}
-          <button type="button" aria-label="打开个人中心" onClick={() => { setActiveTab("我的"); notify("已切换到移动端我的", "info"); }}><b>U</b></button>
+          <button type="button" aria-label="打开个人中心" onClick={() => setMobileTab("我的")}><b>U</b></button>
         </div>
       </header>
       <div className="mobile-content" ref={mobileContentRef} inert={Boolean(mobileSheet)} aria-hidden={mobileSheet ? "true" : undefined}>
@@ -6405,7 +6856,7 @@ function MobileApp({ notify }: { notify: Notify }) {
                 ))}
               </div>
             </MobileCard>
-            <MobileCard title="最近任务" action="查看全部" onAction={() => { setTaskFilter("全部"); setActiveTab("任务"); notify("已切换到移动端任务", "info"); }}>
+            <MobileCard title="最近任务" action="查看全部" onAction={() => { setTaskFilter("全部"); setMobileTab("任务"); }}>
               <div className="mobile-task-list">
                 {mobileTasks.slice(0, 4).map((task) => {
                   const Icon = task.icon;
@@ -6429,7 +6880,7 @@ function MobileApp({ notify }: { notify: Notify }) {
                     className={action.label === activeQuick ? "active" : ""}
                     key={action.label}
                     type="button"
-                    aria-pressed={action.label === activeQuick}
+                    aria-current={action.label === activeQuick ? "true" : undefined}
                     onClick={() => {
                       setActiveQuick(action.label);
                       setMobileSheet({ type: "quick", action: action.label });
@@ -6591,8 +7042,7 @@ function MobileApp({ notify }: { notify: Notify }) {
             aria-current={label === activeTab ? "page" : undefined}
             onClick={() => {
               if (label !== activeTab) {
-                setActiveTab(label);
-                notify(`已切换到移动端${label}`, "info");
+                setMobileTab(label);
               }
             }}
           >
@@ -6619,7 +7069,7 @@ function MobileApp({ notify }: { notify: Notify }) {
           {mobileSheet.type === "menu" && (
             <div className="mobile-sheet-actions">
               {mobileTabs.map(([, label]) => (
-                <button key={label} type="button" onClick={() => { setActiveTab(label); closeMobileSheet(); notify(`已切换到移动端${label}`, "info"); }}>{label}</button>
+                <button key={label} type="button" onClick={() => { setMobileTab(label); closeMobileSheet(); }}>{label}</button>
               ))}
               <button type="button" onClick={() => { setMobileSheet({ type: "system" }); }}>系统状态</button>
               <button type="button" onClick={() => { setMobileSheet({ type: "notifications" }); }}>通知中心</button>
@@ -6641,7 +7091,7 @@ function MobileApp({ notify }: { notify: Notify }) {
               </div>
               <div className="mobile-sheet-actions split">
                 <button type="button" onClick={() => { setUnreadNoticeIds([]); notify("通知已全部标记为已读", "info"); }}>全部已读</button>
-                <button type="button" onClick={() => { setActiveTab("任务"); closeMobileSheet(); notify("已打开任务列表处理通知", "info"); }}>去处理</button>
+                <button type="button" onClick={() => { setMobileTab("任务", false); closeMobileSheet(); notify("已打开任务列表处理通知", "info"); }}>去处理</button>
               </div>
             </>
           )}
@@ -7511,6 +7961,43 @@ function TokenTable({
           )}
         </tbody>
       </table>
+      <div className="token-card-list">
+        {rows.map((row) => {
+          const selectedRow = selectedIds.includes(row.id);
+          return (
+            <article className={`token-card ${selectedRow ? "is-selected" : ""}`} key={row.id}>
+              <div className="token-card-head">
+                <label>
+                  <input aria-label={`选择令牌 ${row.name}`} type="checkbox" checked={selectedRow} onChange={(event) => {
+                    setSelected((current) => event.target.checked ? [...current, row.id] : current.filter((item) => item !== row.id));
+                  }} />
+                  <span><b>{row.name}</b><em>{row.prefix}</em></span>
+                </label>
+                <span className={`token-status ${tokenStatusClass(row)}`}>{tokenDisplayStatus(row)}</span>
+              </div>
+              <p className="token-card-scope">{row.scope}</p>
+              <div className="token-card-meta">
+                <span><b>创建</b><em>{row.createdAt}</em></span>
+                <span><b>最近使用</b><em>{row.lastUsed}</em></span>
+                <span><b>权限</b><em>{row.access}</em></span>
+                <span><b>风险</b><em>{row.risk}</em></span>
+              </div>
+              <div className="token-card-actions">
+                <button type="button" aria-label={`查看令牌 ${row.name}`} onClick={() => onView(row)}>查看</button>
+                <button type="button" disabled={readOnly} aria-label={`${row.status === "已停用" ? "启用" : "停用"}令牌 ${row.name}`} onClick={() => {
+                  const nextStatus = row.status === "已停用" ? "已启用" : "已停用";
+                  onUpdateStatus(row, nextStatus);
+                }}>{row.status === "已停用" ? "启用" : "停用"}</button>
+                <button type="button" disabled={readOnly} aria-label={`删除令牌 ${row.name}`} onClick={() => {
+                  setSelected((current) => current.filter((id) => id !== row.id));
+                  onDelete(row);
+                }}>删除</button>
+              </div>
+            </article>
+          );
+        })}
+        {rows.length === 0 && <div className="token-card-empty">暂无访问令牌，请生成新令牌。</div>}
+      </div>
     </div>
   );
 }
