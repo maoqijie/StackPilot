@@ -216,7 +216,7 @@ const pageMeta: Record<string, PageMeta> = {
   "settings-notice": { title: "通知设置", breadcrumb: "设置", search: "搜索通知设置..." },
   "settings-backup": { title: "备份策略", breadcrumb: "设置", search: "搜索备份策略..." },
   "settings-audit": { title: "设置审计", breadcrumb: "设置", search: "搜索设置变更..." },
-  mobile: { title: "移动端", breadcrumb: "预览", search: "搜索移动端模块..." },
+  mobile: { title: "移动端", breadcrumb: "控制台", search: "搜索移动端模块..." },
 };
 
 const navItems: NavItem[] = [
@@ -602,7 +602,7 @@ const initialProxyRules: ProxyRouteRule[] = [
   { id: "rule-1", target: "github.com", type: "代理", endpointId: "px-3", note: "仓库拉取和 release 下载", enabled: true },
   { id: "rule-2", target: "registry.npmjs.org", type: "代理", endpointId: "px-1", note: "前端依赖安装", enabled: true },
   { id: "rule-3", target: "10.0.0.0/8", type: "直连", endpointId: "direct", note: "内网服务保持直连", enabled: true },
-  { id: "rule-4", target: "localhost,127.0.0.1", type: "直连", endpointId: "direct", note: "本地预览和开发服务", enabled: true },
+  { id: "rule-4", target: "localhost,127.0.0.1", type: "直连", endpointId: "direct", note: "工作站与开发服务", enabled: true },
 ];
 
 const initialSettingsChanges: SettingsChangeRow[] = [
@@ -1159,26 +1159,26 @@ function sitesPagePreset(page: PageKey) {
 
 function filesPagePreset(page: PageKey) {
   if (page === "files-upload") return { path: "/var/www/html", type: "文件", search: "upload", subtitle: "上传队列视图，展示当前路径中的上传文件项。" };
-  if (page === "files-trash") return { path: "/tmp", type: "全部", search: "old", subtitle: "回收站视图，模拟 7 天保留的可删除文件。" };
-  return { path: "/var/www/html", type: "全部", search: "", subtitle: "模拟文件管理器，支持路径面包屑、进入文件夹、本地上传和重命名删除。" };
+  if (page === "files-trash") return { path: "/tmp", type: "全部", search: "old", subtitle: "回收站视图，集中处理 7 天保留的可删除文件。" };
+  return { path: "/var/www/html", type: "全部", search: "", subtitle: "文件管理器支持路径面包屑、进入文件夹、上传、重命名和删除。" };
 }
 
 function terminalPagePreset(page: PageKey) {
   if (page === "terminal-snippets") return { panel: "snippets", subtitle: "常用命令视图，可一键填充到终端输入。" };
   if (page === "terminal-history") return { panel: "history", subtitle: "执行历史视图，展示今日命令记录并可复制会话。" };
-  return { panel: "sessions", subtitle: "本地模拟 SSH 会话，命令输入会追加到终端输出。" };
+  return { panel: "sessions", subtitle: "管理终端会话、命令草稿和输出记录。" };
 }
 
 function systemdPagePreset(page: PageKey) {
   if (page === "systemd-failed") return { status: "failed", search: "", mode: "list", subtitle: "Failed 服务视图，聚焦需要处理的异常服务。" };
-  if (page === "systemd-logs") return { status: "全部", search: "", mode: "logs", subtitle: "服务日志视图，默认展开模拟 journal 输出。" };
-  return { status: page === "systemd-active" ? "active" : "全部", search: "", mode: "list", subtitle: "查看服务 active/failed/inactive 状态，并在本地模拟启停、重启和处理失败服务。" };
+  if (page === "systemd-logs") return { status: "全部", search: "", mode: "logs", subtitle: "服务日志视图，默认展开 journal 输出。" };
+  return { status: page === "systemd-active" ? "active" : "全部", search: "", mode: "list", subtitle: "查看服务 active/failed/inactive 状态，并处理启停、重启和失败告警。" };
 }
 
 function firewallPagePreset(page: PageKey) {
   if (page === "firewall-open") return { protocol: "全部", source: "0.0.0.0/0", search: "", subtitle: "开放端口视图，默认展示公网来源规则。" };
-  if (page === "firewall-deny") return { protocol: "UDP", source: "全部", search: "", subtitle: "拦截记录视图，模拟查看被限制或停用的规则。" };
-  return { protocol: "全部", source: "全部", search: "", subtitle: "本地维护规则列表，支持端口、协议、来源筛选和启用删除。" };
+  if (page === "firewall-deny") return { protocol: "UDP", source: "全部", search: "", subtitle: "拦截记录视图，查看被限制或停用的规则。" };
+  return { protocol: "全部", source: "全部", search: "", subtitle: "维护规则列表，支持端口、协议、来源筛选和启用删除。" };
 }
 
 function deployPagePreset(page: PageKey) {
@@ -1195,7 +1195,7 @@ function schedulePagePreset(page: PageKey) {
 
 function auditPagePreset(page: PageKey) {
   if (page === "audit-failed") return { result: "失败", user: "全部", search: "", mode: "list", subtitle: "失败操作视图，默认筛选审计中的失败记录。" };
-  if (page === "audit-export") return { result: "全部", user: "全部", search: "", mode: "exports", subtitle: "导出记录视图，模拟 CSV / JSON 导出历史。" };
+  if (page === "audit-export") return { result: "全部", user: "全部", search: "", mode: "exports", subtitle: "导出记录视图，查看 CSV / JSON 导出历史。" };
   return { result: "全部", user: "全部", search: "", mode: "list", subtitle: "只读审计视图，支持关键字、用户和结果过滤。" };
 }
 
@@ -2941,7 +2941,7 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
       ) : drawer?.type === "create" ? (
         <DetailDrawer
           title="新增主机"
-          subtitle="本地原型会把主机插入列表"
+          subtitle="保存后进入主机监控列表"
           onClose={() => setDrawer(null)}
           actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={addHost}>保存主机</button></>}
         >
@@ -3015,7 +3015,7 @@ function SitesPage({ page, notify }: { page: PageKey; notify: Notify }) {
       filters={<><ModuleSearch value={search} placeholder="搜索域名" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={statusFilter} options={["全部", "运行中", "已停止", "告警"]} onChange={(value) => setStatusByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="运行时" value={runtimeFilter} options={runtimeOptions} onChange={(value) => setRuntimeByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={Globe2} label="站点" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="green" /><MetricTile icon={Shield} label="证书告警" value={`${rows.filter((row) => row.certDays < 14).length}`} tone="orange" /></>}
       side={drawer?.type === "create" ? (
-        <DetailDrawer title="添加网站" subtitle="创建本地站点记录" onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={addSite}>添加网站</button></>}>
+        <DetailDrawer title="添加网站" subtitle="配置站点域名、运行时和绑定主机" onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={addSite}>添加网站</button></>}>
           <FormLine label="域名" required value={draft.domain} onChange={(value) => setDraft((current) => ({ ...current, domain: value }))} />
           <FormSelectLine label="运行时" required value={draft.runtime} options={["Node 20", "PHP 8.3", "Static", "Nginx 静态"]} onChange={(value) => setDraft((current) => ({ ...current, runtime: value }))} />
           <FormSelectLine label="绑定主机" required value={draft.host} options={initialHostRecords.map((host) => host.name)} onChange={(value) => setDraft((current) => ({ ...current, host: value }))} />
@@ -3405,9 +3405,9 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [pendingSensitiveCommand, setPendingSensitiveCommand] = useState<{ command: string; sessionId: string } | null>(null);
   const [consoleHighlighted, setConsoleHighlighted] = useState(false);
   const [logsBySession, setLogsBySession] = useState<Record<string, string[]>>(() => ({
-    [initialTerminalSessions[0].id]: [`connected to ${initialTerminalSessions[0].host}`, "Last login: Thu Jun 18 10:21:03"],
-    [initialTerminalSessions[1].id]: [`connected to ${initialTerminalSessions[1].host}`, "Last login: Thu Jun 18 10:04:19"],
-    [initialTerminalSessions[2].id]: [`disconnected from ${initialTerminalSessions[2].host}`],
+    [initialTerminalSessions[0].id]: [`session opened: ${initialTerminalSessions[0].host}`, "Last login: Thu Jun 18 10:21:03"],
+    [initialTerminalSessions[1].id]: [`session opened: ${initialTerminalSessions[1].host}`, "Last login: Thu Jun 18 10:04:19"],
+    [initialTerminalSessions[2].id]: [`session closed: ${initialTerminalSessions[2].host}`],
   }));
   const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? sessions[0];
   const connected = selectedSession.status === "connected";
@@ -3467,13 +3467,13 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const connectSession = (session = selectedSession) => {
     updateSession(session.id, { status: "connected", latency: session.latency === "-" ? "44ms" : session.latency });
     setSelectedSessionId(session.id);
-    appendLogs(session.id, [`connected to ${session.host}`]);
-    notify(`已连接 ${session.host}`);
+    appendLogs(session.id, [`session opened: ${session.host}`]);
+    notify(`已打开 ${session.host} 会话`);
   };
   const disconnectSession = (session = selectedSession) => {
     updateSession(session.id, { status: "disconnected", latency: "-" });
-    appendLogs(session.id, [`disconnected from ${session.host}`]);
-    notify(`${session.host} 会话已断开`, "warning");
+    appendLogs(session.id, [`session closed: ${session.host}`]);
+    notify(`${session.host} 会话已关闭`, "warning");
   };
   const commandOutput = (next: string) => {
     if (next.includes("systemctl status")) return "nginx.service active (running)";
@@ -3482,7 +3482,7 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
     if (next.includes("top")) return "load average: 0.38, 0.42, 0.41";
     if (next.includes("tail")) return "no critical errors in last 100 lines";
     if (next.includes("mysqladmin")) return "ERROR 2002: connection timed out";
-    if (next.includes("rm -rf")) return "dangerous command blocked by local prototype";
+    if (next.includes("rm -rf")) return "高风险命令已拦截";
     return `command '${next}' executed`;
   };
   const isPrivilegedCommand = (next: string) => /(^|\s)(systemctl\s+restart|systemctl\s+stop|rm\s+-rf|ufw|iptables)\b/.test(next);
@@ -3502,7 +3502,7 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
       return;
     }
     if (risk === "危险" || isDestructiveCommand(next)) {
-      const output = "dangerous command blocked by local prototype";
+      const output = "高风险命令已拦截";
       appendLogs(targetSession.id, [`$ ${next}`, output]);
       setHistoryRows((current) => [{
         id: `term-history-${Date.now()}`,
@@ -3560,7 +3560,7 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
     updateSession(targetSession.id, { lastCommand: next });
     setPendingSensitiveCommand(null);
     setCommand("");
-    notify(failed ? `${targetSession.host} 命令执行失败` : `${targetSession.host} 命令已执行`, failed ? "danger" : "success");
+    notify(failed ? `${targetSession.host} 输出记录为失败` : `${targetSession.host} 输出已记录`, failed ? "danger" : "success");
   };
   const fillSnippet = (snippet: TerminalSnippetRecord) => {
     setCommand(snippet.command);
@@ -3594,14 +3594,14 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
     ? <><ModuleSearch value={snippetSearch} placeholder="搜索命令、分类或说明" onChange={setSnippetSearch} /><FieldSelect label="分类" value={snippetCategoryFilter} options={snippetCategories} onChange={setSnippetCategoryFilter} /><FieldSelect label="风险" value={snippetRiskFilter} options={["全部", "只读", "变更", "危险"]} onChange={setSnippetRiskFilter} /></>
     : terminalMode === "history"
       ? <><ModuleSearch value={historySearch} placeholder="搜索命令、主机或输出" onChange={setHistorySearch} /><FieldSelect label="结果" value={historyStatusFilter} options={["全部", "成功", "失败"]} onChange={setHistoryStatusFilter} /></>
-      : <><ModuleSearch value={sessionSearch} placeholder="搜索主机、IP、用户或路径" onChange={setSessionSearch} /><FieldSelect label="连接" value={sessionStatusFilter} options={["全部", "connected", "disconnected"]} onChange={setSessionStatusFilter} /></>;
+      : <><ModuleSearch value={sessionSearch} placeholder="搜索主机、IP、用户或路径" onChange={setSessionSearch} /><FieldSelect label="会话" value={sessionStatusFilter} options={["全部", "connected", "disconnected"]} onChange={setSessionStatusFilter} /></>;
 
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={terminalPreset.subtitle}
       page={page}
-      actions={<><button className="ghost" type="button" onClick={() => disconnectSession()} disabled={!connected}>断开当前</button><button className="primary" type="button" onClick={() => connectSession()}><RefreshCw size={15} /> 连接/重连</button></>}
+      actions={<><button className="ghost" type="button" onClick={() => disconnectSession()} disabled={!connected}>关闭当前</button><button className="primary" type="button" onClick={() => connectSession()}><RefreshCw size={15} /> 打开会话</button></>}
       filters={terminalFilters}
       metrics={<><MetricTile icon={TerminalSquare} label="活动会话" value={`${sessions.filter((session) => session.status === "connected").length}`} tone="blue" /><MetricTile icon={Clock3} label="历史命令" value={`${historyRows.length}`} tone="green" /><MetricTile icon={Shield} label="高风险片段" value={`${snippets.filter((snippet) => snippet.risk !== "只读").length}`} tone="orange" /></>}
     >
@@ -3619,7 +3619,7 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
                   </button>
                   <div className="terminal-card-actions">
                     <span>{session.latency}</span>
-                    <button type="button" aria-label={`${session.status === "connected" ? "断开" : "连接"} ${session.host}`} onClick={() => session.status === "connected" ? disconnectSession(session) : connectSession(session)}>{session.status === "connected" ? "断开" : "连接"}</button>
+                    <button type="button" aria-label={`${session.status === "connected" ? "关闭" : "打开"} ${session.host}`} onClick={() => session.status === "connected" ? disconnectSession(session) : connectSession(session)}>{session.status === "connected" ? "关闭" : "打开"}</button>
                   </div>
                 </article>
               ))}
@@ -3656,7 +3656,7 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
         <section className={`terminal-console-card ${consoleHighlighted ? "is-highlighted" : ""}`}>
           <div className="terminal-console-head">
             <div><span>{selectedSession.user}@{selectedSession.host}</span><strong>{selectedSession.cwd}</strong></div>
-            <StatusDot text={connected ? "已连接" : "未连接"} tone={connected ? "green" : "red"} />
+            <StatusDot text={connected ? "已打开" : "未打开"} tone={connected ? "green" : "red"} />
           </div>
           <div className="terminal-panel">
             <div className="terminal-toolbar">
@@ -4432,7 +4432,7 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
       viewContext={{
         eyebrow: "数据库 / 实例列表",
         title: "数据库实例",
-        description: "集中管理实例连接、备份状态、慢查询和权限边界，所有操作在本地状态中模拟生效。",
+        description: "集中管理实例连接、备份状态、慢查询和权限边界，操作结果会即时同步到当前视图。",
         chips: [`筛选 ${filteredRows.length}/${rows.length}`, `告警 ${alertCount}`, `慢查询 ${slowQueryCount}`],
       }}
       actions={<>
@@ -4585,7 +4585,7 @@ function DatabaseInstanceDetail({
       <div className={instance.backupStatus === "失败" ? "drawer-warning" : "drawer-tip"}>
         {instance.backupStatus === "失败"
           ? "最近一次备份失败，建议立即执行备份并确认备份计划。"
-          : "实例详情中的操作仅更新本地原型状态，刷新页面后恢复初始数据。"}
+          : "实例操作会同步到当前视图，并保留在本次会话。"}
       </div>
     </div>
   );
@@ -4654,7 +4654,7 @@ function CreateDatabaseDrawer({
   return (
     <DetailDrawer
       title="创建数据库"
-      subtitle="本地实例原型"
+      subtitle="配置实例参数和初始化权限"
       onClose={onClose}
       actions={<><button className="ghost" type="button" onClick={resetDraft}>重置</button><button className="primary" type="button" onClick={submit}>创建数据库</button></>}
     >
@@ -4689,8 +4689,8 @@ function CreateDatabaseDrawer({
         <FormSelectLine label="权限范围" required value={access} options={["读写", "只读", "仅备份"]} onChange={(value) => setAccess(value as DatabaseInstance["access"])} />
         <ToggleLine label="自动备份" active={autoBackup} onToggle={setAutoBackup} hint="每天 02:00 执行，备份保留 7 天" />
         <ToggleLine label="允许远程连接" active={remote} onToggle={setRemote} hint="仅允许白名单 IP 访问" />
-        <div className="drawer-tip">创建后会插入实例列表顶部，并自动打开新实例详情。</div>
-        <div className="drawer-warning">危险操作不会接入真实后端，本页仅模拟本地状态。</div>
+        <div className="drawer-tip">创建后会进入实例列表顶部，并自动打开新实例详情。</div>
+        <div className="drawer-warning">开启远程连接时请确认白名单和权限范围。</div>
       </div>
     </DetailDrawer>
   );
@@ -4822,7 +4822,7 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
             <p><span>会话</span><b>{selectedQuery.sessionId}</b></p>
             <code>{selectedQuery.sql}</code>
             <p><span>优化建议</span><b>{selectedQuery.suggestion}</b></p>
-            <code>{selectedQuery.explain ?? "尚未生成 Explain，点击下方操作进行模拟分析。"}</code>
+            <code>{selectedQuery.explain ?? "尚未生成 Explain，点击下方操作开始分析。"}</code>
             <div className="slow-drawer-actions">
               <button type="button" onClick={() => createIndexAdvice(selectedQuery)}>索引建议</button>
               <button type="button" onClick={() => killSession(selectedQuery)}>终止会话</button>
@@ -4998,7 +4998,7 @@ function DatabaseBackupsPage({ page, notify }: { page: PageKey; notify: Notify }
               <p><span>状态</span><b>{selectedDrawerPlan.enabled ? selectedDrawerPlan.health : "暂停"}</b></p>
               <p><span>最近执行</span><b>{selectedDrawerPlan.lastRun}</b></p>
               <p><span>成功率</span><b>{selectedDrawerPlan.successRate}%</b></p>
-              <div className="drawer-tip">编辑计划会记录到审计日志，本地原型仅模拟保存状态。</div>
+              <div className="drawer-tip">计划操作会更新当前列表中的任务状态和最近执行时间。</div>
             </div>
           ) : selectedDrawerRestorePoint ? (
             <div className="backup-drawer-body">
@@ -5007,7 +5007,7 @@ function DatabaseBackupsPage({ page, notify }: { page: PageKey; notify: Notify }
               <p><span>大小</span><b>{selectedDrawerRestorePoint.size}</b></p>
               <p><span>校验</span><b>{selectedDrawerRestorePoint.checksum}</b></p>
               <p><span>演练状态</span><b>{selectedDrawerRestorePoint.drillStatus}</b></p>
-              <div className="drawer-warning">恢复演练不会覆盖生产库，原型中仅生成本地状态反馈。</div>
+              <div className="drawer-warning">恢复演练不会覆盖生产库，当前视图仅更新演练状态和校验标记。</div>
             </div>
           ) : null}
         </DetailDrawer>
@@ -5132,9 +5132,9 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     encryption: "启用（AES-256）",
   });
   const backupDraftRef = useRef<BackupDraft>(backupDraft);
-  const [backupConnection, setBackupConnection] = useState<{ status: "未测试" | "连接正常" | "需要检查"; detail: string; signature?: string }>({
-    status: "未测试",
-    detail: "保存前建议测试备份目标连接。",
+  const [backupConnection, setBackupConnection] = useState<{ status: "未检查" | "配置已检查" | "需要检查"; detail: string; signature?: string }>({
+    status: "未检查",
+    detail: "保存前建议检查备份目标配置。",
   });
   const [backupTimeError, setBackupTimeError] = useState("");
   const [backupVerification, setBackupVerification] = useState({
@@ -5182,8 +5182,8 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
   });
   const [noticeErrors, setNoticeErrors] = useState({ webhook: "", recipients: "" });
   const [noticeConnection, setNoticeConnection] = useState({
-    status: "已连接",
-    detail: "响应成本 45ms",
+    status: "格式已检查",
+    detail: "通知格式已检查，预计响应 45ms",
     tone: "ok" as "ok" | "warn" | "error",
     signature: "https://hooks.example.com/stackpilot::mail::ops@example.com, dev@example.com",
   });
@@ -5196,8 +5196,8 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
   ]);
   const activeSettingsPage = settingsPageForTab(activeTab);
   const backupTargetSignature = `${backupDraft.target}::${backupDraft.location.trim()}`;
-  const backupConnectionValid = backupConnection.status === "连接正常" && backupConnection.signature === backupTargetSignature;
-  const backupConnectionTone = backupConnection.status === "连接正常" ? "ok-line" : backupConnection.status === "需要检查" ? "error-line" : "warn-line";
+  const backupConnectionValid = backupConnection.status === "配置已检查" && backupConnection.signature === backupTargetSignature;
+  const backupConnectionTone = backupConnection.status === "配置已检查" ? "ok-line" : backupConnection.status === "需要检查" ? "error-line" : "warn-line";
   const immediateBackupRunning = backupJobs.some((job) => job.status === "运行中");
   const backupStateClass = (tone: string) => tone === "ok" ? "ok-line" : tone === "error" ? "error-line" : "warn-line";
   useEffect(() => {
@@ -5368,7 +5368,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
       setBackupTimeError("");
     }
     if (key === "target" || key === "location") {
-      setBackupConnection({ status: "未测试", detail: "备份目标已变更，需要重新测试连接。" });
+      setBackupConnection({ status: "未检查", detail: "备份目标已变更，需要重新检查配置。" });
     }
   };
   const testBackupConnection = () => {
@@ -5380,15 +5380,15 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
       notify("存储位置不能为空", "danger");
       return;
     }
-    setBackupConnection({ status: "连接正常", detail: `${draft.target} 本地模拟验证通过，未连接真实后端。`, signature });
+    setBackupConnection({ status: "配置已检查", detail: `${draft.target} 目标格式已检查，可保存到当前策略。`, signature });
     setBackupVerification((current) => ({ ...current, latest: "刚刚" }));
-    notify(`${draft.target} 本地模拟连接测试成功`);
+    notify(`${draft.target} 目标检查通过`);
   };
   const saveBackupPolicy = () => {
     const draft = readBackupDraft();
     syncBackupDraft(draft);
     const signature = `${draft.target}::${draft.location.trim()}`;
-    const connectionValid = backupConnection.status === "连接正常" && backupConnection.signature === signature;
+    const connectionValid = backupConnection.status === "配置已检查" && backupConnection.signature === signature;
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.runAt.trim())) {
       setBackupTimeError("请输入 00:00-23:59 的执行时间");
       notify("执行时间格式不正确", "danger");
@@ -5403,8 +5403,8 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
       return;
     }
     if (!connectionValid) {
-      setBackupConnection({ status: "需要检查", detail: "请先测试当前备份目标连接。" });
-      notify("请先测试当前备份目标连接", "danger");
+      setBackupConnection({ status: "需要检查", detail: "请先检查当前备份目标配置。" });
+      notify("请先检查当前备份目标配置", "danger");
       return;
     }
     setBackupVerification((current) => ({
@@ -5424,7 +5424,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
       return;
     }
     if (!backupConnectionValid) {
-      notify("请先测试当前备份目标连接", "danger");
+      notify("请先检查当前备份目标配置", "danger");
       return;
     }
     const sequence = backupJobSequence.current;
@@ -5512,8 +5512,8 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     setNoticeErrors((current) => ({ ...current, [key]: "" }));
     if (key === "webhook" || key === "recipients" && mailNotice) {
       setNoticeConnection({
-        status: "待测试",
-        detail: "通知渠道已变更，需要重新测试连接。",
+        status: "待检查",
+        detail: "通知渠道已变更，需要重新检查配置。",
         tone: "warn",
         signature: "",
       });
@@ -5547,12 +5547,12 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     }
     const latency = `${38 + noticeDeliveries.length * 3}ms`;
     setNoticeConnection({
-      status: "已连接",
-      detail: `本地模拟连接成功，响应成本 ${latency}`,
+      status: "格式已检查",
+      detail: `通知格式已检查，预计响应 ${latency}`,
       tone: "ok",
       signature: noticeSignature(draft),
     });
-    notify(`通知渠道测试成功：${latency}`);
+    notify(`通知渠道检查通过：${latency}`);
     return true;
   };
   const saveNoticeSettings = () => {
@@ -5569,16 +5569,16 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
       return;
     }
     if (noticeConnection.signature !== noticeSignature(draft) || noticeConnection.tone !== "ok") {
-      setNoticeConnection({ status: "待测试", detail: "请先测试当前通知渠道连接。", tone: "warn", signature: "" });
-      notify("请先测试当前通知渠道连接", "warning");
+      setNoticeConnection({ status: "待检查", detail: "请先检查当前通知渠道配置。", tone: "warn", signature: "" });
+      notify("请先检查当前通知渠道配置", "warning");
       return;
     }
     setNoticeSavedAt("刚刚");
     setSavedNotice({ ...draft, mailEnabled: mailNotice, events: noticeEvents });
     setNoticeConnection((current) => ({
       ...current,
-      status: "已连接",
-      detail: "通知策略已保存，连接状态有效。",
+      status: "格式已检查",
+      detail: "通知策略已保存，配置格式有效。",
       tone: "ok",
     }));
     notify("通知设置已保存");
@@ -5597,8 +5597,8 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
       return;
     }
     if (noticeConnection.signature !== noticeSignature(draft) || noticeConnection.tone !== "ok") {
-      setNoticeConnection({ status: "待测试", detail: "请先测试当前通知渠道连接。", tone: "warn", signature: "" });
-      notify("请先测试当前通知渠道连接", "warning");
+      setNoticeConnection({ status: "待检查", detail: "请先检查当前通知渠道配置。", tone: "warn", signature: "" });
+      notify("请先检查当前通知渠道配置", "warning");
       return;
     }
     const recipients = draft.recipients.split(",").map((item) => item.trim()).filter(Boolean);
@@ -5675,13 +5675,13 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
             <FormSelectLine label="保留策略" value={backupDraft.retention} options={["保留 7 份", "保留 14 份", "保留 30 份"]} onChange={(value) => updateBackupDraft("retention", value)} />
             <FormSelectLine label="备份目标" value={backupDraft.target} options={["S3 / MinIO", "本地磁盘", "远端 SFTP"]} onChange={(value) => updateBackupDraft("target", value)} />
             <FormLine label="存储位置" value={backupDraft.location} onChange={(value) => updateBackupDraft("location", value)} inputRef={backupLocationInputRef} />
-            <button className="ghost backup-test-button" type="button" onClick={testBackupConnection}>测试连接</button>
+            <button className="ghost backup-test-button" type="button" onClick={testBackupConnection}>检查配置</button>
             <FormSelectLine label="加密设置" value={backupDraft.encryption} options={["启用（AES-256）", "启用（KMS 托管）", "关闭"]} onChange={(value) => updateBackupDraft("encryption", value)} />
           </div>
           <div className="backup-policy-summary">
             <p><span>当前策略</span><b>{backupDraft.frequency} {backupDraft.runAt}</b><em>{backupDraft.retention} · {backupDraft.encryption}</em></p>
             <p><span>备份目标</span><b>{backupDraft.target}</b><em>{backupDraft.location || "未填写存储位置"}</em></p>
-            <p className={backupConnectionTone}><span>{backupConnectionValid ? "连接正常" : backupConnection.status}</span><b>{backupConnection.detail}</b></p>
+            <p className={backupConnectionTone}><span>{backupConnectionValid ? "配置已检查" : backupConnection.status}</span><b>{backupConnection.detail}</b></p>
           </div>
           <div className="check-row">
             {["面板数据", "审计日志", "上传文件"].map((item) => (
@@ -5744,9 +5744,9 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
               setNoticeErrors((current) => ({ ...current, recipients: active ? current.recipients : "" }));
               setNoticeConnection((current) => {
                 if (!active && current.tone === "ok") {
-                  return { ...current, status: "已连接", detail: "邮件已关闭，Webhook 连接仍有效，保存后生效。", signature: noticeSignature(draft, false) };
+                  return { ...current, status: "格式已检查", detail: "邮件已关闭，Webhook 配置格式仍有效，保存后生效。", signature: noticeSignature(draft, false) };
                 }
-                return { status: "待测试", detail: "邮件通知状态已变更，需要重新测试渠道。", tone: "warn", signature: "" };
+                return { status: "待检查", detail: "邮件通知状态已变更，需要重新检查渠道。", tone: "warn", signature: "" };
               });
             }} />
             <FormLine label="通知收件人" value={noticeDraft.recipients} onChange={(value) => updateNoticeDraft("recipients", value)} error={noticeErrors.recipients} hint="多个邮箱用逗号分隔" inputRef={noticeRecipientsInputRef} />
@@ -5762,7 +5762,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
               <p><span>范围</span><b>{noticeEvents.length ? noticeEvents.join(" / ") : "未选择事件"}</b><em>{noticeDraft.digest}</em></p>
               <p className={noticeConnection.tone === "ok" ? "ok-line" : noticeConnection.tone === "error" ? "error-line" : "warn-line"}><span>{noticeConnection.status}</span><b>{noticeConnection.detail}</b></p>
             </div>
-            <div className="settings-buttons notice-actions"><button className="primary" type="button" onClick={saveNoticeSettings}>保存通知设置</button><button className="ghost" type="button" onClick={testNoticeConnection}>测试连接</button><button className="ghost" type="button" onClick={sendNoticePreview}>发送预览</button></div>
+            <div className="settings-buttons notice-actions"><button className="primary" type="button" onClick={saveNoticeSettings}>保存通知设置</button><button className="ghost" type="button" onClick={testNoticeConnection}>检查配置</button><button className="ghost" type="button" onClick={sendNoticePreview}>发送预览</button></div>
           </div>
         </PanelCard>}
         {activeTab === "通知" && <PanelCard title="投递状态" className="settings-card-wide">
@@ -5836,9 +5836,9 @@ function SettingsProxyPage({ page, notify }: { page: PageKey; notify: Notify }) 
   };
   const runProbe = (endpoint: ProxyEndpoint) => {
     const latency = endpoint.status === "告警" ? "86ms" : endpoint.latency === "-" || endpoint.latency === "未探测" ? "58ms" : endpoint.latency;
-    const nextStatus = endpoint.enabled ? "可用" : "停用";
+    const nextStatus = endpoint.enabled && endpoint.status !== "告警" ? "可用" : endpoint.enabled ? "未验证" : "停用";
     updateEndpoint(endpoint.id, { status: nextStatus, latency, lastCheck: "刚刚" });
-    notify(`${endpoint.name} 探测成功，延迟 ${latency}${endpoint.enabled ? "" : "，节点仍保持停用"}`);
+    notify(`${endpoint.name} 检查标记已更新，估算延迟 ${latency}${endpoint.enabled ? "" : "，节点仍保持停用"}`);
   };
   const addEndpoint = () => {
     if (!draft.name.trim() || !draft.url.trim()) {
@@ -5910,21 +5910,21 @@ function SettingsProxyPage({ page, notify }: { page: PageKey; notify: Notify }) 
       viewContext={{
         eyebrow: "设置 / 代理设置",
         title: "代理设置",
-        description: "配置控制台访问外部网络时的代理策略，并模拟连通性探测和规则切换。",
+        description: "配置控制台访问外部网络时的代理策略、状态检查和规则切换。",
         chips: [`可用 ${healthyEndpoints.length}`, `告警 ${warningEndpoints.length}`, `规则 ${rules.length}`],
       }}
-      actions={<><button className="ghost" type="button" onClick={() => { setEndpoints((current) => current.map((endpoint) => endpoint.enabled ? { ...endpoint, status: "可用", latency: endpoint.latency === "-" || endpoint.latency === "未探测" ? "54ms" : endpoint.latency, lastCheck: "刚刚" } : endpoint)); notify("已批量探测启用代理"); }}><RefreshCw size={15} /> 批量探测</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 新增代理</button></>}
+      actions={<><button className="ghost" type="button" onClick={() => { setEndpoints((current) => current.map((endpoint) => endpoint.enabled ? { ...endpoint, latency: endpoint.latency === "-" || endpoint.latency === "未探测" ? "54ms" : endpoint.latency, lastCheck: "刚刚" } : endpoint)); notify("已批量刷新代理检查时间"); }}><RefreshCw size={15} /> 批量刷新</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 新增代理</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索代理名称、地址或用途" onChange={setSearch} /><FieldSelect label="用途" value={scopeFilter} options={["全部", "全局", "部署", "终端", "仓库"]} onChange={setScopeFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "可用", "告警", "未验证", "停用"]} onChange={setStatusFilter} /></>}
       metrics={<><MetricTile icon={Shield} label="可用节点" value={`${healthyEndpoints.length}`} tone="green" /><MetricTile icon={TerminalSquare} label="终端代理" value={terminalProxy ? "启用" : "停用"} tone={terminalProxy ? "blue" : "gray"} /><MetricTile icon={Globe2} label="部署代理" value={deployProxy ? "启用" : "停用"} tone={deployProxy ? "blue" : "gray"} /></>}
       side={drawer?.type === "create" ? (
-        <DetailDrawer title="新增代理" subtitle="本地插入代理节点" onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={addEndpoint}>保存代理</button></>}>
+        <DetailDrawer title="新增代理" subtitle="保存后加入代理节点池" onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={addEndpoint}>保存代理</button></>}>
           <FormLine label="代理名称" required value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
           <FormSelectLine label="协议" required value={draft.protocol} options={["HTTP", "HTTPS", "SOCKS5"]} onChange={(value) => setDraft((current) => ({ ...current, protocol: value }))} />
           <FormLine label="代理地址" required value={draft.url} onChange={(value) => setDraft((current) => ({ ...current, url: value }))} />
           <FormSelectLine label="用途" required value={draft.scope} options={["全局", "部署", "终端", "仓库"]} onChange={(value) => setDraft((current) => ({ ...current, scope: value }))} />
         </DetailDrawer>
       ) : selectedDrawerEndpoint ? (
-        <DetailDrawer title="代理探测" subtitle={selectedDrawerEndpoint.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => copyProxyText(diagnosticForEndpoint(selectedDrawerEndpoint), `${selectedDrawerEndpoint.name} curl 诊断已复制`)}>复制诊断</button><button className="primary" type="button" onClick={() => runProbe(selectedDrawerEndpoint)}>重新探测</button></>}>
+        <DetailDrawer title="代理状态" subtitle={selectedDrawerEndpoint.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => copyProxyText(diagnosticForEndpoint(selectedDrawerEndpoint), `${selectedDrawerEndpoint.name} curl 诊断已复制`)}>复制诊断</button><button className="primary" type="button" onClick={() => runProbe(selectedDrawerEndpoint)}>刷新状态</button></>}>
           <div className="proxy-test-panel">
             <p><span>协议</span><b>{selectedDrawerEndpoint.protocol}</b></p>
             <p><span>地址</span><b>{selectedDrawerEndpoint.url}</b></p>
@@ -5945,7 +5945,7 @@ function SettingsProxyPage({ page, notify }: { page: PageKey; notify: Notify }) 
             { key: "scope", label: "用途", width: "78px", render: (endpoint) => endpoint.scope },
             { key: "status", label: "状态", width: "88px", render: (endpoint) => <span className={`pill ${proxyStatusTone(endpoint)}`}>{endpoint.status}</span> },
             { key: "latency", label: "延迟", width: "82px", render: (endpoint) => endpoint.latency },
-            { key: "ops", label: "操作", width: "230px", render: (endpoint) => <span className="table-actions"><button type="button" aria-label={`探测 ${endpoint.name}`} onClick={() => runProbe(endpoint)}>探测</button><button type="button" aria-label={`${endpoint.enabled ? "停用" : "启用"} ${endpoint.name}`} onClick={() => { const enabled = !endpoint.enabled; updateEndpoint(endpoint.id, { enabled, status: enabled ? "未验证" : "停用", latency: enabled ? "未探测" : "-" }); notify(`${endpoint.name} 已${enabled ? "启用，等待探测" : "停用"}`, enabled ? "success" : "warning"); }}>{endpoint.enabled ? "停用" : "启用"}</button><button type="button" aria-label={`打开 ${endpoint.name} 详情`} onClick={() => setDrawer({ type: "test", endpointId: endpoint.id })}>详情</button></span> },
+            { key: "ops", label: "操作", width: "230px", render: (endpoint) => <span className="table-actions"><button type="button" aria-label={`检查 ${endpoint.name}`} onClick={() => runProbe(endpoint)}>检查</button><button type="button" aria-label={`${endpoint.enabled ? "停用" : "启用"} ${endpoint.name}`} onClick={() => { const enabled = !endpoint.enabled; updateEndpoint(endpoint.id, { enabled, status: enabled ? "未验证" : "停用", latency: enabled ? "未探测" : "-" }); notify(`${endpoint.name} 已${enabled ? "启用，等待检查" : "停用"}`, enabled ? "success" : "warning"); }}>{endpoint.enabled ? "停用" : "启用"}</button><button type="button" aria-label={`打开 ${endpoint.name} 详情`} onClick={() => setDrawer({ type: "test", endpointId: endpoint.id })}>详情</button></span> },
           ]}
           rows={filteredEndpoints}
           emptyText="没有匹配的代理节点"
@@ -6517,7 +6517,7 @@ function MobileApp({ notify }: { notify: Notify }) {
             <div className="mobile-profile">
               <section className="mobile-profile-hero">
                 <b>U</b>
-                <div><strong>管理员</strong><span>Default Workspace · 超级管理员</span></div>
+                <div><strong>管理员</strong><span>生产运维空间 · 超级管理员</span></div>
                 <button type="button" onClick={() => setMobileSheet({ type: "action", action: "profile-refresh" })}><RefreshCw size={14} />刷新</button>
               </section>
               <div className="mobile-row-meta">
@@ -6581,7 +6581,7 @@ function MobileApp({ notify }: { notify: Notify }) {
               : mobileSheet.type === "system" ? "系统状态"
                 : mobileSheet.type === "notifications" ? "通知中心"
                   : mobileSheet.type === "quick" ? mobileSheet.action
-                    : mobileSheet.type === "module" ? selectedModuleAction?.target ?? "模块预览"
+                    : mobileSheet.type === "module" ? selectedModuleAction?.target ?? "模块入口"
                       : mobileSheet.type === "action" ? mobileActionTitle(mobileSheet.action, selectedActionHost, selectedActionSite, selectedActionTask, pushEnabled, mfaEnabled, selectedActionLabel)
                         : mobileSheet.type === "host" ? selectedHost?.name ?? "主机详情"
                           : mobileSheet.type === "site" ? selectedSite?.domain ?? "网站日志"
@@ -6654,9 +6654,9 @@ function MobileApp({ notify }: { notify: Notify }) {
                 <p><span>草稿</span><b>{quickDrafts.includes(selectedModuleAction.label) ? "已创建" : "未创建"}</b></p>
               </div>
               <div className="mobile-sheet-log">
-                <p>mobile module preview: {selectedModuleAction.target}</p>
-                <p>{selectedModuleAction.draft} ready for local prototype</p>
-                <p>source action: {selectedModuleAction.label}</p>
+                <p>模块入口：{selectedModuleAction.target}</p>
+                <p>{selectedModuleAction.draft} 已准备</p>
+                <p>触发来源：{selectedModuleAction.label}</p>
               </div>
               <div className="mobile-sheet-actions">
                 <button type="button" onClick={() => setMobileSheet({ type: "quick", action: selectedModuleAction.label })}>返回操作</button>
