@@ -3215,7 +3215,8 @@ a {
 }
 
 .file-breadcrumbs button {
-  height: 26px;
+  min-height: 36px;
+  height: auto;
   padding: 0 9px;
   border-radius: 4px;
   color: #52687a;
@@ -3233,6 +3234,8 @@ a {
 
 .file-link {
   max-width: 100%;
+  min-height: 32px;
+  padding: 0 2px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -4090,17 +4093,21 @@ a {
 }
 
 .deploy-tabs {
-  height: 31px;
+  min-height: 31px;
+  height: auto;
   padding: 3px;
   border: 1px solid var(--line);
   border-radius: 5px;
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 3px;
   background: #f6fafc;
 }
 
 .deploy-tabs button {
   min-width: 62px;
+  min-height: 25px;
+  height: auto;
   padding: 0 10px;
   border-radius: 4px;
   color: #617487;
@@ -4855,6 +4862,10 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .deploy-tabs button {
+    min-height: 44px;
+  }
+
   .detail-drawer {
     min-height: 240px;
   }
@@ -4928,15 +4939,103 @@ a {
     justify-content: flex-start;
   }
 
+  .module-card-head,
+  .module-card-footer {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .module-card-head {
+    justify-content: space-between;
+  }
+
+  .module-card-head .module-row-link {
+    width: auto;
+    min-height: 44px;
+    flex: 1 1 auto;
+  }
+
+  .module-card-code {
+    min-width: 0;
+    padding: 8px 9px;
+    border-radius: 5px;
+    display: block;
+    color: #385066;
+    background: #f6fafc;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .module-card-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .module-card-meta span {
+    min-width: 0;
+    padding: 7px 8px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    display: grid;
+    gap: 3px;
+    background: #fbfdff;
+  }
+
+  .module-card-meta b,
+  .module-card-meta em {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-style: normal;
+  }
+
+  .module-card-meta b {
+    color: #7d8f9e;
+    font-size: 10px;
+    font-weight: 900;
+  }
+
+  .module-card-meta em {
+    color: #263b4c;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .module-card-footer {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .module-card-footer .table-actions {
+    width: 100%;
+    margin-left: auto;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+
   .module-card-cell .table-actions button,
   .module-card-cell .table-icon-actions button,
+  .module-card-footer .table-actions button,
   .module-card-cell .module-row-link,
+  .module-card-cell .file-link,
+  .file-breadcrumbs button,
   .database-detail-actions button,
   .field-select > button,
   .select-menu button,
   .popover-panel button {
     min-height: 44px;
     height: auto;
+  }
+
+  .module-card-footer .table-actions button {
+    min-width: 0;
+    padding: 0 6px;
   }
 
   .backup-task-list button,
@@ -5371,12 +5470,14 @@ a {
   background: #eef8ff;
 }
 
-.popover-panel button.selected {
+.popover-panel button.selected,
+.select-menu button.selected {
   color: #0f6f9f;
   font-weight: 900;
 }
 
-.popover-panel button.selected::after {
+.popover-panel button.selected::after,
+.select-menu button.selected::after {
   content: "";
   width: 6px;
   height: 6px;
@@ -5695,6 +5796,14 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
+}
+
+.select-like span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .select-like.open {
