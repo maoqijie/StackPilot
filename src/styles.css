@@ -2639,7 +2639,7 @@ a {
 }
 
 .module-page-databases-slow .module-metrics {
-  grid-template-columns: repeat(4, minmax(126px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .module-page-databases-slow .module-filter-line .field-select {
@@ -2986,7 +2986,9 @@ a {
 }
 
 .proxy-rule-list button {
-  min-height: 30px;
+  min-width: 44px;
+  min-height: 36px;
+  padding: 0 10px;
   border-radius: 4px;
   color: #0b86bd;
   background: #eef8ff;
@@ -3596,7 +3598,8 @@ a {
 }
 
 .terminal-toolbar button {
-  height: 25px;
+  min-height: 32px;
+  height: auto;
   padding: 0 9px;
   border-radius: 4px;
   color: #d9edf8;
@@ -3713,7 +3716,9 @@ a {
 .terminal-card-actions button,
 .terminal-snippet-library footer button,
 .terminal-history-list footer button {
-  height: 27px;
+  min-width: 44px;
+  min-height: 32px;
+  height: auto;
   padding: 0 9px;
   border-radius: 4px;
   color: #087fc0;
@@ -3915,7 +3920,9 @@ a {
 }
 
 .terminal-input button {
-  height: 28px;
+  min-width: 44px;
+  min-height: 32px;
+  height: auto;
   padding: 0 11px;
   border-radius: 4px;
   color: #06202c;
@@ -4411,6 +4418,10 @@ a {
     flex: 0 0 44px;
   }
 
+  .top-actions .user-menu-button {
+    max-width: 44px;
+  }
+
   .side-main-button,
   .side-toggle-button {
     height: 44px;
@@ -4802,6 +4813,11 @@ a {
     min-width: 0;
     padding: 0 8px 0 10px;
     gap: 8px;
+  }
+
+  .top-actions {
+    max-width: min(96px, 100%);
+    gap: 6px;
   }
 
   .side-child {
@@ -5201,6 +5217,10 @@ a {
   gap: 18px;
 }
 
+.page-head > div {
+  min-width: 0;
+}
+
 .page-head h1 {
   margin: 0;
   color: #182838;
@@ -5217,7 +5237,13 @@ a {
 
 .page-head > div:last-child {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 10px;
+}
+
+.page-head > div:last-child > button {
+  min-height: 36px;
 }
 
 .database-layout {
@@ -5360,6 +5386,22 @@ a {
 }
 
 @media (max-width: 680px) {
+  .page-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .page-head > div:last-child {
+    justify-content: stretch;
+  }
+
+  .page-head > div:last-child > button {
+    flex: 1 1 min(150px, 100%);
+    min-width: 0;
+    min-height: 44px;
+  }
+
   .module-filter-line {
     width: 100%;
     max-width: 100%;
@@ -5526,7 +5568,8 @@ a {
 
 .table-actions button {
   min-width: 44px;
-  height: 32px;
+  min-height: 36px;
+  height: auto;
   padding: 0 10px;
 }
 
@@ -6379,6 +6422,10 @@ a {
   gap: 9px;
 }
 
+.settings-buttons button {
+  min-height: 36px;
+}
+
 .settings-buttons button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -6407,9 +6454,14 @@ a {
 .verify-box button {
   margin-left: auto;
   flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: 4px;
   color: var(--blue);
-  background: transparent;
+  background: rgb(14 165 233 / 10%);
   font-size: 11px;
+  font-weight: 800;
 }
 
 .ok-line {
@@ -6600,7 +6652,7 @@ a {
   }
 
   .settings-buttons button {
-    min-height: 32px;
+    min-height: 36px;
   }
 
   .changes-table {
@@ -6816,6 +6868,7 @@ a {
 
   .settings-buttons button {
     flex: 1 1 128px;
+    min-height: 44px;
   }
 
   .token-title {
@@ -7039,6 +7092,11 @@ a {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.table-icon-actions button {
+  min-width: 36px;
+  min-height: 36px;
 }
 
 .token-table tr.is-selected td {
