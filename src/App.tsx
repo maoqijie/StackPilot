@@ -86,6 +86,7 @@ type ToastTone = "success" | "info" | "warning" | "danger";
 type ToastState = { message: string; tone: ToastTone };
 type Notify = (message: string, tone?: ToastTone) => void;
 type SetPage = (page: PageKey, toast?: ToastState) => void;
+type QuickIntent = "create-site" | "open-terminal" | "create-schedule" | "create-database";
 type PageMeta = { title: string; breadcrumb: string; search: string };
 type ViewContext = { eyebrow: string; title: string; description: string; chips: string[] };
 type TopbarPanel = "search" | "notifications" | "activity" | "help" | "user" | null;
@@ -115,6 +116,7 @@ type TokenRow = {
   access: TokenAccess;
   risk: TokenRisk;
 };
+type GeneratedTokenSecret = { token: TokenRow; secret: string };
 type NavItem = {
   key: ParentPageKey;
   label: string;
@@ -1230,6 +1232,42 @@ function readPageFromHash(): PageKey {
   return routePageKeys.has(key) ? key : "overview";
 }
 
+function readQuickIntent(): QuickIntent | null {
+  const intent = new URLSearchParams(window.location.search).get("quick");
+  if (intent === "create-site" || intent === "open-terminal" || intent === "create-schedule" || intent === "create-database") return intent;
+  return null;
+}
+
+function clearQuickIntent() {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("quick")) return;
+  params.delete("quick");
+  const nextSearch = params.toString();
+  const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+  window.history.replaceState(null, "", nextUrl);
+}
+
+function setQuickRoute(page: PageKey, intent: QuickIntent) {
+  const params = new URLSearchParams(window.location.search);
+  params.set("quick", intent);
+  window.history.pushState(null, "", `${window.location.pathname}?${params.toString()}#${page}`);
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  window.dispatchEvent(new Event("stackpilot:quick-intent"));
+}
+
+function useQuickIntent(expectedPage: PageKey, expectedIntent: QuickIntent, onIntent: () => void) {
+  useEffect(() => {
+    const run = () => {
+      if (readPageFromHash() !== expectedPage || readQuickIntent() !== expectedIntent) return;
+      onIntent();
+      clearQuickIntent();
+    };
+    run();
+    window.addEventListener("stackpilot:quick-intent", run);
+    return () => window.removeEventListener("stackpilot:quick-intent", run);
+  }, [expectedPage, expectedIntent, onIntent]);
+}
+
 function App() {
   const [page, setPageState] = useState<PageKey>(readPageFromHash);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -2009,7 +2047,7 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
             <RiskList risks={overview.risks} notify={notify} onResolve={resolveOverviewRisk} />
           </PanelCard>
           <PanelCard title="快捷操作">
-            <QuickActions setPage={setPage} notify={notify} />
+            <QuickActions notify={notify} />
           </PanelCard>
           <PanelCard title="资源概览" tabs={["今天", "近7天", "近30天"]} activeTab={resourceTab} onTabChange={setResourceTab}>
             <ResourceOverview resources={overview.resources[resourceTab] ?? []} />
@@ -2166,12 +2204,12 @@ function RiskList({ risks, onResolve }: { risks: OverviewRiskRecord[]; notify: N
   );
 }
 
-function QuickActions({ setPage, notify }: { setPage: SetPage; notify: Notify }) {
+function QuickActions({ notify }: { notify: Notify }) {
   const actions = [
-    [Globe2, "添加网站", () => notify("添加网站向导已打开", "info")],
-    [TerminalSquare, "开启终端", () => notify("终端会话已准备就绪", "info")],
-    [Database, "创建数据库", () => setPage("databases")],
-    [Clock3, "新建定时任务", () => notify("定时任务模板已创建", "info")],
+    [Globe2, "添加网站", () => { setQuickRoute("sites", "create-site"); notify("已打开添加网站", "info"); }],
+    [TerminalSquare, "开启终端", () => { setQuickRoute("terminal", "open-terminal"); notify("已打开终端会话", "info"); }],
+    [Database, "创建数据库", () => { setQuickRoute("databases", "create-database"); notify("已打开创建数据库", "info"); }],
+    [Clock3, "新建定时任务", () => { setQuickRoute("schedule", "create-schedule"); notify("已打开新建定时任务", "info"); }],
   ] as const;
   return (
     <div className="quick-grid">
@@ -2945,6 +2983,12 @@ function SitesPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const statusFilter = statusByPage[page] ?? sitePreset.status;
   const runtimeFilter = runtimeByPage[page] ?? sitePreset.runtime;
 
+  const openCreateFromQuick = useCallback(() => {
+    setDrawer({ type: "create" });
+  }, []);
+
+  useQuickIntent("sites", "create-site", openCreateFromQuick);
+
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
     const matchCert = page === "sites-cert" ? row.certDays < 14 : true;
@@ -3359,6 +3403,7 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [snippetRiskFilter, setSnippetRiskFilter] = useState("全部");
   const [historyStatusFilter, setHistoryStatusFilter] = useState("全部");
   const [pendingSensitiveCommand, setPendingSensitiveCommand] = useState<{ command: string; sessionId: string } | null>(null);
+  const [consoleHighlighted, setConsoleHighlighted] = useState(false);
   const [logsBySession, setLogsBySession] = useState<Record<string, string[]>>(() => ({
     [initialTerminalSessions[0].id]: [`connected to ${initialTerminalSessions[0].host}`, "Last login: Thu Jun 18 10:21:03"],
     [initialTerminalSessions[1].id]: [`connected to ${initialTerminalSessions[1].host}`, "Last login: Thu Jun 18 10:04:19"],
@@ -3369,6 +3414,22 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const logs = logsBySession[selectedSession.id] ?? [];
   const search = terminalMode === "snippets" ? snippetSearch : terminalMode === "history" ? historySearch : sessionSearch;
   const snippetCategories = ["全部", ...Array.from(new Set(snippets.map((snippet) => snippet.category)))];
+  const appendLogs = useCallback((sessionId: string, lines: string[]) => {
+    setLogsBySession((current) => ({
+      ...current,
+      [sessionId]: [...(current[sessionId] ?? []), ...lines],
+    }));
+  }, []);
+
+  const focusTerminalFromQuick = useCallback(() => {
+    const firstConnected = sessions.find((session) => session.status === "connected") ?? sessions[0];
+    setSelectedSessionId(firstConnected.id);
+    appendLogs(firstConnected.id, [`quick action focused: ${firstConnected.user}@${firstConnected.host}`]);
+    setConsoleHighlighted(true);
+    window.setTimeout(() => setConsoleHighlighted(false), 2200);
+  }, [appendLogs, sessions]);
+
+  useQuickIntent("terminal", "open-terminal", focusTerminalFromQuick);
 
   const filteredSessions = sessions.filter((session) => {
     const query = search.trim().toLowerCase();
@@ -3391,12 +3452,6 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
   });
   const updateSession = (id: string, patch: Partial<TerminalSessionRecord>) => {
     setSessions((current) => current.map((session) => session.id === id ? { ...session, ...patch } : session));
-  };
-  const appendLogs = (sessionId: string, lines: string[]) => {
-    setLogsBySession((current) => ({
-      ...current,
-      [sessionId]: [...(current[sessionId] ?? []), ...lines],
-    }));
   };
   const setSessionLogs = (sessionId: string, nextLogs: string[]) => {
     setLogsBySession((current) => ({
@@ -3598,7 +3653,7 @@ function TerminalPage({ page, notify }: { page: PageKey; notify: Notify }) {
             </div>
           )}
         </section>
-        <section className="terminal-console-card">
+        <section className={`terminal-console-card ${consoleHighlighted ? "is-highlighted" : ""}`}>
           <div className="terminal-console-head">
             <div><span>{selectedSession.user}@{selectedSession.host}</span><strong>{selectedSession.cwd}</strong></div>
             <StatusDot text={connected ? "已连接" : "未连接"} tone={connected ? "green" : "red"} />
@@ -3854,6 +3909,13 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [draft, setDraft] = useState({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" });
   const search = searchByPage[page] ?? schedulePreset.search;
   const stateFilter = stateByPage[page] ?? schedulePreset.state;
+
+  const openScheduleCreateFromQuick = useCallback(() => {
+    setDraft({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" });
+    setDrawer({ type: "create" });
+  }, []);
+
+  useQuickIntent("schedule", "create-schedule", openScheduleCreateFromQuick);
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
     const matchSearch = !query || `${row.name} ${row.cron} ${row.command}`.toLowerCase().includes(query);
@@ -4266,6 +4328,12 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
   const [drawer, setDrawer] = useState<{ type: "create" } | { type: "detail"; id: string; focus?: "actions" } | null>(null);
   const hostOptions = ["全部主机", ...Array.from(new Set(rows.map((row) => row.host)))];
   const selectedInstance = drawer?.type === "detail" ? rows.find((row) => row.id === drawer.id) ?? null : null;
+
+  const openDatabaseCreateFromQuick = useCallback(() => {
+    setDrawer({ type: "create" });
+  }, []);
+
+  useQuickIntent("databases", "create-database", openDatabaseCreateFromQuick);
   const filteredRows = rows.filter((row) => {
     const keyword = search.trim().toLowerCase();
     const matchSearch = !keyword || `${row.name} ${row.engine} ${row.host} ${row.owner} ${row.access} ${row.region}`.toLowerCase().includes(keyword);
@@ -5049,6 +5117,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
   const [identitySavedAt, setIdentitySavedAt] = useState("2025-08-13 09:18");
   const [savedIdentitySignature, setSavedIdentitySignature] = useState("StackPilot 控制面板::https://panel.example.com::admin@example.com");
   const [tokenRows, setTokenRows] = useState<TokenRow[]>(initialTokenRows);
+  const [generatedToken, setGeneratedToken] = useState<GeneratedTokenSecret | null>(null);
   const [settingsAuditRows, setSettingsAuditRows] = useState<SettingsChangeRow[]>(initialSettingsChanges);
   const [backupItems, setBackupItems] = useState(["面板数据", "审计日志"]);
   const backupJobSequence = useRef(1);
@@ -5205,10 +5274,14 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     tokenSequence.current += 1;
     const createdAt = currentDateTime();
     const tokenSeed = `${String(nextIndex).padStart(2, "0")}${String(Date.now()).slice(-4)}`;
+    const secretTail = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().replaceAll("-", "")
+      : `${Date.now()}${Math.random().toString(36).slice(2)}`.replace(/\W/g, "");
+    const secret = `stkp_${tokenSeed}_${secretTail.slice(0, 32)}`;
     const next: TokenRow = {
       id: `token-local-${tokenSeed}`,
       name: `临时接入令牌 ${nextIndex}`,
-      prefix: `stkp_${tokenSeed.slice(-6)}••••`,
+      prefix: `${secret.slice(0, 13)}••••`,
       scope: "主机(只读) / 审计日志(读)",
       createdAt,
       lastUsed: "尚未使用",
@@ -5217,8 +5290,9 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
       risk: "正常",
     };
     setTokenRows((current) => [next, ...current]);
+    setGeneratedToken({ token: next, secret });
     appendSettingsAudit("访问令牌", "创建", `创建令牌：${next.name}`);
-    notify(`新访问令牌已生成：${next.name}`);
+    notify(`新访问令牌已生成，请立即复制`, "info");
   };
   const updateTokenStatus = (token: TokenRow, nextStatus: TokenStatus) => {
     if (readOnly) {
@@ -5263,6 +5337,16 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     appendSettingsAudit("访问令牌", "批量停用", `停用 ${activeIds.length} 个令牌`);
     notify(`已停用 ${activeIds.length} 个令牌`, "warning");
     return true;
+  };
+  const copyGeneratedToken = () => {
+    if (!generatedToken) return;
+    if (!navigator.clipboard?.writeText) {
+      notify("当前浏览器不支持复制令牌", "warning");
+      return;
+    }
+    void navigator.clipboard.writeText(generatedToken.secret)
+      .then(() => notify("完整访问令牌已复制", "info"))
+      .catch(() => notify("复制令牌失败，请检查剪贴板权限", "danger"));
   };
   const readBackupDraft = () => ({
     ...backupDraftRef.current,
@@ -5711,6 +5795,13 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
           </table>
         </div>
       </PanelCard>}
+      {generatedToken && (
+        <TokenSecretDrawer
+          generated={generatedToken}
+          onCopy={copyGeneratedToken}
+          onClose={() => setGeneratedToken(null)}
+        />
+      )}
     </div>
   );
 }
@@ -7297,6 +7388,32 @@ function TokenTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function TokenSecretDrawer({
+  generated,
+  onCopy,
+  onClose,
+}: {
+  generated: GeneratedTokenSecret;
+  onCopy: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <DetailDrawer
+      title="新访问令牌"
+      subtitle={generated.token.name}
+      onClose={onClose}
+      actions={<><button className="primary" type="button" onClick={onCopy}>复制完整令牌</button><button className="ghost" type="button" onClick={onClose}>我已保存</button></>}
+    >
+      <div className="token-secret-drawer">
+        <p><span>权限范围</span><b>{generated.token.scope}</b></p>
+        <p><span>创建时间</span><b>{generated.token.createdAt}</b></p>
+        <code>{generated.secret}</code>
+        <em>完整令牌仅在此处展示一次，关闭后列表只保留前缀。</em>
+      </div>
+    </DetailDrawer>
   );
 }
 

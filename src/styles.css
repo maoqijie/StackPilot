@@ -3510,6 +3510,12 @@ a {
   grid-template-rows: 58px minmax(0, 1fr);
 }
 
+.terminal-console-card.is-highlighted {
+  border-color: rgb(14 165 233 / 62%);
+  box-shadow: 0 0 0 3px rgb(14 165 233 / 14%);
+  animation: terminal-focus-pulse 2200ms ease-out;
+}
+
 .terminal-console-head {
   min-width: 0;
   padding: 0 14px;
@@ -3518,6 +3524,23 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+@keyframes terminal-focus-pulse {
+  0% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 0 rgb(14 165 233 / 22%);
+  }
+
+  45% {
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 5px rgb(14 165 233 / 14%);
+  }
+
+  100% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 3px rgb(14 165 233 / 0%);
+  }
 }
 
 .terminal-console-head div {
@@ -6033,6 +6056,56 @@ a {
   color: #7b8fa0;
   text-align: center;
   font-weight: 800;
+}
+
+.token-secret-drawer {
+  display: grid;
+  gap: 12px;
+}
+
+.token-secret-drawer p {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #e4edf5;
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  background: #fbfdff;
+}
+
+.token-secret-drawer span {
+  color: #7b8fa0;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.token-secret-drawer b {
+  min-width: 0;
+  color: #172331;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.token-secret-drawer code {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #d8e6f0;
+  border-radius: 6px;
+  color: #075985;
+  background: #eef8fc;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.token-secret-drawer em {
+  color: #b45309;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 .changes-table-wrap {
