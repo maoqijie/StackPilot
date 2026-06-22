@@ -1835,6 +1835,9 @@ function DesktopShell({
         collapsed={sidebarCollapsed}
         onToggleCollapsed={toggleSidebar}
         onExpandCollapsed={expandSidebar}
+        onNavigate={() => {
+          if (isNarrowSidebar) setSidebarCollapsed(true);
+        }}
       />
       <div className="desktop-main" inert={sidebarOverlayOpen} aria-hidden={sidebarOverlayOpen ? "true" : undefined}>
         <TopBar page={page} setPage={setPage} white={whiteTop} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} interactionsDisabled={sessionLocked} onLogout={onLogout} />
@@ -1877,6 +1880,7 @@ function Sidebar({
   collapsed,
   onToggleCollapsed,
   onExpandCollapsed,
+  onNavigate,
 }: {
   page: PageKey;
   setPage: SetPage;
@@ -1884,6 +1888,7 @@ function Sidebar({
   collapsed: boolean;
   onToggleCollapsed: () => void;
   onExpandCollapsed: () => void;
+  onNavigate: () => void;
 }) {
   const [openGroups, setOpenGroups] = useState<Partial<Record<NavItem["key"], boolean>>>(() => ({
     overview: true,
@@ -1904,6 +1909,7 @@ function Sidebar({
     setManuallyClosedActiveGroup(null);
     setPage(key, { message: `已进入${label}`, tone: "info" });
     setOpenGroups((current) => ({ ...current, [key]: true }));
+    onNavigate();
   };
 
   const handleMainNavClick = (item: NavItem) => {
@@ -1921,6 +1927,7 @@ function Sidebar({
     setManuallyClosedActiveGroup(null);
     setPage(child.page ?? child.id, { message: `已打开${parent.label} / ${child.label}`, tone: "info" });
     setOpenGroups((current) => ({ ...current, [parent.key]: true }));
+    onNavigate();
   };
 
   return (
