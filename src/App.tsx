@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
+  ChevronsUpDown,
   CircleHelp,
   Clock3,
   CloudUpload,
@@ -2509,9 +2510,9 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
           { key: "name", label: "节点", width: "170px", render: (row) => <><StatusLight tone={row.status === "健康" ? "green" : row.status === "警告" ? "orange" : "gray"} /> <b className="blue-text">{row.name}</b></> },
           { key: "ip", label: "IP", width: "118px", render: (row) => row.ip },
           { key: "env", label: "环境", width: "78px", render: (row) => row.env },
-          { key: "latency", label: "延迟", width: "78px", render: (row) => row.latency },
-          { key: "cpu", label: "CPU", width: "110px", render: (row) => <Bar value={row.cpu} tone={row.status === "警告" ? "orange" : "green"} /> },
-          { key: "memory", label: "内存", width: "110px", render: (row) => <Bar value={row.memory} tone={row.status === "警告" ? "red" : "green"} /> },
+          { key: "latency", label: "延迟", width: "78px", sortValue: (row) => latencyValue(row.latency), render: (row) => row.latency },
+          { key: "cpu", label: "CPU", width: "110px", sortValue: (row) => percentValue(row.cpu), render: (row) => <Bar value={row.cpu} tone={row.status === "警告" ? "orange" : "green"} /> },
+          { key: "memory", label: "内存", width: "110px", sortValue: (row) => percentValue(row.memory), render: (row) => <Bar value={row.memory} tone={row.status === "警告" ? "red" : "green"} /> },
           { key: "backup", label: "备份", width: "118px", render: (row) => row.backup },
           { key: "update", label: "更新", width: "110px", render: (row) => <span className={row.update === "已是最新" ? "green-text" : "orange-text"}>{row.update}</span> },
           { key: "actions", label: "操作", width: "190px", render: (row) => (
@@ -2793,6 +2794,7 @@ type TableColumn<T> = {
   label: string;
   width?: string;
   render: (row: T) => React.ReactNode;
+  sortValue?: (row: T) => string | number | boolean | null | undefined;
 };
 
 type MobileCardRenderer<T> = (row: T) => React.ReactNode;
@@ -2873,6 +2875,28 @@ function DataTable<T>({
   getRowKey: (row: T) => string;
   mobileCard?: MobileCardRenderer<T>;
 }) {
+  const sortableColumns = columns.filter((column) => Boolean(column.sortValue));
+  const [sortState, setSortState] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
+  const activeSortColumn = sortState ? sortableColumns.find((column) => column.key === sortState.key) : undefined;
+  const sortedRows = activeSortColumn
+    ? [...rows].sort((left, right) => {
+        return compareTableValues(
+          tableSortValue(left, activeSortColumn),
+          tableSortValue(right, activeSortColumn),
+          sortState?.direction ?? "asc",
+        );
+      })
+    : rows;
+  const toggleSort = (column: TableColumn<T>) => {
+    if (!column.sortValue) return;
+    setSortState((current) => (
+      current?.key !== column.key
+        ? { key: column.key, direction: "asc" }
+        : current.direction === "asc"
+          ? { key: column.key, direction: "desc" }
+          : null
+    ));
+  };
   return (
     <div className="module-table-wrap">
       <table className="mini-table module-table">
@@ -2880,21 +2904,66 @@ function DataTable<T>({
           {columns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
         </colgroup>
         <thead>
-          <tr>{columns.map((column) => <th key={column.key}>{column.label}</th>)}</tr>
+          <tr>
+            {columns.map((column) => {
+              const sortable = Boolean(column.sortValue);
+              const isActive = sortState?.key === column.key;
+              const sortStatus = isActive ? (sortState.direction === "asc" ? "升序" : "降序") : "未排序";
+              return (
+                <th key={column.key} aria-sort={sortable ? (isActive ? (sortState.direction === "asc" ? "ascending" : "descending") : "none") : undefined}>
+                  {sortable ? (
+                    <button
+                      className="table-sort-button"
+                      type="button"
+                      aria-label={`${column.label}，${sortStatus}，点击切换排序`}
+                      onClick={() => toggleSort(column)}
+                    >
+                      <span>{column.label}</span>
+                      <ChevronsUpDown size={13} aria-hidden="true" />
+                      {isActive && <em>{sortState.direction === "asc" ? "升序" : "降序"}</em>}
+                    </button>
+                  ) : (
+                    column.label
+                  )}
+                </th>
+              );
+            })}
+          </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {sortedRows.map((row) => (
             <tr key={getRowKey(row)}>{columns.map((column) => <td key={column.key} data-label={column.label}>{column.render(row)}</td>)}</tr>
           ))}
-          {rows.length === 0 && (
+          {sortedRows.length === 0 && (
             <tr>
               <td colSpan={columns.length} className="empty-row">{emptyText}</td>
             </tr>
           )}
         </tbody>
       </table>
+      {sortableColumns.length > 0 && (
+        <div className="module-card-sort" aria-label="卡片排序">
+          <span>排序</span>
+          {sortableColumns.map((column) => {
+            const isActive = sortState?.key === column.key;
+            const sortStatus = isActive ? (sortState.direction === "asc" ? "升序" : "降序") : "未排序";
+            return (
+              <button
+                key={column.key}
+                type="button"
+                aria-pressed={isActive}
+                aria-label={`${column.label}，${sortStatus}，点击切换卡片排序`}
+                onClick={() => toggleSort(column)}
+              >
+                {column.label}
+                {isActive && <em>{sortState.direction === "asc" ? "升序" : "降序"}</em>}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="module-card-list">
-        {rows.map((row) => (
+        {sortedRows.map((row) => (
           <article className="module-card-row" key={getRowKey(row)}>
             {mobileCard ? mobileCard(row) : columns.map((column) => (
                 <div className="module-card-cell" key={column.key}>
@@ -2904,10 +2973,67 @@ function DataTable<T>({
               ))}
           </article>
         ))}
-        {rows.length === 0 && <div className="module-card-empty">{emptyText}</div>}
+        {sortedRows.length === 0 && <div className="module-card-empty">{emptyText}</div>}
       </div>
     </div>
   );
+}
+
+function tableSortValue<T>(row: T, column: TableColumn<T>) {
+  return column.sortValue?.(row);
+}
+
+function compareTableValues(left: string | number | boolean | null | undefined, right: string | number | boolean | null | undefined, direction: "asc" | "desc") {
+  const leftValue = normalizeTableValue(left);
+  const rightValue = normalizeTableValue(right);
+  const leftInvalid = leftValue === null;
+  const rightInvalid = rightValue === null;
+  if (leftInvalid || rightInvalid) {
+    if (leftInvalid && rightInvalid) return 0;
+    return leftInvalid ? 1 : -1;
+  }
+  const result = typeof leftValue === "number" && typeof rightValue === "number"
+    ? leftValue - rightValue
+    : String(leftValue).localeCompare(String(rightValue), "zh-Hans-CN", { numeric: true, sensitivity: "base" });
+  return direction === "desc" ? -result : result;
+}
+
+function normalizeTableValue(value: string | number | boolean | null | undefined) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") return value;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  const text = String(value).trim();
+  if (!text) return null;
+  const numericMatch = text.match(/^-?\d+(?:\.\d+)?$/);
+  if (numericMatch) return Number(text);
+  const percentMatch = text.match(/^(-?\d+(?:\.\d+)?)%$/);
+  if (percentMatch) return Number(percentMatch[1]);
+  const latencyMatch = text.match(/^(-?\d+(?:\.\d+)?)\s*ms$/i);
+  if (latencyMatch) return Number(latencyMatch[1]);
+  const sizeMatch = text.match(/^(-?\d+(?:\.\d+)?)\s*(KB|MB|GB|TB)$/i);
+  if (sizeMatch) {
+    const unitScale: Record<string, number> = { KB: 1, MB: 1024, GB: 1024 ** 2, TB: 1024 ** 3 };
+    return Number(sizeMatch[1]) * unitScale[sizeMatch[2].toUpperCase()];
+  }
+  return text;
+}
+
+function percentValue(value: string) {
+  return Number(value.replace("%", "")) || 0;
+}
+
+function latencyValue(value: string) {
+  const match = value.trim().match(/^(-?\d+(?:\.\d+)?)\s*ms$/i);
+  return match ? Number(match[1]) : null;
+}
+
+function fileSizeValue(value: string) {
+  const normalized = normalizeTableValue(value);
+  return typeof normalized === "number" ? normalized : null;
+}
+
+function fileSizeSortValue(row: FileRecord) {
+  return row.type === "文件夹" ? null : fileSizeValue(row.size);
 }
 
 function DetailDrawer({
@@ -3155,9 +3281,9 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
           { key: "name", label: "主机名", width: "170px", render: (row) => <><StatusLight tone={row.health === "健康" ? "green" : row.health === "警告" ? "orange" : "red"} /> <b className="blue-text">{row.name}</b></> },
           { key: "ip", label: "IP 地址", width: "128px", render: (row) => row.ip },
           { key: "env", label: "环境", width: "78px", render: (row) => <span className="pill blue">{row.env}</span> },
-          { key: "cpu", label: "CPU", render: (row) => <Bar value={row.cpu} tone={row.health === "警告" ? "orange" : "green"} /> },
-          { key: "memory", label: "内存", render: (row) => <Bar value={row.memory} tone={Number(row.memory.replace("%", "")) > 70 ? "red" : "green"} /> },
-          { key: "disk", label: "磁盘", render: (row) => <Bar value={row.disk} tone={Number(row.disk.replace("%", "")) > 80 ? "red" : "green"} /> },
+          { key: "cpu", label: "CPU", sortValue: (row) => percentValue(row.cpu), render: (row) => <Bar value={row.cpu} tone={row.health === "警告" ? "orange" : "green"} /> },
+          { key: "memory", label: "内存", sortValue: (row) => percentValue(row.memory), render: (row) => <Bar value={row.memory} tone={Number(row.memory.replace("%", "")) > 70 ? "red" : "green"} /> },
+          { key: "disk", label: "磁盘", sortValue: (row) => percentValue(row.disk), render: (row) => <Bar value={row.disk} tone={Number(row.disk.replace("%", "")) > 80 ? "red" : "green"} /> },
           { key: "status", label: "健康", width: "92px", render: (row) => <><StatusLight tone={row.health === "健康" ? "green" : row.health === "警告" ? "orange" : "red"} /> {row.health}</> },
           { key: "ops", label: "操作", width: "210px", render: (row) => <span className="table-actions"><button type="button" onClick={() => setDrawer({ type: "detail", host: row })}>查看</button><button type="button" onClick={() => { updateHost(row.id, { health: "健康", uptime: "刚刚重启" }); notify(`${row.name} 已重启`); }}>重启</button><button type="button" onClick={() => { updateHost(row.id, { backup: currentClock() }); notify(`${row.name} 已创建备份`); }}>备份</button><button type="button" onClick={() => { updateHost(row.id, { update: "已是最新" }); notify(`${row.name} 已更新`); }}>更新</button></span> },
         ]}
@@ -3392,7 +3518,7 @@ function FilesPage({
         columns={[
           { key: "name", label: "名称", width: "260px", render: (row) => row.type === "文件夹" ? <button className="file-link" type="button" onClick={() => setCurrentPath(`${currentPath === "/" ? "" : currentPath}/${row.name}`)}><Folder size={15} /> {row.name}</button> : <span><FileBox size={15} /> {row.name}</span> },
           { key: "type", label: "类型", width: "86px", render: (row) => <span className="pill blue">{row.type}</span> },
-          { key: "size", label: "大小", render: (row) => row.size },
+          { key: "size", label: "大小", sortValue: (row) => fileSizeSortValue(row), render: (row) => row.size },
           { key: "modified", label: "修改时间", render: (row) => row.modified },
           { key: "owner", label: "所有者", render: (row) => row.owner },
           { key: "ops", label: "操作", width: "170px", render: (row) => <span className="table-actions"><button type="button" aria-label={`重命名 ${row.name}`} onClick={() => { setDraftName(row.name); setDrawer({ type: "rename", file: row }); }}>重命名</button><button type="button" aria-label={`删除 ${row.name} 到回收站`} onClick={() => moveToTrash(row)}>删除</button></span> },
@@ -3526,7 +3652,7 @@ function FileUploadQueuePage({ page, notify }: { page: PageKey; notify: Notify }
             { key: "name", label: "文件", width: "230px", render: (row) => <button className="module-row-link" type="button" onClick={() => setSelectedId(row.id)}><FileBox size={15} /><b>{row.name}</b></button> },
             { key: "target", label: "目标路径", render: (row) => <code>{row.targetPath}</code> },
             { key: "size", label: "大小", width: "82px", render: (row) => row.size },
-            { key: "progress", label: "进度", width: "150px", render: (row) => <span className="upload-progress-inline"><i style={{ width: `${row.progress}%` }} /><b>{row.progress}%</b></span> },
+            { key: "progress", label: "进度", width: "150px", sortValue: (row) => row.progress, render: (row) => <span className="upload-progress-inline"><i style={{ width: `${row.progress}%` }} /><b>{row.progress}%</b></span> },
             { key: "status", label: "状态", width: "86px", render: (row) => <span className={`pill ${statusTone(row.status)}`}>{row.status}</span> },
             { key: "speed", label: "速度", width: "86px", render: (row) => row.speed },
             { key: "owner", label: "上传人", width: "80px", render: (row) => row.owner },
@@ -6472,7 +6598,7 @@ function SettingsProxyPage({ page, setPage, notify }: { page: PageKey; setPage: 
             { key: "url", label: "地址", render: (endpoint) => <code>{endpoint.url}</code> },
             { key: "scope", label: "用途", width: "78px", render: (endpoint) => endpoint.scope },
             { key: "status", label: "状态", width: "88px", render: (endpoint) => <span className={`pill ${proxyStatusTone(endpoint)}`}>{endpoint.status}</span> },
-            { key: "latency", label: "延迟", width: "82px", render: (endpoint) => endpoint.latency },
+            { key: "latency", label: "延迟", width: "82px", sortValue: (endpoint) => latencyValue(endpoint.latency), render: (endpoint) => endpoint.latency },
             { key: "ops", label: "操作", width: "230px", render: (endpoint) => <span className="table-actions"><button type="button" aria-label={`检查 ${endpoint.name}`} onClick={() => runProbe(endpoint)}>检查</button><button type="button" aria-label={`${endpoint.enabled ? "停用" : "启用"} ${endpoint.name}`} onClick={() => { const enabled = !endpoint.enabled; updateEndpoint(endpoint.id, { enabled, status: enabled ? "未验证" : "停用", latency: enabled ? "未探测" : "-" }); notify(`${endpoint.name} 已${enabled ? "启用，等待检查" : "停用"}`, enabled ? "success" : "warning"); }}>{endpoint.enabled ? "停用" : "启用"}</button><button type="button" aria-label={`打开 ${endpoint.name} 详情`} onClick={() => setDrawer({ type: "test", endpointId: endpoint.id })}>详情</button></span> },
           ]}
           rows={filteredEndpoints}
