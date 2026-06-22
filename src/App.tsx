@@ -97,6 +97,7 @@ type PageMeta = { title: string; breadcrumb: string; search: string };
 type ViewContext = { eyebrow: string; title: string; chips: string[] };
 type TopbarPanel = "search" | "notifications" | "activity" | "help" | "user" | null;
 type TopbarMenuPanel = Exclude<TopbarPanel, "search" | null>;
+type HelpDrawerState = { id: string; title: string; detail: string } | null;
 type TopbarSearchResult = { id: string; label: string; detail: string; page: PageKey; kind: string };
 type NavChild = { id: string; label: string; meta: string; page?: PageKey; badge?: string };
 type BackupDraft = {
@@ -1949,6 +1950,7 @@ function TopBar({
 }) {
   const [query, setQuery] = useState("");
   const [openPanel, setOpenPanel] = useState<TopbarPanel>(null);
+  const [helpDrawer, setHelpDrawer] = useState<HelpDrawerState>(null);
   const [lastMenuTrigger, setLastMenuTrigger] = useState<TopbarMenuPanel | null>(null);
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
   const topbarRef = useRef<HTMLDivElement>(null);
@@ -1977,6 +1979,10 @@ function TopBar({
   const lockSession = () => {
     setOpenPanel(null);
     onLogout();
+  };
+  const openHelpDrawer = (item?: { id: string; title: string; detail: string }) => {
+    setOpenPanel(null);
+    setHelpDrawer(item ?? topbarHelpLinks[0]);
   };
   const closeSearchPanel = (restoreFocus = false) => {
     setOpenPanel(null);
@@ -2208,6 +2214,7 @@ function TopBar({
             userName={userName}
             unreadCount={unreadCount}
             setPage={setPage}
+            onOpenHelp={openHelpDrawer}
             onClose={closeMenuPanel}
             onMarkRead={() => {
               setUnreadCount(0);
@@ -2218,7 +2225,85 @@ function TopBar({
           />
         )}
       </div>
+      {helpDrawer && (
+        <TopbarHelpDrawer
+          page={page}
+          item={helpDrawer}
+          setPage={setPage}
+          notify={notify}
+          onClose={() => setHelpDrawer(null)}
+        />
+      )}
     </header>
+  );
+}
+
+function TopbarHelpDrawer({
+  page,
+  item,
+  setPage,
+  notify,
+  onClose,
+}: {
+  page: PageKey;
+  item: { id: string; title: string; detail: string };
+  setPage: SetPage;
+  notify: Notify;
+  onClose: () => void;
+}) {
+  const meta = resolvePageMeta(page);
+  const activeModule = navItems.find((nav) => nav.key === navPageFor(page));
+  const relatedChildren = activeModule?.children.slice(0, 3) ?? [];
+  const checklist = [
+    `当前页面：${meta.title}`,
+    `搜索入口：${meta.search}`,
+    "优先检查筛选条件、行操作、详情抽屉和 toast 反馈",
+  ];
+
+  const copyChecklist = () => {
+    const text = [`${item.title} - ${meta.title}`, item.detail, ...checklist].join("\n");
+    if (!navigator.clipboard?.writeText) {
+      notify("当前浏览器不支持复制检查清单", "warning");
+      return;
+    }
+    void navigator.clipboard.writeText(text)
+      .then(() => notify("帮助检查清单已复制", "info"))
+      .catch(() => notify("复制检查清单失败，请检查剪贴板权限", "danger"));
+  };
+
+  return (
+    <DetailDrawer
+      title={item.title}
+      subtitle={`${meta.breadcrumb} / ${meta.title}`}
+      onClose={onClose}
+      className="topbar-help-drawer"
+      modal
+      actions={<><button className="ghost" type="button" onClick={copyChecklist}>复制清单</button><button className="primary" type="button" onClick={() => { setPage("audit", { message: "已打开审计日志", tone: "info" }); onClose(); }}>查看审计</button></>}
+    >
+      <div className="help-drawer-body">
+        <section>
+          <span>当前上下文</span>
+          <strong>{meta.title}</strong>
+          <p>{item.detail}</p>
+        </section>
+        <div className="help-checklist">
+          {checklist.map((line) => (
+            <p key={line}><CheckCircle2 size={14} />{line}</p>
+          ))}
+        </div>
+        {relatedChildren.length > 0 && (
+          <div className="help-related">
+            <span>相关入口</span>
+            {relatedChildren.map((child) => (
+              <button key={child.id} type="button" aria-label={`打开帮助相关入口 ${child.label}，${child.meta}`} onClick={() => { setPage(child.page ?? child.id, { message: `已打开${child.label}`, tone: "info" }); onClose(); }}>
+                <strong>{child.label}</strong>
+                <em>{child.meta}</em>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </DetailDrawer>
   );
 }
 
@@ -2228,6 +2313,7 @@ function TopbarDropdown({
   userName,
   unreadCount,
   setPage,
+  onOpenHelp,
   onClose,
   onMarkRead,
   onLogout,
@@ -2238,6 +2324,7 @@ function TopbarDropdown({
   userName: string;
   unreadCount: number;
   setPage: SetPage;
+  onOpenHelp: (item?: { id: string; title: string; detail: string }) => void;
   onClose: () => void;
   onMarkRead: () => void;
   onLogout: () => void;
@@ -2301,7 +2388,7 @@ function TopbarDropdown({
             {item.label}
           </button>
         ))}
-        <button type="button" role="menuitem" onClick={() => { notify("帮助中心为本地原型说明，暂无外部文档", "info"); onClose(); }}>
+        <button type="button" role="menuitem" onClick={() => { onOpenHelp(); onClose(); }}>
           帮助中心
         </button>
         <button type="button" role="menuitem" className="danger-item" onClick={() => { onLogout(); notify("本地会话已锁定", "warning"); }}>
@@ -2330,7 +2417,8 @@ function TopbarDropdown({
               setPage("audit", { message: "已打开审计日志", tone: "info" });
               onClose();
             } else {
-              notify("帮助中心为本地原型说明，暂无外部文档", "info");
+              onOpenHelp();
+              onClose();
             }
           }}
         >
@@ -2351,7 +2439,7 @@ function TopbarDropdown({
                 const notificationTarget: PageKey = item.id === "ntf-1" ? "databases-backups" : item.id === "ntf-2" ? "sites-cert" : "deploy";
                 setPage(notificationTarget, { message: `已打开通知：${item.title}`, tone: "info" });
               } else {
-                notify(`帮助条目已聚焦：${item.title}`, "info");
+                onOpenHelp(item);
               }
               onClose();
             }}
@@ -3375,6 +3463,8 @@ function DetailDrawer({
   onClose,
   children,
   actions,
+  className,
+  modal,
   autoFocus = true,
 }: {
   title: string;
@@ -3382,13 +3472,18 @@ function DetailDrawer({
   onClose: () => void;
   children: React.ReactNode;
   actions?: React.ReactNode;
+  className?: string;
+  modal?: boolean;
   autoFocus?: boolean;
 }) {
   const drawerRef = useRef<HTMLElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
   const titleId = useId();
-  const isModalDrawer = useIsNarrowViewport();
+  const isNarrowViewport = useIsNarrowViewport();
+  const isModalDrawer = modal ?? isNarrowViewport;
+  const drawerClassName = ["detail-drawer", className].filter(Boolean).join(" ");
+  const scrimClassName = ["drawer-scrim", className ? `${className}-scrim` : ""].filter(Boolean).join(" ");
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -3468,10 +3563,10 @@ function DetailDrawer({
 
   return (
     <>
-      <button className="drawer-scrim" type="button" aria-label="关闭详情" onClick={onClose} tabIndex={-1} />
+      <button className={scrimClassName} type="button" aria-label="关闭详情" onClick={onClose} tabIndex={-1} />
       <aside
         ref={drawerRef}
-        className="detail-drawer"
+        className={drawerClassName}
         role={isModalDrawer ? "dialog" : "region"}
         aria-modal={isModalDrawer ? "true" : undefined}
         aria-labelledby={titleId}
