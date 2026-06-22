@@ -2161,7 +2161,6 @@ function TopBar({
     <header className={`topbar-mock ${white ? "white" : ""}`}>
       {page !== "overview" && (
         <div className="breadcrumb-title">
-          {!isSettings && <Menu size={16} />}
           <span>{meta.breadcrumb}</span>
           <em>/</em>
           <strong>{meta.title}</strong>
