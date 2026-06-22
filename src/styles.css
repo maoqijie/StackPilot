@@ -5008,6 +5008,11 @@ a {
     background: rgb(6 18 28 / 30%);
   }
 
+  .desktop-frame.sidebar-collapsed .sidebar-backdrop {
+    display: none;
+    pointer-events: none;
+  }
+
   .desktop-main {
     grid-column: 1;
   }
