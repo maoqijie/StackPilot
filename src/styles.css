@@ -1442,6 +1442,136 @@ a {
   white-space: nowrap;
 }
 
+.help-drawer-body {
+  display: grid;
+  gap: 14px;
+}
+
+.detail-drawer.topbar-help-drawer {
+  position: fixed;
+  top: 72px;
+  right: 18px;
+  bottom: 18px;
+  z-index: 150;
+  width: min(390px, calc(100vw - 36px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  box-shadow: 0 24px 60px rgb(15 36 52 / 24%);
+}
+
+.drawer-scrim.topbar-help-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 149;
+  display: block;
+  background: rgb(6 18 28 / 18%);
+}
+
+.detail-drawer.topbar-help-drawer .drawer-body {
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  padding-bottom: 14px;
+  overflow: auto;
+}
+
+.detail-drawer.topbar-help-drawer .drawer-actions.inline {
+  position: sticky;
+  right: auto;
+  bottom: 0;
+  left: auto;
+  margin: 12px 0 0;
+  padding: 10px 0 0;
+  background: linear-gradient(180deg, rgb(255 255 255 / 88%), #ffffff 34%);
+  border-top: 1px solid var(--line);
+}
+
+.help-drawer-body section {
+  display: grid;
+  gap: 6px;
+}
+
+.help-drawer-body section span,
+.help-related span {
+  color: #708294;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.help-drawer-body section strong {
+  color: #152433;
+  font-size: 18px;
+}
+
+.help-drawer-body section p {
+  margin: 0;
+  color: #617384;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.help-checklist,
+.help-related {
+  display: grid;
+  gap: 8px;
+}
+
+.help-checklist p {
+  min-height: 34px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #2e4051;
+  background: #f8fbfd;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.help-checklist svg {
+  flex: 0 0 auto;
+  color: #19a66a;
+}
+
+.help-related button {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  color: #1d3141;
+  background: #ffffff;
+  text-align: left;
+}
+
+.help-related button:hover,
+.help-related button:focus-visible {
+  border-color: rgb(14 165 233 / 32%);
+  color: var(--blue);
+  background: #eef8ff;
+}
+
+.help-related button strong,
+.help-related button em {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.help-related button strong {
+  font-size: 12px;
+}
+
+.help-related button em {
+  color: #6f8293;
+  font-size: 11px;
+  font-style: normal;
+}
+
 .user-dropdown {
   width: min(240px, calc(100vw - 92px));
 }
@@ -4538,6 +4668,10 @@ a {
     display: none;
   }
 
+  .top-actions > .icon-action[aria-label="帮助"] {
+    display: grid;
+  }
+
   .top-actions .notification-wrap,
   .top-actions .user-menu-button {
     flex: 0 0 44px;
@@ -5067,7 +5201,17 @@ a {
     min-height: 0;
     max-height: min(78dvh, 560px);
     border-radius: 8px;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
     box-shadow: 0 -18px 48px rgb(6 18 28 / 24%);
+  }
+
+  .detail-drawer.topbar-help-drawer {
+    top: auto;
+    right: 10px;
+    bottom: 10px;
+    left: 74px;
+    width: auto;
   }
 
   .drawer-scrim {
@@ -5086,12 +5230,22 @@ a {
   }
 
   .detail-drawer .drawer-body {
-    max-height: calc(min(78dvh, 560px) - 58px);
+    min-height: 0;
+    max-height: none;
     height: auto;
+    padding-bottom: 14px;
+    overflow: auto;
   }
 
   .drawer-actions.inline {
     position: sticky;
+    right: auto;
+    bottom: 0;
+    left: auto;
+    margin: 12px 0 0;
+    padding: 10px 0 0;
+    background: linear-gradient(180deg, rgb(255 255 255 / 88%), #ffffff 34%);
+    border-top: 1px solid var(--line);
   }
 
   .database-instance-lower {
@@ -8868,11 +9022,12 @@ a {
 
 .mobile-action-summary b {
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   color: #17293b;
   font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .mobile-action-impact {
