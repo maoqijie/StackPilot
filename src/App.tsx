@@ -4837,8 +4837,8 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
       title={resolvePageMeta(page).title}
       subtitle={aclPreset.subtitle}
       page={page}
-      actions={tab === "roles" ? <button className={dirtyRoles > 0 ? "primary" : "ghost"} type="button" onClick={() => saveRole(selectedRole)}>{dirtyRoles > 0 ? `保存角色权限 (${dirtyRoles})` : "保存角色权限"}</button> : tab === "policies" && selectedPolicy ? <button className={dirtyPolicies > 0 ? "primary" : "ghost"} type="button" onClick={() => savePolicy(selectedPolicy)}>{dirtyPolicies > 0 ? `保存权限项 (${dirtyPolicies})` : "保存权限项"}</button> : undefined}
-      filters={<><div className="deploy-tabs" role="tablist" aria-label="权限视图"><button className={tab === "users" ? "active" : ""} type="button" role="tab" aria-selected={tab === "users"} onClick={() => setAclTab("users")}>用户</button><button className={tab === "roles" ? "active" : ""} type="button" role="tab" aria-selected={tab === "roles"} onClick={() => setAclTab("roles")}>角色</button><button className={tab === "policies" ? "active" : ""} type="button" role="tab" aria-selected={tab === "policies"} onClick={() => setAclTab("policies")}>权限项</button></div>{tab === "users" && <ModuleSearch value={userSearch} placeholder="搜索用户、邮箱或角色" onChange={setUserSearch} />}{tab === "policies" && <><ModuleSearch value={policySearch} placeholder="搜索权限项、模块或角色" onChange={setPolicySearch} /><FieldSelect label="模块" value={policyModule} options={policyModules} onChange={setPolicyModule} /><FieldSelect label="风险" value={policyRisk} options={["全部", "高", "中", "低"]} onChange={setPolicyRisk} /></>}</>}
+      actions={tab === "roles" ? <button className={dirtyRoles > 0 ? "primary" : "ghost"} type="button" disabled={dirtyRoles === 0} onClick={() => saveRole(selectedRole)}>{dirtyRoles > 0 ? `保存角色权限 (${dirtyRoles})` : "角色权限已保存"}</button> : tab === "policies" && selectedPolicy ? <button className={dirtyPolicies > 0 ? "primary" : "ghost"} type="button" disabled={dirtyPolicies === 0} onClick={() => savePolicy(selectedPolicy)}>{dirtyPolicies > 0 ? `保存权限项 (${dirtyPolicies})` : "权限项已保存"}</button> : undefined}
+      filters={<><div className="deploy-tabs" aria-label="权限视图"><button className={tab === "users" ? "active" : ""} type="button" aria-pressed={tab === "users"} onClick={() => setAclTab("users")}>用户</button><button className={tab === "roles" ? "active" : ""} type="button" aria-pressed={tab === "roles"} onClick={() => setAclTab("roles")}>角色</button><button className={tab === "policies" ? "active" : ""} type="button" aria-pressed={tab === "policies"} onClick={() => setAclTab("policies")}>权限项</button></div>{tab === "users" && <ModuleSearch value={userSearch} placeholder="搜索用户、邮箱或角色" onChange={setUserSearch} />}{tab === "policies" && <><ModuleSearch value={policySearch} placeholder="搜索权限项、模块或角色" onChange={setPolicySearch} /><FieldSelect label="模块" value={policyModule} options={policyModules} onChange={setPolicyModule} /><FieldSelect label="风险" value={policyRisk} options={["全部", "高", "中", "低"]} onChange={setPolicyRisk} /></>}</>}
       metrics={<><MetricTile icon={UserRound} label="用户" value={`${users.length}`} tone="blue" /><MetricTile icon={Lock} label="未保存" value={`${dirtyRoles + dirtyPolicies}`} tone={dirtyRoles + dirtyPolicies > 0 ? "orange" : "purple"} /><MetricTile icon={Shield} label="高风险权限" value={`${policies.filter((policy) => policy.risk === "高").length}`} tone="orange" /></>}
     >
       {tab === "users" ? (
@@ -4880,11 +4880,11 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
       ) : tab === "roles" ? (
         <div className="acl-role-layout">
           <PanelCard title="角色列表">
-            <div className="role-list">
-              {roles.map((role) => <button key={role.id} className={role.id === roleId ? "active" : ""} type="button" aria-pressed={role.id === roleId} onClick={() => setRoleId(role.id)}><strong>{role.name}</strong><span>{role.desc}</span></button>)}
+            <div className="role-list" role="listbox" aria-label="角色列表">
+              {roles.map((role) => <button key={role.id} className={role.id === roleId ? "active" : ""} type="button" role="option" aria-selected={role.id === roleId} onClick={() => setRoleId(role.id)}><strong>{role.name}</strong><span>{role.desc}</span></button>)}
             </div>
           </PanelCard>
-          <PanelCard title={`${selectedRole.name} 权限项`} action={savedRoleIds.has(selectedRole.id) ? "已保存" : "保存"} onAction={() => saveRole(selectedRole)}>
+          <PanelCard title={`${selectedRole.name} 权限项`} action={savedRoleIds.has(selectedRole.id) ? undefined : "保存"} onAction={() => saveRole(selectedRole)}>
             <div className="permission-grid">
               {permissionOptions.map((permission) => (
                 <button key={permission} className={selectedRole.permissions.includes(permission) ? "checked" : ""} type="button" aria-pressed={selectedRole.permissions.includes(permission)} onClick={() => togglePermission(permission)}>
@@ -4897,9 +4897,9 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
         </div>
       ) : (
         <div className="acl-policy-layout">
-          <div className="policy-catalog">
+          <div className="policy-catalog" role="listbox" aria-label="权限项目录">
             {filteredPolicies.map((policy) => (
-              <button key={policy.id} className={policy.id === selectedPolicy?.id ? "active" : ""} type="button" aria-pressed={policy.id === selectedPolicy?.id} onClick={() => setSelectedPolicyId(policy.id)}>
+              <button key={policy.id} className={policy.id === selectedPolicy?.id ? "active" : ""} type="button" role="option" aria-selected={policy.id === selectedPolicy?.id} onClick={() => setSelectedPolicyId(policy.id)}>
                 <span><b>{policy.name}</b><i>{policy.module}</i></span>
                 <em className={policy.risk === "高" ? "red-text" : policy.risk === "中" ? "orange-text" : "blue-text"}>{policy.risk}风险</em>
                 <small>{policy.desc}</small>
@@ -4908,7 +4908,7 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
             {filteredPolicies.length === 0 && <p className="module-empty-card">没有匹配的权限项</p>}
           </div>
           {selectedPolicy ? (
-            <PanelCard title={`${selectedPolicy.name} 关联角色`} action={savedPolicyIds.has(selectedPolicy.id) ? "已保存" : "保存"} onAction={() => savePolicy(selectedPolicy)}>
+            <PanelCard title={`${selectedPolicy.name} 关联角色`} action={savedPolicyIds.has(selectedPolicy.id) ? undefined : "保存"} onAction={() => savePolicy(selectedPolicy)}>
               <div className="policy-detail">
                 <p><span>模块</span><b>{selectedPolicy.module}</b></p>
                 <p><span>风险级别</span><b>{selectedPolicy.risk}风险</b></p>
@@ -6269,7 +6269,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
         chips: [`Tab ${activeTab}`],
       }} />
       <SettingsTabs activeTab={activeTab} setPage={setPage} />
-      <div className={`settings-layout ${activeTab === "基础" ? "base-settings-layout" : ""}`}>
+      <div className={`settings-layout ${activeTab === "基础" ? "base-settings-layout" : ""}`} inert={Boolean(generatedToken)} aria-hidden={generatedToken ? "true" : undefined}>
         {activeTab === "基础" && <PanelCard title="面板身份" className="settings-card-tall">
           <div className="settings-form">
             <FormLine label="面板名称" value={identityDraft.panelName} onChange={readOnly ? undefined : (value) => updateIdentityDraft("panelName", value)} error={identityErrors.panelName} inputRef={identityPanelNameInputRef} />
@@ -6296,13 +6296,13 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
         </PanelCard>}
         {activeTab === "备份" && <PanelCard title="备份策略">
           <div className="backup-grid">
-            <FormSelectLine label="备份频率" value={backupDraft.frequency} options={["每日", "每周", "每 6 小时"]} onChange={(value) => updateBackupDraft("frequency", value)} />
-            <FormLine label="执行时间" value={backupDraft.runAt} onChange={(value) => updateBackupDraft("runAt", value)} hint="24 小时制，如 02:30" error={backupTimeError} inputRef={backupRunAtInputRef} />
-            <FormSelectLine label="保留策略" value={backupDraft.retention} options={["保留 7 份", "保留 14 份", "保留 30 份"]} onChange={(value) => updateBackupDraft("retention", value)} />
-            <FormSelectLine label="备份目标" value={backupDraft.target} options={["S3 / MinIO", "本地磁盘", "远端 SFTP"]} onChange={(value) => updateBackupDraft("target", value)} />
-            <FormLine label="存储位置" value={backupDraft.location} onChange={(value) => updateBackupDraft("location", value)} inputRef={backupLocationInputRef} />
-            <button className="ghost backup-test-button" type="button" onClick={testBackupConnection}>检查配置</button>
-            <FormSelectLine label="加密设置" value={backupDraft.encryption} options={["启用（AES-256）", "启用（KMS 托管）", "关闭"]} onChange={(value) => updateBackupDraft("encryption", value)} />
+            <FormSelectLine label="备份频率" value={backupDraft.frequency} options={["每日", "每周", "每 6 小时"]} disabled={readOnly} onChange={(value) => updateBackupDraft("frequency", value)} />
+            <FormLine label="执行时间" value={backupDraft.runAt} disabled={readOnly} onChange={(value) => updateBackupDraft("runAt", value)} hint="24 小时制，如 02:30" error={backupTimeError} inputRef={backupRunAtInputRef} />
+            <FormSelectLine label="保留策略" value={backupDraft.retention} options={["保留 7 份", "保留 14 份", "保留 30 份"]} disabled={readOnly} onChange={(value) => updateBackupDraft("retention", value)} />
+            <FormSelectLine label="备份目标" value={backupDraft.target} options={["S3 / MinIO", "本地磁盘", "远端 SFTP"]} disabled={readOnly} onChange={(value) => updateBackupDraft("target", value)} />
+            <FormLine label="存储位置" value={backupDraft.location} disabled={readOnly} onChange={(value) => updateBackupDraft("location", value)} inputRef={backupLocationInputRef} />
+            <button className="ghost backup-test-button" type="button" disabled={readOnly} onClick={testBackupConnection}>检查配置</button>
+            <FormSelectLine label="加密设置" value={backupDraft.encryption} options={["启用（AES-256）", "启用（KMS 托管）", "关闭"]} disabled={readOnly} onChange={(value) => updateBackupDraft("encryption", value)} />
           </div>
           <div className="backup-policy-summary">
             <p><span>当前策略</span><b>{backupDraft.frequency} {backupDraft.runAt}</b><em>{backupDraft.retention} · {backupDraft.encryption}</em></p>
@@ -6311,16 +6311,16 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
           </div>
           <div className="check-row">
             {["面板数据", "审计日志", "上传文件"].map((item) => (
-              <button key={item} className={backupItems.includes(item) ? "checked" : ""} type="button" aria-pressed={backupItems.includes(item)} onClick={() => toggleBackupItem(item)}>{item}</button>
+              <button key={item} className={backupItems.includes(item) ? "checked" : ""} type="button" disabled={readOnly} aria-pressed={backupItems.includes(item)} onClick={() => toggleBackupItem(item)}>{item}</button>
             ))}
           </div>
-          <div className="settings-buttons backup-actions"><button className="primary" type="button" onClick={saveBackupPolicy}>保存策略</button><button className="primary" type="button" disabled={immediateBackupRunning} onClick={createImmediateBackup}><Download size={14} /> 立即备份</button><button className="ghost" type="button" onClick={startRestoreDrill}>恢复演练</button></div>
+          <div className="settings-buttons backup-actions"><button className="primary" type="button" disabled={readOnly} onClick={saveBackupPolicy}>保存策略</button><button className="primary" type="button" disabled={readOnly || immediateBackupRunning} onClick={createImmediateBackup}><Download size={14} /> 立即备份</button><button className="ghost" type="button" disabled={readOnly} onClick={startRestoreDrill}>恢复演练</button></div>
         </PanelCard>}
         {activeTab === "备份" && <PanelCard title="验证状态" className="settings-card-wide">
           <div className="verify-box">
             <p className="ok-line"><CheckCircle2 size={15} /> 最近验证成功：{backupVerification.latest}</p>
             <p className={backupStateClass(backupVerification.delayTone)}>{backupVerification.delay} <button type="button" onClick={() => notify(`备份状态：${backupVerification.delay}`, "warning")}>查看详情</button></p>
-            <p className={backupStateClass(backupVerification.drillTone)}>{backupVerification.drill} <button type="button" onClick={startRestoreDrill}>前往演练</button></p>
+            <p className={backupStateClass(backupVerification.drillTone)}>{backupVerification.drill} <button type="button" disabled={readOnly} onClick={startRestoreDrill}>前往演练</button></p>
           </div>
           <div className="backup-list">
             <div><strong>最近备份任务</strong><button type="button" onClick={() => notify("已打开全部备份任务", "info")}>查看全部</button></div>
@@ -6332,38 +6332,38 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
         </PanelCard>}
         {activeTab === "安全" && <PanelCard title="安全设置">
           <div className="right-settings">
-            <ToggleLine label="强制启用两步验证（2FA）" active={twoFactor} onToggle={(active) => {
+            <ToggleLine label="强制启用两步验证（2FA）" active={twoFactor} disabled={readOnly} onToggle={(active) => {
               setTwoFactor(active);
               setSecurityReview("安全策略已变更，等待复核");
               setSecurityReviewTone("warn");
             }} />
-            <FormSelectLine label="会话超时时间" value={securityDraft.sessionTimeout} options={["15 分钟", "30 分钟", "60 分钟"]} onChange={(value) => updateSecurityDraft("sessionTimeout", value)} />
-            <FormLine label="IP 访问白名单" value={securityDraft.ipWhitelist} onChange={(value) => updateSecurityDraft("ipWhitelist", value)} error={securityError} hint="逗号分隔，支持 IPv4 / CIDR" inputRef={securityWhitelistInputRef} />
-            <ToggleLine label="允许多地同时登录" active={multiLogin} onToggle={(active) => {
+            <FormSelectLine label="会话超时时间" value={securityDraft.sessionTimeout} options={["15 分钟", "30 分钟", "60 分钟"]} disabled={readOnly} onChange={(value) => updateSecurityDraft("sessionTimeout", value)} />
+            <FormLine label="IP 访问白名单" value={securityDraft.ipWhitelist} disabled={readOnly} onChange={(value) => updateSecurityDraft("ipWhitelist", value)} error={securityError} hint="逗号分隔，支持 IPv4 / CIDR" inputRef={securityWhitelistInputRef} />
+            <ToggleLine label="允许多地同时登录" active={multiLogin} disabled={readOnly} onToggle={(active) => {
               setMultiLogin(active);
               setSecurityReview("安全策略已变更，等待复核");
               setSecurityReviewTone("warn");
             }} />
-            <FormSelectLine label="登录失败锁定" value={securityDraft.lockPolicy} options={["3 次 / 10 分钟", "5 次 / 15 分钟", "10 次 / 30 分钟"]} onChange={(value) => updateSecurityDraft("lockPolicy", value)} />
+            <FormSelectLine label="登录失败锁定" value={securityDraft.lockPolicy} options={["3 次 / 10 分钟", "5 次 / 15 分钟", "10 次 / 30 分钟"]} disabled={readOnly} onChange={(value) => updateSecurityDraft("lockPolicy", value)} />
             <div className="security-policy-summary">
               <p><span>会话</span><b>{securityDraft.sessionTimeout}</b><em>{securityDraft.lockPolicy}</em></p>
               <p><span>登录</span><b>{twoFactor ? "强制 MFA" : "未强制 MFA"}</b><em>{multiLogin ? "允许多地登录" : "禁止多地登录"}</em></p>
               <p><span>保存</span><b>{securitySavedAt}</b><em>{securityReview}</em></p>
             </div>
-            <div className="settings-buttons security-actions"><button className="primary" type="button" onClick={saveSecurityPolicy}>保存安全策略</button><button className="ghost" type="button" onClick={runSecurityReview}>立即复核</button></div>
+            <div className="settings-buttons security-actions"><button className="primary" type="button" disabled={readOnly} onClick={saveSecurityPolicy}>保存安全策略</button><button className="ghost" type="button" disabled={readOnly} onClick={runSecurityReview}>立即复核</button></div>
           </div>
         </PanelCard>}
         {activeTab === "安全" && <PanelCard title="安全验证">
           <div className="verify-box">
             <p className={twoFactor ? "ok-line" : "warn-line"}><CheckCircle2 size={15} /> MFA 覆盖率：{twoFactor ? "100%" : "未强制"}</p>
-            <p className={securityReviewTone === "ok" ? "ok-line" : "warn-line"}>{securityReview} <button type="button" onClick={runSecurityReview}>复核</button></p>
+            <p className={securityReviewTone === "ok" ? "ok-line" : "warn-line"}>{securityReview} <button type="button" disabled={readOnly} onClick={runSecurityReview}>复核</button></p>
             <p className={securityReviewTone === "ok" ? "ok-line" : "warn-line"}><CheckCircle2 size={15} /> 登录策略：{securityReviewTone === "ok" ? "校验通过" : "等待复核"}</p>
           </div>
         </PanelCard>}
         {activeTab === "通知" && <PanelCard title="通知设置">
           <div className="right-settings">
-            <FormLine label="Webhook 通知" value={noticeDraft.webhook} onChange={(value) => updateNoticeDraft("webhook", value)} error={noticeErrors.webhook} hintButton="测试" hintAction={testNoticeConnection} inputRef={noticeWebhookInputRef} />
-            <ToggleLine label="关键事件邮件通知" active={mailNotice} onToggle={(active) => {
+            <FormLine label="Webhook 通知" value={noticeDraft.webhook} disabled={readOnly} onChange={(value) => updateNoticeDraft("webhook", value)} error={noticeErrors.webhook} hintButton="测试" hintAction={testNoticeConnection} inputRef={noticeWebhookInputRef} />
+            <ToggleLine label="关键事件邮件通知" active={mailNotice} disabled={readOnly} onToggle={(active) => {
               const draft = readNoticeDraft();
               setMailNotice(active);
               setNoticeDraft(draft);
@@ -6375,12 +6375,12 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
                 return { status: "待检查", detail: "邮件通知状态已变更，需要重新检查渠道。", tone: "warn", signature: "" };
               });
             }} />
-            <FormLine label="通知收件人" value={noticeDraft.recipients} onChange={(value) => updateNoticeDraft("recipients", value)} error={noticeErrors.recipients} hint="多个邮箱用逗号分隔" inputRef={noticeRecipientsInputRef} />
-            <FormSelectLine label="通知级别" value={noticeDraft.severity} options={["仅高危", "关键与告警", "全部事件"]} onChange={(value) => updateNoticeDraft("severity", value)} />
-            <FormSelectLine label="摘要频率" value={noticeDraft.digest} options={["实时推送", "每小时摘要", "每日摘要"]} onChange={(value) => updateNoticeDraft("digest", value)} />
+            <FormLine label="通知收件人" value={noticeDraft.recipients} disabled={readOnly} onChange={(value) => updateNoticeDraft("recipients", value)} error={noticeErrors.recipients} hint="多个邮箱用逗号分隔" inputRef={noticeRecipientsInputRef} />
+            <FormSelectLine label="通知级别" value={noticeDraft.severity} options={["仅高危", "关键与告警", "全部事件"]} disabled={readOnly} onChange={(value) => updateNoticeDraft("severity", value)} />
+            <FormSelectLine label="摘要频率" value={noticeDraft.digest} options={["实时推送", "每小时摘要", "每日摘要"]} disabled={readOnly} onChange={(value) => updateNoticeDraft("digest", value)} />
             <div className="check-row notice-event-row">
               {["高危告警", "备份失败", "部署完成", "登录异常"].map((item) => (
-                <button key={item} className={noticeEvents.includes(item) ? "checked" : ""} type="button" aria-pressed={noticeEvents.includes(item)} onClick={() => toggleNoticeEvent(item)}>{item}</button>
+                <button key={item} className={noticeEvents.includes(item) ? "checked" : ""} type="button" disabled={readOnly} aria-pressed={noticeEvents.includes(item)} onClick={() => toggleNoticeEvent(item)}>{item}</button>
               ))}
             </div>
             <div className="notice-policy-summary">
@@ -6388,7 +6388,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
               <p><span>范围</span><b>{noticeEvents.length ? noticeEvents.join(" / ") : "未选择事件"}</b><em>{noticeDraft.digest}</em></p>
               <p className={noticeConnection.tone === "ok" ? "ok-line" : noticeConnection.tone === "error" ? "error-line" : "warn-line"}><span>{noticeConnection.status}</span><b>{noticeConnection.detail}</b></p>
             </div>
-            <div className="settings-buttons notice-actions"><button className="primary" type="button" onClick={saveNoticeSettings}>保存通知设置</button><button className="ghost" type="button" onClick={testNoticeConnection}>检查配置</button><button className="ghost" type="button" onClick={sendNoticePreview}>发送预览</button></div>
+            <div className="settings-buttons notice-actions"><button className="primary" type="button" disabled={readOnly} onClick={saveNoticeSettings}>保存通知设置</button><button className="ghost" type="button" disabled={readOnly} onClick={testNoticeConnection}>检查配置</button><button className="ghost" type="button" disabled={readOnly} onClick={sendNoticePreview}>发送预览</button></div>
           </div>
         </PanelCard>}
         {activeTab === "通知" && <PanelCard title="投递状态" className="settings-card-wide">
@@ -6399,7 +6399,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
             <p><span>策略</span><b>{savedNotice.severity} · {savedNotice.digest}</b><em>{savedNotice.events.join(" / ")}</em></p>
           </div>
           <div className="notice-delivery-list">
-            <div><strong>最近投递</strong><button type="button" onClick={sendNoticePreview}>发送预览</button></div>
+            <div><strong>最近投递</strong><button type="button" disabled={readOnly} onClick={sendNoticePreview}>发送预览</button></div>
             {noticeDeliveries.map((row) => (
               <p key={row.id}><span>{row.time}</span><b>{row.channel}</b><em>{row.target}</em><StatusLight tone={row.result === "成功" ? "green" : "orange"} /><small>{row.result} · {row.latency}</small></p>
             ))}
@@ -6445,13 +6445,12 @@ const settingsTabs = ["基础", "安全", "代理", "通知", "备份", "审计"
 
 function SettingsTabs({ activeTab, setPage }: { activeTab: string; setPage: SetPage }) {
   return (
-    <div className="settings-tabs" role="tablist" aria-label="设置分区">
+    <div className="settings-tabs" aria-label="设置分区">
       {settingsTabs.map((tab) => (
         <button
           className={tab === activeTab ? "active" : ""}
           type="button"
-          role="tab"
-          aria-selected={tab === activeTab}
+          aria-pressed={tab === activeTab}
           key={tab}
           onClick={() => {
             setPage(settingsPageForTab(tab), { message: `已切换到${tab}设置`, tone: "info" });
@@ -7372,16 +7371,18 @@ function MobileApp({ notify }: { notify: Notify }) {
               <div className="mobile-settings-list">
                 <button
                   type="button"
-                  aria-label="通知推送"
-                  aria-pressed={pushEnabled}
+                  aria-label={`通知推送，当前${pushEnabled ? "开启" : "关闭"}，打开确认`}
+                  aria-haspopup="dialog"
+                  aria-expanded={mobileSheet?.type === "action" && mobileSheet.action === "push-toggle"}
                   onClick={() => openMobileSheet({ type: "action", action: "push-toggle" })}
                 >
                   <span><Bell size={16} />通知推送</span><b>{pushEnabled ? "开启" : "关闭"}</b>
                 </button>
                 <button
                   type="button"
-                  aria-label="MFA 验证"
-                  aria-pressed={mfaEnabled}
+                  aria-label={`MFA 验证，当前${mfaEnabled ? "启用" : "暂停"}，打开确认`}
+                  aria-haspopup="dialog"
+                  aria-expanded={mobileSheet?.type === "action" && mobileSheet.action === "mfa-toggle"}
                   onClick={() => openMobileSheet({ type: "action", action: "mfa-toggle" })}
                 >
                   <span><KeyRound size={16} />MFA 验证</span><b>{mfaEnabled ? "启用" : "暂停"}</b>
@@ -8002,6 +8003,7 @@ function FormLine({
   error,
   inputType = "text",
   inputRef,
+  disabled,
   onChange,
 }: {
   label: string;
@@ -8015,6 +8017,7 @@ function FormLine({
   error?: string;
   inputType?: string;
   inputRef?: React.Ref<HTMLInputElement>;
+  disabled?: boolean;
   onChange?: (value: string) => void;
 }) {
   const generatedId = useId();
@@ -8028,9 +8031,9 @@ function FormLine({
     <div className="form-line">
       <label id={labelId} htmlFor={inputId}>{label}{required && <b>*</b>}</label>
       <div>
-        <input id={inputId} ref={inputRef} type={inputType} value={value} readOnly={!onChange} required={required} aria-label={label} aria-required={required ? "true" : undefined} aria-labelledby={labelId} aria-describedby={describedBy} aria-invalid={error ? "true" : undefined} onChange={(event) => onChange?.(event.target.value)} />
+        <input id={inputId} ref={inputRef} type={inputType} value={value} readOnly={!onChange} disabled={disabled} required={required} aria-label={label} aria-required={required ? "true" : undefined} aria-labelledby={labelId} aria-describedby={describedBy} aria-invalid={error ? "true" : undefined} onChange={(event) => onChange?.(event.target.value)} />
         {hint && <em id={hintId}>{hint}</em>}
-        {hintButton && <button type="button" onClick={hintAction}>{hintButton}</button>}
+        {hintButton && <button type="button" disabled={disabled} onClick={hintAction}>{hintButton}</button>}
         {success && <small><CheckCircle2 size={12} /> {success}</small>}
         {error && <strong id={errorId} className="form-error">{error}</strong>}
       </div>
@@ -8194,9 +8197,9 @@ function FormSelectLine({
   );
 }
 
-function ToggleLine({ label, active, hint, onToggle }: { label: string; active?: boolean; hint?: string; onToggle?: (active: boolean) => void }) {
+function ToggleLine({ label, active, hint, disabled, onToggle }: { label: string; active?: boolean; hint?: string; disabled?: boolean; onToggle?: (active: boolean) => void }) {
   return (
-    <button className="toggle-line" type="button" role="switch" aria-checked={Boolean(active)} onClick={() => onToggle?.(!active)}>
+    <button className="toggle-line" type="button" role="switch" disabled={disabled} aria-checked={Boolean(active)} onClick={() => onToggle?.(!active)}>
       <span>{label}</span>
       <i className={active ? "on" : ""}><b /></i>
       {hint && <em>{hint}</em>}

@@ -6227,6 +6227,19 @@ a {
   outline: 0;
 }
 
+.form-line input:disabled,
+.select-like:disabled {
+  border-color: #e8eef4;
+  color: #8fa0ae;
+  background: #f4f7fa;
+  box-shadow: none;
+}
+
+.form-line button:disabled {
+  color: #8fa0ae;
+  background: #f4f7fa;
+}
+
 .form-line input[aria-invalid="true"] {
   border-color: #ef9b9b;
   color: #b82424;
@@ -6352,6 +6365,10 @@ a {
   color: #172331;
 }
 
+.toggle-line:disabled {
+  color: #8fa0ae;
+}
+
 .toggle-line > i {
   width: 36px;
   height: 20px;
@@ -6372,6 +6389,14 @@ a {
 
 .toggle-line > i.on {
   background: #0b9bd7;
+}
+
+.toggle-line:disabled > i {
+  background: #d9e2ea;
+}
+
+.toggle-line:disabled > i.on {
+  background: rgb(10 152 213 / 42%);
 }
 
 .toggle-line > i.on b {
@@ -7018,6 +7043,20 @@ a {
 .check-row button.checked::before {
   border-color: var(--blue);
   background: var(--blue);
+}
+
+.check-row button:disabled {
+  color: #8fa0ae;
+}
+
+.check-row button:disabled::before {
+  border-color: #d9e2ea;
+  background: #f4f7fa;
+}
+
+.check-row button.checked:disabled::before {
+  border-color: rgb(10 152 213 / 34%);
+  background: rgb(10 152 213 / 34%);
 }
 
 .notice-event-row {
