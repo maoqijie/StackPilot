@@ -89,7 +89,7 @@ type Notify = (message: string, tone?: ToastTone) => void;
 type SetPage = (page: PageKey, toast?: ToastState) => void;
 type QuickIntent = "create-site" | "open-terminal" | "create-schedule" | "create-database";
 type PageMeta = { title: string; breadcrumb: string; search: string };
-type ViewContext = { eyebrow: string; title: string; description: string; chips: string[] };
+type ViewContext = { eyebrow: string; title: string; chips: string[] };
 type TopbarPanel = "search" | "notifications" | "activity" | "help" | "user" | null;
 type TopbarMenuPanel = Exclude<TopbarPanel, "search" | null>;
 type TopbarSearchResult = { id: string; label: string; detail: string; page: PageKey; kind: string };
@@ -464,61 +464,61 @@ function viewContextForPage(page: PageKey): ViewContext | null {
 
   switch (parent.key) {
     case "overview":
-      return { eyebrow, title, description: child ? "首页总览子视图已从侧栏定位。" : "首页总览默认视图。", chips: [baseChip] };
+      return { eyebrow, title, chips: [baseChip] };
     case "hosts":
       return null;
     case "sites": {
       const preset = sitesPagePreset(page);
       const chips = [`状态 ${preset.status}`, `运行时 ${preset.runtime}`];
       if (page === "sites-cert") chips.push("证书 < 14 天");
-      return { eyebrow, title, description: preset.subtitle, chips };
+      return { eyebrow, title, chips };
     }
     case "databases": {
       const preset = databasePagePreset(page);
-      return { eyebrow, title, description: preset.subtitle, chips: [`类型 ${preset.type}`, `状态 ${preset.status}`, `主机 ${preset.host}`] };
+      return { eyebrow, title, chips: [`类型 ${preset.type}`, `状态 ${preset.status}`, `主机 ${preset.host}`] };
     }
     case "files": {
       const preset = filesPagePreset(page);
-      return { eyebrow, title, description: preset.subtitle, chips: [`路径 ${preset.path}`, `类型 ${preset.type}`] };
+      return { eyebrow, title, chips: [`路径 ${preset.path}`, `类型 ${preset.type}`] };
     }
     case "terminal": {
       const preset = terminalPagePreset(page);
-      return { eyebrow, title, description: preset.subtitle, chips: [`面板 ${preset.panel === "sessions" ? "会话" : preset.panel === "snippets" ? "常用命令" : "执行历史"}`] };
+      return { eyebrow, title, chips: [`面板 ${preset.panel === "sessions" ? "会话" : preset.panel === "snippets" ? "常用命令" : "执行历史"}`] };
     }
     case "systemd": {
       const preset = systemdPagePreset(page);
-      return { eyebrow, title, description: preset.subtitle, chips: [`状态 ${preset.status}`] };
+      return { eyebrow, title, chips: [`状态 ${preset.status}`] };
     }
     case "firewall": {
       const preset = firewallPagePreset(page);
-      return { eyebrow, title, description: preset.subtitle, chips: [`协议 ${preset.protocol}`, `来源 ${preset.source}`] };
+      return { eyebrow, title, chips: [`协议 ${preset.protocol}`, `来源 ${preset.source}`] };
     }
     case "deploy": {
       const preset = deployPagePreset(page);
-      return { eyebrow, title, description: preset.subtitle, chips: [`环境 ${preset.env}`, `模式 ${preset.mode === "rollbacks" ? "回滚" : "任务"}`] };
+      return { eyebrow, title, chips: [`环境 ${preset.env}`, `模式 ${preset.mode === "rollbacks" ? "回滚" : "任务"}`] };
     }
     case "schedule": {
       const preset = schedulePagePreset(page);
-      return { eyebrow, title, description: preset.subtitle, chips: [`状态 ${preset.state}`, `模式 ${preset.mode === "calendar" ? "日历" : "列表"}`] };
+      return { eyebrow, title, chips: [`状态 ${preset.state}`, `模式 ${preset.mode === "calendar" ? "日历" : "列表"}`] };
     }
     case "audit": {
       const preset = auditPagePreset(page);
-      return { eyebrow, title, description: preset.subtitle, chips: [`用户 ${preset.user}`, `结果 ${preset.result}`, `模式 ${preset.mode === "exports" ? "导出" : "日志"}`] };
+      return { eyebrow, title, chips: [`用户 ${preset.user}`, `结果 ${preset.result}`, `模式 ${preset.mode === "exports" ? "导出" : "日志"}`] };
     }
     case "acl": {
       const preset = aclPagePreset(page);
       const viewName = preset.tab === "users" ? "用户" : preset.tab === "roles" ? "角色" : "权限项";
-      return { eyebrow, title, description: preset.subtitle, chips: [`视图 ${viewName}`] };
+      return { eyebrow, title, chips: [`视图 ${viewName}`] };
     }
     case "settings": {
       if (page === "settings-proxy") {
-        return { eyebrow, title, description: "独立管理代理节点、路由规则和运行时变量。", chips: ["代理节点", "路由规则", "NO_PROXY"] };
+        return { eyebrow, title, chips: ["代理节点", "路由规则", "NO_PROXY"] };
       }
       const tab = settingsPagePreset(page);
-      return { eyebrow, title, description: `当前定位到${tab}设置。`, chips: [`Tab ${tab}`] };
+      return { eyebrow, title, chips: [`Tab ${tab}`] };
     }
     default:
-      return { eyebrow, title, description: child?.meta ?? pageMeta[parent.key].breadcrumb, chips: [baseChip] };
+      return { eyebrow, title, chips: [baseChip] };
   }
 }
 
@@ -1273,10 +1273,19 @@ function clearQuickIntent() {
 
 function setQuickRoute(page: PageKey, intent: QuickIntent) {
   const params = new URLSearchParams(window.location.search);
+  ["mobileTab", "mobileSheet", "sheetAction", "sheetTarget", "sheetLabel"].forEach((key) => params.delete(key));
   params.set("quick", intent);
   window.history.pushState(null, "", `${window.location.pathname}?${params.toString()}#${page}`);
   window.dispatchEvent(new HashChangeEvent("hashchange"));
   window.dispatchEvent(new Event("stackpilot:quick-intent"));
+}
+
+function pushPageRoute(page: PageKey) {
+  const params = new URLSearchParams(window.location.search);
+  ["quick", "mobileTab", "mobileSheet", "sheetAction", "sheetTarget", "sheetLabel"].forEach((key) => params.delete(key));
+  const nextSearch = params.toString();
+  window.history.pushState(null, "", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}#${page}`);
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
 }
 
 function useQuickIntent(expectedPage: PageKey, expectedIntent: QuickIntent, onIntent: () => void) {
@@ -3304,10 +3313,10 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
             <div className="module-card-footer">
               <span className={row.update === "已是最新" ? "green-text" : "orange-text"}>{row.update}</span>
               <div className="table-actions">
-                <button type="button" onClick={() => setDrawer({ type: "detail", host: row })}>查看</button>
-                <button type="button" onClick={() => { updateHost(row.id, { health: "健康", uptime: "刚刚重启" }); notify(`${row.name} 已重启`); }}>重启</button>
-                <button type="button" onClick={() => { updateHost(row.id, { backup: currentClock() }); notify(`${row.name} 已创建备份`); }}>备份</button>
-                <button type="button" onClick={() => { updateHost(row.id, { update: "已是最新" }); notify(`${row.name} 已更新`); }}>更新</button>
+                <button type="button" aria-label={`查看主机 ${row.name}`} onClick={() => setDrawer({ type: "detail", host: row })}>查看</button>
+                <button type="button" aria-label={`重启主机 ${row.name}`} onClick={() => { updateHost(row.id, { health: "健康", uptime: "刚刚重启" }); notify(`${row.name} 已重启`); }}>重启</button>
+                <button type="button" aria-label={`备份主机 ${row.name}`} onClick={() => { updateHost(row.id, { backup: currentClock() }); notify(`${row.name} 已创建备份`); }}>备份</button>
+                <button type="button" aria-label={`更新主机 ${row.name}`} onClick={() => { updateHost(row.id, { update: "已是最新" }); notify(`${row.name} 已更新`); }}>更新</button>
               </div>
             </div>
           </>
@@ -3406,9 +3415,9 @@ function SitesPage({ page, notify }: { page: PageKey; notify: Notify }) {
             </div>
             <div className="module-card-footer">
               <div className="table-actions actions-3">
-                <button type="button" onClick={() => { updateSite(row.id, { status: row.status === "已停止" ? "运行中" : "已停止" }); notify(`${row.domain} 已${row.status === "已停止" ? "启动" : "停止"}`); }}>{row.status === "已停止" ? "启动" : "停止"}</button>
-                <button type="button" onClick={() => { updateSite(row.id, { certDays: 90 }); notify(`${row.domain} 证书已续期`); }}>续期</button>
-                <button type="button" onClick={() => setDrawer({ type: "logs", site: row })}>日志</button>
+                <button type="button" aria-label={`${row.status === "已停止" ? "启动" : "停止"}网站 ${row.domain}`} onClick={() => { updateSite(row.id, { status: row.status === "已停止" ? "运行中" : "已停止" }); notify(`${row.domain} 已${row.status === "已停止" ? "启动" : "停止"}`); }}>{row.status === "已停止" ? "启动" : "停止"}</button>
+                <button type="button" aria-label={`续期网站 ${row.domain} 证书`} onClick={() => { updateSite(row.id, { certDays: 90 }); notify(`${row.domain} 证书已续期`); }}>续期</button>
+                <button type="button" aria-label={`查看网站 ${row.domain} 日志`} onClick={() => setDrawer({ type: "logs", site: row })}>日志</button>
               </div>
             </div>
           </>
@@ -3624,7 +3633,6 @@ function FileUploadQueuePage({ page, notify }: { page: PageKey; notify: Notify }
       viewContext={{
         eyebrow: "文件 / 上传队列",
         title: "上传队列",
-        description: "按上传任务管理目标路径、传输进度、失败重试和完成清理。",
         chips: [`任务 ${uploads.length}`, `上传中 ${uploads.filter((row) => row.status === "上传中").length}`, `失败 ${uploads.filter((row) => row.status === "失败").length}`],
       }}
       actions={<><button className="ghost" type="button" onClick={() => { setUploads((current) => current.filter((row) => row.status !== "已完成")); notify("已清理完成的上传记录", "info"); }}><Trash2 size={15} /> 清理完成</button><button className="primary" type="button" onClick={addUpload}><CloudUpload size={15} /> 添加上传</button></>}
@@ -3759,7 +3767,6 @@ function FileTrashPage({
       viewContext={{
         eyebrow: "文件 / 回收站",
         title: "回收站",
-        description: "查看被删除文件的原路径、删除原因和保留期，支持恢复或永久清理。",
         chips: [`待清理 ${trashRows.length}`, `已恢复 ${restoredRows.length}`, "保留 7 天"],
       }}
       actions={<><button className="ghost" type="button" onClick={() => { setTrashRows([]); setSelectedId(""); notify("回收站已清空", "warning"); }}><Trash2 size={15} /> 清空回收站</button><button className="ghost" type="button" onClick={() => notify(`最近恢复记录：${restoredRows.length} 个`, "info")}><RefreshCw size={15} /> 查看恢复记录</button></>}
@@ -4863,8 +4870,8 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
               </div>
               <div className="module-card-footer">
                 <div className="table-actions actions-2">
-                  <button type="button" onClick={() => { setUsers((current) => current.map((item) => item.id === row.id ? { ...item, enabled: !item.enabled } : item)); notify(`${row.name} 已${row.enabled ? "禁用" : "启用"}`); }}>{row.enabled ? "禁用" : "启用"}</button>
-                  <button type="button" onClick={() => resetUserMfa(row)}>重置 MFA</button>
+                  <button type="button" aria-label={`${row.enabled ? "禁用" : "启用"}用户 ${row.name}`} onClick={() => { setUsers((current) => current.map((item) => item.id === row.id ? { ...item, enabled: !item.enabled } : item)); notify(`${row.name} 已${row.enabled ? "禁用" : "启用"}`); }}>{row.enabled ? "禁用" : "启用"}</button>
+                  <button type="button" aria-label={`重置用户 ${row.name} MFA`} onClick={() => resetUserMfa(row)}>重置 MFA</button>
                 </div>
               </div>
             </>
@@ -5046,7 +5053,6 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
       viewContext={{
         eyebrow: "数据库 / 实例列表",
         title: "数据库实例",
-        description: "集中管理实例连接、备份状态、慢查询和权限边界，操作结果会即时同步到当前视图。",
         chips: [`筛选 ${filteredRows.length}/${rows.length}`, `告警 ${alertCount}`, `慢查询 ${slowQueryCount}`],
       }}
       actions={<>
@@ -5420,7 +5426,6 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
       viewContext={{
         eyebrow: "数据库 / 慢查询",
         title: "慢查询中心",
-        description: "按 SQL 指纹和连接延迟实例聚合治理入口，支持 Explain、索引建议、终止会话和处理状态流转。",
         chips: [`窗口 ${timeRange}`, `待处理 ${pendingCount + delayedInstances.length}`, `延迟实例 ${delayedInstances.filter((instance) => instance.connectionHealth.startsWith("延迟")).length}`],
       }}
       actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredQueries.length} 条慢查询`, "info")}><Download size={15} /> 导出慢查询</button><button className="ghost" type="button" onClick={() => { setTimeRange(timeRange === "近 24 小时" ? "近 7 天" : "近 24 小时"); notify("慢查询采样窗口已切换", "info"); }}><Clock3 size={15} /> 切换窗口</button><button className="primary" type="button" disabled={!primaryQuery} onClick={handlePrimaryIndexAdvice}><Plus size={15} /> 生成索引建议</button></>}
@@ -5605,7 +5610,6 @@ function DatabaseBackupsPage({ page, notify }: { page: PageKey; notify: Notify }
       viewContext={{
         eyebrow: "数据库 / 备份计划",
         title: "备份计划",
-        description: "独立管理数据库备份策略、最近任务和恢复点演练，不混入实例创建流程。",
         chips: [`计划 ${plans.length}`, `失败 ${failedTasks}`, `恢复点 ${restorePoints.length}`],
       }}
       actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredPlans.length} 条备份计划`, "info")}><Download size={15} /> 导出</button><button className="ghost" type="button" onClick={() => { setLastSync(currentClock()); notify("备份计划状态已刷新", "info"); }}><RefreshCw size={15} /> 刷新</button><button className="primary" type="button" onClick={createPlan}><Plus size={15} /> 新建计划</button></>}
@@ -5832,6 +5836,11 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
   const backupConnectionTone = backupConnection.status === "配置已检查" ? "ok-line" : backupConnection.status === "需要检查" ? "error-line" : "warn-line";
   const immediateBackupRunning = backupJobs.some((job) => job.status === "运行中");
   const backupStateClass = (tone: string) => tone === "ok" ? "ok-line" : tone === "error" ? "error-line" : "warn-line";
+  const guardSettingsWrite = (action: string) => {
+    if (!readOnly) return true;
+    notify(`只读模式已开启，无法${action}`, "warning");
+    return false;
+  };
   useEffect(() => {
     backupDraftRef.current = backupDraft;
   }, [backupDraft]);
@@ -5882,10 +5891,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     return !nextErrors.panelName && !nextErrors.publicUrl && !nextErrors.adminEmail;
   };
   const saveIdentitySettings = () => {
-    if (readOnly) {
-      notify("只读模式已开启，无法保存设置", "warning");
-      return;
-    }
+    if (!guardSettingsWrite("保存设置")) return;
     const draft = normalizeIdentityDraft(readIdentityDraft());
     setIdentityDraft(draft);
     if (!validateIdentityDraft(draft)) {
@@ -5898,10 +5904,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     notify("面板身份设置已保存");
   };
   const generateToken = () => {
-    if (readOnly) {
-      notify("只读模式已开启，无法生成令牌", "warning");
-      return;
-    }
+    if (!guardSettingsWrite("生成令牌")) return;
     const nextIndex = tokenSequence.current;
     tokenSequence.current += 1;
     const createdAt = currentDateTime();
@@ -5927,10 +5930,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     notify(`新访问令牌已生成，请立即复制`, "info");
   };
   const updateTokenStatus = (token: TokenRow, nextStatus: TokenStatus) => {
-    if (readOnly) {
-      notify("只读模式已开启，无法修改令牌", "warning");
-      return false;
-    }
+    if (!guardSettingsWrite("修改令牌")) return false;
     if (token.status === nextStatus) {
       notify(`${token.name} 已处于${nextStatus}`, "info");
       return false;
@@ -5947,19 +5947,13 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     notify(`正在查看令牌：${token.name}`, "info");
   };
   const deleteToken = (token: TokenRow) => {
-    if (readOnly) {
-      notify("只读模式已开启，无法删除令牌", "warning");
-      return;
-    }
+    if (!guardSettingsWrite("删除令牌")) return;
     setTokenRows((current) => current.filter((item) => item.id !== token.id));
     appendSettingsAudit("访问令牌", "删除", `删除令牌：${token.name}`);
     notify(`令牌已删除：${token.name}`, "warning");
   };
   const bulkDisableTokens = (ids: string[]) => {
-    if (readOnly) {
-      notify("只读模式已开启，无法停用令牌", "warning");
-      return false;
-    }
+    if (!guardSettingsWrite("停用令牌")) return false;
     const activeIds = ids.filter((id) => tokenRows.some((token) => token.id === id && token.status !== "已停用"));
     if (activeIds.length === 0) {
       notify("请先选择要停用的令牌", "warning");
@@ -5990,9 +5984,11 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     setBackupDraft(draft);
   };
   const toggleBackupItem = (item: string) => {
+    if (!guardSettingsWrite("修改备份范围")) return;
     setBackupItems((current) => current.includes(item) ? current.filter((value) => value !== item) : [...current, item]);
   };
   const updateBackupDraft = (key: keyof typeof backupDraft, value: string) => {
+    if (!guardSettingsWrite("修改备份策略")) return;
     const next = { ...backupDraftRef.current, [key]: value };
     backupDraftRef.current = next;
     setBackupDraft(next);
@@ -6004,6 +6000,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     }
   };
   const testBackupConnection = () => {
+    if (!guardSettingsWrite("检查备份配置")) return;
     const draft = readBackupDraft();
     syncBackupDraft(draft);
     const signature = `${draft.target}::${draft.location.trim()}`;
@@ -6017,6 +6014,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     notify(`${draft.target} 目标检查通过`);
   };
   const saveBackupPolicy = () => {
+    if (!guardSettingsWrite("保存备份策略")) return;
     const draft = readBackupDraft();
     syncBackupDraft(draft);
     const signature = `${draft.target}::${draft.location.trim()}`;
@@ -6047,6 +6045,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     notify(`备份策略已保存：${draft.frequency} ${draft.runAt}`);
   };
   const createImmediateBackup = () => {
+    if (!guardSettingsWrite("创建立即备份")) return;
     if (immediateBackupRunning) {
       notify("已有立即备份任务正在运行", "warning");
       return;
@@ -6069,10 +6068,12 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     notify("已创建立即备份任务");
   };
   const startRestoreDrill = () => {
+    if (!guardSettingsWrite("启动恢复演练")) return;
     setBackupVerification((current) => ({ ...current, drill: "恢复演练已排队", drillTone: "warn" }));
     notify("恢复演练已排队", "info");
   };
   const updateSecurityDraft = (key: keyof typeof securityDraft, value: string) => {
+    if (!guardSettingsWrite("修改安全策略")) return;
     setSecurityDraft((current) => ({ ...current, [key]: value }));
     setSecurityError("");
     setSecurityReview("安全策略已变更，等待复核");
@@ -6099,6 +6100,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     return { ok: true, message: "MFA 覆盖率 100%，白名单校验通过", tone: "ok" as const };
   };
   const saveSecurityPolicy = () => {
+    if (!guardSettingsWrite("保存安全策略")) return;
     const ipWhitelist = securityWhitelistInputRef.current?.value ?? securityDraft.ipWhitelist;
     setSecurityDraft((current) => ({ ...current, ipWhitelist }));
     const whitelistError = validateSecurityWhitelist(ipWhitelist);
@@ -6114,6 +6116,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     notify("安全策略已保存");
   };
   const runSecurityReview = () => {
+    if (!guardSettingsWrite("执行安全复核")) return;
     const ipWhitelist = securityWhitelistInputRef.current?.value ?? securityDraft.ipWhitelist;
     setSecurityDraft((current) => ({ ...current, ipWhitelist }));
     const review = securityReviewResult(ipWhitelist);
@@ -6139,6 +6142,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     };
   };
   const updateNoticeDraft = (key: keyof typeof noticeDraft, value: string) => {
+    if (!guardSettingsWrite("修改通知设置")) return;
     const next = { ...noticeDraft, [key]: value };
     setNoticeDraft(next);
     setNoticeErrors((current) => ({ ...current, [key]: "" }));
@@ -6159,6 +6163,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     }));
   };
   const toggleNoticeEvent = (eventName: string) => {
+    if (!guardSettingsWrite("修改通知事件")) return;
     setNoticeEvents((current) => current.includes(eventName) ? current.filter((item) => item !== eventName) : [...current, eventName]);
     setNoticeConnection((current) => ({
       ...current,
@@ -6168,6 +6173,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     }));
   };
   const testNoticeConnection = () => {
+    if (!guardSettingsWrite("检查通知渠道")) return false;
     const draft = readNoticeDraft();
     setNoticeDraft(draft);
     const errors = validateNoticeDraft(draft);
@@ -6188,6 +6194,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     return true;
   };
   const saveNoticeSettings = () => {
+    if (!guardSettingsWrite("保存通知设置")) return;
     const draft = readNoticeDraft();
     setNoticeDraft(draft);
     const errors = validateNoticeDraft(draft);
@@ -6216,6 +6223,7 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
     notify("通知设置已保存");
   };
   const sendNoticePreview = () => {
+    if (!guardSettingsWrite("发送通知预览")) return;
     const draft = readNoticeDraft();
     setNoticeDraft(draft);
     const errors = validateNoticeDraft(draft);
@@ -6258,7 +6266,6 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
       <ModuleViewContext context={viewContextForPage(activeSettingsPage) ?? {
         eyebrow: "设置 / 基础设置",
         title: activeTab,
-        description: `当前定位到${activeTab}设置。`,
         chips: [`Tab ${activeTab}`],
       }} />
       <SettingsTabs activeTab={activeTab} setPage={setPage} />
@@ -6561,7 +6568,6 @@ function SettingsProxyPage({ page, setPage, notify }: { page: PageKey; setPage: 
       viewContext={{
         eyebrow: "设置 / 代理设置",
         title: "代理设置",
-        description: "配置控制台访问外部网络时的代理策略、状态检查和规则切换。",
         chips: [`可用 ${healthyEndpoints.length}`, `告警 ${warningEndpoints.length}`, `规则 ${rules.length}`],
       }}
       tabs={<SettingsTabs activeTab={settingsPagePreset(page)} setPage={setPage} />}
@@ -7021,7 +7027,19 @@ function MobileApp({ notify }: { notify: Notify }) {
       notify(`已打开${action.targetHint}`, "info");
       return;
     }
-    replaceMobileSheet({ type: "module", action: action.label });
+    setMobileSheet(null);
+    if (action.target === "数据库") {
+      setQuickRoute("databases", "create-database");
+    } else if (action.target === "文件") {
+      pushPageRoute("files-upload");
+    } else if (action.target === "终端") {
+      setQuickRoute("terminal", "open-terminal");
+    } else if (action.target === "系统服务") {
+      pushPageRoute("systemd");
+    } else if (action.target === "防火墙") {
+      pushPageRoute("firewall");
+    }
+    notify(`已打开${action.targetHint}`, "info");
   };
   const saveQuickDraft = (action: MobileQuickAction) => {
     setQuickDrafts((current) => (
