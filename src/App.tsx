@@ -3045,29 +3045,90 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
         </DetailDrawer>
       )}
     >
-      <DataTable
-        columns={[
-          { key: "name", label: "节点", width: "170px", render: (row) => <><StatusLight tone={row.status === "健康" ? "green" : row.status === "警告" ? "orange" : "gray"} /> <b className="blue-text">{row.name}</b></> },
-          { key: "ip", label: "IP", width: "118px", render: (row) => row.ip },
-          { key: "env", label: "环境", width: "78px", render: (row) => row.env },
-          { key: "latency", label: "延迟", width: "78px", sortValue: (row) => latencyValue(row.latency), render: (row) => row.latency },
-          { key: "cpu", label: "CPU", width: "110px", sortValue: (row) => percentValue(row.cpu), render: (row) => <Bar value={row.cpu} tone={row.status === "警告" ? "orange" : "green"} /> },
-          { key: "memory", label: "内存", width: "110px", sortValue: (row) => percentValue(row.memory), render: (row) => <Bar value={row.memory} tone={row.status === "警告" ? "red" : "green"} /> },
-          { key: "backup", label: "备份", width: "118px", render: (row) => row.backup },
-          { key: "update", label: "更新", width: "110px", render: (row) => <span className={row.update === "已是最新" ? "green-text" : "orange-text"}>{row.update}</span> },
-          { key: "actions", label: "操作", width: "190px", render: (row) => (
-            <div className="table-actions">
-              <button type="button" onClick={() => setSelected(row)}>详情</button>
-              <button type="button" onClick={() => patchNodeFromApi(row.id, { status: "健康", update: "已是最新", latency: row.latency === "离线" ? "44ms" : row.latency }, `${row.name} 已执行修复`)}>修复</button>
-              <button type="button" onClick={() => restartNodeFromApi(row)}>重启</button>
-            </div>
-          ) },
-        ]}
-        rows={filteredNodes}
-        emptyText="没有匹配的集群节点"
-        getRowKey={(row) => row.id}
-      />
+      <div className="health-workspace">
+        <DataTable
+          columns={[
+            { key: "name", label: "节点", width: "170px", render: (row) => <><StatusLight tone={row.status === "健康" ? "green" : row.status === "警告" ? "orange" : "gray"} /> <b className="blue-text">{row.name}</b></> },
+            { key: "ip", label: "IP", width: "118px", render: (row) => row.ip },
+            { key: "env", label: "环境", width: "78px", render: (row) => row.env },
+            { key: "latency", label: "延迟", width: "78px", sortValue: (row) => latencyValue(row.latency), render: (row) => row.latency },
+            { key: "cpu", label: "CPU", width: "110px", sortValue: (row) => percentValue(row.cpu), render: (row) => <Bar value={row.cpu} tone={row.status === "警告" ? "orange" : "green"} /> },
+            { key: "memory", label: "内存", width: "110px", sortValue: (row) => percentValue(row.memory), render: (row) => <Bar value={row.memory} tone={row.status === "警告" ? "red" : "green"} /> },
+            { key: "backup", label: "备份", width: "118px", render: (row) => row.backup },
+            { key: "update", label: "更新", width: "110px", render: (row) => <span className={row.update === "已是最新" ? "green-text" : "orange-text"}>{row.update}</span> },
+            { key: "actions", label: "操作", width: "190px", render: (row) => (
+              <div className="table-actions">
+                <button type="button" onClick={() => setSelected(row)}>详情</button>
+                <button type="button" onClick={() => patchNodeFromApi(row.id, { status: "健康", update: "已是最新", latency: row.latency === "离线" ? "44ms" : row.latency }, `${row.name} 已执行修复`)}>修复</button>
+                <button type="button" onClick={() => restartNodeFromApi(row)}>重启</button>
+              </div>
+            ) },
+          ]}
+          rows={filteredNodes}
+          emptyText="没有匹配的集群节点"
+          getRowKey={(row) => row.id}
+        />
+        <HealthSummaryPanel nodes={filteredNodes} allNodes={nodes} onSelect={setSelected} />
+      </div>
     </ModulePageShell>
+  );
+}
+
+function HealthSummaryPanel({
+  nodes,
+  allNodes,
+  onSelect,
+}: {
+  nodes: OverviewNode[];
+  allNodes: OverviewNode[];
+  onSelect: (node: OverviewNode) => void;
+}) {
+  const envGroups = ["生产", "预发", "开发"].map((env) => {
+    const count = nodes.filter((node) => node.env === env).length;
+    return { env, count, value: allNodes.length > 0 ? `${Math.round((count / allNodes.length) * 100)}%` : "0%" };
+  });
+  const attentionNodes = nodes
+    .filter((node) => node.status !== "健康" || node.update !== "已是最新")
+    .slice(0, 3);
+  const healthyNodes = nodes.filter((node) => node.status === "健康").length;
+  const serviceCount = nodes.reduce((total, node) => total + node.services.length, 0);
+
+  return (
+    <aside className="health-side-panel" aria-label="集群状态摘要">
+      <section>
+        <header>
+          <span>节点分布</span>
+          <strong>{healthyNodes}/{nodes.length} 健康</strong>
+        </header>
+        <div className="health-env-list">
+          {envGroups.map((group) => (
+            <p key={group.env}>
+              <span>{group.env}</span>
+              <i><b style={{ width: group.value }} /></i>
+              <em>{group.count}</em>
+            </p>
+          ))}
+        </div>
+      </section>
+      <section>
+        <header>
+          <span>需要关注</span>
+          <strong>{attentionNodes.length || "无"}</strong>
+        </header>
+        <div className="health-attention-list">
+          {attentionNodes.length > 0 ? attentionNodes.map((node) => (
+            <button key={node.id} type="button" onClick={() => onSelect(node)}>
+              <StatusLight tone={node.status === "警告" ? "orange" : node.status === "维护" ? "gray" : "blue"} />
+              <span><b>{node.name}</b><em>{node.status} · {node.update}</em></span>
+            </button>
+          )) : <p><StatusLight tone="green" /> 当前筛选内节点稳定</p>}
+        </div>
+      </section>
+      <section className="health-side-stats">
+        <p><span>服务实例</span><b>{serviceCount}</b></p>
+        <p><span>平均延迟</span><b>{averageLatency(nodes)}</b></p>
+      </section>
+    </aside>
   );
 }
 
@@ -3565,6 +3626,15 @@ function percentValue(value: string) {
 function latencyValue(value: string) {
   const match = value.trim().match(/^(-?\d+(?:\.\d+)?)\s*ms$/i);
   return match ? Number(match[1]) : null;
+}
+
+function averageLatency(nodes: OverviewNode[]) {
+  const values = nodes
+    .map((node) => latencyValue(node.latency))
+    .filter((value): value is number => value !== null);
+  if (values.length === 0) return "-";
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return `${Math.round(average)}ms`;
 }
 
 function isValidFirewallSource(value: string) {
