@@ -92,6 +92,7 @@ type SettingsReadOnlyState = {
   setReadOnly: React.Dispatch<React.SetStateAction<boolean>>;
 };
 type QuickIntent = "create-site" | "open-terminal" | "create-schedule" | "create-database";
+let pendingQuickRoute: { page: PageKey; intent: QuickIntent } | null = null;
 type PageMeta = { title: string; breadcrumb: string; search: string };
 type ViewContext = { eyebrow: string; title: string; chips: string[] };
 type TopbarPanel = "search" | "notifications" | "activity" | "help" | "user" | null;
@@ -1279,7 +1280,49 @@ function readPageFromHash(): PageKey {
   return "overview";
 }
 
-function readUrlParams() {
+const transientRouteParamKeys = ["quick", "mobileTab", "mobileSheet", "sheetAction", "sheetTarget", "sheetLabel"];
+const restorableRouteParamKeys = ["mobileTab"];
+const transientRouteStateKey = "stackpilotRouteEpoch";
+const transientRouteStorageKey = "stackpilot.transient-route-epoch";
+const transientRouteWindowNameKey = "stackpilotTransientRouteEpoch";
+let transientRoutesExpired = readStoredTransientRouteEpoch() > 0;
+let currentTransientRouteEpoch = readStoredTransientRouteEpoch();
+
+function readWindowNameTransientRouteEpoch() {
+  if (typeof window === "undefined") return 0;
+  const match = window.name.match(new RegExp(`(?:^|;)${transientRouteWindowNameKey}=(\\d+)(?:;|$)`));
+  if (!match) return 0;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function readStoredTransientRouteEpoch() {
+  if (typeof window === "undefined") return 0;
+  const fallbackEpoch = readWindowNameTransientRouteEpoch();
+  try {
+    const value = window.sessionStorage.getItem(transientRouteStorageKey);
+    const parsed = value ? Number(value) : 0;
+    return Math.max(Number.isFinite(parsed) && parsed > 0 ? parsed : 0, fallbackEpoch);
+  } catch {
+    return fallbackEpoch;
+  }
+}
+
+function storeTransientRouteEpoch(epoch: number) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(transientRouteStorageKey, String(epoch));
+  } catch {
+    // sessionStorage can be unavailable in restricted browser contexts.
+  }
+  const cleanedName = window.name
+    .split(";")
+    .filter((item) => item && !item.startsWith(`${transientRouteWindowNameKey}=`))
+    .join(";");
+  window.name = [cleanedName, `${transientRouteWindowNameKey}=${epoch}`].filter(Boolean).join(";");
+}
+
+function collectUrlParams() {
   const params = new URLSearchParams(window.location.search);
   const [, hashQuery = ""] = window.location.hash.split("?");
   if (hashQuery) {
@@ -1290,10 +1333,78 @@ function readUrlParams() {
   return params;
 }
 
-function readQuickIntent(): QuickIntent | null {
-  const intent = new URLSearchParams(window.location.search).get("quick");
-  if (intent === "create-site" || intent === "open-terminal" || intent === "create-schedule" || intent === "create-database") return intent;
-  return null;
+function hasTransientRouteParams(params: URLSearchParams) {
+  return transientRouteParamKeys.some((key) => params.has(key));
+}
+
+function hasExpiredInteractionParams(params: URLSearchParams) {
+  return transientRouteParamKeys.some((key) => !restorableRouteParamKeys.includes(key) && params.has(key));
+}
+
+function transientRouteEpochFromState() {
+  const state = window.history.state;
+  if (!state || typeof state !== "object") return null;
+  const epoch = (state as Record<string, unknown>)[transientRouteStateKey];
+  return typeof epoch === "number" ? epoch : null;
+}
+
+function isStaleTransientRoute(params = collectUrlParams()) {
+  const storedEpoch = readStoredTransientRouteEpoch();
+  if (storedEpoch > currentTransientRouteEpoch) {
+    currentTransientRouteEpoch = storedEpoch;
+    transientRoutesExpired = true;
+  }
+  if (!transientRoutesExpired || !hasTransientRouteParams(params)) return false;
+  return transientRouteEpochFromState() !== currentTransientRouteEpoch;
+}
+
+function transientRouteStateFor(params: URLSearchParams) {
+  return hasTransientRouteParams(params) ? { [transientRouteStateKey]: currentTransientRouteEpoch } : null;
+}
+
+function writeRouteState(historyMode: "push" | "replace", nextUrl: string, params: URLSearchParams) {
+  const state = transientRouteStateFor(params);
+  if (historyMode === "replace") {
+    window.history.replaceState(state, "", nextUrl);
+    return;
+  }
+  window.history.pushState(state, "", nextUrl);
+}
+
+function expireTransientRoutes() {
+  transientRoutesExpired = true;
+  currentTransientRouteEpoch += 1;
+  storeTransientRouteEpoch(currentTransientRouteEpoch);
+}
+
+function deleteTransientRouteParams(params: URLSearchParams) {
+  transientRouteParamKeys.forEach((key) => params.delete(key));
+}
+
+function readUrlParams() {
+  const params = collectUrlParams();
+  if (isStaleTransientRoute(params)) {
+    deleteTransientRouteParams(params);
+  }
+  return params;
+}
+
+function lockedRouteForPage(page: PageKey) {
+  const params = new URLSearchParams(window.location.search);
+  deleteTransientRouteParams(params);
+  const nextSearch = params.toString();
+  return `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}#${page}`;
+}
+
+function cleanCurrentRouteForPage(page = readPageFromHash()) {
+  const params = new URLSearchParams(window.location.search);
+  deleteTransientRouteParams(params);
+  const nextSearch = params.toString();
+  return `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}#${page}`;
+}
+
+function hasHashRouteQuery() {
+  return window.location.hash.includes("?");
 }
 
 function clearQuickIntent() {
@@ -1307,25 +1418,28 @@ function clearQuickIntent() {
 
 function setQuickRoute(page: PageKey, intent: QuickIntent) {
   const params = new URLSearchParams(window.location.search);
-  ["mobileTab", "mobileSheet", "sheetAction", "sheetTarget", "sheetLabel"].forEach((key) => params.delete(key));
-  params.set("quick", intent);
-  window.history.pushState(null, "", `${window.location.pathname}?${params.toString()}#${page}`);
+  deleteTransientRouteParams(params);
+  pendingQuickRoute = { page, intent };
+  const nextSearch = params.toString();
+  writeRouteState("push", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}#${page}`, params);
   window.dispatchEvent(new HashChangeEvent("hashchange"));
   window.dispatchEvent(new Event("stackpilot:quick-intent"));
 }
 
 function pushPageRoute(page: PageKey) {
   const params = new URLSearchParams(window.location.search);
-  ["quick", "mobileTab", "mobileSheet", "sheetAction", "sheetTarget", "sheetLabel"].forEach((key) => params.delete(key));
+  deleteTransientRouteParams(params);
   const nextSearch = params.toString();
-  window.history.pushState(null, "", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}#${page}`);
+  writeRouteState("push", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}#${page}`, params);
   window.dispatchEvent(new HashChangeEvent("hashchange"));
 }
 
 function useQuickIntent(expectedPage: PageKey, expectedIntent: QuickIntent, onIntent: () => void) {
   useEffect(() => {
     const run = () => {
-      if (readPageFromHash() !== expectedPage || readQuickIntent() !== expectedIntent) return;
+      const hasPendingIntent = pendingQuickRoute?.page === expectedPage && pendingQuickRoute.intent === expectedIntent;
+      if (!hasPendingIntent) return;
+      pendingQuickRoute = null;
       onIntent();
       clearQuickIntent();
     };
@@ -1339,11 +1453,44 @@ function App() {
   const [page, setPageState] = useState<PageKey>(readPageFromHash);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [topbarUnreadCount, setTopbarUnreadCount] = useState(3);
+  const [sessionLocked, setSessionLocked] = useState(false);
+  const pageRef = useRef(page);
+  const sessionLockedRef = useRef(sessionLocked);
 
   useEffect(() => {
-    const onHashChange = () => setPageState(readPageFromHash());
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
+    pageRef.current = page;
+  }, [page]);
+
+  useEffect(() => {
+    sessionLockedRef.current = sessionLocked;
+  }, [sessionLocked]);
+
+  useEffect(() => {
+    const syncRouteFromLocation = () => {
+      if (sessionLockedRef.current) {
+        const lockedRoute = lockedRouteForPage(pageRef.current);
+        if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== lockedRoute) {
+          window.history.replaceState(null, "", lockedRoute);
+        }
+        return;
+      }
+      if (isStaleTransientRoute()) {
+        window.history.replaceState(null, "", cleanCurrentRouteForPage());
+      }
+      if (hasHashRouteQuery() || hasExpiredInteractionParams(collectUrlParams())) {
+        window.history.replaceState(null, "", cleanCurrentRouteForPage());
+      }
+      setPageState(readPageFromHash());
+    };
+    syncRouteFromLocation();
+    window.addEventListener("hashchange", syncRouteFromLocation);
+    window.addEventListener("popstate", syncRouteFromLocation);
+    window.addEventListener("pageshow", syncRouteFromLocation);
+    return () => {
+      window.removeEventListener("hashchange", syncRouteFromLocation);
+      window.removeEventListener("popstate", syncRouteFromLocation);
+      window.removeEventListener("pageshow", syncRouteFromLocation);
+    };
   }, []);
 
   useEffect(() => {
@@ -1356,26 +1503,109 @@ function App() {
     setToast({ message, tone });
   }, []);
 
+  const lockSession = useCallback(() => {
+    expireTransientRoutes();
+    const lockedRoute = lockedRouteForPage(pageRef.current);
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== lockedRoute) {
+      window.history.replaceState(null, "", lockedRoute);
+    }
+    setSessionLocked(true);
+  }, []);
+
   const setPage = useCallback<SetPage>((next, nextToast) => {
+    if (sessionLocked) return;
     setPageState(next);
+    pageRef.current = next;
     if (nextToast) {
       setToast(nextToast);
     }
     if (window.location.hash !== `#${next}`) {
       window.location.hash = next;
     }
-  }, []);
+  }, [sessionLocked]);
 
   return (
     <main className={`shot-canvas ${page === "mobile" ? "mobile-canvas" : ""}`}>
-      {page === "mobile" ? (
-        <MobileApp notify={notify} />
-      ) : (
-        <DesktopShell page={page} setPage={setPage} notify={notify} topbarUnreadCount={topbarUnreadCount} setTopbarUnreadCount={setTopbarUnreadCount} />
+      <div className="app-interaction-layer" inert={sessionLocked} aria-hidden={sessionLocked ? "true" : undefined}>
+        {page === "mobile" ? (
+          <MobileApp notify={notify} />
+        ) : (
+          <DesktopShell page={page} setPage={setPage} notify={notify} topbarUnreadCount={topbarUnreadCount} setTopbarUnreadCount={setTopbarUnreadCount} sessionLocked={sessionLocked} onLogout={lockSession} />
+        )}
+      </div>
+      {sessionLocked && (
+        <SessionLockOverlay
+          page={page}
+          onRestore={() => {
+            setSessionLocked(false);
+            notify("已重新进入控制台", "info");
+          }}
+        />
       )}
       <div className="sr-only" aria-live="polite" aria-atomic="true">{toast?.message ?? ""}</div>
       {toast && <ActionToast toast={toast} />}
     </main>
+  );
+}
+
+function SessionLockOverlay({ page, onRestore }: { page: PageKey; onRestore: () => void }) {
+  const overlayRef = useRef<HTMLElement>(null);
+  const restoreButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    restoreButtonRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  const trapFocus = (event: React.KeyboardEvent<HTMLElement>) => {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      restoreButtonRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (event.key !== "Tab" || !overlayRef.current) return;
+    const controls = drawerFocusableElements(overlayRef.current);
+    if (controls.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    const active = document.activeElement;
+    if (!overlayRef.current.contains(active)) {
+      event.preventDefault();
+      first.focus();
+      return;
+    }
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+    if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  const restore = () => {
+    const lockedRoute = lockedRouteForPage(page);
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== lockedRoute) {
+      window.history.replaceState(null, "", lockedRoute);
+    }
+    onRestore();
+  };
+
+  return (
+    <section ref={overlayRef} className="session-lock-overlay" role="dialog" aria-modal="true" aria-labelledby="session-lock-title" onKeyDown={trapFocus}>
+      <div>
+        <Lock size={22} />
+        <span>本地原型会话已退出</span>
+        <h2 id="session-lock-title">StackPilot 控制台已锁定</h2>
+        <p>当前前端原型没有后端登录接口，退出后会阻止继续操作；重新进入会恢复到当前页面。</p>
+        <button ref={restoreButtonRef} className="primary" type="button" onClick={restore}>重新进入控制台</button>
+      </div>
+    </section>
   );
 }
 
@@ -1385,12 +1615,16 @@ function DesktopShell({
   notify,
   topbarUnreadCount,
   setTopbarUnreadCount,
+  sessionLocked,
+  onLogout,
 }: {
   page: PageKey;
   setPage: SetPage;
   notify: Notify;
   topbarUnreadCount: number;
   setTopbarUnreadCount: React.Dispatch<React.SetStateAction<number>>;
+  sessionLocked: boolean;
+  onLogout: () => void;
 }) {
   const activeModule = navPageFor(page);
   const whiteTop = !["overview", "overview-health", "overview-tasks", "overview-risks"].includes(page);
@@ -1488,7 +1722,7 @@ function DesktopShell({
         onExpandCollapsed={expandSidebar}
       />
       <div className="desktop-main" inert={sidebarOverlayOpen} aria-hidden={sidebarOverlayOpen ? "true" : undefined}>
-        <TopBar page={page} setPage={setPage} white={whiteTop} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} />
+        <TopBar page={page} setPage={setPage} white={whiteTop} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} interactionsDisabled={sessionLocked} onLogout={onLogout} />
         {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
         {page === "overview-health" && <OverviewHealthPage notify={notify} />}
         {page === "overview-tasks" && <OverviewTasksPage notify={notify} />}
@@ -1701,6 +1935,8 @@ function TopBar({
   notify,
   unreadCount,
   setUnreadCount,
+  interactionsDisabled,
+  onLogout,
 }: {
   page: PageKey;
   setPage: SetPage;
@@ -1708,6 +1944,8 @@ function TopBar({
   notify: Notify;
   unreadCount: number;
   setUnreadCount: React.Dispatch<React.SetStateAction<number>>;
+  interactionsDisabled: boolean;
+  onLogout: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [openPanel, setOpenPanel] = useState<TopbarPanel>(null);
@@ -1724,8 +1962,9 @@ function TopBar({
   const userName = page === "overview" ? "admin" : page === "databases" ? "张工" : "管理员";
   const searchResults = topbarSearchResults(query);
   const boundedSearchIndex = searchResults.length > 0 ? Math.min(activeSearchIndex, searchResults.length - 1) : 0;
-  const activeSearchOptionId = openPanel === "search" && searchResults.length > 0 ? `topbar-search-option-${boundedSearchIndex}` : undefined;
-  const compactSearchHidden = page !== "overview" && openPanel !== "search";
+  const visiblePanel = interactionsDisabled ? null : openPanel;
+  const activeSearchOptionId = visiblePanel === "search" && searchResults.length > 0 ? `topbar-search-option-${boundedSearchIndex}` : undefined;
+  const compactSearchHidden = interactionsDisabled || (page !== "overview" && visiblePanel !== "search");
   const togglePanel = (panel: TopbarMenuPanel) => {
     setLastMenuTrigger(panel);
     setOpenPanel((current) => (current === panel ? null : panel));
@@ -1734,6 +1973,10 @@ function TopBar({
     const trigger = lastMenuTrigger ? menuTriggerRefs.current[lastMenuTrigger] : null;
     setOpenPanel(null);
     window.requestAnimationFrame(() => trigger?.focus());
+  };
+  const lockSession = () => {
+    setOpenPanel(null);
+    onLogout();
   };
   const closeSearchPanel = (restoreFocus = false) => {
     setOpenPanel(null);
@@ -1764,6 +2007,7 @@ function TopBar({
   };
 
   useEffect(() => {
+    if (interactionsDisabled) return;
     const handlePointerDown = (event: PointerEvent) => {
       if (topbarRef.current?.contains(event.target as Node) || searchRef.current?.contains(event.target as Node)) return;
       closeSearchPanel();
@@ -1782,7 +2026,7 @@ function TopBar({
       window.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+  }, [interactionsDisabled]);
 
   return (
     <header className={`topbar-mock ${white ? "white" : ""}`}>
@@ -1794,7 +2038,7 @@ function TopBar({
           <strong>{meta.title}</strong>
         </div>
       )}
-      <div className={`mock-search ${openPanel === "search" ? "active" : ""}`} ref={searchRef} inert={compactSearchHidden} aria-hidden={compactSearchHidden ? "true" : undefined}>
+      <div className={`mock-search ${visiblePanel === "search" ? "active" : ""}`} ref={searchRef} inert={compactSearchHidden} aria-hidden={compactSearchHidden ? "true" : undefined}>
         <Search size={13} />
         <span id="topbar-search-label" className="sr-only">全局搜索</span>
         <input
@@ -1808,7 +2052,7 @@ function TopBar({
           onFocus={() => setOpenPanel("search")}
           onBlur={(event) => {
             if (searchRef.current?.contains(event.relatedTarget as Node)) return;
-            if (openPanel === "search") closeSearchPanel();
+            if (visiblePanel === "search") closeSearchPanel();
           }}
           onChange={(event) => {
             setQuery(event.target.value);
@@ -1846,12 +2090,12 @@ function TopBar({
               }
             }
           }}
-          aria-expanded={openPanel === "search"}
-          aria-controls={openPanel === "search" ? "topbar-search-panel" : undefined}
+          aria-expanded={visiblePanel === "search"}
+          aria-controls={visiblePanel === "search" ? "topbar-search-panel" : undefined}
           aria-activedescendant={activeSearchOptionId}
         />
         <kbd>⌘K</kbd>
-        {openPanel === "search" && (
+        {visiblePanel === "search" && (
           <div className="topbar-search-panel" id="topbar-search-panel" role="listbox" aria-label="全局搜索结果">
             <div className="topbar-search-head">
               <span>{query.trim() ? `搜索 ${query.trim()}` : "快速打开"}</span>
@@ -1889,12 +2133,12 @@ function TopBar({
           <button
             ref={searchTriggerRef}
             type="button"
-            className={`icon-action compact-search-trigger ${openPanel === "search" ? "active" : ""}`}
+            className={`icon-action compact-search-trigger ${visiblePanel === "search" ? "active" : ""}`}
             onClick={openSearchPanel}
             aria-label="打开全局搜索"
             aria-haspopup="listbox"
-            aria-expanded={openPanel === "search"}
-            aria-controls={openPanel === "search" ? "topbar-search-panel" : undefined}
+            aria-expanded={visiblePanel === "search"}
+            aria-controls={visiblePanel === "search" ? "topbar-search-panel" : undefined}
           >
             <Search size={17} />
           </button>
@@ -1904,12 +2148,12 @@ function TopBar({
           <button
             ref={(node) => { menuTriggerRefs.current.notifications = node; }}
             type="button"
-            className={`icon-action ${openPanel === "notifications" ? "active" : ""}`}
+            className={`icon-action ${visiblePanel === "notifications" ? "active" : ""}`}
             onClick={() => togglePanel("notifications")}
             aria-label={`通知${unreadCount > 0 ? `，${unreadCount} 条未读` : "，无未读"}`}
             aria-haspopup="dialog"
-            aria-expanded={openPanel === "notifications"}
-            aria-controls={openPanel === "notifications" ? "topbar-notifications-panel" : undefined}
+            aria-expanded={visiblePanel === "notifications"}
+            aria-controls={visiblePanel === "notifications" ? "topbar-notifications-panel" : undefined}
           >
             <Bell size={18} />
           </button>
@@ -1919,12 +2163,12 @@ function TopBar({
           <button
             ref={(node) => { menuTriggerRefs.current.activity = node; }}
             type="button"
-            className={`icon-action ${openPanel === "activity" ? "active" : ""}`}
+            className={`icon-action ${visiblePanel === "activity" ? "active" : ""}`}
             onClick={() => togglePanel("activity")}
             aria-label="操作记录"
             aria-haspopup="dialog"
-            aria-expanded={openPanel === "activity"}
-            aria-controls={openPanel === "activity" ? "topbar-activity-panel" : undefined}
+            aria-expanded={visiblePanel === "activity"}
+            aria-controls={visiblePanel === "activity" ? "topbar-activity-panel" : undefined}
           >
             <FileText size={17} />
           </button>
@@ -1932,24 +2176,24 @@ function TopBar({
         <button
           ref={(node) => { menuTriggerRefs.current.help = node; }}
           type="button"
-          className={`icon-action ${openPanel === "help" ? "active" : ""}`}
+          className={`icon-action ${visiblePanel === "help" ? "active" : ""}`}
           onClick={() => togglePanel("help")}
           aria-label="帮助"
           aria-haspopup="dialog"
-          aria-expanded={openPanel === "help"}
-          aria-controls={openPanel === "help" ? "topbar-help-panel" : undefined}
+          aria-expanded={visiblePanel === "help"}
+          aria-controls={visiblePanel === "help" ? "topbar-help-panel" : undefined}
         >
           <CircleHelp size={17} />
         </button>
         <button
           ref={(node) => { menuTriggerRefs.current.user = node; }}
           type="button"
-          className={`user-menu-button ${openPanel === "user" ? "active" : ""}`}
+          className={`user-menu-button ${visiblePanel === "user" ? "active" : ""}`}
           onClick={() => togglePanel("user")}
           aria-label="用户菜单"
           aria-haspopup="menu"
-          aria-expanded={openPanel === "user"}
-          aria-controls={openPanel === "user" ? "topbar-user-panel" : undefined}
+          aria-expanded={visiblePanel === "user"}
+          aria-controls={visiblePanel === "user" ? "topbar-user-panel" : undefined}
         >
           <span className="avatar-mini" aria-hidden="true">
             <UserRound size={18} />
@@ -1957,17 +2201,19 @@ function TopBar({
           <strong>{userName}</strong>
           <ChevronDown size={13} />
         </button>
-        {openPanel && openPanel !== "search" && (
+        {visiblePanel && visiblePanel !== "search" && (
           <TopbarDropdown
-            panel={openPanel}
+            panel={visiblePanel}
             page={page}
             userName={userName}
             unreadCount={unreadCount}
+            setPage={setPage}
             onClose={closeMenuPanel}
             onMarkRead={() => {
               setUnreadCount(0);
               notify("通知已全部标记为已读", "info");
             }}
+            onLogout={lockSession}
             notify={notify}
           />
         )}
@@ -1981,16 +2227,20 @@ function TopbarDropdown({
   page,
   userName,
   unreadCount,
+  setPage,
   onClose,
   onMarkRead,
+  onLogout,
   notify,
 }: {
   panel: TopbarMenuPanel;
   page: PageKey;
   userName: string;
   unreadCount: number;
+  setPage: SetPage;
   onClose: () => void;
   onMarkRead: () => void;
+  onLogout: () => void;
   notify: Notify;
 }) {
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -2034,26 +2284,27 @@ function TopbarDropdown({
   };
 
   if (panel === "user") {
+    const userMenuItems = [
+      { label: "个人资料", page: "settings-general", message: "已打开个人资料设置" },
+      { label: "访问令牌", page: "settings-general", message: "已打开访问令牌设置" },
+      { label: "登录记录", page: "audit", message: "已打开登录记录审计" },
+      { label: "操作记录", page: "audit", message: "已打开操作记录审计" },
+    ];
     return (
       <div ref={dropdownRef} className="topbar-dropdown user-dropdown" id="topbar-user-panel" role="menu" aria-label="用户菜单" onKeyDown={trapDropdownFocus}>
         <div className="topbar-dropdown-head">
           <span>当前账号</span>
           <strong>{userName}</strong>
         </div>
-        {["个人资料", "访问令牌", "登录记录"].map((item) => (
-          <button key={item} type="button" role="menuitem" onClick={() => { notify(`已打开${item}`, "info"); onClose(); }}>
-            {item}
+        {userMenuItems.map((item) => (
+          <button key={item.label} type="button" role="menuitem" onClick={() => { setPage(item.page, { message: item.message, tone: "info" }); onClose(); }}>
+            {item.label}
           </button>
         ))}
-        {[
-          ["操作记录", "已打开操作记录"],
-          ["帮助中心", "帮助文档已打开"],
-        ].map(([item, message]) => (
-          <button key={item} type="button" role="menuitem" onClick={() => { notify(message, "info"); onClose(); }}>
-            {item}
-          </button>
-        ))}
-        <button type="button" role="menuitem" className="danger-item" onClick={() => { notify("已退出当前会话", "warning"); onClose(); }}>
+        <button type="button" role="menuitem" onClick={() => { notify("帮助中心为本地原型说明，暂无外部文档", "info"); onClose(); }}>
+          帮助中心
+        </button>
+        <button type="button" role="menuitem" className="danger-item" onClick={() => { onLogout(); notify("本地会话已锁定", "warning"); }}>
           退出登录
         </button>
       </div>
@@ -2075,7 +2326,12 @@ function TopbarDropdown({
           type="button"
           onClick={() => {
             if (panel === "notifications") onMarkRead();
-            else notify(panel === "activity" ? "已打开审计日志" : "帮助文档已打开", "info");
+            else if (panel === "activity") {
+              setPage("audit", { message: "已打开审计日志", tone: "info" });
+              onClose();
+            } else {
+              notify("帮助中心为本地原型说明，暂无外部文档", "info");
+            }
           }}
         >
           {panelMeta.action}
@@ -2089,7 +2345,14 @@ function TopbarDropdown({
             type="button"
             className="topbar-dropdown-item"
             onClick={() => {
-              notify(panel === "help" ? `已打开帮助：${item.title}` : `已打开记录：${item.title}`, "info");
+              if (panel === "activity") {
+                setPage("audit", { message: `已打开记录：${item.title}`, tone: "info" });
+              } else if (panel === "notifications") {
+                const notificationTarget: PageKey = item.id === "ntf-1" ? "databases-backups" : item.id === "ntf-2" ? "sites-cert" : "deploy";
+                setPage(notificationTarget, { message: `已打开通知：${item.title}`, tone: "info" });
+              } else {
+                notify(`帮助条目已聚焦：${item.title}`, "info");
+              }
               onClose();
             }}
           >
@@ -2858,7 +3121,7 @@ function ModulePageShell({
   title: string;
   subtitle?: string | null;
   page?: PageKey;
-  viewContext?: ViewContext | null;
+  viewContext?: ViewContext | false | null;
   tabs?: React.ReactNode;
   actions?: React.ReactNode;
   filters?: React.ReactNode;
@@ -2866,7 +3129,7 @@ function ModulePageShell({
   side?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const effectiveViewContext = viewContext ?? (page ? viewContextForPage(page) : null);
+  const effectiveViewContext = viewContext === false ? null : viewContext ?? (page ? viewContextForPage(page) : null);
   const isNarrowViewport = useIsNarrowViewport();
   const isModalSide = Boolean(side) && isNarrowViewport;
   return (
@@ -3313,6 +3576,7 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
       title={resolvePageMeta(page).title}
       subtitle={null}
       page={page}
+      viewContext={false}
       actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 台主机`, "info")}><Download size={15} /> 导出</button><button className="primary" type="button" onClick={() => { setDraftErrors({}); setDrawer({ type: "create" }); }}><Plus size={15} /> 新增主机</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索主机名或 IP" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={(value) => setEnvByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="健康" value={healthFilter} options={["全部", "健康", "警告", "离线"]} onChange={(value) => setHealthByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={Server} label="主机总数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="健康" value={`${rows.filter((row) => row.health === "健康").length}`} tone="green" /><MetricTile icon={Shield} label="需关注" value={`${rows.filter((row) => row.health !== "健康").length}`} tone="orange" /></>}
@@ -3459,7 +3723,7 @@ function SitesPage({ page, notify }: { page: PageKey; notify: Notify }) {
           { key: "host", label: "主机", render: (row) => row.host },
           { key: "cert", label: "证书", render: (row) => <span className={row.certDays < 14 ? "orange-text" : "green-text"}>{row.certDays} 天</span> },
           { key: "traffic", label: "流量", render: (row) => row.traffic },
-          { key: "ops", label: "操作", width: "220px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { updateSite(row.id, { status: row.status === "已停止" ? "运行中" : "已停止" }); notify(`${row.domain} 已${row.status === "已停止" ? "启动" : "停止"}`); }}>{row.status === "已停止" ? "启动" : "停止"}</button><button type="button" onClick={() => { updateSite(row.id, { certDays: 90 }); notify(`${row.domain} 证书已续期`); }}>续期</button><button type="button" onClick={() => setDrawer({ type: "logs", site: row })}>日志</button></span> },
+          { key: "ops", label: "操作", width: "220px", render: (row) => <span className="table-actions"><button type="button" aria-label={`${row.status === "已停止" ? "启动" : "停止"}网站 ${row.domain}`} onClick={() => { updateSite(row.id, { status: row.status === "已停止" ? "运行中" : "已停止" }); notify(`${row.domain} 已${row.status === "已停止" ? "启动" : "停止"}`); }}>{row.status === "已停止" ? "启动" : "停止"}</button><button type="button" aria-label={`续期网站 ${row.domain} 证书`} onClick={() => { updateSite(row.id, { certDays: 90 }); notify(`${row.domain} 证书已续期`); }}>续期</button><button type="button" aria-label={`查看网站 ${row.domain} 日志`} onClick={() => setDrawer({ type: "logs", site: row })}>日志</button></span> },
         ]}
         rows={filteredRows}
         emptyText="没有匹配的网站"
@@ -3703,7 +3967,15 @@ function FileUploadQueuePage({ page, notify }: { page: PageKey; notify: Notify }
       filters={<><ModuleSearch value={search} placeholder="搜索文件名、目标路径或上传人" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={["全部", "上传中", "等待", "已完成", "失败"]} onChange={setStatusFilter} /></>}
       metrics={<><MetricTile icon={CloudUpload} label="队列任务" value={`${uploads.length}`} tone="blue" /><MetricTile icon={Activity} label="上传中" value={`${uploads.filter((row) => row.status === "上传中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="已完成" value={`${uploads.filter((row) => row.status === "已完成").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${uploads.filter((row) => row.status === "失败").length}`} tone="red" /></>}
       side={selected && (
-        <DetailDrawer title="上传详情" subtitle={selected.name} onClose={() => setSelectedId("")} autoFocus={false} actions={<><button className="ghost" type="button" aria-label={`取消上传 ${selected.name}`} onClick={() => cancelUpload(selected)}>取消上传</button><button className="primary" type="button" aria-label={`完成上传 ${selected.name}`} onClick={() => completeUpload(selected)}>完成</button></>}>
+        <DetailDrawer
+          title="上传详情"
+          subtitle={selected.name}
+          onClose={() => setSelectedId("")}
+          autoFocus={false}
+          actions={selected.status === "已完成"
+            ? <button className="ghost" type="button" onClick={() => setSelectedId("")}>关闭</button>
+            : <><button className="ghost" type="button" aria-label={`取消上传 ${selected.name}`} onClick={() => cancelUpload(selected)}>取消上传</button><button className="primary" type="button" aria-label={`完成上传 ${selected.name}`} onClick={() => completeUpload(selected)}>完成</button></>}
+        >
           <div className="detail-kv upload-detail">
             <p><span>目标路径</span><b>{selected.targetPath}</b></p>
             <p><span>大小</span><b>{selected.size}</b></p>
@@ -3732,7 +4004,7 @@ function FileUploadQueuePage({ page, notify }: { page: PageKey; notify: Notify }
                 {row.status === "等待" && <button type="button" aria-label={`继续上传 ${row.name}`} onClick={() => resumeUpload(row)}>继续</button>}
                 {row.status === "失败" && <button type="button" aria-label={`重试上传 ${row.name}`} onClick={() => retryUpload(row)}>重试</button>}
                 {row.status !== "已完成" && <button type="button" aria-label={`完成上传 ${row.name}`} onClick={() => completeUpload(row)}>完成</button>}
-                <button type="button" aria-label={`取消上传 ${row.name}`} onClick={() => cancelUpload(row)}>取消</button>
+                {row.status !== "已完成" ? <button type="button" aria-label={`取消上传 ${row.name}`} onClick={() => cancelUpload(row)}>取消</button> : <span className="green-text">已完成</span>}
               </span>
             ) },
           ]}
@@ -3759,7 +4031,7 @@ function FileUploadQueuePage({ page, notify }: { page: PageKey; notify: Notify }
                   {row.status === "等待" && <button type="button" aria-label={`继续上传 ${row.name}`} onClick={() => resumeUpload(row)}>继续</button>}
                   {row.status === "失败" && <button type="button" aria-label={`重试上传 ${row.name}`} onClick={() => retryUpload(row)}>重试</button>}
                   {row.status !== "已完成" && <button type="button" aria-label={`完成上传 ${row.name}`} onClick={() => completeUpload(row)}>完成</button>}
-                  <button type="button" aria-label={`取消上传 ${row.name}`} onClick={() => cancelUpload(row)}>取消</button>
+                  {row.status !== "已完成" ? <button type="button" aria-label={`取消上传 ${row.name}`} onClick={() => cancelUpload(row)}>取消</button> : <span className="green-text">已完成</span>}
                 </div>
               </div>
             </>
@@ -4206,6 +4478,22 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
     setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
     setDrawer((current) => current?.id === id ? { ...current, ...patch } : current);
   };
+  const startService = (row: ServiceRecord) => {
+    updateService(row.id, { status: "active", handled: false, updated: "刚刚" });
+    notify(`${row.name} 已启动`);
+  };
+  const stopService = (row: ServiceRecord) => {
+    updateService(row.id, { status: "inactive", updated: "刚刚" });
+    notify(`${row.name} 已停止`, "warning");
+  };
+  const restartService = (row: ServiceRecord) => {
+    updateService(row.id, { status: "active", restarts: row.restarts + 1, handled: false, updated: "刚刚" });
+    notify(`${row.name} 已重启`);
+  };
+  const markServiceHandled = (row: ServiceRecord) => {
+    updateService(row.id, { handled: true, status: "inactive", updated: "刚刚" });
+    notify(`${row.name} 已标记处理`);
+  };
   const logRows = servicePreset.mode === "logs" ? rows : drawer ? [drawer] : [];
   return (
     <ModulePageShell
@@ -4234,7 +4522,7 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
                 <p>systemd[1]: {row.status === "inactive" ? `Stopped ${row.name}` : row.status === "failed" ? "service entered failed state" : `Started ${row.name}`}</p>
                 <p>{row.status === "failed" ? "exit-code=1 failed with result 'timeout'" : row.status === "inactive" ? "inactive/dead after operator action" : "status=0/SUCCESS"}</p>
                 <p>memory current: {row.memory} · restarts: {row.restarts}</p>
-                <button type="button" onClick={() => setDrawer(row)}>打开详情</button>
+                <button type="button" aria-label={`打开服务 ${row.name} 日志详情`} onClick={() => setDrawer(row)}>打开详情</button>
               </article>
             ))}
           </div>
@@ -4247,7 +4535,7 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
             { key: "restarts", label: "重启次数", render: (row) => row.restarts },
             { key: "memory", label: "内存", render: (row) => row.memory },
             { key: "updated", label: "最近更新", render: (row) => row.updated },
-            { key: "ops", label: "操作", width: "280px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { updateService(row.id, { status: "active", handled: false, updated: "刚刚" }); notify(`${row.name} 已启动`); }}>启动</button><button type="button" onClick={() => { updateService(row.id, { status: "inactive", updated: "刚刚" }); notify(`${row.name} 已停止`, "warning"); }}>停止</button><button type="button" onClick={() => { updateService(row.id, { status: "active", restarts: row.restarts + 1, handled: false, updated: "刚刚" }); notify(`${row.name} 已重启`); }}>重启</button><button type="button" onClick={() => setDrawer(row)}>日志</button>{row.status === "failed" && <button type="button" onClick={() => { updateService(row.id, { handled: true, status: "inactive", updated: "刚刚" }); notify(`${row.name} 已标记处理`); }}>处理</button>}</span> },
+            { key: "ops", label: "操作", width: "280px", render: (row) => <span className="table-actions"><button type="button" aria-label={`启动服务 ${row.name}`} onClick={() => startService(row)}>启动</button><button type="button" aria-label={`停止服务 ${row.name}`} onClick={() => stopService(row)}>停止</button><button type="button" aria-label={`重启服务 ${row.name}`} onClick={() => restartService(row)}>重启</button><button type="button" aria-label={`查看服务 ${row.name} 日志`} onClick={() => setDrawer(row)}>日志</button>{row.status === "failed" && <button type="button" aria-label={`标记服务 ${row.name} 已处理`} onClick={() => markServiceHandled(row)}>处理</button>}</span> },
           ]}
           rows={filteredRows}
           emptyText="没有匹配的服务"
@@ -4267,11 +4555,11 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
               </div>
               <div className="module-card-footer">
                 <div className={`table-actions ${row.status === "failed" ? "actions-5" : "actions-4"}`}>
-                  <button type="button" onClick={() => { updateService(row.id, { status: "active", handled: false, updated: "刚刚" }); notify(`${row.name} 已启动`); }}>启动</button>
-                  <button type="button" onClick={() => { updateService(row.id, { status: "inactive", updated: "刚刚" }); notify(`${row.name} 已停止`, "warning"); }}>停止</button>
-                  <button type="button" onClick={() => { updateService(row.id, { status: "active", restarts: row.restarts + 1, handled: false, updated: "刚刚" }); notify(`${row.name} 已重启`); }}>重启</button>
-                  <button type="button" onClick={() => setDrawer(row)}>日志</button>
-                  {row.status === "failed" && <button type="button" onClick={() => { updateService(row.id, { handled: true, status: "inactive", updated: "刚刚" }); notify(`${row.name} 已标记处理`); }}>处理</button>}
+                  <button type="button" aria-label={`启动服务 ${row.name}`} onClick={() => startService(row)}>启动</button>
+                  <button type="button" aria-label={`停止服务 ${row.name}`} onClick={() => stopService(row)}>停止</button>
+                  <button type="button" aria-label={`重启服务 ${row.name}`} onClick={() => restartService(row)}>重启</button>
+                  <button type="button" aria-label={`查看服务 ${row.name} 日志`} onClick={() => setDrawer(row)}>日志</button>
+                  {row.status === "failed" && <button type="button" aria-label={`标记服务 ${row.name} 已处理`} onClick={() => markServiceHandled(row)}>处理</button>}
                 </div>
               </div>
             </>
@@ -7045,8 +7333,6 @@ type MobileSheetState =
   | { type: "site"; siteId: string }
   | { type: "task"; taskId: string };
 
-const mobileSheetTypes = ["menu", "system", "notifications", "audit", "quick", "module", "action", "host", "site", "task"];
-
 type MobileTabIcon = (props: { size?: number }) => React.ReactNode;
 
 const mobileTabs: Array<[MobileTabIcon, MobileTab]> = [
@@ -7069,69 +7355,6 @@ function readMobileTabFromUrl(): MobileTab {
   return tab && isMobileTab(tab) ? tab : "首页";
 }
 
-function readMobileSheetFromUrl(): MobileSheetState | null {
-  if (typeof window === "undefined") return null;
-  const params = readUrlParams();
-  const type = params.get("mobileSheet");
-  if (!type || !mobileSheetTypes.includes(type)) return null;
-  switch (type) {
-    case "menu":
-    case "system":
-    case "notifications":
-    case "audit":
-      return { type };
-    case "quick": {
-      const action = params.get("sheetAction");
-      return action ? { type, action } : null;
-    }
-    case "module": {
-      const action = params.get("sheetAction");
-      return action ? { type, action } : null;
-    }
-    case "action": {
-      const action = params.get("sheetAction");
-      return action && isMobileActionKind(action) ? {
-        type,
-        action,
-        targetId: params.get("sheetTarget") ?? undefined,
-        label: params.get("sheetLabel") ?? undefined,
-      } : null;
-    }
-    case "host": {
-      const hostId = params.get("sheetTarget");
-      return hostId ? { type, hostId } : null;
-    }
-    case "site": {
-      const siteId = params.get("sheetTarget");
-      return siteId ? { type, siteId } : null;
-    }
-    case "task": {
-      const taskId = params.get("sheetTarget");
-      return taskId ? { type, taskId } : null;
-    }
-    default:
-      return null;
-  }
-}
-
-function isMobileActionKind(value: string): value is MobileActionKind {
-  return [
-    "host-restart",
-    "host-backup",
-    "site-toggle",
-    "site-renew",
-    "task-rerun",
-    "task-complete",
-    "profile-refresh",
-    "push-toggle",
-    "mfa-toggle",
-    "audit-view",
-    "diagnostics",
-    "notification-open",
-    "terminal-open",
-  ].includes(value);
-}
-
 function writeMobileSheetToUrl(sheet: MobileSheetState | null, historyMode: "push" | "replace" = "push") {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
@@ -7143,22 +7366,9 @@ function writeMobileSheetToUrl(sheet: MobileSheetState | null, historyMode: "pus
   }
   url.hash = "mobile";
   ["mobileSheet", "sheetAction", "sheetTarget", "sheetLabel"].forEach((key) => url.searchParams.delete(key));
-  if (sheet) {
-    url.searchParams.set("mobileSheet", sheet.type);
-    if ("action" in sheet) url.searchParams.set("sheetAction", sheet.action);
-    if ("targetId" in sheet && sheet.targetId) url.searchParams.set("sheetTarget", sheet.targetId);
-    if ("label" in sheet && sheet.label) url.searchParams.set("sheetLabel", sheet.label);
-    if ("hostId" in sheet) url.searchParams.set("sheetTarget", sheet.hostId);
-    if ("siteId" in sheet) url.searchParams.set("sheetTarget", sheet.siteId);
-    if ("taskId" in sheet) url.searchParams.set("sheetTarget", sheet.taskId);
-  }
   const nextUrl = `${url.pathname}${url.search}${url.hash}`;
   if (nextUrl === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
-  if (historyMode === "replace") {
-    window.history.replaceState(null, "", nextUrl);
-    return;
-  }
-  window.history.pushState(null, "", nextUrl);
+  writeRouteState(sheet ? "replace" : historyMode, nextUrl, url.searchParams);
 }
 
 function clearMobileSheetFromUrl(historyMode: "push" | "replace" = "push") {
@@ -7201,7 +7411,7 @@ function MobileApp({ notify }: { notify: Notify }) {
   const [unreadNoticeIds, setUnreadNoticeIds] = useState(() => mobileNoticeRows.map((notice) => notice.id));
   const [pushEnabled, setPushEnabled] = useState(true);
   const [mfaEnabled, setMfaEnabled] = useState(true);
-  const [mobileSheet, setMobileSheet] = useState<MobileSheetState | null>(() => readMobileSheetFromUrl());
+  const [mobileSheet, setMobileSheet] = useState<MobileSheetState | null>(null);
   const [mobileHosts, setMobileHosts] = useState<MobileHostRecord[]>([
     { id: "web-01", name: "web-01", env: "生产环境", ip: "203.0.113.10", os: "Ubuntu 22.04", cpu: "12%", memory: "38%", uptime: "2 天", health: "健康" },
     { id: "web-02", name: "web-02", env: "生产环境", ip: "203.0.113.11", os: "Ubuntu 22.04", cpu: "22%", memory: "45%", uptime: "5 天", health: "健康" },
@@ -7267,17 +7477,38 @@ function MobileApp({ notify }: { notify: Notify }) {
     setMobileSheet(null);
     clearMobileSheetFromUrl(historyMode);
   };
+  const openMobileTabFromSheet = (tab: MobileTab, shouldNotify = true) => {
+    setMobileTab(tab, shouldNotify, "replace");
+  };
+  const openDesktopPageFromMobileSheet = (page: PageKey, notifyMessage: string, intent?: QuickIntent) => {
+    setMobileSheet(null);
+    clearMobileSheetFromUrl("replace");
+    if (intent) {
+      setQuickRoute(page, intent);
+    } else {
+      pushPageRoute(page);
+    }
+    notify(notifyMessage, "info");
+  };
   useEffect(() => {
     const syncMobileRoute = () => {
+      if (isStaleTransientRoute()) {
+        window.history.replaceState(null, "", cleanCurrentRouteForPage("mobile"));
+      }
+      if (readUrlParams().has("mobileSheet")) {
+        window.history.replaceState(null, "", cleanCurrentRouteForPage("mobile"));
+      }
       setActiveTab(readMobileTabFromUrl());
-      setMobileSheet(readMobileSheetFromUrl());
+      setMobileSheet(null);
       window.requestAnimationFrame(() => mobileContentRef.current?.scrollTo({ top: 0 }));
     };
     window.addEventListener("popstate", syncMobileRoute);
     window.addEventListener("hashchange", syncMobileRoute);
+    window.addEventListener("pageshow", syncMobileRoute);
     return () => {
       window.removeEventListener("popstate", syncMobileRoute);
       window.removeEventListener("hashchange", syncMobileRoute);
+      window.removeEventListener("pageshow", syncMobileRoute);
     };
   }, []);
 
@@ -7295,11 +7526,7 @@ function MobileApp({ notify }: { notify: Notify }) {
       url.hash = "mobile";
       const nextUrl = `${url.pathname}${url.search}${url.hash}`;
       if (nextUrl !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
-        if (historyMode === "replace") {
-          window.history.replaceState(null, "", nextUrl);
-        } else {
-          window.history.pushState(null, "", nextUrl);
-        }
+        writeRouteState(historyMode, nextUrl, url.searchParams);
       }
     }
     if (shouldNotify) notify(`已切换到移动端${tab}`, "info");
@@ -7333,24 +7560,21 @@ function MobileApp({ notify }: { notify: Notify }) {
   };
   const openQuickTarget = (action: MobileQuickAction) => {
     if (["首页", "主机", "网站", "任务", "我的"].includes(action.target)) {
-      setMobileTab(action.target as MobileTab, false, "push");
-      closeMobileSheet();
+      openMobileTabFromSheet(action.target as MobileTab, false);
       notify(`已打开${action.targetHint}`, "info");
       return;
     }
-    setMobileSheet(null);
     if (action.target === "数据库") {
-      setQuickRoute("databases", "create-database");
+      openDesktopPageFromMobileSheet("databases", `已打开${action.targetHint}`, "create-database");
     } else if (action.target === "文件") {
-      pushPageRoute("files-upload");
+      openDesktopPageFromMobileSheet("files-upload", `已打开${action.targetHint}`);
     } else if (action.target === "终端") {
-      setQuickRoute("terminal", "open-terminal");
+      openDesktopPageFromMobileSheet("terminal", `已打开${action.targetHint}`, "open-terminal");
     } else if (action.target === "系统服务") {
-      pushPageRoute("systemd");
+      openDesktopPageFromMobileSheet("systemd", `已打开${action.targetHint}`);
     } else if (action.target === "防火墙") {
-      pushPageRoute("firewall");
+      openDesktopPageFromMobileSheet("firewall", `已打开${action.targetHint}`);
     }
-    notify(`已打开${action.targetHint}`, "info");
   };
   const saveQuickDraft = (action: MobileQuickAction) => {
     setQuickDrafts((current) => (
@@ -7747,12 +7971,12 @@ function MobileApp({ notify }: { notify: Notify }) {
                             : mobileSheet.type === "site" ? selectedSite?.domain ?? "网站日志"
                               : selectedTask?.title ?? "任务详情"
           }
-          onClose={closeMobileSheet}
+          onClose={() => closeMobileSheet("replace")}
         >
           {mobileSheet.type === "menu" && (
             <div className="mobile-sheet-actions">
               {mobileTabs.map(([, label]) => (
-                <button key={label} type="button" onClick={() => { setMobileTab(label, true, "push"); closeMobileSheet(); }}>{label}</button>
+                <button key={label} type="button" onClick={() => openMobileTabFromSheet(label, true)}>{label}</button>
               ))}
               <button type="button" onClick={() => replaceMobileSheet({ type: "system" })}>系统状态</button>
               <button type="button" onClick={() => replaceMobileSheet({ type: "notifications" })}>通知中心</button>
@@ -7774,7 +7998,7 @@ function MobileApp({ notify }: { notify: Notify }) {
               </div>
               <div className="mobile-sheet-actions split">
                 <button type="button" onClick={() => { setUnreadNoticeIds([]); notify("通知已全部标记为已读", "info"); }}>全部已读</button>
-                <button type="button" onClick={() => { setMobileTab("任务", false, "push"); closeMobileSheet(); notify("已打开任务列表处理通知", "info"); }}>去处理</button>
+                <button type="button" onClick={() => { openMobileTabFromSheet("任务", false); notify("已打开任务列表处理通知", "info"); }}>去处理</button>
               </div>
             </>
           )}
@@ -7806,7 +8030,7 @@ function MobileApp({ notify }: { notify: Notify }) {
               </div>
               <div className="mobile-sheet-actions split">
                 <button type="button" onClick={() => closeMobileSheet()}>关闭</button>
-                <button type="button" onClick={() => { pushPageRoute("audit"); notify("已打开完整审计日志", "info"); }}>完整审计</button>
+                <button type="button" onClick={() => openDesktopPageFromMobileSheet("audit", "已打开完整审计日志")}>完整审计</button>
               </div>
             </>
           )}
@@ -8137,11 +8361,11 @@ function MobileSheet({
 
   return (
     <div className="mobile-sheet-layer" role="presentation">
-      <button className="mobile-sheet-scrim" type="button" aria-label="关闭移动端面板" onClick={onClose} />
+      <button className="mobile-sheet-scrim" type="button" aria-label="关闭移动端面板" onClick={() => onClose()} />
       <section ref={sheetRef} className="mobile-sheet" role="dialog" aria-modal="true" aria-label={title} aria-describedby="mobile-sheet-body" onKeyDown={handleKeyDown}>
         <header>
           <strong>{title}</strong>
-          <button ref={closeButtonRef} type="button" aria-label="关闭" onClick={onClose}><X size={18} /></button>
+          <button ref={closeButtonRef} type="button" aria-label="关闭" onClick={() => onClose()}><X size={18} /></button>
         </header>
         <div id="mobile-sheet-body" className="mobile-sheet-body">{children}</div>
       </section>
