@@ -5045,13 +5045,19 @@ a {
     min-height: 44px;
     height: 44px;
     padding: 0;
-    border: 1px solid rgb(13 35 52 / 10%);
-    border-radius: 12px;
-    background: rgb(255 255 255 / 92%);
-    box-shadow: 0 10px 24px rgb(12 31 46 / 16%);
+    border: 1px solid rgb(255 255 255 / 10%);
+    border-radius: 10px;
+    background: rgb(255 255 255 / 6%);
+    box-shadow: none;
     transform: translateX(0);
     clip-path: none;
     overflow: hidden;
+  }
+
+  .desktop-frame.white-top .sidebar-mock.collapsed {
+    border-color: rgb(13 35 52 / 12%);
+    background: rgb(255 255 255 / 94%);
+    box-shadow: 0 8px 18px rgb(12 31 46 / 10%);
   }
 
   .sidebar-mock.collapsed .side-brand {
@@ -5077,6 +5083,28 @@ a {
     padding: 0;
     justify-content: center;
     gap: 0;
+  }
+
+  .sidebar-mock.collapsed .collapse-side {
+    border-top: 0;
+    color: #c6d8e5;
+    background: transparent;
+  }
+
+  .desktop-frame.white-top .sidebar-mock.collapsed .collapse-side {
+    color: #536778;
+  }
+
+  .sidebar-mock.collapsed .collapse-side:hover,
+  .sidebar-mock.collapsed .collapse-side:focus-visible {
+    color: #ffffff;
+    background: rgb(255 255 255 / 10%);
+  }
+
+  .desktop-frame.white-top .sidebar-mock.collapsed .collapse-side:hover,
+  .desktop-frame.white-top .sidebar-mock.collapsed .collapse-side:focus-visible {
+    color: #102436;
+    background: #f2f7fb;
   }
 
   .side-main-button,
