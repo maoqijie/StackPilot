@@ -92,7 +92,11 @@ type SettingsReadOnlyState = {
   setReadOnly: React.Dispatch<React.SetStateAction<boolean>>;
 };
 type QuickIntent = "create-site" | "open-terminal" | "create-schedule" | "create-database";
+type AuditSource = "database";
 let pendingQuickRoute: { page: PageKey; intent: QuickIntent } | null = null;
+let pendingDatabaseFocus: string | null = null;
+let pendingAuditSource: AuditSource | null = null;
+const slowRemediationStorageKey = "stackpilot.slow-remediation-ids";
 type PageMeta = { title: string; breadcrumb: string; search: string };
 type ViewContext = { eyebrow: string; title: string; chips: string[] };
 type TopbarPanel = "search" | "notifications" | "activity" | "help" | "user" | null;
@@ -154,6 +158,25 @@ function createLocalId(prefix: string) {
     return `${prefix}-${crypto.randomUUID()}`;
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function readSlowRemediationIds() {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(slowRemediationStorageKey) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSlowRemediationIds(ids: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(slowRemediationStorageKey, JSON.stringify(ids));
+  } catch {
+    // sessionStorage can be unavailable in restricted browser contexts.
+  }
 }
 
 function activateOnKeyboard(event: React.KeyboardEvent<HTMLElement>, action: () => void) {
@@ -1150,6 +1173,13 @@ const initialAuditRecords: AuditRecord[] = auditRows.map((row) => ({
   summary: `${row[2]} 对 ${row[4]} 执行 ${row[3]}，结果为 ${row[5]}`,
 }));
 
+const databaseAuditRecords: AuditRecord[] = [
+  { id: "db-audit-readonly", time: "05-22 10:42:08", ip: "10.0.12.24", user: "张工", action: "创建只读用户", object: "readonly_reporter", result: "成功", traceId: "DB-AUD-1001", summary: "张工为 readonly_reporter 创建数据库只读访问，限制到报表 schema。" },
+  { id: "db-audit-backup", time: "05-22 09:15:42", ip: "10.0.12.31", user: "李工", action: "触发手动备份", object: "billing-mysql-02", result: "成功", traceId: "DB-AUD-1002", summary: "李工为 billing-mysql-02 触发手动备份，任务已加入备份队列。" },
+  { id: "db-audit-pool", time: "05-22 08:51:30", ip: "127.0.0.1", user: "系统", action: "修改连接池配置", object: "analytics-mysql-01", result: "成功", traceId: "DB-AUD-1003", summary: "系统根据慢查询治理策略调整 analytics-mysql-01 连接池上限。" },
+  { id: "db-audit-policy", time: "昨天 23:30", ip: "127.0.0.1", user: "系统", action: "新增备份策略", object: "analytics-mysql-01", result: "成功", traceId: "DB-AUD-1004", summary: "系统为 analytics-mysql-01 新增夜间归档备份策略。" },
+];
+
 const initialAuditExports: AuditExportRecord[] = [
   { id: "exp-1", name: "今日操作审计 CSV", format: "CSV", range: "今天 00:00 - 现在", status: "可下载", rows: 482, size: "318 KB", creator: "管理员", createdAt: "今天 10:24", expiresAt: "7 天后", traceId: "EXP-20260619-001" },
   { id: "exp-2", name: "失败操作 JSON", format: "JSON", range: "近 24 小时", status: "可下载", rows: 17, size: "42 KB", creator: "王工", createdAt: "今天 09:16", expiresAt: "6 天后", traceId: "EXP-20260619-002" },
@@ -1382,12 +1412,25 @@ function deleteTransientRouteParams(params: URLSearchParams) {
   transientRouteParamKeys.forEach((key) => params.delete(key));
 }
 
+function deleteContextRouteParams(params: URLSearchParams) {
+  params.delete("dbFocus");
+  params.delete("auditSource");
+}
+
 function readUrlParams() {
   const params = collectUrlParams();
   if (isStaleTransientRoute(params)) {
     deleteTransientRouteParams(params);
   }
   return params;
+}
+
+function readDatabaseFocusParam() {
+  return readUrlParams().get("dbFocus");
+}
+
+function readAuditSourceParam(): AuditSource | null {
+  return readUrlParams().get("auditSource") === "database" ? "database" : null;
 }
 
 function lockedRouteForPage(page: PageKey) {
@@ -1420,6 +1463,7 @@ function clearQuickIntent() {
 function setQuickRoute(page: PageKey, intent: QuickIntent) {
   const params = new URLSearchParams(window.location.search);
   deleteTransientRouteParams(params);
+  deleteContextRouteParams(params);
   pendingQuickRoute = { page, intent };
   const nextSearch = params.toString();
   writeRouteState("push", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}#${page}`, params);
@@ -1427,9 +1471,44 @@ function setQuickRoute(page: PageKey, intent: QuickIntent) {
   window.dispatchEvent(new Event("stackpilot:quick-intent"));
 }
 
+function setDatabaseFocusRoute(databaseName: string) {
+  const params = new URLSearchParams(window.location.search);
+  deleteTransientRouteParams(params);
+  deleteContextRouteParams(params);
+  params.set("dbFocus", databaseName);
+  pendingDatabaseFocus = databaseName;
+  const nextSearch = params.toString();
+  writeRouteState("push", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}#databases`, params);
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  window.dispatchEvent(new Event("stackpilot:database-focus"));
+}
+
+function setAuditSourceRoute(source: AuditSource) {
+  const params = new URLSearchParams(window.location.search);
+  deleteTransientRouteParams(params);
+  deleteContextRouteParams(params);
+  params.set("auditSource", source);
+  pendingAuditSource = source;
+  const nextSearch = params.toString();
+  writeRouteState("push", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}#audit`, params);
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  window.dispatchEvent(new Event("stackpilot:audit-source"));
+}
+
+function clearAuditSourceRoute() {
+  const params = new URLSearchParams(window.location.search);
+  deleteTransientRouteParams(params);
+  deleteContextRouteParams(params);
+  const nextSearch = params.toString();
+  writeRouteState("replace", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}#audit`, params);
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  window.dispatchEvent(new Event("stackpilot:audit-source"));
+}
+
 function pushPageRoute(page: PageKey) {
   const params = new URLSearchParams(window.location.search);
   deleteTransientRouteParams(params);
+  deleteContextRouteParams(params);
   const nextSearch = params.toString();
   writeRouteState("push", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}#${page}`, params);
   window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -1520,8 +1599,13 @@ function App() {
     if (nextToast) {
       setToast(nextToast);
     }
-    if (window.location.hash !== `#${next}`) {
-      window.location.hash = next;
+    const params = new URLSearchParams(window.location.search);
+    deleteContextRouteParams(params);
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}#${next}`;
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== nextUrl) {
+      writeRouteState("push", nextUrl, params);
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
     }
   }, [sessionLocked]);
 
@@ -1734,7 +1818,7 @@ function DesktopShell({
           page === "databases-backups"
             ? <DatabaseBackupsPage page={page} notify={notify} />
             : page === "databases-slow"
-              ? <DatabaseSlowQueriesPage page={page} notify={notify} />
+              ? <DatabaseSlowQueriesPage page={page} setPage={setPage} notify={notify} />
             : <DatabasesPage page={page} setPage={setPage} notify={notify} />
         )}
         {activeModule === "files" && <FilesModule page={page} notify={notify} />}
@@ -2583,7 +2667,7 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
             <PanelCard title="任务流" tabs={["最近任务", `队列中的任务 (${overview.tasks.filter((task) => ["运行中", "等待"].includes(task.status)).length})`]} activeTab={taskTab} onTabChange={setTaskTab} action="查看全部" onAction={() => setPage("overview-tasks", { message: "已打开任务流", tone: "info" })}>
               <TaskTable tasks={overview.tasks} queued={taskTab !== "最近任务"} />
             </PanelCard>
-            <PanelCard title="最近审计" action="查看全部" onAction={() => notify("已打开审计日志列表", "info")}>
+            <PanelCard title="最近审计" action="查看全部" onAction={() => setPage("audit", { message: "已打开审计日志列表", tone: "info" })}>
               <AuditTable rows={overview.audits} />
             </PanelCard>
           </div>
@@ -5139,6 +5223,9 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
 
 function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const auditPreset = auditPagePreset(page);
+  const [sourceByPage, setSourceByPage] = useState<Partial<Record<string, AuditSource>>>(() => (
+    page === "audit" ? { audit: readAuditSourceParam() ?? undefined } : {}
+  ));
   const [exportRows, setExportRows] = useState(initialAuditExports);
   const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
   const [userByPage, setUserByPage] = useState<Record<string, string>>({});
@@ -5148,12 +5235,40 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [selected, setSelected] = useState<AuditRecord | null>(null);
   const [selectedExport, setSelectedExport] = useState<AuditExportRecord | null>(null);
   const isExportMode = auditPreset.mode === "exports";
-  const users = ["全部", ...Array.from(new Set(initialAuditRecords.map((row) => row.user)))];
+  const auditSource = sourceByPage[page];
+  const auditRecords = auditSource === "database" ? databaseAuditRecords : initialAuditRecords;
+  const users = ["全部", ...Array.from(new Set(auditRecords.map((row) => row.user)))];
   const search = searchByPage[page] ?? auditPreset.search;
   const userFilter = userByPage[page] ?? auditPreset.user;
   const resultFilter = resultByPage[page] ?? auditPreset.result;
 
-  const filteredRows = initialAuditRecords.filter((row) => {
+  useEffect(() => {
+    const applyAuditSource = () => {
+      const source = pendingAuditSource ?? readAuditSourceParam();
+      pendingAuditSource = null;
+      if (!source) {
+        setSourceByPage((current) => (current[page] ? { ...current, [page]: undefined } : current));
+        return;
+      }
+      setSourceByPage((current) => ({ ...current, [page]: source }));
+      setSearchByPage((current) => ({ ...current, [page]: "" }));
+      setUserByPage((current) => ({ ...current, [page]: "全部" }));
+      setResultByPage((current) => ({ ...current, [page]: "全部" }));
+      setSelected(null);
+      notify("已切换到数据库审计上下文", "info");
+    };
+    applyAuditSource();
+    window.addEventListener("stackpilot:audit-source", applyAuditSource);
+    window.addEventListener("hashchange", applyAuditSource);
+    window.addEventListener("popstate", applyAuditSource);
+    return () => {
+      window.removeEventListener("stackpilot:audit-source", applyAuditSource);
+      window.removeEventListener("hashchange", applyAuditSource);
+      window.removeEventListener("popstate", applyAuditSource);
+    };
+  }, [notify, page]);
+
+  const filteredRows = auditRecords.filter((row) => {
     const query = search.trim().toLowerCase();
     const matchSearch = !query || `${row.user} ${row.action} ${row.object} ${row.result} ${row.traceId} ${row.ip}`.toLowerCase().includes(query);
     return matchSearch && (userFilter === "全部" || row.user === userFilter) && (resultFilter === "全部" || row.result === resultFilter);
@@ -5198,18 +5313,30 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
     }
     regenerateExport(row);
   };
+  const returnToGlobalAudit = () => {
+    clearAuditSourceRoute();
+    setSourceByPage((current) => ({ ...current, [page]: undefined }));
+    setSearchByPage((current) => ({ ...current, [page]: "" }));
+    setSelected(null);
+    notify("已返回全部审计日志", "info");
+  };
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
-      subtitle={auditPreset.subtitle}
+      subtitle={auditSource === "database" ? "数据库审计视图，只展示数据库实例、备份、连接池和权限相关操作。" : auditPreset.subtitle}
       page={page}
-      actions={<button className="ghost" type="button" onClick={() => isExportMode ? createExport() : notify(`已导出 ${filteredRows.length} 条审计日志`, "info")}><Download size={15} /> {isExportMode ? "新建导出" : "导出"}</button>}
+      viewContext={isExportMode ? undefined : {
+        eyebrow: auditSource === "database" ? "审计日志 / 数据库" : "审计日志 / 全部",
+        title: auditSource === "database" ? "数据库审计" : "只读审计",
+        chips: [`记录 ${filteredRows.length}/${auditRecords.length}`, `结果 ${resultFilter}`, `用户 ${userFilter}`],
+      }}
+      actions={<><button className="ghost" type="button" onClick={() => isExportMode ? createExport() : notify(`已导出 ${filteredRows.length} 条审计日志`, "info")}><Download size={15} /> {isExportMode ? "新建导出" : "导出"}</button>{!isExportMode && auditSource === "database" && <button className="ghost" type="button" onClick={returnToGlobalAudit}>全部审计</button>}</>}
       filters={isExportMode
         ? <><ModuleSearch value={search} placeholder="搜索导出名称、范围或 trace id" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="格式" value={formatFilter} options={["全部", "CSV", "JSON", "ZIP"]} onChange={setFormatFilter} /><FieldSelect label="状态" value={exportStatusFilter} options={["全部", "可下载", "生成中", "失败"]} onChange={setExportStatusFilter} /></>
         : <><ModuleSearch value={search} placeholder="搜索关键字、对象或 trace id" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="用户" value={userFilter} options={users} onChange={(value) => setUserByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="结果" value={resultFilter} options={["全部", "成功", "失败"]} onChange={(value) => setResultByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={isExportMode
         ? <><MetricTile icon={Download} label="导出任务" value={`${exportRows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="可下载" value={`${exportRows.filter((row) => row.status === "可下载").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${exportRows.filter((row) => row.status === "失败").length}`} tone="red" /></>
-        : <><MetricTile icon={FileText} label="日志" value={`${initialAuditRecords.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="成功" value={`${initialAuditRecords.filter((row) => row.result === "成功").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${initialAuditRecords.filter((row) => row.result === "失败").length}`} tone="red" /></>}
+        : <><MetricTile icon={FileText} label="日志" value={`${auditRecords.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="成功" value={`${auditRecords.filter((row) => row.result === "成功").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${auditRecords.filter((row) => row.result === "失败").length}`} tone="red" /></>}
       side={isExportMode && selectedExport ? (
         <DetailDrawer title="导出详情" subtitle={selectedExport.traceId} onClose={() => setSelectedExport(null)}>
           <div className="detail-kv">
@@ -5541,15 +5668,48 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
 
 function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; notify: Notify }) {
   const databasePreset = databasePagePreset(page);
-  const [search, setSearch] = useState(databasePreset.search);
+  const initialFocusName = page === "databases" ? readDatabaseFocusParam() : null;
+  const initialFocusInstance = initialFocusName ? dbRows.find((row) => row.name === initialFocusName) ?? null : null;
+  const [search, setSearch] = useState(initialFocusName ?? databasePreset.search);
   const [typeFilter, setTypeFilter] = useState(databasePreset.type);
   const [statusFilter, setStatusFilter] = useState(databasePreset.status);
   const [hostFilter, setHostFilter] = useState(databasePreset.host);
   const [rows, setRows] = useState(dbRows);
   const [lastSync, setLastSync] = useState(currentClock());
-  const [drawer, setDrawer] = useState<{ type: "create" } | { type: "detail"; id: string; focus?: "actions" } | null>(null);
+  const [drawer, setDrawer] = useState<{ type: "create" } | { type: "detail"; id: string; focus?: "actions" } | null>(() => (
+    initialFocusInstance ? { type: "detail", id: initialFocusInstance.id, focus: "actions" } : null
+  ));
   const hostOptions = ["全部主机", ...Array.from(new Set(rows.map((row) => row.host)))];
   const selectedInstance = drawer?.type === "detail" ? rows.find((row) => row.id === drawer.id) ?? null : null;
+
+  useEffect(() => {
+    const focusDatabase = () => {
+      const name = pendingDatabaseFocus ?? readDatabaseFocusParam();
+      if (!name) return;
+      pendingDatabaseFocus = null;
+      const target = rows.find((row) => row.name === name);
+      setSearch(name);
+      setTypeFilter("全部");
+      setStatusFilter("全部");
+      setHostFilter("全部主机");
+      if (target) {
+        setDrawer({ type: "detail", id: target.id, focus: "actions" });
+        notify(`已定位 ${target.name}，保留慢查询来源上下文`, target.connectionHealth.startsWith("延迟") ? "warning" : "info");
+      } else {
+        setDrawer(null);
+        notify(`未找到 ${name}，已保留实例搜索条件`, "warning");
+      }
+    };
+    focusDatabase();
+    window.addEventListener("stackpilot:database-focus", focusDatabase);
+    window.addEventListener("hashchange", focusDatabase);
+    window.addEventListener("popstate", focusDatabase);
+    return () => {
+      window.removeEventListener("stackpilot:database-focus", focusDatabase);
+      window.removeEventListener("hashchange", focusDatabase);
+      window.removeEventListener("popstate", focusDatabase);
+    };
+  }, [notify, rows]);
 
   const openDatabaseCreateFromQuick = useCallback(() => {
     setDrawer({ type: "create" });
@@ -5577,6 +5737,15 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
   };
   const openDetail = (instance: DatabaseInstance, focus?: "actions") => {
     setDrawer({ type: "detail", id: instance.id, focus });
+  };
+  const openNamedDatabaseDetail = (name: string) => {
+    const target = rows.find((row) => row.name === name) ?? filteredRows[0] ?? rows[0];
+    if (!target) {
+      notify("没有可查看的数据库实例", "warning");
+      return;
+    }
+    openDetail(target);
+    notify(`已打开 ${target.name} 监控详情`, "info");
   };
   const runBackup = (instance: DatabaseInstance) => {
     const backupTime = currentDateTime().slice(0, 16);
@@ -5730,13 +5899,13 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
             <PanelCard title="备份状态（最近 7 天）" action="查看备份计划" onAction={() => setPage("databases-backups", { message: "已打开数据库 / 备份计划", tone: "info" })}>
               <DonutCard />
             </PanelCard>
-            <PanelCard title="连接健康（prod-postgres-01）" action="查看监控详情" onAction={() => notify("已打开连接监控详情", "info")}>
+            <PanelCard title="连接健康（prod-postgres-01）" action="查看监控详情" onAction={() => openNamedDatabaseDetail("prod-postgres-01")}>
               <HealthMini />
             </PanelCard>
             <PanelCard title="慢查询 TOP 5（analytics-mysql-01）">
               <SlowSqlList />
             </PanelCard>
-            <PanelCard title="审计日志（最近操作）" action="查看全部" onAction={() => notify("已打开数据库审计日志", "info")}>
+            <PanelCard title="审计日志（最近操作）" action="查看全部" onAction={() => setAuditSourceRoute("database")}>
               <MiniAuditList />
             </PanelCard>
           </section>
@@ -5917,7 +6086,7 @@ function CreateDatabaseDrawer({
   );
 }
 
-function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Notify }) {
+function DatabaseSlowQueriesPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; notify: Notify }) {
   const [queries, setQueries] = useState(initialDatabaseSlowQueries);
   const [search, setSearch] = useState("");
   const [databaseFilter, setDatabaseFilter] = useState("全部");
@@ -5926,6 +6095,7 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
   const [timeRange, setTimeRange] = useState("近 24 小时");
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [drawerAutoFocus, setDrawerAutoFocus] = useState(false);
+  const [instanceRemediationIds, setInstanceRemediationIds] = useState(readSlowRemediationIds);
   const delayedInstances = dbRows.filter((instance) => instance.connectionHealth.startsWith("延迟") || instance.slowQueries > 0);
   const databaseOptions = ["全部", ...Array.from(new Set([...queries.map((query) => query.database), ...delayedInstances.map((instance) => instance.name)]))];
   const filteredQueries = queries.filter((query) => {
@@ -6018,6 +6188,48 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
     }
     createIndexAdvice(primaryQuery);
   };
+  const openDelayedInstancesPage = () => {
+    if (filteredDelayedInstances.length === 0) {
+      setPage("databases", { message: "已打开数据库实例页", tone: "info" });
+      return;
+    }
+    const target = filteredDelayedInstances.find((instance) => instance.connectionHealth.startsWith("延迟")) ?? filteredDelayedInstances[0];
+    setDatabaseFocusRoute(target.name);
+    notify(`已定位 ${target.name}，共发现 ${filteredDelayedInstances.length} 个延迟实例`, "warning");
+  };
+  const queueInstanceRemediation = (instance: DatabaseInstance) => {
+    setInstanceRemediationIds((current) => (
+      current.includes(instance.id) ? current : [instance.id, ...current]
+    ));
+    setSearch(instance.name);
+    setStatusFilter("待处理");
+    notify(`${instance.name} 已加入慢查询治理队列`, "info");
+  };
+  useEffect(() => {
+    writeSlowRemediationIds(instanceRemediationIds);
+  }, [instanceRemediationIds]);
+  const remediationItems = [
+    ...instanceRemediationIds
+      .map((id) => delayedInstances.find((instance) => instance.id === id))
+      .filter((instance): instance is DatabaseInstance => Boolean(instance))
+      .map((instance) => ({
+        id: `instance-${instance.id}`,
+        title: instance.name,
+        detail: `治理连接延迟 ${instance.connectionHealth}，慢查询 ${instance.slowQueries} 条，主机 ${instance.host}`,
+        tone: databaseHealthTone(instance),
+        onOpen: () => {
+          setDatabaseFocusRoute(instance.name);
+          notify(`已定位 ${instance.name} 实例详情`, "warning");
+        },
+      })),
+    ...filteredQueries.filter((query) => query.status !== "已处理").map((query) => ({
+      id: `query-${query.id}`,
+      title: query.database,
+      detail: query.suggestion,
+      tone: levelTone(query.level),
+      onOpen: () => openQuery(query),
+    })),
+  ];
 
   return (
     <ModulePageShell
@@ -6089,13 +6301,13 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
           )}
         />
         <section className="slow-query-lower">
-          <PanelCard title="连接延迟实例" action="查看实例页" onAction={() => notify("实例详情已在数据库实例页保留", "info")}>
+          <PanelCard title="连接延迟实例" action="查看实例页" onAction={openDelayedInstancesPage}>
             <div className="slow-instance-list">
               {filteredDelayedInstances.map((instance) => (
                 <article key={instance.id}>
                   <span><StatusLight tone={instance.connectionHealth.startsWith("延迟") ? "orange" : "blue"} /><b>{instance.name}</b></span>
                   <em>{instance.connectionHealth} · 慢查询 {instance.slowQueries} · {instance.host}</em>
-                  <button type="button" onClick={() => notify(`${instance.name} 已加入慢查询治理队列`, "info")}>治理</button>
+                  <button type="button" onClick={() => queueInstanceRemediation(instance)}>{instanceRemediationIds.includes(instance.id) ? "已入队" : "治理"}</button>
                 </article>
               ))}
               {filteredDelayedInstances.length === 0 && <p className="module-card-empty">没有匹配的连接延迟实例</p>}
@@ -6103,13 +6315,14 @@ function DatabaseSlowQueriesPage({ page, notify }: { page: PageKey; notify: Noti
           </PanelCard>
           <PanelCard title="治理队列" action="刷新采样" onAction={() => notify("慢查询采样已刷新")}>
             <div className="slow-remediation-list">
-              {queries.filter((query) => query.status !== "已处理").map((query) => (
-                <article key={query.id}>
-                  <span><StatusLight tone={levelTone(query.level)} /><b>{query.database}</b></span>
-                  <em>{query.suggestion}</em>
-                  <button type="button" onClick={() => openQuery(query)}>查看</button>
+              {remediationItems.map((item) => (
+                <article key={item.id}>
+                  <span><StatusLight tone={item.tone} /><b>{item.title}</b></span>
+                  <em>{item.detail}</em>
+                  <button type="button" onClick={item.onOpen}>查看</button>
                 </article>
               ))}
+              {remediationItems.length === 0 && <p className="module-card-empty">当前没有待处理治理项</p>}
             </div>
           </PanelCard>
           <PanelCard title="耗时趋势">
@@ -6391,6 +6604,7 @@ function SettingsPage({
     drill: "恢复演练未完成",
     drillTone: "error",
   });
+  const [backupDrawer, setBackupDrawer] = useState<"verification" | "jobs" | null>(null);
   const [backupJobs, setBackupJobs] = useState([
     { id: "backup-20250813", time: "2025-08-13 02:30", status: "成功", size: "1.24 GB", duration: "00:03:21" },
     { id: "backup-20250812", time: "2025-08-12 02:30", status: "成功", size: "1.22 GB", duration: "00:03:05" },
@@ -6447,6 +6661,7 @@ function SettingsPage({
   const backupConnectionTone = backupConnection.status === "配置已检查" ? "ok-line" : backupConnection.status === "需要检查" ? "error-line" : "warn-line";
   const immediateBackupRunning = backupJobs.some((job) => job.status === "运行中");
   const backupStateClass = (tone: string) => tone === "ok" ? "ok-line" : tone === "error" ? "error-line" : "warn-line";
+  const settingsModalOpen = Boolean(generatedToken || backupDrawer);
   const guardSettingsWrite = (action: string) => {
     if (!readOnly) return true;
     notify(`只读模式已开启，无法${action}`, "warning");
@@ -6868,21 +7083,21 @@ function SettingsPage({
   };
   return (
     <div className="settings-mock-page">
-      <div className="page-head settings-title" inert={Boolean(generatedToken)} aria-hidden={generatedToken ? "true" : undefined}>
+      <div className="page-head settings-title" inert={settingsModalOpen} aria-hidden={settingsModalOpen ? "true" : undefined}>
         <div>
           <h1>{resolvePageMeta(page).title}</h1>
           <p>配置面板身份、访问令牌、备份与恢复策略、安全与通知等全局设置，确保系统安全、可审计、稳定运行。</p>
         </div>
       </div>
-      <div inert={Boolean(generatedToken)} aria-hidden={generatedToken ? "true" : undefined}>
+      <div inert={settingsModalOpen} aria-hidden={settingsModalOpen ? "true" : undefined}>
         <ModuleViewContext context={viewContextForPage(activeSettingsPage) ?? {
           eyebrow: "设置 / 基础设置",
           title: activeTab,
           chips: [`Tab ${activeTab}`],
         }} />
       </div>
-      <SettingsTabs activeTab={activeTab} setPage={setPage} inert={Boolean(generatedToken)} />
-      <div className={`settings-layout ${activeTab === "基础" ? "base-settings-layout" : ""}`} inert={Boolean(generatedToken)} aria-hidden={generatedToken ? "true" : undefined}>
+      <SettingsTabs activeTab={activeTab} setPage={setPage} inert={settingsModalOpen} />
+      <div className={`settings-layout ${activeTab === "基础" ? "base-settings-layout" : ""}`} inert={settingsModalOpen} aria-hidden={settingsModalOpen ? "true" : undefined}>
         {activeTab === "基础" && <PanelCard title="面板身份" className="settings-card-tall">
           <div className="settings-form">
             <FormLine label="面板名称" value={identityDraft.panelName} onChange={readOnly ? undefined : (value) => updateIdentityDraft("panelName", value)} error={identityErrors.panelName} inputRef={identityPanelNameInputRef} />
@@ -6932,11 +7147,11 @@ function SettingsPage({
         {activeTab === "备份" && <PanelCard title="验证状态" className="settings-card-wide">
           <div className="verify-box">
             <p className="ok-line"><CheckCircle2 size={15} /> 最近验证成功：{backupVerification.latest}</p>
-            <p className={backupStateClass(backupVerification.delayTone)}>{backupVerification.delay} <button type="button" onClick={() => notify(`备份状态：${backupVerification.delay}`, "warning")}>查看详情</button></p>
+            <p className={backupStateClass(backupVerification.delayTone)}>{backupVerification.delay} <button type="button" onClick={() => setBackupDrawer("verification")}>查看详情</button></p>
             <p className={backupStateClass(backupVerification.drillTone)}>{backupVerification.drill} <button type="button" disabled={readOnly} onClick={startRestoreDrill}>前往演练</button></p>
           </div>
           <div className="backup-list">
-            <div><strong>最近备份任务</strong><button type="button" onClick={() => notify("已打开全部备份任务", "info")}>查看全部</button></div>
+            <div><strong>最近备份任务</strong><button type="button" onClick={() => setBackupDrawer("jobs")}>查看全部</button></div>
             {backupJobs.map((job) => (
               <p key={job.id}><span>{job.time}</span><StatusLight tone={job.status === "延迟" || job.status === "运行中" ? "orange" : "green"} /> <em>{job.status}</em><b>{job.size}</b><small>{job.duration}</small></p>
             ))}
@@ -7020,8 +7235,8 @@ function SettingsPage({
         </PanelCard>}
       </div>
       {(activeTab === "审计" || activeTab === "基础") && (
-        <div inert={Boolean(generatedToken)} aria-hidden={generatedToken ? "true" : undefined}>
-          <PanelCard title="最近配置变更" action="查看审计日志" onAction={() => notify("已打开设置审计日志", "info")}>
+        <div inert={settingsModalOpen} aria-hidden={settingsModalOpen ? "true" : undefined}>
+          <PanelCard title="最近配置变更" action="查看审计日志" onAction={() => setPage("settings-audit", { message: "已打开设置审计日志", tone: "info" })}>
             <div className="changes-table-wrap">
               <table className="mini-table changes-table">
                 <caption>最近配置变更</caption>
@@ -7046,6 +7261,50 @@ function SettingsPage({
             </div>
           </PanelCard>
         </div>
+      )}
+      {backupDrawer && (
+        <DetailDrawer
+          title={backupDrawer === "verification" ? "备份验证详情" : "全部备份任务"}
+          subtitle={backupDrawer === "verification" ? backupVerification.delay : `${backupJobs.length} 条本地任务记录`}
+          onClose={() => setBackupDrawer(null)}
+          className="settings-detail-drawer"
+          modal
+          actions={backupDrawer === "verification"
+            ? <><button className="ghost" type="button" disabled={readOnly} onClick={testBackupConnection}>重新检查</button><button className="primary" type="button" disabled={readOnly} onClick={startRestoreDrill}>启动演练</button></>
+            : <><button className="ghost" type="button" disabled={readOnly || immediateBackupRunning} onClick={createImmediateBackup}>立即备份</button><button className="primary" type="button" disabled={readOnly} onClick={startRestoreDrill}>恢复演练</button></>}
+        >
+          <div className="settings-backup-drawer">
+            {backupDrawer === "verification" ? (
+              <>
+                <div className="detail-kv">
+                  <p><span>最近验证</span><b>{backupVerification.latest}</b></p>
+                  <p><span>计划状态</span><b>{backupVerification.delay}</b></p>
+                  <p><span>恢复演练</span><b>{backupVerification.drill}</b></p>
+                  <p><span>备份目标</span><b>{backupDraft.target}</b></p>
+                  <p><span>存储位置</span><b>{backupDraft.location || "未填写"}</b></p>
+                  <p><span>备份范围</span><b>{backupItems.join(" / ") || "未选择"}</b></p>
+                </div>
+                <div className="drawer-list">
+                  <strong>验证检查项</strong>
+                  <p><StatusLight tone={backupConnectionValid ? "green" : "orange"} /> 目标配置<span>{backupConnection.status}</span></p>
+                  <p><StatusLight tone={backupVerification.delayTone === "ok" ? "green" : "orange"} /> 计划延迟<span>{backupVerification.delay}</span></p>
+                  <p><StatusLight tone={backupVerification.drillTone === "error" ? "red" : "green"} /> 恢复演练<span>{backupVerification.drill}</span></p>
+                </div>
+              </>
+            ) : (
+              <div className="drawer-list settings-backup-job-list">
+                <strong>备份任务记录</strong>
+                {backupJobs.map((job) => (
+                  <p key={job.id}>
+                    <StatusLight tone={job.status === "延迟" || job.status === "运行中" ? "orange" : "green"} />
+                    {job.time}
+                    <span>{job.status} · {job.size} · {job.duration}</span>
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        </DetailDrawer>
       )}
       {generatedToken && (
         <TokenSecretDrawer
@@ -9040,6 +9299,8 @@ function TokenSecretDrawer({
       title="新访问令牌"
       subtitle={generated.token.name}
       onClose={onClose}
+      className="settings-detail-drawer"
+      modal
       actions={<><button className="primary" type="button" onClick={onCopy}>复制完整令牌</button><button className="ghost" type="button" onClick={onClose}>我已保存</button></>}
     >
       <div className="token-secret-drawer">
