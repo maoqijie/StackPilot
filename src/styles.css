@@ -2596,12 +2596,35 @@ a {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(720px, 0.76fr) minmax(280px, 0.24fr);
+  align-items: start;
   gap: 12px;
   overflow: hidden;
 }
 
 .health-workspace > .module-table-wrap {
   min-width: 0;
+}
+
+.module-page-overview-health .health-workspace .module-table,
+.module-page-overview-health .health-workspace .module-table thead,
+.module-page-overview-health .health-workspace .module-table tbody,
+.module-page-overview-health .health-workspace .module-table tr {
+  width: 100%;
+  min-width: 1082px;
+}
+
+.module-page-overview-health .health-workspace .module-table thead {
+  display: table-header-group;
+}
+
+.module-page-overview-health .health-workspace .module-table tbody {
+  display: table-row-group;
+  max-height: none;
+  overflow: visible;
+}
+
+.module-page-overview-health .health-workspace .module-table tr {
+  display: table-row;
 }
 
 .health-side-panel {
