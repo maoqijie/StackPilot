@@ -44,7 +44,6 @@ import {
   exportOverviewRisks,
   exportOverviewTasks,
   fetchOverview,
-  fetchOverviewHealth,
   fetchOverviewRisks,
   fetchOverviewTasks,
   patchOverviewNode,
@@ -2946,12 +2945,11 @@ function ResourceOverview({ resources }: { resources: OverviewResourceRecord[] }
 
 function OverviewHealthPage({ notify }: { notify: Notify }) {
   const [nodes, setNodes] = useState(initialOverviewNodes);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [envFilter, setEnvFilter] = useState("全部");
   const [statusFilter, setStatusFilter] = useState("全部");
   const [selected, setSelected] = useState<OverviewNode | null>(null);
-  const [lastRefresh, setLastRefresh] = useState("刚刚");
+  const [lastRefresh, setLastRefresh] = useState("2025-05-22 02:15");
   const filteredNodes = nodes.filter((node) => {
     const query = search.trim().toLowerCase();
     const matchSearch = !query || node.name.toLowerCase().includes(query) || node.ip.includes(query) || node.services.join(" ").toLowerCase().includes(query);
@@ -2961,23 +2959,6 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
   });
   const warningCount = nodes.filter((node) => node.status !== "健康").length;
   const updateCount = nodes.filter((node) => node.update !== "已是最新").length;
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchOverviewHealth(controller.signal)
-      .then((payload) => {
-        setNodes(payload.nodes);
-        setLastRefresh(payload.lastRefresh);
-        setSelected((current) => current ? payload.nodes.find((node) => node.id === current.id) ?? null : null);
-        setLoading(false);
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        setLoading(false);
-        reportApiError(error, notify, "集群状态后端加载失败");
-      });
-    return () => controller.abort();
-  }, [notify]);
 
   const applyNode = (updatedNode: OverviewNode) => {
     setNodes((current) => current.map((node) => node.id === updatedNode.id ? updatedNode : node));
@@ -3034,7 +3015,7 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
   return (
     <ModulePageShell
       title="集群状态"
-      subtitle={`统一查看首页集群节点、延迟、备份和服务健康。最近刷新：${loading ? "加载中" : lastRefresh}`}
+      subtitle={`统一查看首页集群节点、延迟、备份和服务健康。最近刷新：${lastRefresh}`}
       page="overview-health"
       actions={<><button className="ghost" type="button" onClick={createNodeFromApi}><Plus size={14} /> 新增节点</button><button className="primary" type="button" onClick={refreshHealthFromApi}><RefreshCw size={14} /> 刷新状态</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索节点、IP 或服务" onChange={setSearch} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={setEnvFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "健康", "警告", "维护"]} onChange={setStatusFilter} /></>}

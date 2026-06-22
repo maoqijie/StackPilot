@@ -2594,15 +2594,19 @@ a {
 .health-workspace {
   min-width: 0;
   min-height: 0;
+  height: 100%;
   display: grid;
   grid-template-columns: minmax(720px, 0.76fr) minmax(280px, 0.24fr);
-  align-items: start;
+  align-items: stretch;
   gap: 12px;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .health-workspace > .module-table-wrap {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
 }
 
 .module-page-overview-health .health-workspace .module-table,
@@ -2627,24 +2631,27 @@ a {
   display: table-row;
 }
 
-.module-page-overview-health {
-  overflow: auto;
+.module-page.module-page-overview-health {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .module-page-overview-health .module-layout,
 .dark-top .module-page-overview-health .module-layout {
   height: auto;
-  min-height: calc(100vh - 62px - 20px - 64px - 64px);
+  min-height: 0;
 }
 
 .module-page-overview-health .module-main {
-  grid-template-rows: auto auto auto auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .health-side-panel {
   min-width: 0;
   height: 100%;
-  max-height: calc(100vh - 375px);
+  min-height: 0;
   border: 1px solid var(--line);
   border-radius: 6px;
   display: grid;
@@ -2860,15 +2867,15 @@ a {
 @media (max-width: 1180px) {
   .health-workspace {
     grid-template-columns: minmax(0, 1fr);
-    overflow: visible;
+    grid-template-rows: minmax(0, 1fr) minmax(160px, 0.48fr);
+    overflow: hidden;
   }
 
   .health-side-panel {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-template-rows: auto;
-    height: auto;
-    max-height: none;
-    overflow: visible;
+    height: 100%;
+    overflow-y: auto;
   }
 
   .health-side-stats,
@@ -8269,8 +8276,116 @@ a {
 }
 
 @media (max-width: 773px) {
+  .module-page.module-page-overview-health {
+    overflow: hidden;
+  }
+
+  .module-page-overview-health .module-head {
+    min-height: 52px;
+    gap: 8px;
+  }
+
+  .module-page-overview-health .module-head h1 {
+    font-size: 22px;
+  }
+
+  .module-page-overview-health .module-head p {
+    display: none;
+  }
+
+  .module-page-overview-health .module-layout,
+  .dark-top .module-page-overview-health .module-layout {
+    height: auto;
+    min-height: 0;
+  }
+
+  .module-page-overview-health .module-main {
+    grid-template-rows: auto auto auto minmax(220px, 1fr);
+    gap: 8px;
+    overflow: hidden;
+  }
+
+  .module-page-overview-health .module-view-context {
+    min-height: 42px;
+    padding: 7px 9px;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .module-page-overview-health .module-view-context span {
+    display: none;
+  }
+
+  .module-page-overview-health .module-view-context strong {
+    margin: 0;
+    font-size: 12px;
+  }
+
+  .module-page-overview-health .module-view-context em {
+    height: 22px;
+    padding: 0 7px;
+    font-size: 10px;
+  }
+
+  .module-page-overview-health .module-filter-line {
+    min-height: 44px;
+    padding: 6px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(82px, 0.34fr) minmax(82px, 0.34fr);
+    gap: 6px;
+  }
+
+  .module-page-overview-health .module-search,
+  .module-page-overview-health .field-select button {
+    min-height: 32px;
+    height: 32px;
+    font-size: 12px;
+  }
+
+  .module-page-overview-health .module-search input {
+    min-height: 0;
+    font-size: 12px;
+  }
+
+  .module-page-overview-health .field-select {
+    min-width: 0;
+  }
+
+  .module-page-overview-health .module-metrics {
+    min-height: 54px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .module-page-overview-health .module-metrics article {
+    min-height: 54px;
+    padding: 8px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    gap: 2px;
+  }
+
+  .module-page-overview-health .module-metrics svg {
+    display: none;
+  }
+
+  .module-page-overview-health .module-metrics span {
+    font-size: 10px;
+  }
+
+  .module-page-overview-health .module-metrics strong {
+    font-size: 20px;
+  }
+
+  .module-page-overview-health .health-workspace,
+  .module-page-overview-health .health-workspace > .module-table-wrap {
+    min-height: 0;
+    overflow: auto;
+  }
+
   .module-page-overview-health .health-side-panel {
     grid-template-columns: minmax(0, 1fr);
+    min-height: 160px;
+    overflow-y: auto;
   }
 
   .module-page-audit-export .export-list {
