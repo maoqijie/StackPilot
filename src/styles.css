@@ -3044,7 +3044,7 @@ a {
 
 .proxy-rule-list button {
   min-width: 44px;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 10px;
   border-radius: 4px;
   color: #0b86bd;
@@ -4870,6 +4870,14 @@ a {
   }
 
   .breadcrumb-title + .mock-search.active {
+    right: 8px;
+    left: 66px;
+    width: auto;
+    min-width: 0;
+    padding: 0 10px;
+    border-color: var(--line);
+    justify-content: flex-start;
+    background: #ffffff;
     opacity: 1;
     pointer-events: auto;
   }
@@ -4905,7 +4913,7 @@ a {
 
   .topbar-mock {
     min-width: 0;
-    padding: 0 8px 0 10px;
+    padding: 0 8px 0 66px;
     gap: 8px;
   }
 
@@ -4943,6 +4951,30 @@ a {
 
   .module-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .module-page-hosts .module-metrics {
+    min-height: 58px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .module-page-hosts .module-metrics article {
+    min-height: 58px;
+    padding: 8px;
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .module-page-hosts .module-metrics svg {
+    display: none;
+  }
+
+  .module-page-hosts .module-metrics span {
+    font-size: 10px;
+  }
+
+  .module-page-hosts .module-metrics strong {
+    font-size: 18px;
   }
 
   .module-filter-line {
@@ -8805,7 +8837,8 @@ a {
   gap: 8px;
 }
 
-.mobile-sheet-list button {
+.mobile-sheet-list button,
+.mobile-sheet-list article {
   min-width: 0;
   min-height: 58px;
   padding: 9px 10px;
