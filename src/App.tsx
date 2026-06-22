@@ -1338,6 +1338,7 @@ function DesktopShell({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
     typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
   ));
+  const sidebarRestoreFocusRef = useRef<HTMLElement | null>(null);
   const sidebarOverlayOpen = isNarrowSidebar && !sidebarCollapsed;
 
   useEffect(() => {
@@ -1357,6 +1358,7 @@ function DesktopShell({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setSidebarCollapsed(true);
+        window.requestAnimationFrame(() => sidebarRestoreFocusRef.current?.focus({ preventScroll: true }));
         return;
       }
       if (event.key !== "Tab") return;
@@ -1394,13 +1396,25 @@ function DesktopShell({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [sidebarOverlayOpen]);
 
-  const expandSidebar = () => setSidebarCollapsed(false);
-  const collapseSidebar = () => setSidebarCollapsed(true);
-  const toggleSidebar = () => setSidebarCollapsed((current) => !current);
+  const expandSidebar = () => {
+    sidebarRestoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSidebarCollapsed(false);
+  };
+  const collapseSidebar = () => {
+    setSidebarCollapsed(true);
+    window.requestAnimationFrame(() => sidebarRestoreFocusRef.current?.focus({ preventScroll: true }));
+  };
+  const toggleSidebar = () => {
+    if (sidebarCollapsed) {
+      expandSidebar();
+      return;
+    }
+    collapseSidebar();
+  };
 
   return (
     <section className={`desktop-frame ${whiteTop ? "white-top" : "dark-top"} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-      {sidebarOverlayOpen && <button className="sidebar-backdrop" type="button" aria-label="收起侧栏" onClick={collapseSidebar} tabIndex={-1} />}
+      {sidebarOverlayOpen && <div className="sidebar-backdrop" role="presentation" onClick={collapseSidebar} />}
       <Sidebar
         page={page}
         setPage={setPage}
@@ -1638,6 +1652,7 @@ function TopBar({
   const topbarRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchTriggerRef = useRef<HTMLButtonElement | null>(null);
   const menuTriggerRefs = useRef<Partial<Record<TopbarMenuPanel, HTMLButtonElement | null>>>({});
   const meta = resolvePageMeta(page);
   const activeModule = navPageFor(page);
@@ -1654,6 +1669,13 @@ function TopBar({
     const trigger = lastMenuTrigger ? menuTriggerRefs.current[lastMenuTrigger] : null;
     setOpenPanel(null);
     window.requestAnimationFrame(() => trigger?.focus());
+  };
+  const closeSearchPanel = (restoreFocus = false) => {
+    setOpenPanel(null);
+    searchInputRef.current?.blur();
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => searchTriggerRef.current?.focus({ preventScroll: true }));
+    }
   };
   const openSearchPanel = () => {
     setActiveSearchIndex(0);
@@ -1673,7 +1695,7 @@ function TopBar({
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
       if (topbarRef.current?.contains(event.target as Node) || searchRef.current?.contains(event.target as Node)) return;
-      setOpenPanel(null);
+      closeSearchPanel();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -1681,7 +1703,7 @@ function TopBar({
         openSearchPanel();
         return;
       }
-      if (event.key === "Escape") setOpenPanel(null);
+      if (event.key === "Escape") closeSearchPanel(true);
     };
     window.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("keydown", handleKeyDown);
@@ -1715,7 +1737,7 @@ function TopBar({
           onFocus={() => setOpenPanel("search")}
           onBlur={(event) => {
             if (searchRef.current?.contains(event.relatedTarget as Node)) return;
-            setOpenPanel((current) => current === "search" ? null : current);
+            if (openPanel === "search") closeSearchPanel();
           }}
           onChange={(event) => {
             setQuery(event.target.value);
@@ -1794,6 +1816,7 @@ function TopBar({
       <div className="top-actions" ref={topbarRef}>
         {page !== "overview" && (
           <button
+            ref={searchTriggerRef}
             type="button"
             className={`icon-action compact-search-trigger ${openPanel === "search" ? "active" : ""}`}
             onClick={openSearchPanel}
@@ -2343,7 +2366,7 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
   const [search, setSearch] = useState("");
   const [envFilter, setEnvFilter] = useState("全部");
   const [statusFilter, setStatusFilter] = useState("全部");
-  const [selected, setSelected] = useState<OverviewNode | null>(initialOverviewNodes[0]);
+  const [selected, setSelected] = useState<OverviewNode | null>(null);
   const [lastRefresh, setLastRefresh] = useState("刚刚");
   const filteredNodes = nodes.filter((node) => {
     const query = search.trim().toLowerCase();
@@ -2361,7 +2384,7 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
       .then((payload) => {
         setNodes(payload.nodes);
         setLastRefresh(payload.lastRefresh);
-        setSelected((current) => current ? payload.nodes.find((node) => node.id === current.id) ?? payload.nodes[0] ?? null : payload.nodes[0] ?? null);
+        setSelected((current) => current ? payload.nodes.find((node) => node.id === current.id) ?? null : null);
         setLoading(false);
       })
       .catch((error: unknown) => {
@@ -2380,7 +2403,7 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
   const syncHealth = (nextNodes: OverviewNode[], nextRefresh = lastRefresh) => {
     setNodes(nextNodes);
     setLastRefresh(nextRefresh);
-    setSelected((current) => current ? nextNodes.find((node) => node.id === current.id) ?? nextNodes[0] ?? null : nextNodes[0] ?? null);
+    setSelected((current) => current ? nextNodes.find((node) => node.id === current.id) ?? null : null);
   };
 
   const createNodeFromApi = async () => {
@@ -2485,7 +2508,7 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("全部");
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<OverviewTaskRecord | null>(initialOverviewTasks[2]);
+  const [selected, setSelected] = useState<OverviewTaskRecord | null>(null);
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
     const matchSearch = !query || row.title.toLowerCase().includes(query) || row.target.toLowerCase().includes(query) || row.operator.toLowerCase().includes(query);
@@ -2500,7 +2523,7 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
     fetchOverviewTasks(controller.signal)
       .then((payload) => {
         setRows(payload.tasks);
-        setSelected((current) => current ? payload.tasks.find((row) => row.id === current.id) ?? payload.tasks[2] ?? payload.tasks[0] ?? null : payload.tasks[2] ?? payload.tasks[0] ?? null);
+        setSelected((current) => current ? payload.tasks.find((row) => row.id === current.id) ?? null : null);
         setLoading(false);
       })
       .catch((error: unknown) => {
@@ -2602,7 +2625,7 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState("全部");
   const [stateFilter, setStateFilter] = useState("全部");
-  const [selected, setSelected] = useState<OverviewRiskRecord | null>(initialOverviewRisks[0]);
+  const [selected, setSelected] = useState<OverviewRiskRecord | null>(null);
   const [scannedAt, setScannedAt] = useState("刚刚");
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
@@ -2621,7 +2644,7 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
       .then((payload) => {
         setRows(payload.risks);
         setScannedAt(payload.scannedAt ?? "刚刚");
-        setSelected((current) => current ? payload.risks.find((row) => row.id === current.id) ?? payload.risks[0] ?? null : payload.risks[0] ?? null);
+        setSelected((current) => current ? payload.risks.find((row) => row.id === current.id) ?? null : null);
         setLoading(false);
       })
       .catch((error: unknown) => {
@@ -2652,7 +2675,7 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
       const payload = await scanOverviewRisks();
       setRows(payload.risks);
       setScannedAt(payload.scannedAt ?? currentClock());
-      setSelected((current) => current ? payload.risks.find((row) => row.id === current.id) ?? payload.risks[0] ?? null : payload.risks[0] ?? null);
+      setSelected((current) => current ? payload.risks.find((row) => row.id === current.id) ?? null : null);
       notify(payload.message, payload.tone ?? "info");
     } catch (error) {
       reportApiError(error, notify, "重新扫描失败");
@@ -2878,10 +2901,24 @@ function DetailDrawer({
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
   const titleId = useId();
+  const [isModalDrawer, setIsModalDrawer] = useState(() => (
+    typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
+  ));
 
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 773px)");
+    const syncModalMode = (event: MediaQueryListEvent | MediaQueryList) => {
+      setIsModalDrawer(event.matches);
+    };
+
+    syncModalMode(mediaQuery);
+    mediaQuery.addEventListener("change", syncModalMode);
+    return () => mediaQuery.removeEventListener("change", syncModalMode);
+  }, []);
 
   useEffect(() => {
     const drawer = drawerRef.current;
@@ -2932,7 +2969,8 @@ function DetailDrawer({
     <aside
       ref={drawerRef}
       className="detail-drawer"
-      role="region"
+      role={isModalDrawer ? "dialog" : "region"}
+      aria-modal={isModalDrawer ? "true" : undefined}
       aria-labelledby={titleId}
       tabIndex={-1}
       onFocusCapture={handleFocusCapture}
@@ -3342,7 +3380,7 @@ function FileUploadQueuePage({ page, notify }: { page: PageKey; notify: Notify }
   const [uploads, setUploads] = useState(initialFileUploads);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("全部");
-  const [selectedId, setSelectedId] = useState(initialFileUploads[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState("");
   const selected = uploads.find((row) => row.id === selectedId) ?? null;
   const filteredRows = uploads.filter((row) => {
     const query = search.trim().toLowerCase();
@@ -3510,7 +3548,7 @@ function FileTrashPage({
 }) {
   const [search, setSearch] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("全部");
-  const [selectedId, setSelectedId] = useState(initialTrashFiles[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState("");
   const selected = trashRows.find((row) => row.id === selectedId) ?? null;
   const ownerOptions = ["全部", ...Array.from(new Set(trashRows.map((row) => row.owner)))];
   const filteredRows = trashRows.filter((row) => {
@@ -3911,7 +3949,7 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const servicePreset = systemdPagePreset(page);
   const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
   const [statusByPage, setStatusByPage] = useState<Record<string, string>>({});
-  const [drawer, setDrawer] = useState<ServiceRecord | null>(servicePreset.mode === "logs" ? initialServiceRecords[0] : null);
+  const [drawer, setDrawer] = useState<ServiceRecord | null>(null);
   const search = searchByPage[page] ?? servicePreset.search;
   const statusFilter = statusByPage[page] ?? servicePreset.status;
   const filteredRows = rows.filter((row) => (!search.trim() || `${row.name} ${row.host}`.toLowerCase().includes(search.trim().toLowerCase())) && (statusFilter === "全部" || row.status === statusFilter));
