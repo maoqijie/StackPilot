@@ -5222,10 +5222,6 @@ a {
     gap: 8px;
   }
 
-  .breadcrumb-title > svg {
-    display: none;
-  }
-
   .top-actions {
     max-width: min(150px, 100%);
     gap: 6px;
