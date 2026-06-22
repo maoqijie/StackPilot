@@ -1981,32 +1981,34 @@ function Sidebar({
                   id={`side-submenu-${item.key}`}
                   aria-hidden={!open}
                 >
-                  {item.children.map((child) => {
-                    const metaText = navChildMetaText(child);
-                    const labelDetail = child.meta ?? child.badge ?? "";
-                    return (
-                      <button
-                        key={child.id}
-                        className={[
-                          "side-child",
-                          metaText ? "has-child-meta" : "",
-                          activeChild === child.id ? "is-child-active" : "",
-                        ].filter(Boolean).join(" ")}
-                        type="button"
-                        tabIndex={open ? 0 : -1}
-                        aria-current={open && activeChild === child.id ? "page" : undefined}
-                        aria-label={[child.label, labelDetail].filter(Boolean).join("，")}
-                        onClick={() => openNavChild(item, child)}
+                  <div className="side-submenu-inner">
+                    {item.children.map((child) => {
+                      const metaText = navChildMetaText(child);
+                      const labelDetail = child.meta ?? child.badge ?? "";
+                      return (
+                        <button
+                          key={child.id}
+                          className={[
+                            "side-child",
+                            metaText ? "has-child-meta" : "",
+                            activeChild === child.id ? "is-child-active" : "",
+                          ].filter(Boolean).join(" ")}
+                          type="button"
+                          tabIndex={open ? 0 : -1}
+                          aria-current={open && activeChild === child.id ? "page" : undefined}
+                          aria-label={[child.label, labelDetail].filter(Boolean).join("，")}
+                          onClick={() => openNavChild(item, child)}
                         >
-                        <i />
-                        <span className="side-child-copy">
-                          <span className="side-child-label">{child.label}</span>
-                          {metaText && <em>{metaText}</em>}
-                        </span>
-                        {child.badge && <strong className="side-child-badge">{child.badge}</strong>}
-                      </button>
-                    );
-                  })}
+                          <i />
+                          <span className="side-child-copy">
+                            <span className="side-child-label">{child.label}</span>
+                            {metaText && <em>{metaText}</em>}
+                          </span>
+                          {child.badge && <strong className="side-child-badge">{child.badge}</strong>}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </section>
