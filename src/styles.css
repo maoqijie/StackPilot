@@ -1509,7 +1509,7 @@ a {
 .ghost,
 .warning,
 .danger-soft {
-  min-height: 32px;
+  min-height: 36px;
   padding: 0 13px;
   border-radius: 5px;
   display: inline-flex;
@@ -2848,11 +2848,11 @@ a {
   }
 
   .module-page-databases-slow .module-search {
-    height: 28px;
+    height: 44px;
   }
 
   .module-page-databases-slow .field-select button {
-    min-height: 28px;
+    min-height: 44px;
   }
 
   .module-page-databases-slow .module-metrics {
@@ -2922,9 +2922,9 @@ a {
 .proxy-settings-content {
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) minmax(250px, 0.92fr);
+  grid-template-rows: minmax(150px, 1fr) minmax(220px, 0.92fr);
   gap: 12px;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .proxy-settings-content > .module-table-wrap thead,
@@ -4704,6 +4704,8 @@ a {
     box-shadow: 18px 0 42px rgb(6 18 28 / 24%);
     transform: translateX(0);
     clip-path: inset(0 0 0 0);
+    gap: 10px;
+    overflow-y: auto;
   }
 
   .sidebar-mock.collapsed {
@@ -4733,6 +4735,10 @@ a {
 
   .sidebar-mock.collapsed .side-nav,
   .sidebar-mock.collapsed .host-groups {
+    display: none;
+  }
+
+  .sidebar-mock:not(.collapsed) .host-groups {
     display: none;
   }
 
@@ -4890,6 +4896,19 @@ a {
 
   .module-filter-line {
     grid-template-columns: 1fr;
+  }
+
+  .module-search,
+  .field-select button,
+  .select-menu button,
+  .form-line button,
+  .cluster-select {
+    min-height: 44px;
+  }
+
+  .module-search input,
+  .field-select button {
+    font-size: 16px;
   }
 
   .deploy-tabs button {
@@ -6109,7 +6128,7 @@ a {
 }
 
 .form-line button {
-  height: 25px;
+  min-height: 32px;
   padding: 0 9px;
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -6156,7 +6175,7 @@ a {
 }
 
 .toggle-line {
-  min-height: 36px;
+  min-height: 44px;
   margin-bottom: 11px;
   padding: 0;
   display: grid;
@@ -7182,7 +7201,8 @@ a {
   .settings-tabs button {
     flex: 0 0 auto;
     min-width: 58px;
-    height: 38px;
+    min-height: 44px;
+    height: 44px;
     padding: 0 12px;
     border: 1px solid var(--line);
     border-radius: 999px;
@@ -8791,5 +8811,14 @@ a {
   .mobile-profile-hero button {
     grid-column: 1 / -1;
     justify-content: center;
+  }
+}
+
+@media (max-width: 773px) {
+  .cluster-select,
+  .form-line button,
+  .select-like {
+    height: 44px;
+    min-height: 44px;
   }
 }
