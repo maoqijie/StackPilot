@@ -5695,6 +5695,58 @@ a {
   .overview-page .quick-grid button {
     min-width: 0;
   }
+
+  .overview-page .risk-list {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .overview-page .risk-list div {
+    min-height: 58px;
+    padding: 7px 0;
+    grid-template-columns: 22px minmax(0, 1fr) 48px minmax(86px, auto);
+    grid-template-areas:
+      "icon title level action"
+      "icon target level action";
+    gap: 4px 8px;
+    align-items: center;
+  }
+
+  .overview-page .risk-list svg {
+    grid-area: icon;
+  }
+
+  .overview-page .risk-list span {
+    grid-area: title;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .overview-page .risk-list b {
+    grid-area: target;
+    min-width: 0;
+    overflow: hidden;
+    color: #6b7e90;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .overview-page .risk-list em {
+    grid-area: level;
+    justify-self: end;
+    margin-right: 4px;
+  }
+
+  .overview-page .risk-list button {
+    grid-area: action;
+    min-width: 86px;
+    min-height: 44px;
+    height: auto;
+    padding: 0 10px;
+    border-radius: 8px;
+  }
 }
 
 .page-head {

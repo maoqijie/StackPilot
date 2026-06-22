@@ -465,10 +465,8 @@ function viewContextForPage(page: PageKey): ViewContext | null {
   switch (parent.key) {
     case "overview":
       return { eyebrow, title, description: child ? "首页总览子视图已从侧栏定位。" : "首页总览默认视图。", chips: [baseChip] };
-    case "hosts": {
-      const preset = hostPagePreset(page);
-      return { eyebrow, title, description: "", chips: [`环境 ${preset.env}`, `健康 ${preset.health}`] };
-    }
+    case "hosts":
+      return null;
     case "sites": {
       const preset = sitesPagePreset(page);
       const chips = [`状态 ${preset.status}`, `运行时 ${preset.runtime}`];
