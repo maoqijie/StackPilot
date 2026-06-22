@@ -87,6 +87,10 @@ type ToastTone = "success" | "info" | "warning" | "danger";
 type ToastState = { message: string; tone: ToastTone };
 type Notify = (message: string, tone?: ToastTone) => void;
 type SetPage = (page: PageKey, toast?: ToastState) => void;
+type SettingsReadOnlyState = {
+  readOnly: boolean;
+  setReadOnly: React.Dispatch<React.SetStateAction<boolean>>;
+};
 type QuickIntent = "create-site" | "open-terminal" | "create-schedule" | "create-database";
 type PageMeta = { title: string; breadcrumb: string; search: string };
 type ViewContext = { eyebrow: string; title: string; chips: string[] };
@@ -755,6 +759,19 @@ type FirewallRule = {
   enabled: boolean;
 };
 
+type FirewallDenyRecord = {
+  id: string;
+  time: string;
+  source: string;
+  target: string;
+  port: string;
+  protocol: string;
+  rule: string;
+  result: "拒绝" | "放行";
+  status: "待处理" | "已生效";
+  reason: string;
+};
+
 type DeployJob = {
   id: string;
   app: string;
@@ -1092,6 +1109,12 @@ const initialFirewallRules: FirewallRule[] = [
   { id: "fw-4", name: "UDP 探测", port: "9100", protocol: "UDP", source: "监控网段", target: "全部主机", enabled: false },
 ];
 
+const initialFirewallDenyRecords: FirewallDenyRecord[] = [
+  { id: "deny-1", time: "刚刚", source: "198.51.100.24", target: "panel-hk-03", port: "22", protocol: "TCP", rule: "SSH 运维入口", result: "拒绝", status: "待处理", reason: "来源不在运维白名单" },
+  { id: "deny-2", time: "8 分钟前", source: "203.0.113.18", target: "全部主机", port: "9100", protocol: "UDP", rule: "UDP 探测", result: "拒绝", status: "待处理", reason: "探测流量超过阈值" },
+  { id: "deny-3", time: "24 分钟前", source: "10.0.12.0/24", target: "数据库", port: "3306", protocol: "TCP", rule: "MySQL 内网", result: "放行", status: "已生效", reason: "已加入内网放行规则" },
+];
+
 const initialDeployJobs: DeployJob[] = [
   { id: "dep-1", app: "stackpilot-api", env: "生产", version: "v2.8.1", status: "成功", operator: "张工", duration: "1分24秒" },
   { id: "dep-2", app: "shop-web", env: "生产", version: "2026.06.18", status: "待发布", operator: "李敏", duration: "-" },
@@ -1132,7 +1155,7 @@ const initialAuditExports: AuditExportRecord[] = [
   { id: "exp-4", name: "昨日配置变更 CSV", format: "CSV", range: "昨天", status: "失败", rows: 0, size: "-", creator: "管理员", createdAt: "昨天 18:33", expiresAt: "-", traceId: "EXP-20260618-017" },
 ];
 
-const permissionOptions = ["主机读写", "网站发布", "数据库管理", "文件管理", "终端访问", "防火墙管理", "审计导出", "权限管理"];
+const permissionOptions = ["主机读写", "网站发布", "数据库管理", "文件管理", "终端访问", "防火墙管理", "审计查看", "权限管理"];
 
 const initialAclUsers: AclUser[] = [
   { id: "usr-1", name: "张工", email: "zhang@example.com", role: "管理员", enabled: true, mfa: "已启用", lastLogin: "今天 10:24" },
@@ -1143,8 +1166,8 @@ const initialAclUsers: AclUser[] = [
 
 const initialAclRoles: AclRole[] = [
   { id: "role-1", name: "管理员", desc: "拥有全部控制台权限", permissions: permissionOptions },
-  { id: "role-2", name: "发布经理", desc: "负责网站发布和部署回滚", permissions: ["主机读写", "网站发布", "文件管理", "审计导出"] },
-  { id: "role-3", name: "只读审计", desc: "只查看日志与状态，不可变更", permissions: ["审计导出"] },
+  { id: "role-2", name: "发布经理", desc: "负责网站发布和部署回滚", permissions: ["主机读写", "网站发布", "文件管理", "审计查看"] },
+  { id: "role-3", name: "只读审计", desc: "只查看日志与状态，不可变更", permissions: ["审计查看"] },
   { id: "role-4", name: "发布机器人", desc: "供 CI/CD 自动发布使用", permissions: ["网站发布", "文件管理"] },
 ];
 
@@ -1155,7 +1178,7 @@ const initialAclPolicies: AclPolicy[] = [
   { id: "pol-4", name: "文件管理", module: "文件", risk: "中", desc: "允许上传、重命名、删除和恢复站点目录文件。", roles: ["管理员", "发布经理", "发布机器人"], lastUpdated: "昨天 18:10" },
   { id: "pol-5", name: "终端访问", module: "终端", risk: "高", desc: "允许连接主机终端并执行命令。", roles: ["管理员"], lastUpdated: "周一 11:06" },
   { id: "pol-6", name: "防火墙管理", module: "防火墙", risk: "高", desc: "允许新增、禁用和删除访问规则。", roles: ["管理员"], lastUpdated: "周一 10:44" },
-  { id: "pol-7", name: "审计导出", module: "审计", risk: "中", desc: "允许导出审计日志和重新生成归档包。", roles: ["管理员", "发布经理", "只读审计"], lastUpdated: "昨天 16:01" },
+  { id: "pol-7", name: "审计查看", module: "审计", risk: "低", desc: "允许查看审计日志和详情，不包含导出或归档生成。", roles: ["管理员", "发布经理", "只读审计"], lastUpdated: "昨天 16:01" },
   { id: "pol-8", name: "权限管理", module: "权限", risk: "高", desc: "允许变更用户、角色和权限项绑定。", roles: ["管理员"], lastUpdated: "今天 10:02" },
 ];
 
@@ -1195,7 +1218,7 @@ function systemdPagePreset(page: PageKey) {
 
 function firewallPagePreset(page: PageKey) {
   if (page === "firewall-open") return { protocol: "全部", source: "0.0.0.0/0", search: "", subtitle: "开放端口视图，默认展示公网来源规则。" };
-  if (page === "firewall-deny") return { protocol: "UDP", source: "全部", search: "", subtitle: "拦截记录视图，查看被限制或停用的规则。" };
+  if (page === "firewall-deny") return { protocol: "全部", source: "全部", search: "", subtitle: "拦截记录视图，查看被拒绝或已放行的访问事件。" };
   return { protocol: "全部", source: "全部", search: "", subtitle: "维护规则列表，支持端口、协议、来源筛选和启用删除。" };
 }
 
@@ -1248,12 +1271,23 @@ function settingsPageForTab(tab: string): PageKey {
 }
 
 function readPageFromHash(): PageKey {
-  const key = window.location.hash.replace("#", "");
+  const [key] = window.location.hash.replace("#", "").split("?");
   if (!key) return "overview";
   if (routePageKeys.has(key)) return key;
   const nextUrl = `${window.location.pathname}${window.location.search}#overview`;
   window.history.replaceState(null, "", nextUrl);
   return "overview";
+}
+
+function readUrlParams() {
+  const params = new URLSearchParams(window.location.search);
+  const [, hashQuery = ""] = window.location.hash.split("?");
+  if (hashQuery) {
+    new URLSearchParams(hashQuery).forEach((value, key) => {
+      if (!params.has(key)) params.set(key, value);
+    });
+  }
+  return params;
 }
 
 function readQuickIntent(): QuickIntent | null {
@@ -1366,8 +1400,10 @@ function DesktopShell({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
     typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
   ));
+  const [settingsReadOnly, setSettingsReadOnly] = useState(false);
   const sidebarRestoreFocusRef = useRef<HTMLElement | null>(null);
   const sidebarOverlayOpen = isNarrowSidebar && !sidebarCollapsed;
+  const settingsReadOnlyState = { readOnly: settingsReadOnly, setReadOnly: setSettingsReadOnly };
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 773px)");
@@ -1476,8 +1512,8 @@ function DesktopShell({
         {activeModule === "acl" && <AclPage page={page} setPage={setPage} notify={notify} />}
         {activeModule === "settings" && (
           page === "settings-proxy"
-            ? <SettingsProxyPage page={page} setPage={setPage} notify={notify} />
-            : <SettingsPage page={page} setPage={setPage} notify={notify} />
+            ? <SettingsProxyPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} />
+            : <SettingsPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} />
         )}
       </div>
       {activeModule === "overview" && <DesktopFooter />}
@@ -1689,6 +1725,7 @@ function TopBar({
   const searchResults = topbarSearchResults(query);
   const boundedSearchIndex = searchResults.length > 0 ? Math.min(activeSearchIndex, searchResults.length - 1) : 0;
   const activeSearchOptionId = openPanel === "search" && searchResults.length > 0 ? `topbar-search-option-${boundedSearchIndex}` : undefined;
+  const compactSearchHidden = page !== "overview" && openPanel !== "search";
   const togglePanel = (panel: TopbarMenuPanel) => {
     setLastMenuTrigger(panel);
     setOpenPanel((current) => (current === panel ? null : panel));
@@ -1757,14 +1794,14 @@ function TopBar({
           <strong>{meta.title}</strong>
         </div>
       )}
-      <div className={`mock-search ${openPanel === "search" ? "active" : ""}`} ref={searchRef}>
+      <div className={`mock-search ${openPanel === "search" ? "active" : ""}`} ref={searchRef} inert={compactSearchHidden} aria-hidden={compactSearchHidden ? "true" : undefined}>
         <Search size={13} />
         <span id="topbar-search-label" className="sr-only">全局搜索</span>
         <input
           ref={searchInputRef}
           value={query}
           placeholder={meta.search}
-          tabIndex={page !== "overview" && openPanel !== "search" ? -1 : 0}
+          tabIndex={compactSearchHidden ? -1 : 0}
           aria-labelledby="topbar-search-label"
           role="combobox"
           aria-haspopup="listbox"
@@ -1810,7 +1847,7 @@ function TopBar({
             }
           }}
           aria-expanded={openPanel === "search"}
-          aria-controls="topbar-search-panel"
+          aria-controls={openPanel === "search" ? "topbar-search-panel" : undefined}
           aria-activedescendant={activeSearchOptionId}
         />
         <kbd>⌘K</kbd>
@@ -1857,7 +1894,7 @@ function TopBar({
             aria-label="打开全局搜索"
             aria-haspopup="listbox"
             aria-expanded={openPanel === "search"}
-            aria-controls="topbar-search-panel"
+            aria-controls={openPanel === "search" ? "topbar-search-panel" : undefined}
           >
             <Search size={17} />
           </button>
@@ -1915,7 +1952,7 @@ function TopBar({
           aria-controls={openPanel === "user" ? "topbar-user-panel" : undefined}
         >
           <span className="avatar-mini" aria-hidden="true">
-            {page === "overview" ? <UserRound size={18} /> : "张"}
+            <UserRound size={18} />
           </span>
           <strong>{userName}</strong>
           <ChevronDown size={13} />
@@ -2943,7 +2980,7 @@ function DataTable<T>({
           ))}
           {sortedRows.length === 0 && (
             <tr>
-              <td colSpan={columns.length} className="empty-row">{emptyText}</td>
+              <td colSpan={columns.length} className="empty-row" role="status" aria-live="polite">{emptyText}</td>
             </tr>
           )}
         </tbody>
@@ -2980,7 +3017,7 @@ function DataTable<T>({
               ))}
           </article>
         ))}
-        {sortedRows.length === 0 && <div className="module-card-empty">{emptyText}</div>}
+        {sortedRows.length === 0 && <div className="module-card-empty" role="status" aria-live="polite">{emptyText}</div>}
       </div>
     </div>
   );
@@ -3032,6 +3069,32 @@ function percentValue(value: string) {
 function latencyValue(value: string) {
   const match = value.trim().match(/^(-?\d+(?:\.\d+)?)\s*ms$/i);
   return match ? Number(match[1]) : null;
+}
+
+function isValidFirewallSource(value: string) {
+  const source = value.trim();
+  if (!source) return false;
+  const cidrParts = source.split("/");
+  if (cidrParts.length > 2) return false;
+  if (cidrParts.length === 2) {
+    const prefix = Number(cidrParts[1]);
+    if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32) return false;
+  }
+  const octets = cidrParts[0].split(".");
+  return octets.length === 4 && octets.every((octet) => {
+    if (!/^\d{1,3}$/.test(octet)) return false;
+    const number = Number(octet);
+    return number >= 0 && number <= 255;
+  });
+}
+
+function isValidIpv4Address(value: string) {
+  const octets = value.trim().split(".");
+  return octets.length === 4 && octets.every((octet) => {
+    if (!/^\d{1,3}$/.test(octet)) return false;
+    const number = Number(octet);
+    return number >= 0 && number <= 255;
+  });
 }
 
 function fileSizeValue(value: string) {
@@ -3214,20 +3277,21 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
   };
 
   const addHost = () => {
+    const ip = draft.ip.trim();
     const nextErrors = {
       name: draft.name.trim() ? undefined : "请输入主机名",
-      ip: draft.ip.trim() ? undefined : "请输入 IP 地址",
+      ip: !ip ? "请输入 IP 地址" : isValidIpv4Address(ip) ? undefined : "请输入有效 IPv4 地址",
     };
     setDraftErrors(nextErrors);
     if (nextErrors.name || nextErrors.ip) {
-      notify("主机名和 IP 不能为空", "danger");
+      notify(nextErrors.ip ?? "主机名不能为空", "danger");
       window.requestAnimationFrame(() => (nextErrors.name ? draftNameRef : draftIpRef).current?.focus());
       return;
     }
     const next: HostRecord = {
       id: `host-${Date.now()}`,
       name: draft.name.trim(),
-      ip: draft.ip.trim(),
+      ip,
       env: draft.env,
       health: "健康",
       cpu: "9%",
@@ -3292,7 +3356,7 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
           { key: "memory", label: "内存", sortValue: (row) => percentValue(row.memory), render: (row) => <Bar value={row.memory} tone={Number(row.memory.replace("%", "")) > 70 ? "red" : "green"} /> },
           { key: "disk", label: "磁盘", sortValue: (row) => percentValue(row.disk), render: (row) => <Bar value={row.disk} tone={Number(row.disk.replace("%", "")) > 80 ? "red" : "green"} /> },
           { key: "status", label: "健康", width: "92px", render: (row) => <><StatusLight tone={row.health === "健康" ? "green" : row.health === "警告" ? "orange" : "red"} /> {row.health}</> },
-          { key: "ops", label: "操作", width: "210px", render: (row) => <span className="table-actions"><button type="button" onClick={() => setDrawer({ type: "detail", host: row })}>查看</button><button type="button" onClick={() => { updateHost(row.id, { health: "健康", uptime: "刚刚重启" }); notify(`${row.name} 已重启`); }}>重启</button><button type="button" onClick={() => { updateHost(row.id, { backup: currentClock() }); notify(`${row.name} 已创建备份`); }}>备份</button><button type="button" onClick={() => { updateHost(row.id, { update: "已是最新" }); notify(`${row.name} 已更新`); }}>更新</button></span> },
+          { key: "ops", label: "操作", width: "210px", render: (row) => <span className="table-actions"><button type="button" aria-label={`查看主机 ${row.name}`} onClick={() => setDrawer({ type: "detail", host: row })}>查看</button><button type="button" aria-label={`重启主机 ${row.name}`} onClick={() => { updateHost(row.id, { health: "健康", uptime: "刚刚重启" }); notify(`${row.name} 已重启`); }}>重启</button><button type="button" aria-label={`备份主机 ${row.name}`} onClick={() => { updateHost(row.id, { backup: currentClock() }); notify(`${row.name} 已创建备份`); }}>备份</button><button type="button" aria-label={`更新主机 ${row.name}`} onClick={() => { updateHost(row.id, { update: "已是最新" }); notify(`${row.name} 已更新`); }}>更新</button></span> },
         ]}
         rows={filteredRows}
         emptyText="没有匹配的主机"
@@ -4220,57 +4284,199 @@ function SystemdPage({ page, notify }: { page: PageKey; notify: Notify }) {
 
 function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialFirewallRules);
+  const [denyRows, setDenyRows] = useState(initialFirewallDenyRecords);
   const firewallPreset = firewallPagePreset(page);
   const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
   const [protocolByPage, setProtocolByPage] = useState<Record<string, string>>({});
   const [sourceByPage, setSourceByPage] = useState<Record<string, string>>({});
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawer, setDrawer] = useState<
+    | { type: "create" }
+    | { type: "detail"; ruleId: string }
+    | { type: "delete"; ruleId: string }
+    | { type: "deny-detail"; recordId: string }
+    | null
+  >(null);
   const [draft, setDraft] = useState({ name: "临时调试端口", port: "", protocol: "TCP", source: "10.0.0.0/8" });
+  const [draftErrors, setDraftErrors] = useState<{ port?: string; source?: string }>({});
+  const portInputRef = useRef<HTMLInputElement>(null);
+  const sourceInputRef = useRef<HTMLInputElement>(null);
   const search = searchByPage[page] ?? firewallPreset.search;
   const protocolFilter = protocolByPage[page] ?? firewallPreset.protocol;
   const sourceFilter = sourceByPage[page] ?? firewallPreset.source;
+  const isDenyPage = page === "firewall-deny";
+  const selectedRule = drawer?.type === "detail" || drawer?.type === "delete"
+    ? rows.find((row) => row.id === drawer.ruleId) ?? null
+    : null;
+  const selectedDenyRecord = drawer?.type === "deny-detail"
+    ? denyRows.find((row) => row.id === drawer.recordId) ?? null
+    : null;
 
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
-    const matchDeny = page === "firewall-deny" ? !row.enabled || row.protocol === "UDP" : true;
-    return (!query || `${row.name} ${row.port}`.toLowerCase().includes(query)) && (protocolFilter === "全部" || row.protocol === protocolFilter) && (sourceFilter === "全部" || row.source === sourceFilter) && matchDeny;
+    return (!query || `${row.name} ${row.port}`.toLowerCase().includes(query)) && (protocolFilter === "全部" || row.protocol === protocolFilter) && (sourceFilter === "全部" || row.source === sourceFilter);
   });
+  const filteredDenyRows = denyRows.filter((row) => {
+    const query = search.trim().toLowerCase();
+    const matchSearch = !query || `${row.source} ${row.target} ${row.rule} ${row.reason} ${row.port}`.toLowerCase().includes(query);
+    const matchProtocol = protocolFilter === "全部" || row.protocol === protocolFilter;
+    const matchSource = sourceFilter === "全部" || row.source === sourceFilter;
+    return matchSearch && matchProtocol && matchSource;
+  });
+  const validateFirewallDraft = () => {
+    const port = Number(draft.port.trim());
+    const source = draft.source.trim();
+    const nextErrors = {
+      port: Number.isInteger(port) && port >= 1 && port <= 65535 ? undefined : "端口必须是 1-65535 的整数",
+      source: isValidFirewallSource(source) ? undefined : "来源需填写 IPv4、CIDR 或 0.0.0.0/0",
+    };
+    setDraftErrors(nextErrors);
+    return nextErrors;
+  };
   const addRule = () => {
-    if (!draft.port.trim()) {
-      notify("端口不能为空", "danger");
+    const nextErrors = validateFirewallDraft();
+    if (nextErrors.port || nextErrors.source) {
+      notify("请修正防火墙规则表单", "danger");
+      window.requestAnimationFrame(() => (nextErrors.port ? portInputRef : sourceInputRef).current?.focus());
       return;
     }
-    setRows((current) => [{ id: `fw-${Date.now()}`, name: draft.name.trim() || `端口 ${draft.port}`, port: draft.port.trim(), protocol: draft.protocol, source: draft.source, target: "全部主机", enabled: true }, ...current]);
-    setDrawerOpen(false);
+    setRows((current) => [{ id: `fw-${Date.now()}`, name: draft.name.trim() || `端口 ${draft.port.trim()}`, port: draft.port.trim(), protocol: draft.protocol, source: draft.source.trim(), target: "全部主机", enabled: true }, ...current]);
+    setDrawer(null);
     notify(`防火墙规则 ${draft.port}/${draft.protocol} 已新增`);
   };
+  const toggleRule = (row: FirewallRule) => {
+    setRows((current) => current.map((item) => item.id === row.id ? { ...item, enabled: !item.enabled } : item));
+    notify(`${row.name} 已${row.enabled ? "禁用" : "启用"}`);
+  };
+  const deleteRule = (row: FirewallRule) => {
+    setRows((current) => current.filter((item) => item.id !== row.id));
+    setDrawer(null);
+    notify(`${row.name} 已删除`, "warning");
+  };
+  const allowDenyRecord = (row: FirewallDenyRecord) => {
+    setDenyRows((current) => current.map((item) => item.id === row.id ? { ...item, result: "放行", status: "已生效", reason: "已从拦截记录放行" } : item));
+    notify(`${row.source} 已放行`, "info");
+  };
+  const promoteDenyRecord = (row: FirewallDenyRecord) => {
+    const nextRule: FirewallRule = {
+      id: `fw-${Date.now()}`,
+      name: `${row.source} 临时放行`,
+      port: row.port,
+      protocol: row.protocol,
+      source: row.source,
+      target: row.target,
+      enabled: true,
+    };
+    setRows((current) => [nextRule, ...current]);
+    setDenyRows((current) => current.map((item) => item.id === row.id ? { ...item, result: "放行", status: "已生效", reason: "已加入规则列表" } : item));
+    notify(`${row.source} 已加入防火墙规则`, "info");
+  };
+
+  if (isDenyPage) {
+    return (
+      <ModulePageShell
+        title={resolvePageMeta(page).title}
+        subtitle={firewallPreset.subtitle}
+        page={page}
+        actions={<button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredDenyRows.length} 条拦截记录`, "info")}><Download size={15} /> 导出记录</button>}
+        filters={<><ModuleSearch value={search} placeholder="搜索来源、目标、规则或原因" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="协议" value={protocolFilter} options={["全部", "TCP", "UDP"]} onChange={(value) => setProtocolByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="来源" value={sourceFilter} options={["全部", ...Array.from(new Set(denyRows.map((row) => row.source)))]} onChange={(value) => setSourceByPage((current) => ({ ...current, [page]: value }))} /></>}
+        metrics={<><MetricTile icon={Shield} label="拦截记录" value={`${denyRows.length}`} tone="orange" /><MetricTile icon={Lock} label="待处理" value={`${denyRows.filter((row) => row.status === "待处理").length}`} tone="red" /><MetricTile icon={CheckCircle2} label="已生效" value={`${denyRows.filter((row) => row.status === "已生效").length}`} tone="green" /></>}
+        side={selectedDenyRecord ? (
+          <DetailDrawer title="拦截详情" subtitle={`${selectedDenyRecord.source} -> ${selectedDenyRecord.target}`} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>关闭</button><button className="primary" type="button" disabled={selectedDenyRecord.result === "放行"} onClick={() => allowDenyRecord(selectedDenyRecord)}>放行来源</button></>}>
+            <div className="detail-kv">
+              <p><span>时间</span><b>{selectedDenyRecord.time}</b></p>
+              <p><span>来源</span><b>{selectedDenyRecord.source}</b></p>
+              <p><span>目标</span><b>{selectedDenyRecord.target}</b></p>
+              <p><span>端口</span><b>{selectedDenyRecord.port}/{selectedDenyRecord.protocol}</b></p>
+              <p><span>命中规则</span><b>{selectedDenyRecord.rule}</b></p>
+              <p><span>处理状态</span><b>{selectedDenyRecord.result} · {selectedDenyRecord.status}</b></p>
+              <p><span>原因</span><b>{selectedDenyRecord.reason}</b></p>
+            </div>
+          </DetailDrawer>
+        ) : null}
+      >
+        <DataTable
+          columns={[
+            { key: "time", label: "时间", width: "90px", render: (row) => row.time },
+            { key: "source", label: "来源", width: "142px", render: (row) => <code>{row.source}</code> },
+            { key: "target", label: "目标", render: (row) => row.target },
+            { key: "port", label: "端口", width: "76px", render: (row) => `${row.port}/${row.protocol}` },
+            { key: "result", label: "结果", width: "86px", render: (row) => <span className={`pill ${row.result === "拒绝" ? "red" : "green"}`}>{row.result}</span> },
+            { key: "status", label: "状态", width: "96px", render: (row) => <span className={`pill ${row.status === "待处理" ? "orange" : "green"}`}>{row.status}</span> },
+            { key: "ops", label: "操作", width: "230px", render: (row) => <span className="table-actions"><button type="button" aria-label={`放行拦截来源 ${row.source}`} disabled={row.result === "放行"} onClick={() => allowDenyRecord(row)}>放行</button><button type="button" aria-label={`将拦截来源 ${row.source} 加入规则`} onClick={() => promoteDenyRecord(row)}>加入规则</button><button type="button" aria-label={`查看拦截记录 ${row.source} 详情`} onClick={() => setDrawer({ type: "deny-detail", recordId: row.id })}>详情</button></span> },
+          ]}
+          rows={filteredDenyRows}
+          emptyText="没有匹配的拦截记录"
+          getRowKey={(row) => row.id}
+          mobileCard={(row) => (
+            <>
+              <div className="module-card-head">
+                <span className="module-card-title"><StatusLight tone={row.result === "拒绝" ? "red" : "green"} /><b>{row.source}</b></span>
+                <span className={`pill ${row.status === "待处理" ? "orange" : "green"}`}>{row.status}</span>
+              </div>
+              <code className="module-card-code">{`${row.source} -> ${row.target} · ${row.port}/${row.protocol}`}</code>
+              <div className="module-card-meta">
+                <span><b>规则</b><em>{row.rule}</em></span>
+                <span><b>结果</b><em>{row.result}</em></span>
+                <span><b>时间</b><em>{row.time}</em></span>
+                <span><b>原因</b><em>{row.reason}</em></span>
+              </div>
+              <div className="module-card-footer">
+                <div className="table-actions actions-3">
+                  <button type="button" disabled={row.result === "放行"} aria-label={`放行拦截来源 ${row.source}`} onClick={() => allowDenyRecord(row)}>放行</button>
+                  <button type="button" aria-label={`将拦截来源 ${row.source} 加入规则`} onClick={() => promoteDenyRecord(row)}>加入规则</button>
+                  <button type="button" aria-label={`查看拦截记录 ${row.source} 详情`} onClick={() => setDrawer({ type: "deny-detail", recordId: row.id })}>详情</button>
+                </div>
+              </div>
+            </>
+          )}
+        />
+      </ModulePageShell>
+    );
+  }
 
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={firewallPreset.subtitle}
       page={page}
-      actions={<button className="primary" type="button" onClick={() => setDrawerOpen(true)}><Plus size={15} /> 新增规则</button>}
+      actions={<button className="primary" type="button" onClick={() => { setDraftErrors({}); setDrawer({ type: "create" }); }}><Plus size={15} /> 新增规则</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索规则名或端口" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="协议" value={protocolFilter} options={["全部", "TCP", "UDP"]} onChange={(value) => setProtocolByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="来源" value={sourceFilter} options={["全部", ...Array.from(new Set(rows.map((row) => row.source)))]} onChange={(value) => setSourceByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={Shield} label="规则数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Lock} label="停用" value={`${rows.filter((row) => !row.enabled).length}`} tone="orange" /></>}
-      side={drawerOpen && page !== "firewall-deny" && (
-        <DetailDrawer title="新增规则" subtitle="空端口会被阻止提交" onClose={() => setDrawerOpen(false)} actions={<><button className="ghost" type="button" onClick={() => setDrawerOpen(false)}>取消</button><button className="primary" type="button" onClick={addRule}>保存规则</button></>}>
+      side={drawer?.type === "create" ? (
+        <DetailDrawer title="新增规则" subtitle="端口和来源会先在本地校验" onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={addRule}>保存规则</button></>}>
           <FormLine label="规则名" value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
-          <FormLine label="端口" required value={draft.port} onChange={(value) => setDraft((current) => ({ ...current, port: value }))} />
+          <FormLine label="端口" required value={draft.port} inputRef={portInputRef} error={draftErrors.port} inputType="number" onChange={(value) => { setDraft((current) => ({ ...current, port: value })); setDraftErrors((current) => ({ ...current, port: undefined })); }} />
           <FormSelectLine label="协议" value={draft.protocol} options={["TCP", "UDP"]} onChange={(value) => setDraft((current) => ({ ...current, protocol: value }))} />
-          <FormLine label="来源" required value={draft.source} onChange={(value) => setDraft((current) => ({ ...current, source: value }))} />
+          <FormLine label="来源" required value={draft.source} inputRef={sourceInputRef} error={draftErrors.source} onChange={(value) => { setDraft((current) => ({ ...current, source: value })); setDraftErrors((current) => ({ ...current, source: undefined })); }} />
         </DetailDrawer>
-      )}
+      ) : drawer?.type === "detail" && selectedRule ? (
+        <DetailDrawer title="规则详情" subtitle={`${selectedRule.port}/${selectedRule.protocol}`} onClose={() => setDrawer(null)}>
+          <div className="detail-kv">
+            <p><span>规则名</span><b>{selectedRule.name}</b></p>
+            <p><span>来源</span><b>{selectedRule.source}</b></p>
+            <p><span>目标</span><b>{selectedRule.target}</b></p>
+            <p><span>状态</span><b>{selectedRule.enabled ? "启用" : "停用"}</b></p>
+          </div>
+        </DetailDrawer>
+      ) : drawer?.type === "delete" && selectedRule ? (
+        <DetailDrawer title="删除规则" subtitle={selectedRule.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="danger-soft" type="button" onClick={() => deleteRule(selectedRule)}>确认删除</button></>}>
+          <div className="delete-confirm">
+            <StatusLight tone="red" />
+            <p>删除后该本地原型列表会立即移除这条规则。</p>
+            <code>{selectedRule.source}{" -> "}{selectedRule.target} · {selectedRule.port}/{selectedRule.protocol}</code>
+          </div>
+        </DetailDrawer>
+      ) : null}
     >
       <DataTable
         columns={[
-          { key: "name", label: "规则", width: "220px", render: (row) => <><StatusLight tone={row.enabled ? "green" : "gray"} /> <b>{row.name}</b></> },
+          { key: "name", label: "规则", width: "220px", render: (row) => <button className="module-row-link" type="button" aria-label={`查看防火墙规则 ${row.name}`} onClick={() => setDrawer({ type: "detail", ruleId: row.id })}><StatusLight tone={row.enabled ? "green" : "gray"} /> <b>{row.name}</b></button> },
           { key: "port", label: "端口", render: (row) => row.port },
           { key: "protocol", label: "协议", render: (row) => <span className="pill blue">{row.protocol}</span> },
           { key: "source", label: "来源", render: (row) => row.source },
           { key: "target", label: "目标", render: (row) => row.target },
           { key: "enabled", label: "状态", render: (row) => <span className={`pill ${row.enabled ? "green" : "blue"}`}>{row.enabled ? "启用" : "停用"}</span> },
-          { key: "ops", label: "操作", width: "170px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { setRows((current) => current.map((item) => item.id === row.id ? { ...item, enabled: !item.enabled } : item)); notify(`${row.name} 已${row.enabled ? "禁用" : "启用"}`); }}>{row.enabled ? "禁用" : "启用"}</button><button type="button" onClick={() => { setRows((current) => current.filter((item) => item.id !== row.id)); notify(`${row.name} 已删除`, "warning"); }}>删除</button></span> },
+          { key: "ops", label: "操作", width: "230px", render: (row) => <span className="table-actions"><button type="button" aria-label={`${row.enabled ? "禁用" : "启用"}防火墙规则 ${row.name}`} onClick={() => toggleRule(row)}>{row.enabled ? "禁用" : "启用"}</button><button type="button" aria-label={`查看防火墙规则 ${row.name} 详情`} onClick={() => setDrawer({ type: "detail", ruleId: row.id })}>详情</button><button type="button" aria-label={`删除防火墙规则 ${row.name}`} onClick={() => setDrawer({ type: "delete", ruleId: row.id })}>删除</button></span> },
         ]}
         rows={filteredRows}
         emptyText="没有匹配的防火墙规则"
@@ -4278,7 +4484,7 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
         mobileCard={(row) => (
           <>
             <div className="module-card-head">
-              <span className="module-card-title"><StatusLight tone={row.enabled ? "green" : "gray"} /><b>{row.name}</b></span>
+              <button className="module-row-link" type="button" aria-label={`查看防火墙规则 ${row.name}`} onClick={() => setDrawer({ type: "detail", ruleId: row.id })}><StatusLight tone={row.enabled ? "green" : "gray"} /><b>{row.name}</b></button>
               <span className={`pill ${row.enabled ? "green" : "blue"}`}>{row.enabled ? "启用" : "停用"}</span>
             </div>
             <code className="module-card-code">{`${row.source} -> ${row.target}`}</code>
@@ -4289,9 +4495,10 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
               <span><b>目标</b><em>{row.target}</em></span>
             </div>
             <div className="module-card-footer">
-              <div className="table-actions actions-2">
-                <button type="button" onClick={() => { setRows((current) => current.map((item) => item.id === row.id ? { ...item, enabled: !item.enabled } : item)); notify(`${row.name} 已${row.enabled ? "禁用" : "启用"}`); }}>{row.enabled ? "禁用" : "启用"}</button>
-                <button type="button" onClick={() => { setRows((current) => current.filter((item) => item.id !== row.id)); notify(`${row.name} 已删除`, "warning"); }}>删除</button>
+              <div className="table-actions actions-3">
+                <button type="button" aria-label={`${row.enabled ? "禁用" : "启用"}防火墙规则 ${row.name}`} onClick={() => toggleRule(row)}>{row.enabled ? "禁用" : "启用"}</button>
+                <button type="button" aria-label={`查看防火墙规则 ${row.name} 详情`} onClick={() => setDrawer({ type: "detail", ruleId: row.id })}>详情</button>
+                <button type="button" aria-label={`删除防火墙规则 ${row.name}`} onClick={() => setDrawer({ type: "delete", ruleId: row.id })}>删除</button>
               </div>
             </div>
           </>
@@ -4758,6 +4965,8 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
   const policyModules = ["全部", ...Array.from(new Set(policies.map((policy) => policy.module)))];
   const dirtyRoles = roles.filter((role) => !savedRoleIds.has(role.id)).length;
   const dirtyPolicies = policies.filter((policy) => !savedPolicyIds.has(policy.id)).length;
+  const roleIsDirty = (role: AclRole) => !savedRoleIds.has(role.id);
+  const policyIsDirty = (policy: AclPolicy) => !savedPolicyIds.has(policy.id);
   const setAclTab = (nextTab: "users" | "roles" | "policies") => {
     const pageForTab = nextTab === "roles" ? "acl-roles" : nextTab === "policies" ? "acl-policies" : "acl-users";
     if (nextTab !== "policies") {
@@ -4773,6 +4982,15 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
   const savePolicy = (policy: AclPolicy) => {
     setSavedPolicyIds((current) => new Set(current).add(policy.id));
     notify(`${policy.name} 关联角色已保存`);
+  };
+  const saveAllRoles = () => {
+    setSavedRoleIds(new Set(roles.map((role) => role.id)));
+    setSavedPolicyIds(new Set(policies.map((policy) => policy.id)));
+    notify(`已保存 ${dirtyRoles + dirtyPolicies} 个角色与权限绑定变更`);
+  };
+  const saveAllPolicies = () => {
+    setSavedPolicyIds(new Set(policies.map((policy) => policy.id)));
+    notify(`已保存 ${dirtyPolicies} 个权限项变更`);
   };
   const togglePermission = (permission: string) => {
     const nextAllowed = !selectedRole.permissions.includes(permission);
@@ -4837,8 +5055,8 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
       title={resolvePageMeta(page).title}
       subtitle={aclPreset.subtitle}
       page={page}
-      actions={tab === "roles" ? <button className={dirtyRoles > 0 ? "primary" : "ghost"} type="button" disabled={dirtyRoles === 0} onClick={() => saveRole(selectedRole)}>{dirtyRoles > 0 ? `保存角色权限 (${dirtyRoles})` : "角色权限已保存"}</button> : tab === "policies" && selectedPolicy ? <button className={dirtyPolicies > 0 ? "primary" : "ghost"} type="button" disabled={dirtyPolicies === 0} onClick={() => savePolicy(selectedPolicy)}>{dirtyPolicies > 0 ? `保存权限项 (${dirtyPolicies})` : "权限项已保存"}</button> : undefined}
-      filters={<><div className="deploy-tabs" aria-label="权限视图"><button className={tab === "users" ? "active" : ""} type="button" aria-pressed={tab === "users"} onClick={() => setAclTab("users")}>用户</button><button className={tab === "roles" ? "active" : ""} type="button" aria-pressed={tab === "roles"} onClick={() => setAclTab("roles")}>角色</button><button className={tab === "policies" ? "active" : ""} type="button" aria-pressed={tab === "policies"} onClick={() => setAclTab("policies")}>权限项</button></div>{tab === "users" && <ModuleSearch value={userSearch} placeholder="搜索用户、邮箱或角色" onChange={setUserSearch} />}{tab === "policies" && <><ModuleSearch value={policySearch} placeholder="搜索权限项、模块或角色" onChange={setPolicySearch} /><FieldSelect label="模块" value={policyModule} options={policyModules} onChange={setPolicyModule} /><FieldSelect label="风险" value={policyRisk} options={["全部", "高", "中", "低"]} onChange={setPolicyRisk} /></>}</>}
+      actions={tab === "roles" ? <button className={dirtyRoles + dirtyPolicies > 0 ? "primary" : "ghost"} type="button" disabled={dirtyRoles + dirtyPolicies === 0} onClick={saveAllRoles}>{dirtyRoles + dirtyPolicies > 0 ? `保存全部 ACL 变更 (${dirtyRoles + dirtyPolicies})` : "角色权限已保存"}</button> : tab === "policies" && selectedPolicy ? <button className={dirtyPolicies > 0 ? "primary" : "ghost"} type="button" disabled={dirtyPolicies === 0} onClick={saveAllPolicies}>{dirtyPolicies > 0 ? `保存全部权限变更 (${dirtyPolicies})` : "权限项已保存"}</button> : undefined}
+      filters={<><nav className="deploy-tabs" aria-label="权限视图"><button className={tab === "users" ? "active" : ""} type="button" aria-current={tab === "users" ? "page" : undefined} onClick={() => setAclTab("users")}>用户</button><button className={tab === "roles" ? "active" : ""} type="button" aria-current={tab === "roles" ? "page" : undefined} onClick={() => setAclTab("roles")}>角色</button><button className={tab === "policies" ? "active" : ""} type="button" aria-current={tab === "policies" ? "page" : undefined} onClick={() => setAclTab("policies")}>权限项</button></nav>{tab === "users" && <ModuleSearch value={userSearch} placeholder="搜索用户、邮箱或角色" onChange={setUserSearch} />}{tab === "policies" && <><ModuleSearch value={policySearch} placeholder="搜索权限项、模块或角色" onChange={setPolicySearch} /><FieldSelect label="模块" value={policyModule} options={policyModules} onChange={setPolicyModule} /><FieldSelect label="风险" value={policyRisk} options={["全部", "高", "中", "低"]} onChange={setPolicyRisk} /></>}</>}
       metrics={<><MetricTile icon={UserRound} label="用户" value={`${users.length}`} tone="blue" /><MetricTile icon={Lock} label="未保存" value={`${dirtyRoles + dirtyPolicies}`} tone={dirtyRoles + dirtyPolicies > 0 ? "orange" : "purple"} /><MetricTile icon={Shield} label="高风险权限" value={`${policies.filter((policy) => policy.risk === "高").length}`} tone="orange" /></>}
     >
       {tab === "users" ? (
@@ -4880,11 +5098,11 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
       ) : tab === "roles" ? (
         <div className="acl-role-layout">
           <PanelCard title="角色列表">
-            <div className="role-list" role="listbox" aria-label="角色列表">
-              {roles.map((role) => <button key={role.id} className={role.id === roleId ? "active" : ""} type="button" role="option" aria-selected={role.id === roleId} onClick={() => setRoleId(role.id)}><strong>{role.name}</strong><span>{role.desc}</span></button>)}
+            <div className="role-list" aria-label="角色列表">
+              {roles.map((role) => <button key={role.id} className={role.id === roleId ? "active" : ""} type="button" aria-current={role.id === roleId ? "true" : undefined} onClick={() => setRoleId(role.id)}><strong>{role.name}</strong><span>{role.desc}</span></button>)}
             </div>
           </PanelCard>
-          <PanelCard title={`${selectedRole.name} 权限项`} action={savedRoleIds.has(selectedRole.id) ? undefined : "保存"} onAction={() => saveRole(selectedRole)}>
+          <PanelCard title={`${selectedRole.name} 权限项`} action={roleIsDirty(selectedRole) ? "保存当前角色" : undefined} onAction={() => saveRole(selectedRole)}>
             <div className="permission-grid">
               {permissionOptions.map((permission) => (
                 <button key={permission} className={selectedRole.permissions.includes(permission) ? "checked" : ""} type="button" aria-pressed={selectedRole.permissions.includes(permission)} onClick={() => togglePermission(permission)}>
@@ -4897,9 +5115,9 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
         </div>
       ) : (
         <div className="acl-policy-layout">
-          <div className="policy-catalog" role="listbox" aria-label="权限项目录">
+          <div className="policy-catalog" aria-label="权限项目录">
             {filteredPolicies.map((policy) => (
-              <button key={policy.id} className={policy.id === selectedPolicy?.id ? "active" : ""} type="button" role="option" aria-selected={policy.id === selectedPolicy?.id} onClick={() => setSelectedPolicyId(policy.id)}>
+              <button key={policy.id} className={policy.id === selectedPolicy?.id ? "active" : ""} type="button" aria-current={policy.id === selectedPolicy?.id ? "true" : undefined} onClick={() => setSelectedPolicyId(policy.id)}>
                 <span><b>{policy.name}</b><i>{policy.module}</i></span>
                 <em className={policy.risk === "高" ? "red-text" : policy.risk === "中" ? "orange-text" : "blue-text"}>{policy.risk}风险</em>
                 <small>{policy.desc}</small>
@@ -4908,7 +5126,7 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
             {filteredPolicies.length === 0 && <p className="module-empty-card">没有匹配的权限项</p>}
           </div>
           {selectedPolicy ? (
-            <PanelCard title={`${selectedPolicy.name} 关联角色`} action={savedPolicyIds.has(selectedPolicy.id) ? undefined : "保存"} onAction={() => savePolicy(selectedPolicy)}>
+            <PanelCard title={`${selectedPolicy.name} 关联角色`} action={policyIsDirty(selectedPolicy) ? "保存当前权限项" : undefined} onAction={() => savePolicy(selectedPolicy)}>
               <div className="policy-detail">
                 <p><span>模块</span><b>{selectedPolicy.module}</b></p>
                 <p><span>风险级别</span><b>{selectedPolicy.risk}风险</b></p>
@@ -5734,9 +5952,19 @@ function backupTaskTone(status: DatabaseBackupTask["status"]) {
 }
 
 
-function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; notify: Notify }) {
+function SettingsPage({
+  page,
+  setPage,
+  notify,
+  readOnlyState,
+}: {
+  page: PageKey;
+  setPage: SetPage;
+  notify: Notify;
+  readOnlyState: SettingsReadOnlyState;
+}) {
   const activeTab = settingsPagePreset(page);
-  const [readOnly, setReadOnly] = useState(false);
+  const { readOnly, setReadOnly } = readOnlyState;
   const [identityDraft, setIdentityDraft] = useState({
     panelName: "StackPilot 控制面板",
     publicUrl: "https://panel.example.com",
@@ -6257,18 +6485,20 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
   };
   return (
     <div className="settings-mock-page">
-      <div className="page-head settings-title">
+      <div className="page-head settings-title" inert={Boolean(generatedToken)} aria-hidden={generatedToken ? "true" : undefined}>
         <div>
           <h1>{resolvePageMeta(page).title}</h1>
           <p>配置面板身份、访问令牌、备份与恢复策略、安全与通知等全局设置，确保系统安全、可审计、稳定运行。</p>
         </div>
       </div>
-      <ModuleViewContext context={viewContextForPage(activeSettingsPage) ?? {
-        eyebrow: "设置 / 基础设置",
-        title: activeTab,
-        chips: [`Tab ${activeTab}`],
-      }} />
-      <SettingsTabs activeTab={activeTab} setPage={setPage} />
+      <div inert={Boolean(generatedToken)} aria-hidden={generatedToken ? "true" : undefined}>
+        <ModuleViewContext context={viewContextForPage(activeSettingsPage) ?? {
+          eyebrow: "设置 / 基础设置",
+          title: activeTab,
+          chips: [`Tab ${activeTab}`],
+        }} />
+      </div>
+      <SettingsTabs activeTab={activeTab} setPage={setPage} inert={Boolean(generatedToken)} />
       <div className={`settings-layout ${activeTab === "基础" ? "base-settings-layout" : ""}`} inert={Boolean(generatedToken)} aria-hidden={generatedToken ? "true" : undefined}>
         {activeTab === "基础" && <PanelCard title="面板身份" className="settings-card-tall">
           <div className="settings-form">
@@ -6406,30 +6636,34 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
           </div>
         </PanelCard>}
       </div>
-      {(activeTab === "审计" || activeTab === "基础") && <PanelCard title="最近配置变更" action="查看审计日志" onAction={() => notify("已打开设置审计日志", "info")}>
-        <div className="changes-table-wrap">
-          <table className="mini-table changes-table">
-            <caption>最近配置变更</caption>
-            <thead>
-              <tr><th>时间</th><th>操作人</th><th>模块</th><th>动作</th><th>详情</th><th>来源 IP</th></tr>
-            </thead>
-            <tbody>
-              {settingsAuditRows.map((row) => (
-                <tr key={row.join("-")}>{row.map((cell) => <td key={cell}>{cell}</td>)}</tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="settings-change-card-list">
-            {settingsAuditRows.map((row) => (
-              <article key={row.join("-")}>
-                <div><b>{row[2]}</b><span>{row[3]}</span></div>
-                <p>{row[4]}</p>
-                <em>{row[0]} · {row[1]} · {row[5]}</em>
-              </article>
-            ))}
-          </div>
+      {(activeTab === "审计" || activeTab === "基础") && (
+        <div inert={Boolean(generatedToken)} aria-hidden={generatedToken ? "true" : undefined}>
+          <PanelCard title="最近配置变更" action="查看审计日志" onAction={() => notify("已打开设置审计日志", "info")}>
+            <div className="changes-table-wrap">
+              <table className="mini-table changes-table">
+                <caption>最近配置变更</caption>
+                <thead>
+                  <tr><th>时间</th><th>操作人</th><th>模块</th><th>动作</th><th>详情</th><th>来源 IP</th></tr>
+                </thead>
+                <tbody>
+                  {settingsAuditRows.map((row) => (
+                    <tr key={row.join("-")}>{row.map((cell) => <td key={cell}>{cell}</td>)}</tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="settings-change-card-list">
+                {settingsAuditRows.map((row) => (
+                  <article key={row.join("-")}>
+                    <div><b>{row[2]}</b><span>{row[3]}</span></div>
+                    <p>{row[4]}</p>
+                    <em>{row[0]} · {row[1]} · {row[5]}</em>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </PanelCard>
         </div>
-      </PanelCard>}
+      )}
       {generatedToken && (
         <TokenSecretDrawer
           generated={generatedToken}
@@ -6443,14 +6677,22 @@ function SettingsPage({ page, setPage, notify }: { page: PageKey; setPage: SetPa
 
 const settingsTabs = ["基础", "安全", "代理", "通知", "备份", "审计"];
 
-function SettingsTabs({ activeTab, setPage }: { activeTab: string; setPage: SetPage }) {
+function SettingsTabs({
+  activeTab,
+  setPage,
+  inert,
+}: {
+  activeTab: string;
+  setPage: SetPage;
+  inert?: boolean;
+}) {
   return (
-    <div className="settings-tabs" aria-label="设置分区">
+    <nav className="settings-tabs" aria-label="设置分区" inert={Boolean(inert)} aria-hidden={inert ? "true" : undefined}>
       {settingsTabs.map((tab) => (
         <button
           className={tab === activeTab ? "active" : ""}
           type="button"
-          aria-pressed={tab === activeTab}
+          aria-current={tab === activeTab ? "page" : undefined}
           key={tab}
           onClick={() => {
             setPage(settingsPageForTab(tab), { message: `已切换到${tab}设置`, tone: "info" });
@@ -6459,11 +6701,22 @@ function SettingsTabs({ activeTab, setPage }: { activeTab: string; setPage: SetP
           {tab}
         </button>
       ))}
-    </div>
+    </nav>
   );
 }
 
-function SettingsProxyPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; notify: Notify }) {
+function SettingsProxyPage({
+  page,
+  setPage,
+  notify,
+  readOnlyState,
+}: {
+  page: PageKey;
+  setPage: SetPage;
+  notify: Notify;
+  readOnlyState: SettingsReadOnlyState;
+}) {
+  const { readOnly } = readOnlyState;
   const [endpoints, setEndpoints] = useState(initialProxyEndpoints);
   const [rules, setRules] = useState(initialProxyRules);
   const [search, setSearch] = useState("");
@@ -6491,13 +6744,20 @@ function SettingsProxyPage({ page, setPage, notify }: { page: PageKey; setPage: 
   const updateRule = (id: string, patch: Partial<ProxyRouteRule>) => {
     setRules((current) => current.map((rule) => rule.id === id ? { ...rule, ...patch } : rule));
   };
+  const guardProxyWrite = (action: string) => {
+    if (!readOnly) return true;
+    notify(`只读模式已开启，无法${action}`, "warning");
+    return false;
+  };
   const runProbe = (endpoint: ProxyEndpoint) => {
+    if (!guardProxyWrite("检查代理节点")) return;
     const latency = endpoint.status === "告警" ? "86ms" : endpoint.latency === "-" || endpoint.latency === "未探测" ? "58ms" : endpoint.latency;
     const nextStatus = endpoint.enabled && endpoint.status !== "告警" ? "可用" : endpoint.enabled ? "未验证" : "停用";
     updateEndpoint(endpoint.id, { status: nextStatus, latency, lastCheck: "刚刚" });
     notify(`${endpoint.name} 检查标记已更新，估算延迟 ${latency}${endpoint.enabled ? "" : "，节点仍保持停用"}`);
   };
   const addEndpoint = () => {
+    if (!guardProxyWrite("新增代理")) return;
     if (!draft.name.trim() || !draft.url.trim()) {
       notify("代理名称和地址不能为空", "danger");
       return;
@@ -6520,6 +6780,27 @@ function SettingsProxyPage({ page, setPage, notify }: { page: PageKey; setPage: 
     setDrawer({ type: "test", endpointId: next.id });
     notify(`${next.name} 已新增`);
   };
+  const toggleEndpoint = (endpoint: ProxyEndpoint) => {
+    if (!guardProxyWrite(endpoint.enabled ? "停用代理节点" : "启用代理节点")) return;
+    const enabled = !endpoint.enabled;
+    updateEndpoint(endpoint.id, { enabled, status: enabled ? "未验证" : "停用", latency: enabled ? "未探测" : "-" });
+    notify(`${endpoint.name} 已${enabled ? "启用，等待检查" : "停用"}`, enabled ? "success" : "warning");
+  };
+  const addRouteRule = () => {
+    if (!guardProxyWrite("新增代理路由规则")) return;
+    const next: ProxyRouteRule = { id: `rule-${Date.now()}`, target: "api.github.com", type: "代理", endpointId: healthyEndpoints[0]?.id ?? "direct", note: "新增 API 规则", enabled: true };
+    setRules((current) => [next, ...current]);
+    notify("代理路由规则已新增");
+  };
+  const toggleRouteRule = (rule: ProxyRouteRule) => {
+    if (!guardProxyWrite(rule.enabled ? "禁用代理路由规则" : "启用代理路由规则")) return;
+    updateRule(rule.id, { enabled: !rule.enabled });
+    notify(`${rule.target} 规则已${rule.enabled ? "禁用" : "启用"}`, rule.enabled ? "warning" : "success");
+  };
+  const saveProxyPolicy = () => {
+    if (!guardProxyWrite("保存代理运行时策略")) return;
+    notify("代理运行时策略已保存");
+  };
   const proxyEndpointForRule = (rule: ProxyRouteRule) => endpoints.find((endpoint) => endpoint.id === rule.endpointId);
   const ruleTone = (rule: ProxyRouteRule): Tone => {
     if (!rule.enabled) return "gray";
@@ -6529,10 +6810,18 @@ function SettingsProxyPage({ page, setPage, notify }: { page: PageKey; setPage: 
     if (endpoint.status === "告警" || endpoint.status === "未验证") return "orange";
     return "green";
   };
-  const envEndpoint = (protocol: ProxyEndpoint["protocol"]) => healthyEndpoints.find((endpoint) => endpoint.protocol === protocol);
-  const httpProxy = deployProxy ? envEndpoint("HTTP")?.url ?? "" : "";
-  const httpsProxy = deployProxy ? envEndpoint("HTTPS")?.url ?? httpProxy : "";
-  const socksProxy = terminalProxy ? envEndpoint("SOCKS5")?.url ?? "" : "";
+  const endpointForProtocol = (protocol: ProxyEndpoint["protocol"]) => (
+    healthyEndpoints.find((endpoint) => endpoint.protocol === protocol)
+    ?? endpoints.find((endpoint) => endpoint.enabled && endpoint.protocol === protocol && endpoint.status !== "停用")
+  );
+  const httpEndpoint = endpointForProtocol("HTTP");
+  const httpsEndpoint = endpointForProtocol("HTTPS");
+  const socksEndpoint = endpointForProtocol("SOCKS5");
+  const httpProxy = deployProxy ? httpEndpoint?.url ?? "" : "";
+  const httpsProxy = deployProxy ? httpsEndpoint?.url ?? httpProxy : "";
+  const socksProxy = terminalProxy ? socksEndpoint?.url ?? "" : "";
+  const terminalProxyState = !terminalProxy ? "停用" : socksEndpoint?.status === "可用" ? "启用" : socksEndpoint?.status === "告警" ? "告警" : socksProxy ? "待检查" : "未配置";
+  const terminalProxyTone: Tone = terminalProxyState === "启用" ? "blue" : terminalProxyState === "停用" ? "gray" : terminalProxyState === "告警" ? "red" : "orange";
   const envPreview = [
     `HTTP_PROXY=${httpProxy}`,
     `HTTPS_PROXY=${httpsProxy}`,
@@ -6570,18 +6859,18 @@ function SettingsProxyPage({ page, setPage, notify }: { page: PageKey; setPage: 
         chips: [`可用 ${healthyEndpoints.length}`, `告警 ${warningEndpoints.length}`, `规则 ${rules.length}`],
       }}
       tabs={<SettingsTabs activeTab={settingsPagePreset(page)} setPage={setPage} />}
-      actions={<><button className="ghost" type="button" onClick={() => { setEndpoints((current) => current.map((endpoint) => endpoint.enabled ? { ...endpoint, latency: endpoint.latency === "-" || endpoint.latency === "未探测" ? "54ms" : endpoint.latency, lastCheck: "刚刚" } : endpoint)); notify("已批量刷新代理检查时间"); }}><RefreshCw size={15} /> 批量刷新</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 新增代理</button></>}
+      actions={<><button className="ghost" type="button" disabled={readOnly} onClick={() => { if (!guardProxyWrite("批量刷新代理")) return; setEndpoints((current) => current.map((endpoint) => endpoint.enabled ? { ...endpoint, latency: endpoint.latency === "-" || endpoint.latency === "未探测" ? "54ms" : endpoint.latency, lastCheck: "刚刚" } : endpoint)); notify("已批量刷新代理检查时间"); }}><RefreshCw size={15} /> 批量刷新</button><button className="primary" type="button" disabled={readOnly} onClick={() => { if (!guardProxyWrite("新增代理")) return; setDrawer({ type: "create" }); }}><Plus size={15} /> 新增代理</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索代理名称、地址或用途" onChange={setSearch} /><FieldSelect label="用途" value={scopeFilter} options={["全部", "全局", "部署", "终端", "仓库"]} onChange={setScopeFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "可用", "告警", "未验证", "停用"]} onChange={setStatusFilter} /></>}
-      metrics={<><MetricTile icon={Shield} label="可用节点" value={`${healthyEndpoints.length}`} tone="green" /><MetricTile icon={TerminalSquare} label="终端代理" value={terminalProxy ? "启用" : "停用"} tone={terminalProxy ? "blue" : "gray"} /><MetricTile icon={Globe2} label="部署代理" value={deployProxy ? "启用" : "停用"} tone={deployProxy ? "blue" : "gray"} /></>}
+      metrics={<><MetricTile icon={Shield} label="可用节点" value={`${healthyEndpoints.length}`} tone="green" /><MetricTile icon={TerminalSquare} label="终端代理" value={terminalProxyState} tone={terminalProxyTone} /><MetricTile icon={Globe2} label="部署代理" value={deployProxy ? "启用" : "停用"} tone={deployProxy ? "blue" : "gray"} /></>}
       side={drawer?.type === "create" ? (
-        <DetailDrawer title="新增代理" subtitle="保存后加入代理节点池" onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={addEndpoint}>保存代理</button></>}>
-          <FormLine label="代理名称" required value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
-          <FormSelectLine label="协议" required value={draft.protocol} options={["HTTP", "HTTPS", "SOCKS5"]} onChange={(value) => setDraft((current) => ({ ...current, protocol: value }))} />
-          <FormLine label="代理地址" required value={draft.url} onChange={(value) => setDraft((current) => ({ ...current, url: value }))} />
-          <FormSelectLine label="用途" required value={draft.scope} options={["全局", "部署", "终端", "仓库"]} onChange={(value) => setDraft((current) => ({ ...current, scope: value }))} />
+        <DetailDrawer title="新增代理" subtitle="保存后加入代理节点池" onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" disabled={readOnly} onClick={addEndpoint}>保存代理</button></>}>
+          <FormLine label="代理名称" required value={draft.name} disabled={readOnly} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
+          <FormSelectLine label="协议" required value={draft.protocol} options={["HTTP", "HTTPS", "SOCKS5"]} disabled={readOnly} onChange={(value) => setDraft((current) => ({ ...current, protocol: value }))} />
+          <FormLine label="代理地址" required value={draft.url} disabled={readOnly} onChange={(value) => setDraft((current) => ({ ...current, url: value }))} />
+          <FormSelectLine label="用途" required value={draft.scope} options={["全局", "部署", "终端", "仓库"]} disabled={readOnly} onChange={(value) => setDraft((current) => ({ ...current, scope: value }))} />
         </DetailDrawer>
       ) : selectedDrawerEndpoint ? (
-        <DetailDrawer title="代理状态" subtitle={selectedDrawerEndpoint.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => copyProxyText(diagnosticForEndpoint(selectedDrawerEndpoint), `${selectedDrawerEndpoint.name} curl 诊断已复制`)}>复制诊断</button><button className="primary" type="button" onClick={() => runProbe(selectedDrawerEndpoint)}>刷新状态</button></>}>
+        <DetailDrawer title="代理状态" subtitle={selectedDrawerEndpoint.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => copyProxyText(diagnosticForEndpoint(selectedDrawerEndpoint), `${selectedDrawerEndpoint.name} curl 诊断已复制`)}>复制诊断</button><button className="primary" type="button" disabled={readOnly} onClick={() => runProbe(selectedDrawerEndpoint)}>刷新状态</button></>}>
           <div className="proxy-test-panel">
             <p><span>协议</span><b>{selectedDrawerEndpoint.protocol}</b></p>
             <p><span>地址</span><b>{selectedDrawerEndpoint.url}</b></p>
@@ -6602,7 +6891,7 @@ function SettingsProxyPage({ page, setPage, notify }: { page: PageKey; setPage: 
             { key: "scope", label: "用途", width: "78px", render: (endpoint) => endpoint.scope },
             { key: "status", label: "状态", width: "88px", render: (endpoint) => <span className={`pill ${proxyStatusTone(endpoint)}`}>{endpoint.status}</span> },
             { key: "latency", label: "延迟", width: "82px", sortValue: (endpoint) => latencyValue(endpoint.latency), render: (endpoint) => endpoint.latency },
-            { key: "ops", label: "操作", width: "230px", render: (endpoint) => <span className="table-actions"><button type="button" aria-label={`检查 ${endpoint.name}`} onClick={() => runProbe(endpoint)}>检查</button><button type="button" aria-label={`${endpoint.enabled ? "停用" : "启用"} ${endpoint.name}`} onClick={() => { const enabled = !endpoint.enabled; updateEndpoint(endpoint.id, { enabled, status: enabled ? "未验证" : "停用", latency: enabled ? "未探测" : "-" }); notify(`${endpoint.name} 已${enabled ? "启用，等待检查" : "停用"}`, enabled ? "success" : "warning"); }}>{endpoint.enabled ? "停用" : "启用"}</button><button type="button" aria-label={`打开 ${endpoint.name} 详情`} onClick={() => setDrawer({ type: "test", endpointId: endpoint.id })}>详情</button></span> },
+            { key: "ops", label: "操作", width: "230px", render: (endpoint) => <span className="table-actions"><button type="button" disabled={readOnly} aria-label={`检查 ${endpoint.name}`} onClick={() => runProbe(endpoint)}>检查</button><button type="button" disabled={readOnly} aria-label={`${endpoint.enabled ? "停用" : "启用"} ${endpoint.name}`} onClick={() => toggleEndpoint(endpoint)}>{endpoint.enabled ? "停用" : "启用"}</button><button type="button" aria-label={`打开 ${endpoint.name} 详情`} onClick={() => setDrawer({ type: "test", endpointId: endpoint.id })}>详情</button></span> },
           ]}
           rows={filteredEndpoints}
           emptyText="没有匹配的代理节点"
@@ -6625,8 +6914,8 @@ function SettingsProxyPage({ page, setPage, notify }: { page: PageKey; setPage: 
               </div>
               <div className="module-card-footer">
                 <div className="table-actions actions-3">
-                  <button type="button" aria-label={`检查代理 ${endpoint.name}`} onClick={() => runProbe(endpoint)}>检查</button>
-                  <button type="button" aria-label={`${endpoint.enabled ? "停用" : "启用"}代理 ${endpoint.name}`} onClick={() => { const enabled = !endpoint.enabled; updateEndpoint(endpoint.id, { enabled, status: enabled ? "未验证" : "停用", latency: enabled ? "未探测" : "-" }); notify(`${endpoint.name} 已${enabled ? "启用，等待检查" : "停用"}`, enabled ? "success" : "warning"); }}>{endpoint.enabled ? "停用" : "启用"}</button>
+                  <button type="button" disabled={readOnly} aria-label={`检查代理 ${endpoint.name}`} onClick={() => runProbe(endpoint)}>检查</button>
+                  <button type="button" disabled={readOnly} aria-label={`${endpoint.enabled ? "停用" : "启用"}代理 ${endpoint.name}`} onClick={() => toggleEndpoint(endpoint)}>{endpoint.enabled ? "停用" : "启用"}</button>
                   <button type="button" aria-label={`打开代理 ${endpoint.name} 详情`} onClick={() => setDrawer({ type: "test", endpointId: endpoint.id })}>详情</button>
                 </div>
               </div>
@@ -6634,11 +6923,7 @@ function SettingsProxyPage({ page, setPage, notify }: { page: PageKey; setPage: 
           )}
         />
         <section className="proxy-lower-grid">
-          <PanelCard title="代理路由规则" action="新增规则" onAction={() => {
-            const next: ProxyRouteRule = { id: `rule-${Date.now()}`, target: "api.github.com", type: "代理", endpointId: healthyEndpoints[0]?.id ?? "direct", note: "新增 API 规则", enabled: true };
-            setRules((current) => [next, ...current]);
-            notify("代理路由规则已新增");
-          }}>
+          <PanelCard title="代理路由规则" action={readOnly ? undefined : "新增规则"} onAction={addRouteRule}>
             <div className="proxy-rule-list">
               {rules.map((rule) => {
                 const endpoint = proxyEndpointForRule(rule);
@@ -6656,7 +6941,7 @@ function SettingsProxyPage({ page, setPage, notify }: { page: PageKey; setPage: 
                     <span><StatusLight tone={tone} /><b>{rule.target}</b></span>
                     <em>{rule.note}</em>
                     <strong>{rule.type} · {endpointName} · {ruleState}</strong>
-                    <button type="button" aria-label={`${rule.enabled ? "禁用" : "启用"}规则 ${rule.target}`} onClick={() => { updateRule(rule.id, { enabled: !rule.enabled }); notify(`${rule.target} 规则已${rule.enabled ? "禁用" : "启用"}`, rule.enabled ? "warning" : "success"); }}>{rule.enabled ? "禁用" : "启用"}</button>
+                    <button type="button" disabled={readOnly} aria-label={`${rule.enabled ? "禁用" : "启用"}规则 ${rule.target}`} onClick={() => toggleRouteRule(rule)}>{rule.enabled ? "禁用" : "启用"}</button>
                   </article>
                 );
               })}
@@ -6664,15 +6949,15 @@ function SettingsProxyPage({ page, setPage, notify }: { page: PageKey; setPage: 
           </PanelCard>
           <PanelCard title="运行时策略">
             <div className="proxy-policy-panel">
-              <ToggleLine label="部署任务使用代理" active={deployProxy} onToggle={setDeployProxy} hint="用于 npm、composer、镜像拉取和远端发布任务" />
-              <ToggleLine label="终端会话使用 SOCKS5" active={terminalProxy} onToggle={setTerminalProxy} hint="仅影响新开的终端会话" />
-              <ToggleLine label="严格 TLS 校验" active={strictTls} onToggle={setStrictTls} hint="关闭后会在审计日志标记为高风险" />
-              <FormLine label="NO_PROXY" value={noProxy} onChange={setNoProxy} hint="逗号分隔，支持通配符和 CIDR" />
+              <ToggleLine label="部署任务使用代理" active={deployProxy} disabled={readOnly} onToggle={setDeployProxy} hint="用于 npm、composer、镜像拉取和远端发布任务" />
+              <ToggleLine label="终端会话使用 SOCKS5" active={terminalProxy} disabled={readOnly} onToggle={setTerminalProxy} hint="仅影响新开的终端会话" />
+              <ToggleLine label="严格 TLS 校验" active={strictTls} disabled={readOnly} onToggle={setStrictTls} hint="关闭后会在审计日志标记为高风险" />
+              <FormLine label="NO_PROXY" value={noProxy} disabled={readOnly} onChange={setNoProxy} hint="逗号分隔，支持通配符和 CIDR" />
               <div className="proxy-env-preview">
                 {envPreview.map((line) => <code key={line}>{line}</code>)}
               </div>
               <div className="settings-buttons">
-                <button className="primary" type="button" onClick={() => notify("代理运行时策略已保存")}>保存策略</button>
+                <button className="primary" type="button" disabled={readOnly} onClick={saveProxyPolicy}>保存策略</button>
                 <button className="ghost" type="button" onClick={() => copyProxyText(envPreview.join("\n"), "环境变量已复制")}>复制环境变量</button>
               </div>
             </div>
@@ -6720,6 +7005,14 @@ type MobileTaskRecord = {
   status: MobileTaskStatus;
   time: string;
 };
+type MobileAuditRecord = {
+  id: string;
+  action: string;
+  object: string;
+  result: "成功" | "失败";
+  ip: string;
+  time: string;
+};
 type MobileQuickAction = {
   label: string;
   target: MobileTab | "数据库" | "文件" | "终端" | "系统服务" | "防火墙";
@@ -6744,6 +7037,7 @@ type MobileSheetState =
   | { type: "menu" }
   | { type: "system" }
   | { type: "notifications" }
+  | { type: "audit" }
   | { type: "quick"; action: string }
   | { type: "module"; action: string }
   | { type: "action"; action: MobileActionKind; targetId?: string; label?: string }
@@ -6751,7 +7045,7 @@ type MobileSheetState =
   | { type: "site"; siteId: string }
   | { type: "task"; taskId: string };
 
-const mobileSheetTypes = ["menu", "system", "notifications", "quick", "module", "action", "host", "site", "task"];
+const mobileSheetTypes = ["menu", "system", "notifications", "audit", "quick", "module", "action", "host", "site", "task"];
 
 type MobileTabIcon = (props: { size?: number }) => React.ReactNode;
 
@@ -6771,19 +7065,20 @@ function isMobileTab(value: string): value is MobileTab {
 
 function readMobileTabFromUrl(): MobileTab {
   if (typeof window === "undefined") return "首页";
-  const tab = new URLSearchParams(window.location.search).get("mobileTab");
+  const tab = readUrlParams().get("mobileTab");
   return tab && isMobileTab(tab) ? tab : "首页";
 }
 
 function readMobileSheetFromUrl(): MobileSheetState | null {
   if (typeof window === "undefined") return null;
-  const params = new URLSearchParams(window.location.search);
+  const params = readUrlParams();
   const type = params.get("mobileSheet");
   if (!type || !mobileSheetTypes.includes(type)) return null;
   switch (type) {
     case "menu":
     case "system":
     case "notifications":
+    case "audit":
       return { type };
     case "quick": {
       const action = params.get("sheetAction");
@@ -6840,6 +7135,12 @@ function isMobileActionKind(value: string): value is MobileActionKind {
 function writeMobileSheetToUrl(sheet: MobileSheetState | null, historyMode: "push" | "replace" = "push") {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
+  const activeTab = readMobileTabFromUrl();
+  if (activeTab === "首页") {
+    url.searchParams.delete("mobileTab");
+  } else {
+    url.searchParams.set("mobileTab", activeTab);
+  }
   url.hash = "mobile";
   ["mobileSheet", "sheetAction", "sheetTarget", "sheetLabel"].forEach((key) => url.searchParams.delete(key));
   if (sheet) {
@@ -6879,6 +7180,13 @@ const mobileNoticeRows = [
   { id: "cert", title: "证书即将过期", detail: "shop.example.com 证书剩余 11 天", tone: "orange" as Tone, time: "刚刚" },
   { id: "host", title: "主机资源告警", detail: "db-01 内存使用率 62%", tone: "orange" as Tone, time: "8 分钟前" },
   { id: "backup", title: "备份完成", detail: "shop_db 备份已写入对象存储", tone: "green" as Tone, time: "15 分钟前" },
+];
+
+const mobileAuditRows: MobileAuditRecord[] = [
+  { id: "ma-1", action: "登录控制台", object: "移动端会话", result: "成功", ip: "10.0.12.24", time: "刚刚" },
+  { id: "ma-2", action: "重启主机", object: "web-02", result: "成功", ip: "10.0.12.24", time: "18 分钟前" },
+  { id: "ma-3", action: "导出审计", object: "今日操作审计 CSV", result: "成功", ip: "10.0.12.24", time: "52 分钟前" },
+  { id: "ma-4", action: "访问终端", object: "panel-hk-03", result: "失败", ip: "10.0.12.24", time: "昨天 22:18" },
 ];
 
 function MobileApp({ notify }: { notify: Notify }) {
@@ -6960,13 +7268,17 @@ function MobileApp({ notify }: { notify: Notify }) {
     clearMobileSheetFromUrl(historyMode);
   };
   useEffect(() => {
-    const handlePopState = () => {
+    const syncMobileRoute = () => {
       setActiveTab(readMobileTabFromUrl());
       setMobileSheet(readMobileSheetFromUrl());
       window.requestAnimationFrame(() => mobileContentRef.current?.scrollTo({ top: 0 }));
     };
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    window.addEventListener("popstate", syncMobileRoute);
+    window.addEventListener("hashchange", syncMobileRoute);
+    return () => {
+      window.removeEventListener("popstate", syncMobileRoute);
+      window.removeEventListener("hashchange", syncMobileRoute);
+    };
   }, []);
 
   const setMobileTab = (tab: MobileTab, shouldNotify = true, historyMode: "push" | "replace" = "push") => {
@@ -7123,8 +7435,8 @@ function MobileApp({ notify }: { notify: Notify }) {
       return;
     }
     if (action === "audit-view") {
+      replaceMobileSheet({ type: "audit" });
       notify("已打开移动端审计记录", "info");
-      closeMobileSheet();
       return;
     }
     if (action === "diagnostics") {
@@ -7387,7 +7699,12 @@ function MobileApp({ notify }: { notify: Notify }) {
                 >
                   <span><KeyRound size={16} />MFA 验证</span><b>{mfaEnabled ? "启用" : "暂停"}</b>
                 </button>
-                <button type="button" onClick={() => openMobileSheet({ type: "action", action: "audit-view" })}>
+                <button
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-expanded={mobileSheet?.type === "audit"}
+                  onClick={() => openMobileSheet({ type: "audit" })}
+                >
                   <span><FileText size={16} />我的审计</span><b>128 条</b>
                 </button>
                 <button type="button" onClick={() => openMobileSheet({ type: "action", action: "diagnostics" })}>
@@ -7422,12 +7739,13 @@ function MobileApp({ notify }: { notify: Notify }) {
             mobileSheet.type === "menu" ? "快捷菜单"
               : mobileSheet.type === "system" ? "系统状态"
                 : mobileSheet.type === "notifications" ? "通知中心"
-                  : mobileSheet.type === "quick" ? mobileSheet.action
-                    : mobileSheet.type === "module" ? selectedModuleAction?.target ?? "模块入口"
-                      : mobileSheet.type === "action" ? mobileActionTitle(mobileSheet.action, selectedActionHost, selectedActionSite, selectedActionTask, pushEnabled, mfaEnabled, selectedActionLabel)
-                        : mobileSheet.type === "host" ? selectedHost?.name ?? "主机详情"
-                          : mobileSheet.type === "site" ? selectedSite?.domain ?? "网站日志"
-                            : selectedTask?.title ?? "任务详情"
+                  : mobileSheet.type === "audit" ? "我的审计"
+                    : mobileSheet.type === "quick" ? mobileSheet.action
+                      : mobileSheet.type === "module" ? selectedModuleAction?.target ?? "模块入口"
+                        : mobileSheet.type === "action" ? mobileActionTitle(mobileSheet.action, selectedActionHost, selectedActionSite, selectedActionTask, pushEnabled, mfaEnabled, selectedActionLabel)
+                          : mobileSheet.type === "host" ? selectedHost?.name ?? "主机详情"
+                            : mobileSheet.type === "site" ? selectedSite?.domain ?? "网站日志"
+                              : selectedTask?.title ?? "任务详情"
           }
           onClose={closeMobileSheet}
         >
@@ -7471,6 +7789,26 @@ function MobileApp({ notify }: { notify: Notify }) {
                 <p key={label}><span>{label}</span><b>{value}</b><em>{desc}</em></p>
               ))}
             </div>
+          )}
+          {mobileSheet.type === "audit" && (
+            <>
+              <div className="mobile-sheet-list audit-sheet-list">
+                {mobileAuditRows.map((row) => (
+                  <article key={row.id} aria-label={`${row.action}，${row.result}，${row.object}，${row.time}`}>
+                    <StatusLight tone={row.result === "成功" ? "green" : "red"} />
+                    <span>
+                      <b>{row.action}</b>
+                      <em>{row.object} · {row.ip}</em>
+                    </span>
+                    <small>{row.result} · {row.time}</small>
+                  </article>
+                ))}
+              </div>
+              <div className="mobile-sheet-actions split">
+                <button type="button" onClick={() => closeMobileSheet()}>关闭</button>
+                <button type="button" onClick={() => { pushPageRoute("audit"); notify("已打开完整审计日志", "info"); }}>完整审计</button>
+              </div>
+            </>
           )}
           {mobileSheet.type === "quick" && selectedQuickAction && (
             <>
