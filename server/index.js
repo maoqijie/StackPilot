@@ -1,103 +1,401 @@
 import { createServer } from "node:http";
-import { URL } from "node:url";
+import { execFile } from "node:child_process";
+import { readFile, statfs } from "node:fs/promises";
+import { cpus, freemem, hostname, loadavg, networkInterfaces, platform, release, totalmem, uptime } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { promisify } from "node:util";
+import { URL, fileURLToPath } from "node:url";
 
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "127.0.0.1";
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const execFileAsync = promisify(execFile);
 
 const nowTime = () => new Date().toLocaleString("zh-CN", { hour12: false });
-const makeId = (prefix) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+const clampPercent = (value) => Math.max(0, Math.min(100, Math.round(Number.isFinite(value) ? value : 0)));
+const percentText = (value) => `${clampPercent(value)}%`;
 
-const auditRows = [
-  ["05-22 10:24:31", "10.0.0.55", "李敏", "部署应用", "/api (sg-web-02)", "成功", "a1b2c3d4e5f6"],
-  ["05-22 10:23:11", "10.0.1.100", "王工", "更新防火墙", "panel-bj-02", "成功", "b2c3d4e5f6g7"],
-  ["05-22 10:22:05", "10.0.0.11", "系统", "备份数据库", "shop_db", "成功", "c3d4e5f6g7h8"],
-  ["05-22 10:18:42", "10.0.2.77", "王强", "重启服务", "nginx", "成功", "d4e5f6g7h8i9"],
-  ["05-22 10:15:19", "10.0.0.55", "系统", "上传文件", "/var/www/html", "成功", "e5f6g7h8i9j0"],
-  ["05-22 10:12:08", "10.0.1.23", "赵磊", "修改配置", "php.ini", "成功", "f6g7h8i9j0k1"],
-  ["05-22 10:08:33", "10.0.2.88", "陈晨", "删除文件", "/tmp/old.log", "失败", "h8i9j0k1l2m3"],
-];
+const sleep = (ms) => new Promise((resolveSleep) => {
+  setTimeout(resolveSleep, ms);
+});
+
+async function runCommand(command, args, options = {}) {
+  try {
+    const { stdout, stderr } = await execFileAsync(command, args, {
+      cwd: options.cwd ?? repoRoot,
+      timeout: options.timeout ?? 2500,
+      maxBuffer: 1024 * 1024,
+    });
+    return { ok: true, stdout: stdout.trim(), stderr: stderr.trim() };
+  } catch (error) {
+    return {
+      ok: false,
+      stdout: String(error.stdout ?? "").trim(),
+      stderr: String(error.stderr ?? error.message ?? "").trim(),
+    };
+  }
+}
+
+function formatDuration(seconds) {
+  const totalSeconds = Math.max(0, Math.floor(seconds));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (days > 0) return `${days} 天 ${hours} 小时`;
+  if (hours > 0) return `${hours} 小时 ${minutes} 分钟`;
+  return `${minutes} 分钟`;
+}
+
+function cpuSnapshot() {
+  return cpus().map((cpu) => {
+    const values = Object.values(cpu.times);
+    return {
+      idle: cpu.times.idle,
+      total: values.reduce((sum, value) => sum + value, 0),
+    };
+  });
+}
+
+function cpuUsageFromSnapshots(before, after) {
+  const corePercents = after.map((next, index) => {
+    const previous = before[index] ?? next;
+    const idle = Math.max(next.idle - previous.idle, 0);
+    const total = Math.max(next.total - previous.total, 1);
+    return clampPercent((1 - idle / total) * 100);
+  });
+  const average = corePercents.length
+    ? corePercents.reduce((sum, value) => sum + value, 0) / corePercents.length
+    : 0;
+
+  return {
+    average: clampPercent(average),
+    corePercents: corePercents.length > 1 ? corePercents : [clampPercent(average), clampPercent(average)],
+  };
+}
+
+async function collectCpuUsage() {
+  const before = cpuSnapshot();
+  await sleep(140);
+  return cpuUsageFromSnapshots(before, cpuSnapshot());
+}
+
+async function readPackageInfo() {
+  const raw = await readFile(join(repoRoot, "package.json"), "utf8");
+  const parsed = JSON.parse(raw);
+  return {
+    name: parsed.name ?? "stackpilot",
+    version: parsed.version ?? "0.0.0",
+    scripts: parsed.scripts && typeof parsed.scripts === "object" ? parsed.scripts : {},
+  };
+}
+
+async function detectPackageManager() {
+  try {
+    await readFile(join(repoRoot, "package-lock.json"));
+    return "npm";
+  } catch {
+    return "未检测到锁文件";
+  }
+}
+
+function primaryAddress() {
+  const interfaces = networkInterfaces();
+  for (const addresses of Object.values(interfaces)) {
+    for (const address of addresses ?? []) {
+      if (address.family === "IPv4" && !address.internal) return address.address;
+    }
+  }
+  return "127.0.0.1";
+}
+
+async function collectGitInfo() {
+  const [statusResult, branchResult, commitResult, logResult] = await Promise.all([
+    runCommand("git", ["status", "--porcelain=v1", "--branch"]),
+    runCommand("git", ["rev-parse", "--abbrev-ref", "HEAD"]),
+    runCommand("git", ["rev-parse", "--short", "HEAD"]),
+    runCommand("git", ["log", "--date=format-local:%m-%d %H:%M:%S", "--pretty=format:%ad%x1f%an%x1f%s%x1f%h", "-n", "7"]),
+  ]);
+
+  const statusLines = statusResult.ok ? statusResult.stdout.split(/\r?\n/).filter(Boolean) : [];
+  const branchLine = statusLines.find((line) => line.startsWith("##")) ?? "";
+  const changeLines = statusLines.filter((line) => !line.startsWith("##"));
+  const counts = changeLines.reduce((accumulator, line) => {
+    const code = line.slice(0, 2);
+    if (code === "??") accumulator.untracked += 1;
+    else if (code.includes("D")) accumulator.deleted += 1;
+    else if (code.includes("M")) accumulator.modified += 1;
+    else accumulator.other += 1;
+    return accumulator;
+  }, { modified: 0, untracked: 0, deleted: 0, other: 0 });
+  const ahead = Number(branchLine.match(/ahead (\d+)/)?.[1] ?? 0);
+  const behind = Number(branchLine.match(/behind (\d+)/)?.[1] ?? 0);
+  const branch = branchResult.ok ? branchResult.stdout : branchLine.replace(/^##\s*/, "").split(/[. ]/)[0] || "unknown";
+  const commit = commitResult.ok ? commitResult.stdout : "unknown";
+  const updateLabel = changeLines.length
+    ? `${changeLines.length} 个工作区变更`
+    : behind
+      ? `落后 ${behind} 个提交`
+      : ahead
+        ? `领先 ${ahead} 个提交`
+        : "已同步";
+
+  const logs = logResult.ok
+    ? logResult.stdout.split(/\r?\n/).filter(Boolean).map((line) => {
+      const [time, author, subject, hash] = line.split("\x1f");
+      return { time, author, subject, hash };
+    }).filter((item) => item.time && item.hash)
+    : [];
+
+  return {
+    available: statusResult.ok || branchResult.ok,
+    branch,
+    commit,
+    ahead,
+    behind,
+    changedFiles: changeLines,
+    counts,
+    updateLabel,
+    logs,
+  };
+}
+
+async function collectDiskUsage() {
+  try {
+    const disk = await statfs(repoRoot);
+    const total = disk.blocks * disk.bsize;
+    const free = disk.bavail * disk.bsize;
+    const used = Math.max(total - free, 0);
+    return {
+      total,
+      free,
+      used,
+      percent: total > 0 ? clampPercent((used / total) * 100) : 0,
+    };
+  } catch {
+    return { total: 0, free: 0, used: 0, percent: 0 };
+  }
+}
+
+function spark(values) {
+  const normalized = values.map(clampPercent);
+  if (normalized.length >= 2) return normalized;
+  const value = normalized[0] ?? 0;
+  return [value, value];
+}
+
+function usageStatus(cpuPercent, memoryPercent, diskPercent, gitInfo) {
+  if (cpuPercent >= 85 || memoryPercent >= 88 || diskPercent >= 90 || gitInfo.behind > 0) return "警告";
+  return "健康";
+}
+
+function buildWorkbenchTasks(packageInfo, gitInfo, processUptimeSeconds) {
+  const tasks = [{
+    id: "task-api-live",
+    type: "服务",
+    title: "StackPilot API 已响应工作台实时采集",
+    target: `http://${host}:${port}`,
+    status: "成功",
+    priority: "中",
+    operator: "node",
+    queuedAt: "本次请求",
+    duration: formatDuration(processUptimeSeconds),
+    logs: ["HTTP 服务在线", `仓库路径：${repoRoot}`],
+  }];
+
+  if (gitInfo.changedFiles.length > 0) {
+    tasks.push({
+      id: "task-git-worktree",
+      type: "版本控制",
+      title: `处理 ${gitInfo.changedFiles.length} 个 Git 工作区变更`,
+      target: gitInfo.branch,
+      status: "等待",
+      priority: gitInfo.changedFiles.length >= 5 ? "高" : "中",
+      operator: "git",
+      queuedAt: "实时扫描",
+      duration: "待处理",
+      logs: gitInfo.changedFiles.slice(0, 6),
+    });
+  }
+
+  Object.keys(packageInfo.scripts).slice(0, 6).forEach((name) => {
+    tasks.push({
+      id: `task-script-${name}`,
+      type: "脚本",
+      title: `npm run ${name}`,
+      target: "package.json",
+      status: name === "api" ? "运行中" : "等待",
+      priority: name === "build" || name === "lint" ? "中" : "低",
+      operator: "npm",
+      queuedAt: "package.json",
+      duration: String(packageInfo.scripts[name]),
+      logs: [String(packageInfo.scripts[name])],
+    });
+  });
+
+  return tasks;
+}
+
+function buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent, gitInfo, packageInfo }) {
+  const risks = [];
+  const pushRisk = (id, title, level, target, impact, suggestion) => {
+    risks.push({
+      id,
+      title,
+      level,
+      status: "待处理",
+      target,
+      owner: "本机工作台",
+      impact,
+      detected: "实时采样",
+      suggestion,
+      traceId: `${id}-${Date.now().toString(36)}`,
+    });
+  };
+
+  if (cpuPercent >= 85) {
+    pushRisk("risk-cpu", "CPU 使用率过高", "高危", hostname(), `当前采样 ${percentText(cpuPercent)}`, "检查高占用进程，必要时暂停耗时任务。");
+  } else if (cpuPercent >= 70) {
+    pushRisk("risk-cpu", "CPU 使用率偏高", "中危", hostname(), `当前采样 ${percentText(cpuPercent)}`, "观察构建、测试或开发服务器是否持续占用 CPU。");
+  }
+
+  if (memoryPercent >= 88) {
+    pushRisk("risk-memory", "内存压力过高", "高危", hostname(), `当前采样 ${percentText(memoryPercent)}`, "关闭不必要进程或扩大可用内存后再运行重任务。");
+  } else if (memoryPercent >= 76) {
+    pushRisk("risk-memory", "内存压力偏高", "中危", hostname(), `当前采样 ${percentText(memoryPercent)}`, "运行构建或浏览器验收前先确认可用内存。");
+  }
+
+  if (diskPercent >= 90) {
+    pushRisk("risk-disk", "磁盘空间不足", "高危", repoRoot, `当前采样 ${percentText(diskPercent)}`, "清理构建产物、缓存或迁移大文件后再继续部署。");
+  } else if (diskPercent >= 80) {
+    pushRisk("risk-disk", "磁盘使用率偏高", "中危", repoRoot, `当前采样 ${percentText(diskPercent)}`, "关注依赖缓存、截图和打包产物占用。");
+  }
+
+  if (gitInfo.changedFiles.length > 0) {
+    pushRisk(
+      "risk-git-dirty",
+      "Git 工作区存在未提交变更",
+      gitInfo.changedFiles.length >= 5 ? "中危" : "低危",
+      `${gitInfo.branch} @ ${gitInfo.commit}`,
+      `${gitInfo.changedFiles.length} 个变更会影响交付边界`,
+      "完成当前页面后运行 lint/build，再按需提交保存进度。",
+    );
+  }
+
+  if (gitInfo.behind > 0) {
+    pushRisk("risk-git-behind", "当前分支落后上游", "中危", gitInfo.branch, `落后 ${gitInfo.behind} 个提交`, "合并远端更新前先确认本地变更和验证结果。");
+  }
+
+  if (!packageInfo.scripts.build || !packageInfo.scripts.lint) {
+    pushRisk("risk-scripts", "缺少标准验证脚本", "低危", "package.json", "交付前验证路径不完整", "补齐 lint/build 脚本，保证工作台页面可重复验证。");
+  }
+
+  return risks;
+}
 
 const state = {
-  selectedCluster: "demo-sg-01",
   lastRefresh: "2025-05-22 02:15",
   scannedAt: "2025-05-22 10:24:31",
+  resolvedRiskIds: new Set(),
+  deferredRiskIds: new Set(),
   updateCheck: {
     lastCheckedAt: "2025-05-22 02:15",
     availableUpdates: 2,
     message: "2 个组件可更新",
   },
-  nodes: [
-    { id: "node-1", name: "demo-sg-01", ip: "10.0.0.11", env: "生产", status: "健康", latency: "38ms", cpu: "18%", memory: "42%", disk: "35%", version: "v2.8.1", uptime: "23 天 14 小时", backup: "今天 02:15", update: "已是最新", owner: "核心集群", services: ["nginx", "postgresql", "redis", "worker"] },
-    { id: "node-2", name: "panel-bj-02", ip: "10.0.1.22", env: "预发", status: "健康", latency: "52ms", cpu: "27%", memory: "55%", disk: "62%", version: "v2.8.0", uptime: "18 天 9 小时", backup: "今天 02:20", update: "可更新 1", owner: "发布验证", services: ["nginx", "worker", "systemd-resolved"] },
-    { id: "node-3", name: "panel-hk-03", ip: "10.0.2.33", env: "生产", status: "警告", latency: "126ms", cpu: "63%", memory: "78%", disk: "83%", version: "v2.8.0", uptime: "9 天 2 小时", backup: "昨天 02:18", update: "可更新 1", owner: "边缘站点", services: ["nginx", "mysql", "queue"] },
-    { id: "node-4", name: "panel-dev-04", ip: "10.0.3.44", env: "开发", status: "维护", latency: "离线", cpu: "0%", memory: "0%", disk: "47%", version: "v2.7.9", uptime: "维护中", backup: "3 天前", update: "待检查", owner: "研发调试", services: ["docker", "node", "cron"] },
-  ],
-  tasks: [
-    { id: "task-1", type: "部署", title: "部署 /api 服务 v2.8.1", target: "demo-sg-01", status: "成功", priority: "中", operator: "李敏", queuedAt: "2 分钟前", duration: "1分24秒", logs: ["拉取 release v2.8.1", "执行健康检查", "发布完成"] },
-    { id: "task-2", type: "备份", title: "备份 shop_db", target: "prod-postgres-01", status: "成功", priority: "低", operator: "系统", queuedAt: "8 分钟前", duration: "32秒", logs: ["创建快照", "上传到 S3", "校验成功"] },
-    { id: "task-3", type: "补丁", title: "更新防火墙规则", target: "panel-bj-02", status: "运行中", priority: "高", operator: "王工", queuedAt: "15 分钟前", duration: "18秒", logs: ["生成规则差异", "应用 TCP 3306 来源限制"] },
-    { id: "task-4", type: "自动化", title: "每日快照", target: "全部生产主机", status: "等待", priority: "中", operator: "系统", queuedAt: "队列 #1", duration: "预计 12 分钟", logs: ["等待前序备份任务释放锁"] },
-    { id: "task-5", type: "修复", title: "重启 mysql.service", target: "panel-hk-03", status: "失败", priority: "高", operator: "张工", queuedAt: "31 分钟前", duration: "7秒", logs: ["尝试重启服务", "systemd 返回 failed", "等待人工处理"] },
-    { id: "task-6", type: "同步", title: "同步静态文件", target: "admin.example.com", status: "等待", priority: "低", operator: "CI", queuedAt: "队列 #2", duration: "预计 18 分钟", logs: ["等待部署窗口"] },
-  ],
-  risks: [
-    { id: "risk-1", title: "SSH 密钥过期", level: "高危", status: "待处理", target: "demo-sg-01, panel-hk-03", owner: "安全组", impact: "2 台生产主机无法完成密钥轮换", detected: "10 分钟前", suggestion: "立即轮换 deploy key 并重新验证 SSH 登录链路", traceId: "risk-a1b2c3" },
-    { id: "risk-2", title: "MySQL 端口暴露到公网", level: "高危", status: "待处理", target: "0.0.0.0/0:3306", owner: "数据库组", impact: "外部来源可探测数据库端口", detected: "18 分钟前", suggestion: "收敛来源到 10.0.12.0/24 并触发防火墙重载", traceId: "risk-b2c3d4" },
-    { id: "risk-3", title: "站点证书即将过期", level: "中危", status: "待处理", target: "admin.example.com", owner: "应用组", impact: "4 天后 HTTPS 证书过期", detected: "今天 09:42", suggestion: "执行证书续期并检查 Nginx reload 结果", traceId: "risk-c3d4e5" },
-    { id: "risk-4", title: "systemd 服务反复重启", level: "中危", status: "待处理", target: "mysql.service / panel-hk-03", owner: "运维组", impact: "最近 30 分钟重启 6 次", detected: "8 分钟前", suggestion: "查看服务日志，必要时切换只读副本", traceId: "risk-d4e5f6" },
-    { id: "risk-5", title: "开发节点备份延迟", level: "低危", status: "已暂缓", target: "panel-dev-04", owner: "研发组", impact: "备份晚于策略 3 天", detected: "昨天 18:11", suggestion: "维护窗口结束后重新开启备份计划", traceId: "risk-e5f6g7" },
-  ],
 };
 
-function buildResources(tab) {
-  const multiplier = tab === "近30天" ? 1.18 : tab === "近7天" ? 1.08 : 1;
-  return [
-    { label: "CPU 使用率", value: `${Math.round(18 * multiplier)}%`, delta: tab === "今天" ? "+3%" : "+6%", values: [18, 16, 20, 14, 26, 17, 23, 15, 21, 18] },
-    { label: "内存使用率", value: `${Math.round(52 * multiplier)}%`, delta: tab === "今天" ? "+4%" : "+7%", values: [42, 48, 45, 52, 47, 55, 48, 52, 49, 57] },
-    { label: "磁盘使用率", value: `${Math.round(61 * multiplier)}%`, delta: tab === "今天" ? "+1%" : "+3%", values: [59, 61, 58, 63, 57, 62, 56, 61, 58, 64] },
-    { label: "网络流量", value: tab === "今天" ? "1.2 TB" : tab === "近7天" ? "8.9 TB" : "34.6 TB", delta: tab === "今天" ? "+8%" : "+13%", values: [20, 16, 26, 18, 30, 23, 19, 24, 21, 28] },
-  ];
-}
-
-function selectedNode() {
-  return state.nodes.find((node) => node.name === state.selectedCluster) ?? state.nodes[0];
-}
-
-function overviewPayload() {
-  const node = selectedNode();
-  const healthyNodes = state.nodes.filter((item) => item.status === "健康");
-  const queuedTasks = state.tasks.filter((task) => ["运行中", "等待"].includes(task.status));
-  const openRisks = state.risks.filter((risk) => risk.status === "待处理");
-  const failedTasks = state.tasks.filter((task) => task.status === "失败");
-  const pendingUpdates = state.nodes.filter((item) => item.update !== "已是最新").length;
+async function overviewPayload() {
+  const collectedAt = nowTime();
+  const [packageInfo, packageManager, gitInfo, disk, cpu] = await Promise.all([
+    readPackageInfo(),
+    detectPackageManager(),
+    collectGitInfo(),
+    collectDiskUsage(),
+    collectCpuUsage(),
+  ]);
+  const totalMemory = totalmem();
+  const freeMemory = freemem();
+  const memoryPercent = totalMemory > 0 ? clampPercent(((totalMemory - freeMemory) / totalMemory) * 100) : 0;
+  const cpuPercent = cpu.average;
+  const loadPercent = clampPercent((loadavg()[0] / Math.max(cpus().length, 1)) * 100);
+  const platformLabel = `${platform()} ${release()}`;
+  const health = usageStatus(cpuPercent, memoryPercent, disk.percent, gitInfo);
+  const tasks = buildWorkbenchTasks(packageInfo, gitInfo, process.uptime());
+  const risks = buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent: disk.percent, gitInfo, packageInfo })
+    .map((risk) => {
+      if (state.resolvedRiskIds.has(risk.id)) return { ...risk, status: "已处理" };
+      if (state.deferredRiskIds.has(risk.id)) return { ...risk, status: "已暂缓" };
+      return risk;
+    });
+  const openRisks = risks.filter((risk) => risk.status === "待处理");
+  const queuedTasks = tasks.filter((task) => ["运行中", "等待"].includes(task.status));
+  const failedTasks = tasks.filter((task) => task.status === "失败");
+  const node = {
+    id: "node-local",
+    name: hostname(),
+    ip: primaryAddress(),
+    env: "本机",
+    status: health,
+    latency: "本机",
+    cpu: percentText(cpuPercent),
+    memory: percentText(memoryPercent),
+    disk: percentText(disk.percent),
+    version: `v${packageInfo.version}`,
+    uptime: formatDuration(uptime()),
+    backup: "未配置",
+    update: gitInfo.updateLabel,
+    owner: `${packageManager} / ${gitInfo.branch}`,
+    services: [
+      `api:${port}`,
+      ...Object.keys(packageInfo.scripts).slice(0, 5).map((name) => `npm:${name}`),
+    ],
+  };
+  const audits = gitInfo.logs.map((item) => ([
+    item.time,
+    "git",
+    item.author,
+    item.subject,
+    gitInfo.branch,
+    "成功",
+    item.hash,
+  ]));
+  if (audits.length === 0) {
+    audits.push([collectedAt, "git", "系统", "未读取到提交记录", gitInfo.branch, "失败", gitInfo.commit]);
+  }
+  const cpuLine = spark([...cpu.corePercents, cpuPercent, loadPercent]);
+  const memoryLine = spark([memoryPercent - 8, memoryPercent - 3, memoryPercent, memoryPercent + 2, memoryPercent - 1]);
+  const diskLine = spark([disk.percent - 2, disk.percent - 1, disk.percent, disk.percent + 1]);
 
   return {
-    lastRefresh: state.lastRefresh,
+    lastRefresh: collectedAt,
     cluster: {
-      current: node?.name ?? "",
-      health: node?.status ?? "维护",
-      latency: node?.latency ?? "-",
-      version: node?.version ?? "-",
-      uptime: node?.uptime ?? "-",
-      lastBackup: node?.backup ?? state.lastRefresh,
-      pendingUpdates,
+      current: node.name,
+      health,
+      latency: node.latency,
+      version: node.version,
+      uptime: node.uptime,
+      lastBackup: node.backup,
+      pendingUpdates: gitInfo.changedFiles.length + gitInfo.behind,
     },
     metrics: [
-      { label: "在线主机", value: String(healthyNodes.length), suffix: `/ ${state.nodes.length}`, delta: `${Math.round((healthyNodes.length / Math.max(state.nodes.length, 1)) * 100)}% 在线`, icon: "server", tone: "blue", line: [14, 20, 17, 24, 22, 31, 27, 29, 25, 30, 27, 29] },
-      { label: "网站", value: "48", suffix: "", delta: "12% 较昨日", icon: "globe", tone: "blue", line: [12, 13, 13, 13, 20, 28, 24, 21, 32, 22, 26, 24] },
-      { label: "数据库", value: "19", suffix: "", delta: "5% 较昨日", icon: "database", tone: "blue", line: [12, 13, 12, 14, 14, 26, 25, 31, 21, 33, 34, 36] },
-      { label: "待执行任务", value: String(queuedTasks.length), suffix: "", delta: `${queuedTasks.length} 队列中`, icon: "calendar", tone: "gray", line: [26, 31, 24, 16, 22, 28, 36, 18, 34, 25, 16, 12] },
-      { label: "风险项", value: String(openRisks.length), suffix: "", delta: `${openRisks.filter((risk) => risk.level === "高危").length} 高危`, icon: "shield", tone: "orange", line: [10, 20, 21, 35, 16, 25, 22, 27, 23, 12, 12, 12] },
-      { label: "今日告警", value: String(failedTasks.length), suffix: "", delta: `${failedTasks.length} 失败任务`, icon: "bell", tone: failedTasks.length ? "red" : "blue", line: [14, 28, 16, 34, 20, 27, 35, 30, 24, 18, 46, 14] },
+      { label: "CPU 使用率", value: String(cpuPercent), suffix: "%", delta: `1 分钟负载 ${percentText(loadPercent)}`, icon: "server", tone: cpuPercent >= 85 ? "red" : cpuPercent >= 70 ? "orange" : "blue", line: cpuLine },
+      { label: "内存使用率", value: String(memoryPercent), suffix: "%", delta: `${Math.round(freeMemory / 1024 / 1024 / 1024)} GB 可用`, icon: "database", tone: memoryPercent >= 88 ? "red" : memoryPercent >= 76 ? "orange" : "blue", line: memoryLine },
+      { label: "磁盘使用率", value: String(disk.percent), suffix: "%", delta: `${Math.round(disk.free / 1024 / 1024 / 1024)} GB 可用`, icon: "globe", tone: disk.percent >= 90 ? "red" : disk.percent >= 80 ? "orange" : "blue", line: diskLine },
+      { label: "待处理任务", value: String(queuedTasks.length), suffix: "", delta: `${Object.keys(packageInfo.scripts).length} 个 npm 脚本`, icon: "calendar", tone: "gray", line: spark([queuedTasks.length * 10, Object.keys(packageInfo.scripts).length * 10, 20, 35]) },
+      { label: "风险项", value: String(openRisks.length), suffix: "", delta: `${openRisks.filter((risk) => risk.level === "高危").length} 高危`, icon: "shield", tone: openRisks.length ? "orange" : "blue", line: spark([openRisks.length * 20, risks.length * 15, gitInfo.changedFiles.length * 8]) },
+      { label: "Git 变更", value: String(gitInfo.changedFiles.length), suffix: "", delta: gitInfo.updateLabel, icon: "bell", tone: gitInfo.changedFiles.length ? "red" : "blue", line: spark([gitInfo.counts.modified * 20, gitInfo.counts.untracked * 20, gitInfo.counts.deleted * 20, gitInfo.changedFiles.length * 10]) },
     ],
-    nodes: state.nodes,
-    tasks: state.tasks,
-    audits: auditRows,
-    risks: state.risks,
+    nodes: [node],
+    tasks,
+    audits,
+    risks,
     resources: {
-      今天: buildResources("今天"),
-      "近7天": buildResources("近7天"),
-      "近30天": buildResources("近30天"),
+      当前采样: [
+        { label: "CPU 使用率", value: percentText(cpuPercent), delta: `${cpus().length} 核心`, values: cpuLine },
+        { label: "内存使用率", value: percentText(memoryPercent), delta: `${Math.round(totalMemory / 1024 / 1024 / 1024)} GB 总量`, values: memoryLine },
+        { label: "磁盘使用率", value: percentText(disk.percent), delta: "仓库所在卷", values: diskLine },
+        { label: "系统负载", value: loadavg()[0].toFixed(2), delta: platformLabel, values: spark(loadavg().map((value) => (value / Math.max(cpus().length, 1)) * 100)) },
+      ],
     },
   };
 }
@@ -130,71 +428,6 @@ async function readJson(request) {
   }
 }
 
-function patchById(collection, id, patch) {
-  const index = collection.findIndex((item) => item.id === id);
-  if (index === -1) return null;
-  collection[index] = { ...collection[index], ...patch, id };
-  return collection[index];
-}
-
-function createNode(payload = {}) {
-  const id = makeId("node");
-  const node = {
-    id,
-    name: payload.name ?? `panel-new-${state.nodes.length + 1}`,
-    ip: payload.ip ?? `10.0.9.${state.nodes.length + 10}`,
-    env: payload.env ?? "生产",
-    status: payload.status ?? "健康",
-    latency: payload.latency ?? "44ms",
-    cpu: payload.cpu ?? "11%",
-    memory: payload.memory ?? "31%",
-    disk: payload.disk ?? "24%",
-    version: payload.version ?? "v2.8.1",
-    uptime: payload.uptime ?? "刚刚接入",
-    backup: payload.backup ?? state.lastRefresh,
-    update: payload.update ?? "已是最新",
-    owner: payload.owner ?? "未分配",
-    services: payload.services ?? ["nginx", "worker"],
-  };
-  state.nodes.unshift(node);
-  state.selectedCluster = node.name;
-  return node;
-}
-
-function createTask(payload = {}) {
-  const task = {
-    id: payload.id ?? makeId("task"),
-    type: payload.type ?? "巡检",
-    title: payload.title ?? "手动触发集群巡检",
-    target: payload.target ?? "全部主机",
-    status: payload.status ?? "运行中",
-    priority: payload.priority ?? "中",
-    operator: payload.operator ?? "管理员",
-    queuedAt: payload.queuedAt ?? "刚刚",
-    duration: payload.duration ?? "运行中",
-    logs: payload.logs ?? ["创建巡检任务", "正在采集节点状态"],
-  };
-  state.tasks.unshift(task);
-  return task;
-}
-
-function createRisk(payload = {}) {
-  const risk = {
-    id: payload.id ?? makeId("risk"),
-    title: payload.title ?? "新风险项",
-    level: payload.level ?? "中危",
-    status: payload.status ?? "待处理",
-    target: payload.target ?? "未指定对象",
-    owner: payload.owner ?? "安全组",
-    impact: payload.impact ?? "等待后续评估",
-    detected: payload.detected ?? "刚刚",
-    suggestion: payload.suggestion ?? "查看详情并制定处理方案",
-    traceId: payload.traceId ?? makeId("risk-trace"),
-  };
-  state.risks.unshift(risk);
-  return risk;
-}
-
 function sendRecordOr404(response, key, record, message = "记录不存在") {
   if (!record) {
     sendError(response, 404, message);
@@ -206,38 +439,33 @@ function sendRecordOr404(response, key, record, message = "记录不存在") {
 
 async function handleOverviewRoute(request, response, parts) {
   if (request.method === "GET" && parts.length === 2) {
-    sendJson(response, 200, overviewPayload());
+    sendJson(response, 200, await overviewPayload());
     return;
   }
 
   if (request.method === "POST" && parts[2] === "refresh" && parts.length === 3) {
     state.lastRefresh = nowTime();
-    sendJson(response, 200, overviewPayload());
+    sendJson(response, 200, await overviewPayload());
     return;
   }
 
   if (request.method === "POST" && parts[2] === "cluster" && parts.length === 3) {
-    const payload = await readJson(request);
-    const node = state.nodes.find((item) => item.name === payload.cluster);
-    if (!node) {
-      sendError(response, 404, "集群节点不存在");
-      return;
-    }
-    state.selectedCluster = node.name;
-    sendJson(response, 200, overviewPayload());
+    await readJson(request);
+    sendJson(response, 200, await overviewPayload());
     return;
   }
 
   if (request.method === "POST" && parts[2] === "check-updates" && parts.length === 3) {
+    const overview = await overviewPayload();
     state.updateCheck = {
       lastCheckedAt: nowTime(),
-      availableUpdates: state.nodes.filter((node) => node.update !== "已是最新").length,
+      availableUpdates: overview.cluster.pendingUpdates,
       message: "检查完成",
     };
     sendJson(response, 200, {
-      message: `检查完成：${state.updateCheck.availableUpdates} 个组件可更新`,
+      message: `检查完成：${state.updateCheck.availableUpdates} 个待处理项`,
       tone: state.updateCheck.availableUpdates ? "warning" : "success",
-      overview: overviewPayload(),
+      overview,
     });
     return;
   }
@@ -247,41 +475,31 @@ async function handleOverviewRoute(request, response, parts) {
 
 async function handleHealthRoute(request, response, parts) {
   if (request.method === "GET" && parts.length === 3) {
-    sendJson(response, 200, { nodes: state.nodes, lastRefresh: state.lastRefresh });
+    const overview = await overviewPayload();
+    sendJson(response, 200, { nodes: overview.nodes, lastRefresh: overview.lastRefresh });
     return;
   }
 
   if (request.method === "POST" && parts[3] === "refresh" && parts.length === 4) {
-    state.lastRefresh = nowTime();
-    sendJson(response, 200, { nodes: state.nodes, lastRefresh: state.lastRefresh });
+    const overview = await overviewPayload();
+    sendJson(response, 200, { nodes: overview.nodes, lastRefresh: overview.lastRefresh });
     return;
   }
 
   if (request.method === "POST" && parts[3] === "nodes" && parts.length === 4) {
-    createNode(await readJson(request));
-    sendJson(response, 201, {
-      nodes: state.nodes,
-      lastRefresh: state.lastRefresh,
-      message: "新增节点已接入",
-      tone: "info",
-    });
+    await readJson(request);
+    sendError(response, 501, "真实节点接入尚未配置 Agent 注册接口");
     return;
   }
 
   if (request.method === "PATCH" && parts[3] === "nodes" && parts.length === 5) {
-    const node = patchById(state.nodes, parts[4], await readJson(request));
-    sendRecordOr404(response, "node", node ? { node, message: `${node.name} 已更新` } : null);
+    await readJson(request);
+    sendError(response, 501, "真实节点修复尚未配置 Agent 执行器");
     return;
   }
 
   if (request.method === "POST" && parts[3] === "nodes" && parts[5] === "restart" && parts.length === 6) {
-    const node = state.nodes.find((item) => item.id === parts[4]);
-    if (!node) {
-      sendError(response, 404, "节点不存在");
-      return;
-    }
-    node.uptime = "刚刚重启";
-    sendJson(response, 200, { message: `${node.name} 服务已重启`, tone: "info" });
+    sendError(response, 501, "真实节点重启尚未配置 Agent 执行器");
     return;
   }
 
@@ -290,13 +508,14 @@ async function handleHealthRoute(request, response, parts) {
 
 async function handleTasksRoute(request, response, parts) {
   if (request.method === "GET" && parts.length === 3) {
-    sendJson(response, 200, { tasks: state.tasks });
+    const overview = await overviewPayload();
+    sendJson(response, 200, { tasks: overview.tasks });
     return;
   }
 
   if (request.method === "POST" && parts.length === 3) {
-    createTask(await readJson(request));
-    sendJson(response, 201, { tasks: state.tasks, message: "已创建巡检任务", tone: "info" });
+    await readJson(request);
+    sendError(response, 501, "真实任务创建尚未配置任务执行器");
     return;
   }
 
@@ -306,8 +525,8 @@ async function handleTasksRoute(request, response, parts) {
   }
 
   if (request.method === "PATCH" && parts.length === 4) {
-    const task = patchById(state.tasks, parts[3], await readJson(request));
-    sendRecordOr404(response, "task", task ? { task, message: `${task.title} 已更新` } : null);
+    await readJson(request);
+    sendError(response, 501, "真实任务状态修改尚未配置任务执行器");
     return;
   }
 
@@ -316,19 +535,21 @@ async function handleTasksRoute(request, response, parts) {
 
 async function handleRisksRoute(request, response, parts) {
   if (request.method === "GET" && parts.length === 3) {
-    sendJson(response, 200, { risks: state.risks, scannedAt: state.scannedAt });
+    const overview = await overviewPayload();
+    sendJson(response, 200, { risks: overview.risks, scannedAt: overview.lastRefresh });
     return;
   }
 
   if (request.method === "POST" && parts.length === 3) {
-    createRisk(await readJson(request));
-    sendJson(response, 201, { risks: state.risks, scannedAt: state.scannedAt, message: "风险已创建", tone: "info" });
+    await readJson(request);
+    sendError(response, 501, "真实风险创建尚未配置风险扫描器写入接口");
     return;
   }
 
   if (request.method === "POST" && parts[3] === "scan" && parts.length === 4) {
     state.scannedAt = nowTime();
-    sendJson(response, 200, { risks: state.risks, scannedAt: state.scannedAt, message: "已触发风险重新扫描", tone: "info" });
+    const overview = await overviewPayload();
+    sendJson(response, 200, { risks: overview.risks, scannedAt: overview.lastRefresh, message: "已触发风险重新扫描", tone: "info" });
     return;
   }
 
@@ -338,7 +559,17 @@ async function handleRisksRoute(request, response, parts) {
   }
 
   if (request.method === "PATCH" && parts.length === 4) {
-    const risk = patchById(state.risks, parts[3], await readJson(request));
+    const patch = await readJson(request);
+    if (patch.status === "已处理") {
+      state.resolvedRiskIds.add(parts[3]);
+      state.deferredRiskIds.delete(parts[3]);
+    }
+    if (patch.status === "已暂缓") {
+      state.deferredRiskIds.add(parts[3]);
+      state.resolvedRiskIds.delete(parts[3]);
+    }
+    const overview = await overviewPayload();
+    const risk = overview.risks.find((item) => item.id === parts[3]);
     sendRecordOr404(response, "risk", risk ? { risk, message: `${risk.title} 已更新` } : null);
     return;
   }

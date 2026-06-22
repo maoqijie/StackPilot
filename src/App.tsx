@@ -39,21 +39,18 @@ import {
 import type { LucideIcon } from "lucide-react";
 import {
   checkOverviewUpdates,
-  createOverviewNode,
   createOverviewTask,
   exportOverviewRisks,
   exportOverviewTasks,
   fetchOverview,
+  fetchOverviewHealth,
   fetchOverviewRisks,
   fetchOverviewTasks,
-  patchOverviewNode,
   patchOverviewRisk,
   patchOverviewTask,
   refreshOverview,
   refreshOverviewHealth,
-  restartOverviewNode,
   scanOverviewRisks,
-  switchOverviewCluster,
   type OverviewAuditRow,
   type OverviewMetricIcon,
   type OverviewNode,
@@ -274,10 +271,10 @@ function useIsNarrowViewport() {
 }
 
 const pageMeta: Record<string, PageMeta> = {
-  overview: { title: "首页总览", breadcrumb: "控制台", search: "搜索主机、网站、数据库、任务..." },
-  "overview-health": { title: "集群状态", breadcrumb: "首页总览", search: "搜索节点、IP、服务、版本..." },
-  "overview-tasks": { title: "任务流", breadcrumb: "首页总览", search: "搜索任务、类型、操作人..." },
-  "overview-risks": { title: "风险中心", breadcrumb: "首页总览", search: "搜索风险、主机、对象..." },
+  overview: { title: "工作台", breadcrumb: "控制台", search: "搜索主机、脚本、风险、提交..." },
+  "overview-health": { title: "集群状态", breadcrumb: "工作台", search: "搜索节点、IP、服务、版本..." },
+  "overview-tasks": { title: "任务流", breadcrumb: "工作台", search: "搜索任务、类型、操作人..." },
+  "overview-risks": { title: "风险中心", breadcrumb: "工作台", search: "搜索风险、主机、对象..." },
   hosts: { title: "主机", breadcrumb: "资源管理", search: "搜索主机名、IP、环境..." },
   sites: { title: "网站", breadcrumb: "应用管理", search: "搜索域名、运行时、证书..." },
   databases: { title: "数据库管理", breadcrumb: "资源管理", search: "搜索数据库名称" },
@@ -302,12 +299,12 @@ const pageMeta: Record<string, PageMeta> = {
 const navItems: NavItem[] = [
   {
     key: "overview",
-    label: "首页总览",
+    label: "工作台",
     icon: Home,
     children: [
-      { id: "overview-health", label: "集群状态", meta: "健康 / 延迟", page: "overview-health" },
-      { id: "overview-tasks", label: "任务流", meta: "7 待执行", page: "overview-tasks", badge: "7" },
-      { id: "overview-risks", label: "风险中心", meta: "3 风险", page: "overview-risks", badge: "3" },
+      { id: "overview-health", label: "集群状态", meta: "实时采样", page: "overview-health" },
+      { id: "overview-tasks", label: "任务流", meta: "脚本 / Git", page: "overview-tasks" },
+      { id: "overview-risks", label: "风险中心", meta: "实时风险", page: "overview-risks" },
     ],
   },
   {
@@ -620,15 +617,6 @@ const groupItems = [
   ["预发环境", "5", "blue"],
   ["开发环境", "6", "orange"],
   ["测试环境", "4", "purple"],
-];
-
-const overviewMetrics = [
-  { label: "在线主机", value: "12", suffix: "/ 12", delta: "100% 在线", icon: Server, tone: "blue", line: [14, 20, 17, 24, 22, 31, 27, 29, 25, 30, 27, 29] },
-  { label: "网站", value: "48", suffix: "", delta: "12% 较昨日", icon: Globe2, tone: "blue", line: [12, 13, 13, 13, 20, 28, 24, 21, 32, 22, 26, 24] },
-  { label: "数据库", value: "19", suffix: "", delta: "5% 较昨日", icon: Database, tone: "blue", line: [12, 13, 12, 14, 14, 26, 25, 31, 21, 33, 34, 36] },
-  { label: "待执行任务", value: "7", suffix: "", delta: "2 较昨日", icon: CalendarDays, tone: "gray", line: [26, 31, 24, 16, 22, 28, 36, 18, 34, 25, 16, 12] },
-  { label: "风险项", value: "3", suffix: "", delta: "1 较昨日", icon: Shield, tone: "orange", line: [10, 20, 21, 35, 16, 25, 22, 27, 23, 12, 12, 12] },
-  { label: "今日告警", value: "1", suffix: "", delta: "1 较昨日", icon: Bell, tone: "red", line: [14, 28, 16, 34, 20, 27, 35, 30, 24, 18, 46, 14] },
 ];
 
 const auditRows = [
@@ -1025,13 +1013,6 @@ type DatabaseSlowQuery = {
   explain?: string;
 };
 
-const initialOverviewNodes: OverviewNode[] = [
-  { id: "node-1", name: "demo-sg-01", ip: "10.0.0.11", env: "生产", status: "健康", latency: "38ms", cpu: "18%", memory: "42%", disk: "35%", version: "v2.8.1", uptime: "23 天 14 小时", backup: "今天 02:15", update: "已是最新", owner: "核心集群", services: ["nginx", "postgresql", "redis", "worker"] },
-  { id: "node-2", name: "panel-bj-02", ip: "10.0.1.22", env: "预发", status: "健康", latency: "52ms", cpu: "27%", memory: "55%", disk: "62%", version: "v2.8.0", uptime: "18 天 9 小时", backup: "今天 02:20", update: "可更新 1", owner: "发布验证", services: ["nginx", "worker", "systemd-resolved"] },
-  { id: "node-3", name: "panel-hk-03", ip: "10.0.2.33", env: "生产", status: "警告", latency: "126ms", cpu: "63%", memory: "78%", disk: "83%", version: "v2.8.0", uptime: "9 天 2 小时", backup: "昨天 02:18", update: "可更新 1", owner: "边缘站点", services: ["nginx", "mysql", "queue"] },
-  { id: "node-4", name: "panel-dev-04", ip: "10.0.3.44", env: "开发", status: "维护", latency: "离线", cpu: "0%", memory: "0%", disk: "47%", version: "v2.7.9", uptime: "维护中", backup: "3 天前", update: "待检查", owner: "研发调试", services: ["docker", "node", "cron"] },
-];
-
 const initialOverviewTasks: OverviewTaskRecord[] = [
   { id: "task-1", type: "部署", title: "部署 /api 服务 v2.8.1", target: "demo-sg-01", status: "成功", priority: "中", operator: "李敏", queuedAt: "2 分钟前", duration: "1分24秒", logs: ["拉取 release v2.8.1", "执行健康检查", "发布完成"] },
   { id: "task-2", type: "备份", title: "备份 shop_db", target: "prod-postgres-01", status: "成功", priority: "低", operator: "系统", queuedAt: "8 分钟前", duration: "32秒", logs: ["创建快照", "上传到 S3", "校验成功"] },
@@ -1062,47 +1043,25 @@ function reportApiError(error: unknown, notify: Notify, fallback = "后端请求
   notify(error instanceof Error ? error.message : fallback, "danger");
 }
 
-function initialOverviewSummary(): OverviewSummaryPayload {
+function emptyOverviewSummary(): OverviewSummaryPayload {
   return {
     cluster: {
-      current: "demo-sg-01",
-      health: "健康",
-      latency: "38ms",
-      version: "v2.8.1",
-      uptime: "23 天 14 小时",
-      lastBackup: "2025-05-22 02:15",
-      pendingUpdates: 2,
+      current: "",
+      health: "维护",
+      latency: "-",
+      version: "-",
+      uptime: "-",
+      lastBackup: "-",
+      pendingUpdates: 0,
     },
-    metrics: overviewMetrics.map((metric, index) => ({
-      label: metric.label,
-      value: metric.value,
-      suffix: metric.suffix,
-      delta: metric.delta,
-      tone: metric.tone,
-      line: metric.line,
-      icon: ["server", "globe", "database", "calendar", "shield", "bell"][index] as OverviewMetricIcon,
-    })),
-    nodes: initialOverviewNodes,
-    tasks: initialOverviewTasks,
-    audits: auditRows as OverviewAuditRow[],
-    risks: initialOverviewRisks,
-    resources: {
-      今天: buildOverviewResources("今天"),
-      "近7天": buildOverviewResources("近7天"),
-      "近30天": buildOverviewResources("近30天"),
-    },
-    lastRefresh: "2025-05-22 02:15",
+    metrics: [],
+    nodes: [],
+    tasks: [],
+    audits: [],
+    risks: [],
+    resources: {},
+    lastRefresh: "",
   };
-}
-
-function buildOverviewResources(activeTab: string): OverviewResourceRecord[] {
-  const multiplier = activeTab === "近30天" ? 1.18 : activeTab === "近7天" ? 1.08 : 1;
-  return [
-    { label: "CPU 使用率", value: `${Math.round(18 * multiplier)}%`, delta: activeTab === "今天" ? "+3%" : "+6%", values: [18, 16, 20, 14, 26, 17, 23, 15, 21, 18] },
-    { label: "内存使用率", value: `${Math.round(52 * multiplier)}%`, delta: activeTab === "今天" ? "+4%" : "+7%", values: [42, 48, 45, 52, 47, 55, 48, 52, 49, 57] },
-    { label: "磁盘使用率", value: `${Math.round(61 * multiplier)}%`, delta: activeTab === "今天" ? "+1%" : "+3%", values: [59, 61, 58, 63, 57, 62, 56, 61, 58, 64] },
-    { label: "网络流量", value: activeTab === "今天" ? "1.2 TB" : activeTab === "近7天" ? "8.9 TB" : "34.6 TB", delta: activeTab === "今天" ? "+8%" : "+13%", values: [20, 16, 26, 18, 30, 23, 19, 24, 21, 28] },
-  ];
 }
 
 const initialHostRecords: HostRecord[] = [
@@ -2595,26 +2554,49 @@ function TopbarDropdown({
 }
 
 function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify }) {
-  const [overview, setOverview] = useState<OverviewSummaryPayload>(() => initialOverviewSummary());
+  const [overview, setOverview] = useState<OverviewSummaryPayload>(() => emptyOverviewSummary());
   const [loading, setLoading] = useState(true);
-  const [taskTab, setTaskTab] = useState("最近任务");
-  const [resourceTab, setResourceTab] = useState("今天");
-  const clusterNames = overview.nodes.map((node) => node.name);
-  const clusterIndex = Math.max(clusterNames.indexOf(overview.cluster.current), 0);
-  const nextCluster = clusterNames[(clusterIndex + 1) % clusterNames.length] ?? "demo-sg-01";
+  const [error, setError] = useState<string | null>(null);
+  const [taskTab, setTaskTab] = useState("全部任务");
+  const resourceTabs = Object.keys(overview.resources);
+  const [resourceTab, setResourceTab] = useState("当前采样");
+  const activeResourceTab = resourceTabs.includes(resourceTab) ? resourceTab : resourceTabs[0] ?? "当前采样";
   const pendingRiskCount = overview.risks.filter((risk) => risk.status === "待处理").length;
+  const queuedTaskCount = overview.tasks.filter((task) => ["运行中", "等待"].includes(task.status)).length;
+  const highRiskCount = overview.risks.filter((risk) => risk.status === "待处理" && risk.level === "高危").length;
+  const hasOverview = overview.nodes.length > 0 || overview.metrics.length > 0;
+  const currentNode = overview.nodes[0] ?? null;
+
+  const loadOverview = useCallback(async (signal?: AbortSignal, silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const payload = await fetchOverview(signal);
+      setOverview(payload);
+      setError(null);
+    } catch (loadError) {
+      if (signal?.aborted) return;
+      const message = loadError instanceof Error ? loadError.message : "工作台数据加载失败";
+      setError(message);
+      reportApiError(loadError, notify, "工作台数据加载失败");
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
+  }, [notify]);
 
   useEffect(() => {
     const controller = new AbortController();
     fetchOverview(controller.signal)
       .then((payload) => {
         setOverview(payload);
+        setError(null);
         setLoading(false);
       })
-      .catch((error: unknown) => {
+      .catch((loadError: unknown) => {
         if (controller.signal.aborted) return;
+        const message = loadError instanceof Error ? loadError.message : "工作台数据加载失败";
+        setError(message);
         setLoading(false);
-        reportApiError(error, notify, "首页总览后端加载失败");
+        reportApiError(loadError, notify, "工作台数据加载失败");
       });
     return () => controller.abort();
   }, [notify]);
@@ -2623,9 +2605,10 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
     try {
       const payload = await request();
       setOverview(payload);
+      setError(null);
       if (success) notify(success, tone);
     } catch (error) {
-      reportApiError(error, notify, "首页总览后端请求失败");
+      reportApiError(error, notify, "工作台后端请求失败");
     }
   };
 
@@ -2642,47 +2625,24 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
 
   return (
     <div className="overview-page">
-      <h1 className="sr-only">首页总览</h1>
-      <div className="cluster-bar">
-        <button
-          type="button"
-          className="cluster-select"
-          onClick={() => {
-            void reloadOverview(() => switchOverviewCluster(nextCluster), `已切换到 ${nextCluster}`, "info");
-          }}
-        >
-          <StatusLight tone={overview.cluster.health === "健康" ? "green" : "orange"} />
-          {overview.cluster.current}
-          <ChevronDown size={14} />
-        </button>
-        <span>集群状态：<b className={overview.cluster.health === "健康" ? "green-text" : "orange-text"}>{overview.cluster.health}</b></span>
-        <span>延迟：<b className={overview.cluster.health === "健康" ? "green-text" : "orange-text"}>{overview.cluster.latency}</b></span>
+      <h1 className="sr-only">工作台</h1>
+      <div className="workbench-status-bar">
+        <div>
+          <span className="workbench-eyebrow">实时工作台</span>
+          <strong><StatusLight tone={overview.cluster.health === "健康" ? "green" : "orange"} /> {overview.cluster.current || "等待采集"}</strong>
+        </div>
+        <span>状态：<b className={overview.cluster.health === "健康" ? "green-text" : "orange-text"}>{overview.cluster.health}</b></span>
+        <span>入口：{overview.cluster.latency}</span>
         <span>版本：{overview.cluster.version}</span>
-        <span>运行时间：{overview.cluster.uptime}</span>
-        <span>最后备份：{overview.cluster.lastBackup} <CheckCircle2 size={13} /></span>
-        <span>待更新：<b className={overview.cluster.pendingUpdates ? "red-text" : "green-text"}>{overview.cluster.pendingUpdates}</b></span>
+        <span>运行：{overview.cluster.uptime}</span>
+        <span>刷新：{overview.lastRefresh || "-"}</span>
+        <span>待处理：<b className={overview.cluster.pendingUpdates ? "red-text" : "green-text"}>{overview.cluster.pendingUpdates}</b></span>
         <div className="cluster-actions">
-          <button
-            className="primary small"
-            type="button"
-            onClick={async () => {
-              try {
-                await createOverviewNode();
-                const payload = await fetchOverview();
-                setOverview(payload);
-                notify("新增主机已写入后端", "info");
-              } catch (error) {
-                reportApiError(error, notify, "新增主机失败");
-              }
-            }}
-          >
-            <Plus size={14} /> 新增主机
-          </button>
           <button
             className="ghost small"
             type="button"
             onClick={() => {
-              void reloadOverview(refreshOverview, "集群数据已刷新");
+              void reloadOverview(refreshOverview, "工作台数据已刷新");
             }}
           >
             <RefreshCw size={14} /> 刷新
@@ -2705,7 +2665,21 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
           <button className="warning small" type="button" onClick={() => setPage("overview-risks", { message: "已打开风险中心", tone: "warning" })}>风险中心 <b>{pendingRiskCount}</b></button>
         </div>
       </div>
-      {loading && <div className="overview-inline-detail"><StatusLight tone="blue" /> 正在从后端加载首页总览...</div>}
+      {loading && <div className="overview-inline-detail"><StatusLight tone="blue" /> 正在从后端实时采集工作台数据...</div>}
+      {error && (
+        <div className="overview-error-state">
+          <Shield size={18} />
+          <span>{error}</span>
+          <button type="button" onClick={() => void loadOverview(undefined, false)}>重试</button>
+        </div>
+      )}
+      {!loading && !error && !hasOverview && (
+        <div className="overview-error-state">
+          <CircleHelp size={18} />
+          <span>后端返回了空工作台数据。</span>
+          <button type="button" onClick={() => void loadOverview(undefined, false)}>重新采集</button>
+        </div>
+      )}
       <section className="metric-row">
         {overview.metrics.map((item) => (
           <MetricCard key={item.label} {...item} icon={overviewMetricIcons[item.icon]} />
@@ -2717,23 +2691,23 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
             <HostTable nodes={overview.nodes} notify={notify} />
           </PanelCard>
           <div className="two-panels">
-            <PanelCard title="任务流" tabs={["最近任务", `队列中的任务 (${overview.tasks.filter((task) => ["运行中", "等待"].includes(task.status)).length})`]} activeTab={taskTab} onTabChange={setTaskTab} action="查看全部" onAction={() => setPage("overview-tasks", { message: "已打开任务流", tone: "info" })}>
-              <TaskTable tasks={overview.tasks} queued={taskTab !== "最近任务"} />
+            <PanelCard title="处置建议" tabs={["全部任务", `待处理 (${queuedTaskCount})`]} activeTab={taskTab} onTabChange={setTaskTab} action="查看全部" onAction={() => setPage("overview-tasks", { message: "已打开任务流", tone: "info" })}>
+              <TaskTable tasks={overview.tasks} queued={taskTab !== "全部任务"} />
             </PanelCard>
-            <PanelCard title="最近审计" action="查看全部" onAction={() => setPage("audit", { message: "已打开审计日志列表", tone: "info" })}>
+            <PanelCard title="近期动态" action="查看全部" onAction={() => setPage("audit", { message: "已打开审计日志列表", tone: "info" })}>
               <AuditTable rows={overview.audits} />
             </PanelCard>
           </div>
         </div>
         <div className="right-stack">
-          <PanelCard title="风险中心" action="查看详情" onAction={() => setPage("overview-risks", { message: "已打开风险中心", tone: "warning" })}>
+          <PanelCard title={`风险预警 ${highRiskCount ? `(${highRiskCount} 高危)` : ""}`} action="查看详情" onAction={() => setPage("overview-risks", { message: "已打开风险中心", tone: "warning" })}>
             <RiskList risks={overview.risks} notify={notify} onResolve={resolveOverviewRisk} />
           </PanelCard>
-          <PanelCard title="快捷操作">
-            <QuickActions notify={notify} />
+          <PanelCard title="当前目标">
+            <WorkbenchProgress node={currentNode} taskCount={queuedTaskCount} riskCount={pendingRiskCount} />
           </PanelCard>
-          <PanelCard title="资源概览" tabs={["今天", "近7天", "近30天"]} activeTab={resourceTab} onTabChange={setResourceTab}>
-            <ResourceOverview resources={overview.resources[resourceTab] ?? []} />
+          <PanelCard title="资源概览" tabs={resourceTabs} activeTab={activeResourceTab} onTabChange={setResourceTab}>
+            <ResourceOverview resources={overview.resources[activeResourceTab] ?? []} />
           </PanelCard>
         </div>
       </section>
@@ -2764,7 +2738,7 @@ function MetricCard({
       <div>
         <span>{label}</span>
         <strong>{value}<em>{suffix}</em></strong>
-        <p className={tone === "red" ? "orange-text" : "green-text"}>↑ {delta}</p>
+        <p className={tone === "red" || tone === "orange" ? "orange-text" : "green-text"}>{delta}</p>
       </div>
       <Sparkline values={line} tone={tone} />
     </article>
@@ -2805,7 +2779,7 @@ function HostTable({ nodes, notify }: { nodes: OverviewNode[]; notify: Notify })
               <td><Bar value={host.disk} tone={host.status === "警告" ? "red" : "green"} /></td>
               <td><StatusLight tone={host.status === "警告" ? "orange" : host.status === "维护" ? "gray" : "green"} /> {host.status}</td>
               <td><StatusLight tone="green" /> {host.backup}</td>
-              <td className={host.update === "已是最新" ? "" : "orange-text"}>{host.update}</td>
+              <td className={isCleanUpdate(host.update) ? "green-text" : "orange-text"}>{host.update}</td>
               <td>
                 <button
                   className="icon-action inline"
@@ -2838,7 +2812,7 @@ function HostTable({ nodes, notify }: { nodes: OverviewNode[]; notify: Notify })
           </div>
           <div className="drawer-list">
             <strong>服务列表</strong>
-            {selectedHost.services.map((service) => <p key={service}><StatusLight tone="green" /> {service}<span>active</span></p>)}
+            {selectedHost.services.map((service) => <p key={service}><StatusLight tone="green" /> {service}<span>已采集</span></p>)}
           </div>
         </DetailDrawer>
       )}
@@ -2906,25 +2880,27 @@ function RiskList({ risks, onResolve }: { risks: OverviewRiskRecord[]; notify: N
           </button>
         </div>
       ))}
+      {risks.length === 0 && <div className="risk-empty"><CheckCircle2 size={17} /><span>当前没有实时风险</span></div>}
     </div>
   );
 }
 
-function QuickActions({ notify }: { notify: Notify }) {
-  const actions = [
-    [Globe2, "添加网站", () => { setQuickRoute("sites", "create-site"); notify("已打开添加网站", "info"); }],
-    [TerminalSquare, "开启终端", () => { setQuickRoute("terminal", "open-terminal"); notify("已打开终端会话", "info"); }],
-    [Database, "创建数据库", () => { setQuickRoute("databases", "create-database"); notify("已打开创建数据库", "info"); }],
-    [Clock3, "新建定时任务", () => { setQuickRoute("schedule", "create-schedule"); notify("已打开新建定时任务", "info"); }],
-  ] as const;
+function WorkbenchProgress({ node, taskCount, riskCount }: { node: OverviewNode | null; taskCount: number; riskCount: number }) {
+  const cpu = node ? percentValue(node.cpu) : 0;
+  const memory = node ? percentValue(node.memory) : 0;
+  const disk = node ? percentValue(node.disk) : 0;
+  const stability = Math.max(0, Math.min(100, Math.round(100 - (cpu + memory + disk) / 6 - riskCount * 8 - taskCount * 4)));
   return (
-    <div className="quick-grid">
-      {actions.map(([Icon, label, onClick]) => (
-        <button key={label} type="button" onClick={onClick}>
-          <Icon size={28} />
-          <span>{label}</span>
-        </button>
-      ))}
+    <div className="workbench-progress">
+      <strong>{node?.version ?? "-"} 工作区</strong>
+      <b>{stability}%</b>
+      <i><span style={{ width: `${stability}%` }} /></i>
+      <p>待处理任务 {taskCount} · 风险 {riskCount} · {node?.owner ?? "等待采集"}</p>
+      <div>
+        <span>CPU {node?.cpu ?? "-"}</span>
+        <span>内存 {node?.memory ?? "-"}</span>
+        <span>磁盘 {node?.disk ?? "-"}</span>
+      </div>
     </div>
   );
 }
@@ -2944,83 +2920,107 @@ function ResourceOverview({ resources }: { resources: OverviewResourceRecord[] }
 }
 
 function OverviewHealthPage({ notify }: { notify: Notify }) {
-  const [nodes, setNodes] = useState(initialOverviewNodes);
+  const [nodes, setNodes] = useState<OverviewNode[]>([]);
   const [search, setSearch] = useState("");
   const [envFilter, setEnvFilter] = useState("全部");
   const [statusFilter, setStatusFilter] = useState("全部");
   const [selected, setSelected] = useState<OverviewNode | null>(null);
-  const [lastRefresh, setLastRefresh] = useState("2025-05-22 02:15");
+  const [lastRefresh, setLastRefresh] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const filteredNodes = nodes.filter((node) => {
     const query = search.trim().toLowerCase();
-    const matchSearch = !query || node.name.toLowerCase().includes(query) || node.ip.includes(query) || node.services.join(" ").toLowerCase().includes(query);
+    const matchSearch = !query
+      || node.name.toLowerCase().includes(query)
+      || node.ip.includes(query)
+      || node.owner.toLowerCase().includes(query)
+      || node.version.toLowerCase().includes(query)
+      || node.services.join(" ").toLowerCase().includes(query);
     const matchEnv = envFilter === "全部" || node.env === envFilter;
     const matchStatus = statusFilter === "全部" || node.status === statusFilter;
     return matchSearch && matchEnv && matchStatus;
   });
   const warningCount = nodes.filter((node) => node.status !== "健康").length;
-  const updateCount = nodes.filter((node) => node.update !== "已是最新").length;
+  const updateCount = nodes.filter((node) => !isCleanUpdate(node.update)).length;
+  const envOptions = ["全部", ...uniqueSorted(nodes.map((node) => node.env))];
+  const statusOptions = ["全部", ...uniqueSorted(nodes.map((node) => node.status))];
+  const subtitle = loading
+    ? "正在从本机采集器读取集群状态。"
+    : error
+      ? "实时采集失败，页面未回退到示例节点。"
+      : `统一查看真实节点、延迟、资源和服务健康。最近刷新：${lastRefresh || "-"}`;
 
-  const applyNode = (updatedNode: OverviewNode) => {
-    setNodes((current) => current.map((node) => node.id === updatedNode.id ? updatedNode : node));
-    setSelected((current) => current?.id === updatedNode.id ? updatedNode : current);
-  };
-
-  const syncHealth = (nextNodes: OverviewNode[], nextRefresh = lastRefresh) => {
+  const syncHealth = useCallback((nextNodes: OverviewNode[], nextRefresh: string) => {
     setNodes(nextNodes);
     setLastRefresh(nextRefresh);
     setSelected((current) => current ? nextNodes.find((node) => node.id === current.id) ?? null : null);
-  };
+  }, []);
 
-  const createNodeFromApi = async () => {
+  const loadHealth = useCallback(async (request: (signal?: AbortSignal) => Promise<{ nodes: OverviewNode[]; lastRefresh: string }>, signal?: AbortSignal, silent = false) => {
+    if (!silent) setLoading(true);
     try {
-      const payload = await createOverviewNode();
+      const payload = await request(signal);
       syncHealth(payload.nodes, payload.lastRefresh);
-      notify(payload.message, payload.tone ?? "info");
-    } catch (error) {
-      reportApiError(error, notify, "新增节点失败");
+      setError(null);
+    } catch (loadError) {
+      if (signal?.aborted) return;
+      const message = loadError instanceof Error ? loadError.message : "集群状态后端加载失败";
+      setError(message);
+      reportApiError(loadError, notify, "集群状态后端加载失败");
+    } finally {
+      if (!signal?.aborted) setLoading(false);
     }
-  };
+  }, [notify, syncHealth]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchOverviewHealth(controller.signal)
+      .then((payload) => {
+        syncHealth(payload.nodes, payload.lastRefresh);
+        setError(null);
+        setLoading(false);
+      })
+      .catch((loadError: unknown) => {
+        if (controller.signal.aborted) return;
+        const message = loadError instanceof Error ? loadError.message : "集群状态后端加载失败";
+        setError(message);
+        setLoading(false);
+        reportApiError(loadError, notify, "集群状态后端加载失败");
+      });
+    return () => controller.abort();
+  }, [notify, syncHealth]);
 
   const refreshHealthFromApi = async () => {
     try {
+      setLoading(true);
       const payload = await refreshOverviewHealth();
       syncHealth(payload.nodes, payload.lastRefresh);
+      setError(null);
       notify("集群状态已刷新");
     } catch (error) {
       reportApiError(error, notify, "刷新集群状态失败");
-    }
-  };
-
-  const patchNodeFromApi = async (id: string, patch: Partial<OverviewNode>, fallbackMessage: string) => {
-    try {
-      const payload = await patchOverviewNode(id, patch);
-      applyNode(payload.node);
-      notify(payload.message ?? fallbackMessage);
-    } catch (error) {
-      reportApiError(error, notify, fallbackMessage);
-    }
-  };
-
-  const restartNodeFromApi = async (row: OverviewNode) => {
-    try {
-      const payload = await restartOverviewNode(row.id);
-      const updated = { ...row, uptime: "刚刚重启" };
-      applyNode(updated);
-      notify(payload.message, payload.tone ?? "info");
-    } catch (error) {
-      reportApiError(error, notify, "重启节点失败");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <ModulePageShell
       title="集群状态"
-      subtitle={`统一查看首页集群节点、延迟、备份和服务健康。最近刷新：${lastRefresh}`}
+      subtitle={subtitle}
       page="overview-health"
-      actions={<><button className="ghost" type="button" onClick={createNodeFromApi}><Plus size={14} /> 新增节点</button><button className="primary" type="button" onClick={refreshHealthFromApi}><RefreshCw size={14} /> 刷新状态</button></>}
-      filters={<><ModuleSearch value={search} placeholder="搜索节点、IP 或服务" onChange={setSearch} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={setEnvFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "健康", "警告", "维护"]} onChange={setStatusFilter} /></>}
+      actions={<button className="primary" type="button" onClick={refreshHealthFromApi} disabled={loading}><RefreshCw size={14} /> 刷新状态</button>}
+      filters={<><ModuleSearch value={search} placeholder="搜索节点、IP、服务、版本" onChange={setSearch} /><FieldSelect label="环境" value={envFilter} options={envOptions} onChange={setEnvFilter} /><FieldSelect label="状态" value={statusFilter} options={statusOptions} onChange={setStatusFilter} /></>}
       metrics={<><MetricTile icon={Server} label="节点总数" value={`${nodes.length}`} tone="blue" /><MetricTile icon={Activity} label="异常节点" value={`${warningCount}`} tone={warningCount ? "orange" : "green"} /><MetricTile icon={RefreshCw} label="待更新" value={`${updateCount}`} tone={updateCount ? "orange" : "green"} /></>}
     >
+      {loading && <span className="sr-only" role="status" aria-live="polite">正在从 /api/overview/health 实时采集节点状态</span>}
+      {error && (
+        <div className="overview-error-state health-error-state">
+          <Shield size={18} />
+          <span>{error}</span>
+          <button type="button" onClick={() => void loadHealth(fetchOverviewHealth)}>重试</button>
+        </div>
+      )}
       <div className="health-workspace">
         <DataTable
           columns={[
@@ -3031,17 +3031,15 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
             { key: "cpu", label: "CPU", width: "110px", sortValue: (row) => percentValue(row.cpu), render: (row) => <Bar value={row.cpu} tone={row.status === "警告" ? "orange" : "green"} /> },
             { key: "memory", label: "内存", width: "110px", sortValue: (row) => percentValue(row.memory), render: (row) => <Bar value={row.memory} tone={row.status === "警告" ? "red" : "green"} /> },
             { key: "backup", label: "备份", width: "118px", render: (row) => row.backup },
-            { key: "update", label: "更新", width: "110px", render: (row) => <span className={row.update === "已是最新" ? "green-text" : "orange-text"}>{row.update}</span> },
-            { key: "actions", label: "操作", width: "190px", render: (row) => (
+            { key: "update", label: "更新", width: "110px", render: (row) => <span className={isCleanUpdate(row.update) ? "green-text" : "orange-text"}>{row.update}</span> },
+            { key: "actions", label: "操作", width: "104px", render: (row) => (
               <div className="table-actions">
                 <button type="button" onClick={() => setSelected(row)}>详情</button>
-                <button type="button" onClick={() => patchNodeFromApi(row.id, { status: "健康", update: "已是最新", latency: row.latency === "离线" ? "44ms" : row.latency }, `${row.name} 已执行修复`)}>修复</button>
-                <button type="button" onClick={() => restartNodeFromApi(row)}>重启</button>
               </div>
             ) },
           ]}
           rows={filteredNodes}
-          emptyText="没有匹配的集群节点"
+          emptyText={error ? "实时采集失败，未显示示例节点" : loading ? "正在采集节点状态" : "没有匹配的集群节点"}
           getRowKey={(row) => row.id}
         />
         <HealthSummaryPanel nodes={filteredNodes} allNodes={nodes} onSelect={setSelected} />
@@ -3069,7 +3067,7 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
           </div>
           <div className="drawer-list">
             <strong>服务列表</strong>
-            {selected.services.map((service) => <p key={service}><StatusLight tone="green" /> {service}<span>active</span></p>)}
+            {selected.services.map((service) => <p key={service}><StatusLight tone="green" /> {service}<span>已采集</span></p>)}
           </div>
         </DetailDrawer>
       )}
@@ -3086,7 +3084,8 @@ function HealthSummaryPanel({
   allNodes: OverviewNode[];
   onSelect: (node: OverviewNode) => void;
 }) {
-  const envGroups = ["生产", "预发", "开发"].map((env) => {
+  const envNames = uniqueSorted(allNodes.map((node) => node.env));
+  const envGroups = (envNames.length > 0 ? envNames : ["未采集"]).map((env) => {
     const count = nodes.filter((node) => node.env === env).length;
     return { env, count, value: allNodes.length > 0 ? `${Math.round((count / allNodes.length) * 100)}%` : "0%" };
   });
@@ -3624,6 +3623,14 @@ function normalizeTableValue(value: string | number | boolean | null | undefined
 
 function percentValue(value: string) {
   return Number(value.replace("%", "")) || 0;
+}
+
+function uniqueSorted(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean))).sort((left, right) => left.localeCompare(right, "zh-Hans-CN"));
+}
+
+function isCleanUpdate(value: string) {
+  return ["已是最新", "已同步"].includes(value);
 }
 
 function latencyValue(value: string) {
