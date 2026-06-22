@@ -3023,27 +3023,6 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
       actions={<><button className="ghost" type="button" onClick={createNodeFromApi}><Plus size={14} /> 新增节点</button><button className="primary" type="button" onClick={refreshHealthFromApi}><RefreshCw size={14} /> 刷新状态</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索节点、IP 或服务" onChange={setSearch} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={setEnvFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "健康", "警告", "维护"]} onChange={setStatusFilter} /></>}
       metrics={<><MetricTile icon={Server} label="节点总数" value={`${nodes.length}`} tone="blue" /><MetricTile icon={Activity} label="异常节点" value={`${warningCount}`} tone={warningCount ? "orange" : "green"} /><MetricTile icon={RefreshCw} label="待更新" value={`${updateCount}`} tone={updateCount ? "orange" : "green"} /></>}
-      side={selected && (
-        <DetailDrawer title={selected.name} subtitle={`${selected.ip} · ${selected.env}`} onClose={() => setSelected(null)} autoFocus={false}>
-          <div className="detail-kv">
-            <p><span>状态</span><b><StatusLight tone={selected.status === "健康" ? "green" : selected.status === "警告" ? "orange" : "gray"} /> {selected.status}</b></p>
-            <p><span>延迟</span><b>{selected.latency}</b></p>
-            <p><span>版本</span><b>{selected.version}</b></p>
-            <p><span>运行时间</span><b>{selected.uptime}</b></p>
-            <p><span>最后备份</span><b>{selected.backup}</b></p>
-            <p><span>负责人</span><b>{selected.owner}</b></p>
-          </div>
-          <div className="resource-bars">
-            <p><span>CPU</span><Bar value={selected.cpu} tone={selected.status === "警告" ? "orange" : "green"} /></p>
-            <p><span>内存</span><Bar value={selected.memory} tone={selected.status === "警告" ? "red" : "green"} /></p>
-            <p><span>磁盘</span><Bar value={selected.disk} tone={selected.status === "警告" ? "red" : "green"} /></p>
-          </div>
-          <div className="drawer-list">
-            <strong>服务列表</strong>
-            {selected.services.map((service) => <p key={service}><StatusLight tone="green" /> {service}<span>active</span></p>)}
-          </div>
-        </DetailDrawer>
-      )}
     >
       <div className="health-workspace">
         <DataTable
@@ -3070,6 +3049,33 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
         />
         <HealthSummaryPanel nodes={filteredNodes} allNodes={nodes} onSelect={setSelected} />
       </div>
+      {selected && (
+        <DetailDrawer
+          title={selected.name}
+          subtitle={`${selected.ip} · ${selected.env}`}
+          onClose={() => setSelected(null)}
+          className="health-node-modal"
+          modal
+        >
+          <div className="detail-kv">
+            <p><span>状态</span><b><StatusLight tone={selected.status === "健康" ? "green" : selected.status === "警告" ? "orange" : "gray"} /> {selected.status}</b></p>
+            <p><span>延迟</span><b>{selected.latency}</b></p>
+            <p><span>版本</span><b>{selected.version}</b></p>
+            <p><span>运行时间</span><b>{selected.uptime}</b></p>
+            <p><span>最后备份</span><b>{selected.backup}</b></p>
+            <p><span>负责人</span><b>{selected.owner}</b></p>
+          </div>
+          <div className="resource-bars">
+            <p><span>CPU</span><Bar value={selected.cpu} tone={selected.status === "警告" ? "orange" : "green"} /></p>
+            <p><span>内存</span><Bar value={selected.memory} tone={selected.status === "警告" ? "red" : "green"} /></p>
+            <p><span>磁盘</span><Bar value={selected.disk} tone={selected.status === "警告" ? "red" : "green"} /></p>
+          </div>
+          <div className="drawer-list">
+            <strong>服务列表</strong>
+            {selected.services.map((service) => <p key={service}><StatusLight tone="green" /> {service}<span>active</span></p>)}
+          </div>
+        </DetailDrawer>
+      )}
     </ModulePageShell>
   );
 }
