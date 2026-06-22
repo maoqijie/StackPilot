@@ -3361,6 +3361,10 @@ a {
   font-weight: 800;
 }
 
+.deploy-preview-kv {
+  margin-top: 14px;
+}
+
 .resource-bars {
   margin-top: 16px;
   display: grid;
@@ -3408,6 +3412,26 @@ a {
   margin-left: auto;
   color: #15914f;
   font-size: 11px;
+}
+
+.schedule-deleted-panel {
+  margin-top: 12px;
+}
+
+.schedule-deleted-panel .restore-mini-list p {
+  grid-template-columns: 18px minmax(0, 1fr) minmax(96px, auto) auto;
+}
+
+.schedule-deleted-panel .restore-mini-list button {
+  min-width: 52px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: #0b7fb5;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .overview-event-log,
@@ -5761,6 +5785,22 @@ a {
 
   .restore-mini-list em {
     grid-column: 2;
+  }
+
+  .schedule-deleted-panel .restore-mini-list p {
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+  }
+
+  .schedule-deleted-panel .restore-mini-list em {
+    grid-column: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .schedule-deleted-panel .restore-mini-list button {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: center;
   }
 
   .backup-task-list strong,

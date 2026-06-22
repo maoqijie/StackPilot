@@ -97,6 +97,7 @@ let pendingQuickRoute: { page: PageKey; intent: QuickIntent } | null = null;
 let pendingDatabaseFocus: string | null = null;
 let pendingAuditSource: AuditSource | null = null;
 const slowRemediationStorageKey = "stackpilot.slow-remediation-ids";
+const scheduleStateStorageKey = "stackpilot.schedule-state";
 type PageMeta = { title: string; breadcrumb: string; search: string };
 type ViewContext = { eyebrow: string; title: string; chips: string[] };
 type TopbarPanel = "search" | "notifications" | "activity" | "help" | "user" | null;
@@ -174,6 +175,30 @@ function writeSlowRemediationIds(ids: string[]) {
   if (typeof window === "undefined") return;
   try {
     window.sessionStorage.setItem(slowRemediationStorageKey, JSON.stringify(ids));
+  } catch {
+    // sessionStorage can be unavailable in restricted browser contexts.
+  }
+}
+
+function readScheduleState() {
+  if (typeof window === "undefined") {
+    return { rows: initialScheduleJobs, deletedRows: [] as DeletedScheduleJob[] };
+  }
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(scheduleStateStorageKey) ?? "null") as Partial<{ rows: ScheduleJob[]; deletedRows: DeletedScheduleJob[] }> | null;
+    return {
+      rows: Array.isArray(parsed?.rows) ? parsed.rows : initialScheduleJobs,
+      deletedRows: Array.isArray(parsed?.deletedRows) ? parsed.deletedRows : [],
+    };
+  } catch {
+    return { rows: initialScheduleJobs, deletedRows: [] as DeletedScheduleJob[] };
+  }
+}
+
+function writeScheduleState(rows: ScheduleJob[], deletedRows: DeletedScheduleJob[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(scheduleStateStorageKey, JSON.stringify({ rows, deletedRows }));
   } catch {
     // sessionStorage can be unavailable in restricted browser contexts.
   }
@@ -828,6 +853,11 @@ type ScheduleJob = {
   nextRun: string;
   lastRun: string;
   result: "成功" | "失败" | "未运行" | "运行中";
+};
+
+type DeletedScheduleJob = ScheduleJob & {
+  deletedAt: string;
+  reason: string;
 };
 
 type AuditRecord = {
@@ -2719,7 +2749,12 @@ function MetricCard({
 }
 
 function HostTable({ nodes, notify }: { nodes: OverviewNode[]; notify: Notify }) {
-  const [selectedHost, setSelectedHost] = useState<string | null>(null);
+  const [selectedHostId, setSelectedHostId] = useState<string | null>(null);
+  const selectedHost = nodes.find((host) => host.id === selectedHostId) ?? null;
+  const openHostDetail = (host: OverviewNode) => {
+    setSelectedHostId(host.id);
+    notify(`${host.name} 详情已打开`, "info");
+  };
 
   return (
     <>
@@ -2739,7 +2774,7 @@ function HostTable({ nodes, notify }: { nodes: OverviewNode[]; notify: Notify })
         </thead>
         <tbody>
           {nodes.map((host) => (
-            <tr className={selectedHost === host.name ? "is-selected" : ""} key={host.id}>
+            <tr className={selectedHostId === host.id ? "is-selected" : ""} key={host.id}>
               <td><StatusLight tone={host.status === "警告" ? "orange" : host.status === "维护" ? "gray" : "green"} /> {host.name}</td>
               <td>{host.ip}</td>
               <td><Bar value={host.cpu} tone={host.status === "警告" ? "orange" : "green"} /></td>
@@ -2752,10 +2787,7 @@ function HostTable({ nodes, notify }: { nodes: OverviewNode[]; notify: Notify })
                 <button
                   className="icon-action inline"
                   type="button"
-                  onClick={() => {
-                    setSelectedHost(host.name);
-                    notify(`${host.name} 详情已选中`, "info");
-                  }}
+                  onClick={() => openHostDetail(host)}
                   aria-label={`${host.name} 更多操作`}
                 >
                   <MoreVertical size={17} />
@@ -2765,7 +2797,28 @@ function HostTable({ nodes, notify }: { nodes: OverviewNode[]; notify: Notify })
           ))}
         </tbody>
       </table>
-      {selectedHost && <div className="overview-inline-detail"><StatusLight tone="blue" /> {selectedHost}：CPU、内存、磁盘与服务列表已准备查看。</div>}
+      {selectedHost && (
+        <DetailDrawer title={selectedHost.name} subtitle={`${selectedHost.ip} · ${selectedHost.env}`} onClose={() => setSelectedHostId(null)} autoFocus={false}>
+          <div className="detail-kv">
+            <p><span>状态</span><b><StatusLight tone={selectedHost.status === "健康" ? "green" : selectedHost.status === "警告" ? "orange" : "gray"} /> {selectedHost.status}</b></p>
+            <p><span>延迟</span><b>{selectedHost.latency}</b></p>
+            <p><span>版本</span><b>{selectedHost.version}</b></p>
+            <p><span>运行时间</span><b>{selectedHost.uptime}</b></p>
+            <p><span>备份</span><b>{selectedHost.backup}</b></p>
+            <p><span>更新</span><b>{selectedHost.update}</b></p>
+            <p><span>负责人</span><b>{selectedHost.owner}</b></p>
+          </div>
+          <div className="resource-bars">
+            <p><span>CPU</span><Bar value={selectedHost.cpu} tone={selectedHost.status === "警告" ? "orange" : "green"} /></p>
+            <p><span>内存</span><Bar value={selectedHost.memory} tone={selectedHost.status === "警告" ? "red" : "green"} /></p>
+            <p><span>磁盘</span><Bar value={selectedHost.disk} tone={selectedHost.status === "警告" ? "red" : "green"} /></p>
+          </div>
+          <div className="drawer-list">
+            <strong>服务列表</strong>
+            {selectedHost.services.map((service) => <p key={service}><StatusLight tone="green" /> {service}<span>active</span></p>)}
+          </div>
+        </DetailDrawer>
+      )}
     </>
   );
 }
@@ -4978,9 +5031,23 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
 function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialDeployJobs);
   const [rollbackRows, setRollbackRows] = useState(initialRollbackRecords);
+  const [rollbackDeployIds, setRollbackDeployIds] = useState<Record<string, string>>({});
   const deployPreset = deployPagePreset(page);
   const [envByPage, setEnvByPage] = useState<Record<string, string>>({});
-  const [drawer, setDrawer] = useState<{ type: "deploy"; row: DeployJob } | { type: "rollback"; row: RollbackRecord } | null>(null);
+  const [drawer, setDrawer] = useState<
+    | { type: "create" }
+    | { type: "deploy"; id: string }
+    | { type: "rollback"; id: string }
+    | null
+  >(null);
+  const [draft, setDraft] = useState({
+    app: "web-console",
+    version: "release-2026.06.22",
+    operator: "管理员",
+  });
+  const [draftErrors, setDraftErrors] = useState<{ app?: string; version?: string }>({});
+  const deployAppRef = useRef<HTMLInputElement>(null);
+  const deployVersionRef = useRef<HTMLInputElement>(null);
   const isRollbackMode = deployPreset.mode === "rollbacks";
   const env = envByPage[page] ?? deployPreset.env;
   const deployEnvOptions = isRollbackMode ? ["全部", "生产", "预发", "开发"] : ["生产", "预发", "开发"];
@@ -4988,48 +5055,145 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const filteredRollbackRows = rollbackRows.filter((row) => env === "全部" || row.env === env);
   const updateDeploy = (id: string, patch: Partial<DeployJob>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   const updateRollback = (id: string, patch: Partial<RollbackRecord>) => setRollbackRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+  const selectedDeploy = drawer?.type === "deploy" ? rows.find((row) => row.id === drawer.id) ?? null : null;
+  const selectedRollback = drawer?.type === "rollback" ? rollbackRows.find((row) => row.id === drawer.id) ?? null : null;
+  const linkedDeployIdForRollback = (row: RollbackRecord) => (
+    rollbackDeployIds[row.id] ?? rows.find((deploy) => deploy.app === row.app && deploy.env === row.env && deploy.version === row.fromVersion)?.id
+  );
 
   const createDeploy = () => {
-    const next: DeployJob = { id: `dep-${Date.now()}`, app: env === "生产" ? "shop-web" : "feature-service", env, version: `build-${rows.length + 1}`, status: "运行中", operator: "管理员", duration: "运行中" };
+    const nextApp = draft.app.trim();
+    const nextVersion = draft.version.trim();
+    const nextErrors = {
+      app: nextApp ? undefined : "请输入应用名",
+      version: nextVersion ? undefined : "请输入版本号",
+    };
+    setDraftErrors(nextErrors);
+    if (nextErrors.app || nextErrors.version) {
+      notify(nextErrors.app ?? "版本号不能为空", "danger");
+      window.requestAnimationFrame(() => (nextErrors.app ? deployAppRef : deployVersionRef).current?.focus());
+      return;
+    }
+    const next: DeployJob = {
+      id: `dep-${Date.now()}`,
+      app: nextApp,
+      env,
+      version: nextVersion,
+      status: "运行中",
+      operator: draft.operator.trim() || "管理员",
+      duration: "运行中",
+    };
     setRows((current) => [next, ...current]);
+    setDrawer({ type: "deploy", id: next.id });
     notify(`${env} 部署任务已创建`, "info");
   };
   const startDeploy = (row: DeployJob) => {
     updateDeploy(row.id, { status: "运行中", duration: "运行中" });
     notify(`${row.app} 已开始发布`, "info");
   };
+  const completeDeploy = (row: DeployJob) => {
+    updateDeploy(row.id, { status: "成功", duration: "1分02秒" });
+    notify(`${row.app} 部署已完成`);
+  };
+  const redeployJob = (row: DeployJob) => {
+    updateDeploy(row.id, { status: "运行中", duration: "运行中" });
+    setDrawer({ type: "deploy", id: row.id });
+    notify(`${row.app} 已重新部署`, "info");
+  };
+  const rollbackDeploy = (row: DeployJob) => {
+    const rollback: RollbackRecord = {
+      id: `rb-${Date.now()}`,
+      app: row.app,
+      env: row.env,
+      fromVersion: row.version,
+      targetVersion: "上一健康版本",
+      status: "回滚中",
+      operator: row.operator,
+      reason: "从部署任务发起回滚",
+      createdAt: currentClock(),
+    };
+    setRollbackRows((current) => [rollback, ...current]);
+    setRollbackDeployIds((current) => ({ ...current, [rollback.id]: row.id }));
+    updateDeploy(row.id, { status: "运行中", duration: "回滚中" });
+    setDrawer({ type: "rollback", id: rollback.id });
+    notify(`${row.app} 已开始回滚`, "warning");
+  };
+  const toggleRollback = (row: RollbackRecord) => {
+    const nextStatus = row.status === "回滚中" ? "已回滚" : "回滚中";
+    updateRollback(row.id, { status: nextStatus, createdAt: row.status === "回滚中" ? row.createdAt : currentClock() });
+    const deployId = linkedDeployIdForRollback(row);
+    if (deployId) {
+      updateDeploy(deployId, { status: nextStatus === "已回滚" ? "成功" : "运行中", duration: nextStatus === "已回滚" ? "已回滚" : "回滚中" });
+    }
+    notify(`${row.app} ${row.status === "回滚中" ? "回滚已完成" : "已开始回滚"}`, row.status === "回滚中" ? "success" : "warning");
+  };
+  const retryRollback = (row: RollbackRecord) => {
+    updateRollback(row.id, { status: "回滚中", createdAt: currentClock() });
+    const deployId = linkedDeployIdForRollback(row);
+    if (deployId) updateDeploy(deployId, { status: "运行中", duration: "回滚中" });
+    setDrawer({ type: "rollback", id: row.id });
+    notify(`${row.app} 已重新执行回滚`, "info");
+  };
+  const openDeployCreate = () => {
+    setDraft({
+      app: env === "生产" ? "shop-web" : env === "预发" ? "admin-console" : "worker",
+      version: `release-${new Date().toISOString().slice(0, 10)}`,
+      operator: "管理员",
+    });
+    setDraftErrors({});
+    setDrawer({ type: "create" });
+  };
+  const deployLogLines = (row: DeployJob) => [
+    `checkout ${row.version}`,
+    `install dependencies for ${row.app}`,
+    row.status === "待发布" ? "waiting for operator approval" : row.status === "运行中" ? "health check running..." : row.status === "失败" ? "deploy failed: health check timeout" : "deploy finished",
+    `env=${row.env} operator=${row.operator} duration=${row.duration}`,
+  ];
+  const rollbackLogLines = (row: RollbackRecord) => [
+    `rollback requested by ${row.operator}`,
+    `current ${row.fromVersion}`,
+    `target ${row.targetVersion}`,
+    row.status === "已回滚" ? "rollback completed, traffic restored" : row.status === "回滚中" ? "switching release pointer and draining traffic" : "rollback candidate is ready",
+    row.reason,
+  ];
 
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={deployPreset.subtitle}
       page={page}
-      actions={!isRollbackMode && <button className="primary" type="button" onClick={createDeploy}><Plus size={15} /> 创建部署任务</button>}
+      actions={!isRollbackMode && <button className="primary" type="button" onClick={openDeployCreate}><Plus size={15} /> 创建部署任务</button>}
       filters={<div className="deploy-tabs">{deployEnvOptions.map((item) => <button key={item} className={item === env ? "active" : ""} type="button" onClick={() => setEnvByPage((current) => ({ ...current, [page]: item }))}>{item}</button>)}</div>}
       metrics={isRollbackMode
         ? <><MetricTile icon={RefreshCw} label="可回滚" value={`${rollbackRows.filter((row) => row.status === "可回滚").length}`} tone="blue" /><MetricTile icon={Activity} label="回滚中" value={`${rollbackRows.filter((row) => row.status === "回滚中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="已回滚" value={`${rollbackRows.filter((row) => row.status === "已回滚").length}`} tone="green" /></>
         : <><MetricTile icon={CloudUpload} label="当前环境" value={env} tone="blue" /><MetricTile icon={Activity} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="成功" value={`${rows.filter((row) => row.status === "成功").length}`} tone="green" /></>}
-      side={drawer && (isRollbackMode ? drawer.type === "rollback" : drawer.type === "deploy") && (
-        <DetailDrawer title={drawer.type === "rollback" ? "回滚日志" : "部署日志"} subtitle={drawer.type === "rollback" ? `${drawer.row.app} ${drawer.row.fromVersion} -> ${drawer.row.targetVersion}` : `${drawer.row.app} ${drawer.row.version}`} onClose={() => setDrawer(null)}>
-          <div className="terminal-log compact-log">
-            {drawer.type === "rollback" ? (
-              <>
-                <p>rollback requested by {drawer.row.operator}</p>
-                <p>current {drawer.row.fromVersion}</p>
-                <p>target {drawer.row.targetVersion}</p>
-                <p>{drawer.row.reason}</p>
-              </>
-            ) : (
-              <>
-                <p>checkout {drawer.row.version}</p>
-                <p>install dependencies</p>
-                <p>build artifacts</p>
-                <p>{drawer.row.status === "失败" ? "deploy failed: health check timeout" : "deploy finished"}</p>
-              </>
-            )}
+      side={drawer?.type === "create" ? (
+        <DetailDrawer title="创建部署任务" subtitle={env} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={createDeploy}>创建并运行</button></>}>
+          <FormLine label="应用" required value={draft.app} inputRef={deployAppRef} error={draftErrors.app} onChange={(value) => { setDraft((current) => ({ ...current, app: value })); setDraftErrors((current) => ({ ...current, app: undefined })); }} />
+          <FormLine label="版本" required value={draft.version} inputRef={deployVersionRef} error={draftErrors.version} onChange={(value) => { setDraft((current) => ({ ...current, version: value })); setDraftErrors((current) => ({ ...current, version: undefined })); }} />
+          <FormLine label="操作人" value={draft.operator} onChange={(value) => setDraft((current) => ({ ...current, operator: value }))} />
+          <div className="detail-kv deploy-preview-kv">
+            <p><span>目标环境</span><b>{env}</b></p>
+            <p><span>初始状态</span><b>运行中</b></p>
           </div>
         </DetailDrawer>
-      )}
+      ) : selectedDeploy ? (
+        <DetailDrawer title="部署日志" subtitle={`${selectedDeploy.app} ${selectedDeploy.version}`} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => redeployJob(selectedDeploy)}>重部署</button>{selectedDeploy.status === "运行中" ? <button className="primary" type="button" onClick={() => completeDeploy(selectedDeploy)}>完成</button> : <button className="primary" type="button" onClick={() => rollbackDeploy(selectedDeploy)}>回滚</button>}</>}>
+          <div className="terminal-log compact-log">
+            {deployLogLines(selectedDeploy).map((line) => <p key={line}>{line}</p>)}
+          </div>
+          <div className="detail-kv deploy-preview-kv">
+            <p><span>状态</span><b>{selectedDeploy.status}</b></p>
+            <p><span>耗时</span><b>{selectedDeploy.duration}</b></p>
+          </div>
+        </DetailDrawer>
+      ) : selectedRollback ? (
+        <DetailDrawer title="回滚日志" subtitle={`${selectedRollback.app} ${selectedRollback.fromVersion} -> ${selectedRollback.targetVersion}`} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => retryRollback(selectedRollback)}>重试</button>{selectedRollback.status !== "已回滚" && <button className="primary" type="button" onClick={() => toggleRollback(selectedRollback)}>{selectedRollback.status === "回滚中" ? "完成回滚" : "执行回滚"}</button>}</>}>
+          <div className="terminal-log compact-log">
+            {rollbackLogLines(selectedRollback).map((line) => <p key={line}>{line}</p>)}
+          </div>
+        </DetailDrawer>
+      ) : null}
     >
       {isRollbackMode ? (
         <DataTable
@@ -5040,7 +5204,7 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
             { key: "target", label: "目标版本", render: (row) => row.targetVersion },
             { key: "status", label: "状态", render: (row) => <span className={`pill ${row.status === "已回滚" ? "green" : row.status === "回滚中" ? "blue" : "orange"}`}>{row.status}</span> },
             { key: "reason", label: "原因", render: (row) => row.reason },
-            { key: "ops", label: "操作", width: "220px", render: (row) => <span className="table-actions">{row.status !== "已回滚" && <button type="button" onClick={() => { updateRollback(row.id, { status: row.status === "回滚中" ? "已回滚" : "回滚中" }); notify(`${row.app} ${row.status === "回滚中" ? "回滚已完成" : "已开始回滚"}`, row.status === "回滚中" ? "success" : "warning"); }}>{row.status === "回滚中" ? "完成" : "执行"}</button>}<button type="button" onClick={() => setDrawer({ type: "rollback", row })}>日志</button>{row.status !== "已回滚" && <button type="button" onClick={() => { updateRollback(row.id, { status: "回滚中", createdAt: currentClock() }); notify(`${row.app} 已重新执行回滚`, "info"); }}>重试</button>}</span> },
+            { key: "ops", label: "操作", width: "220px", render: (row) => <span className="table-actions">{row.status !== "已回滚" && <button type="button" onClick={() => toggleRollback(row)}>{row.status === "回滚中" ? "完成" : "执行"}</button>}<button type="button" onClick={() => setDrawer({ type: "rollback", id: row.id })}>日志</button>{row.status !== "已回滚" && <button type="button" onClick={() => retryRollback(row)}>重试</button>}</span> },
           ]}
           rows={filteredRollbackRows}
           emptyText="当前筛选没有回滚记录"
@@ -5060,9 +5224,9 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
               </div>
               <div className="module-card-footer">
                 <div className={`table-actions ${row.status === "已回滚" ? "actions-1" : "actions-3"}`}>
-                  {row.status !== "已回滚" && <button type="button" onClick={() => { updateRollback(row.id, { status: row.status === "回滚中" ? "已回滚" : "回滚中" }); notify(`${row.app} ${row.status === "回滚中" ? "回滚已完成" : "已开始回滚"}`, row.status === "回滚中" ? "success" : "warning"); }}>{row.status === "回滚中" ? "完成" : "执行"}</button>}
-                  <button type="button" onClick={() => setDrawer({ type: "rollback", row })}>日志</button>
-                  {row.status !== "已回滚" && <button type="button" onClick={() => { updateRollback(row.id, { status: "回滚中", createdAt: currentClock() }); notify(`${row.app} 已重新执行回滚`, "info"); }}>重试</button>}
+                  {row.status !== "已回滚" && <button type="button" onClick={() => toggleRollback(row)}>{row.status === "回滚中" ? "完成" : "执行"}</button>}
+                  <button type="button" onClick={() => setDrawer({ type: "rollback", id: row.id })}>日志</button>
+                  {row.status !== "已回滚" && <button type="button" onClick={() => retryRollback(row)}>重试</button>}
                 </div>
               </div>
             </>
@@ -5077,7 +5241,7 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
             { key: "status", label: "状态", render: (row) => <span className={`pill ${row.status === "成功" ? "green" : row.status === "失败" ? "red" : "blue"}`}>{row.status}</span> },
             { key: "operator", label: "操作人", render: (row) => row.operator },
             { key: "duration", label: "耗时", render: (row) => row.duration },
-            { key: "ops", label: "操作", width: "290px", render: (row) => <span className="table-actions">{row.status === "待发布" && <button type="button" onClick={() => startDeploy(row)}>开始</button>}{row.status === "运行中" && <button type="button" onClick={() => { updateDeploy(row.id, { status: "成功", duration: "1分02秒" }); notify(`${row.app} 部署已完成`); }}>完成</button>}<button type="button" onClick={() => { setRollbackRows((current) => [{ id: `rb-${Date.now()}`, app: row.app, env: row.env, fromVersion: row.version, targetVersion: "上一健康版本", status: "回滚中", operator: row.operator, reason: "从部署任务发起回滚", createdAt: currentClock() }, ...current]); updateDeploy(row.id, { status: "运行中", duration: "回滚中" }); notify(`${row.app} 已开始回滚`, "warning"); }}>回滚</button><button type="button" onClick={() => setDrawer({ type: "deploy", row })}>日志</button><button type="button" onClick={() => { updateDeploy(row.id, { status: "运行中", duration: "运行中" }); notify(`${row.app} 已重新部署`, "info"); }}>重部署</button></span> },
+            { key: "ops", label: "操作", width: "290px", render: (row) => <span className="table-actions">{row.status === "待发布" && <button type="button" onClick={() => startDeploy(row)}>开始</button>}{row.status === "运行中" && <button type="button" onClick={() => completeDeploy(row)}>完成</button>}<button type="button" onClick={() => rollbackDeploy(row)}>回滚</button><button type="button" onClick={() => setDrawer({ type: "deploy", id: row.id })}>日志</button><button type="button" onClick={() => redeployJob(row)}>重部署</button></span> },
           ]}
           rows={filteredRows}
           emptyText="当前环境没有部署任务"
@@ -5098,10 +5262,10 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
               <div className="module-card-footer">
                 <div className={`table-actions ${row.status === "待发布" || row.status === "运行中" ? "" : "actions-3"}`}>
                   {row.status === "待发布" && <button type="button" onClick={() => startDeploy(row)}>开始</button>}
-                  {row.status === "运行中" && <button type="button" onClick={() => { updateDeploy(row.id, { status: "成功", duration: "1分02秒" }); notify(`${row.app} 部署已完成`); }}>完成</button>}
-                  <button type="button" onClick={() => { setRollbackRows((current) => [{ id: `rb-${Date.now()}`, app: row.app, env: row.env, fromVersion: row.version, targetVersion: "上一健康版本", status: "回滚中", operator: row.operator, reason: "从部署任务发起回滚", createdAt: currentClock() }, ...current]); updateDeploy(row.id, { status: "运行中", duration: "回滚中" }); notify(`${row.app} 已开始回滚`, "warning"); }}>回滚</button>
-                  <button type="button" onClick={() => setDrawer({ type: "deploy", row })}>日志</button>
-                  <button type="button" onClick={() => { updateDeploy(row.id, { status: "运行中", duration: "运行中" }); notify(`${row.app} 已重新部署`, "info"); }}>重部署</button>
+                  {row.status === "运行中" && <button type="button" onClick={() => completeDeploy(row)}>完成</button>}
+                  <button type="button" onClick={() => rollbackDeploy(row)}>回滚</button>
+                  <button type="button" onClick={() => setDrawer({ type: "deploy", id: row.id })}>日志</button>
+                  <button type="button" onClick={() => redeployJob(row)}>重部署</button>
                 </div>
               </div>
             </>
@@ -5113,14 +5277,39 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
 }
 
 function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
-  const [rows, setRows] = useState(initialScheduleJobs);
+  const [scheduleState, setScheduleState] = useState(readScheduleState);
+  const rows = scheduleState.rows;
+  const deletedRows = scheduleState.deletedRows;
   const schedulePreset = schedulePagePreset(page);
   const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
   const [stateByPage, setStateByPage] = useState<Record<string, string>>({});
-  const [drawer, setDrawer] = useState<{ type: "create" | "edit"; job?: ScheduleJob } | null>(null);
+  const [drawer, setDrawer] = useState<
+    | { type: "create" }
+    | { type: "edit"; job: ScheduleJob }
+    | { type: "detail"; id: string }
+    | { type: "delete"; id: string }
+    | null
+  >(null);
   const [draft, setDraft] = useState({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" });
   const search = searchByPage[page] ?? schedulePreset.search;
   const stateFilter = stateByPage[page] ?? schedulePreset.state;
+  const selectedJob = drawer?.type === "detail" || drawer?.type === "delete"
+    ? rows.find((row) => row.id === drawer.id) ?? null
+    : null;
+
+  const setRows = (updater: ScheduleJob[] | ((current: ScheduleJob[]) => ScheduleJob[])) => {
+    setScheduleState((current) => ({
+      ...current,
+      rows: typeof updater === "function" ? updater(current.rows) : updater,
+    }));
+  };
+
+  const setDeletedRows = (updater: DeletedScheduleJob[] | ((current: DeletedScheduleJob[]) => DeletedScheduleJob[])) => {
+    setScheduleState((current) => ({
+      ...current,
+      deletedRows: typeof updater === "function" ? updater(current.deletedRows) : updater,
+    }));
+  };
 
   const openScheduleCreateFromQuick = useCallback(() => {
     setDraft({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" });
@@ -5135,6 +5324,13 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
     const matchFailed = page === "schedule-failed" ? row.result === "失败" : true;
     return matchSearch && matchState && matchFailed;
   });
+  const selectedJobVisible = selectedJob
+    ? filteredRows.some((row) => row.id === selectedJob.id)
+    : true;
+  const selectedVisibleJob = selectedJobVisible ? selectedJob : null;
+  useEffect(() => {
+    writeScheduleState(rows, deletedRows);
+  }, [rows, deletedRows]);
   const updateJob = (id: string, patch: Partial<ScheduleJob>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   const saveJob = () => {
     const nextName = draft.name.trim();
@@ -5157,6 +5353,58 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
     }
     setDrawer(null);
   };
+  const requestDeleteJob = (row: ScheduleJob) => setDrawer({ type: "delete", id: row.id });
+  const deleteJob = (row: ScheduleJob) => {
+    const deleted: DeletedScheduleJob = { ...row, deletedAt: currentClock(), reason: page === "schedule-failed" ? "从失败任务列表删除" : "操作员手动删除" };
+    setDeletedRows((current) => [deleted, ...current].slice(0, 5));
+    setRows((current) => current.filter((item) => item.id !== row.id));
+    setDrawer(null);
+    notify(`${row.name} 已删除，可在最近删除中恢复`, "warning");
+  };
+  const restoreDeletedJob = (row: DeletedScheduleJob) => {
+    const restored: ScheduleJob = {
+      id: row.id,
+      name: row.name,
+      cron: row.cron,
+      command: row.command,
+      enabled: row.enabled,
+      nextRun: row.nextRun,
+      lastRun: row.lastRun,
+      result: row.result === "运行中" ? "未运行" : row.result,
+    };
+    setRows((current) => [restored, ...current]);
+    setDeletedRows((current) => current.filter((item) => item.id !== row.id));
+    notify(`${row.name} 已恢复`, "success");
+  };
+  const runJobNow = (row: ScheduleJob) => {
+    updateJob(row.id, { lastRun: "刚刚", result: "运行中", nextRun: "运行中" });
+    setDrawer(page === "schedule-failed" ? null : { type: "detail", id: row.id });
+    notify(`${row.name} 已开始执行`, "info");
+  };
+  const completeJob = (row: ScheduleJob) => {
+    updateJob(row.id, { lastRun: currentClock(), result: "成功", nextRun: "待计算" });
+    if (page === "schedule-failed") setDrawer(null);
+    notify(`${row.name} 执行已完成`);
+  };
+  const toggleJob = (row: ScheduleJob) => {
+    updateJob(row.id, { enabled: !row.enabled, nextRun: row.enabled ? "停用" : "待计算", result: row.enabled && row.result === "运行中" ? "未运行" : row.result });
+    notify(`${row.name} 已${row.enabled ? "停用" : "启用"}`);
+  };
+  const editJob = (row: ScheduleJob) => {
+    setDraft({ name: row.name, cron: row.cron, command: row.command });
+    setDrawer({ type: "edit", job: row });
+  };
+  const scheduleActionButtons = (row: ScheduleJob) => (
+    <>
+      <button type="button" onClick={() => toggleJob(row)}>{row.enabled ? "停用" : "启用"}</button>
+      {row.result === "运行中" && row.enabled
+        ? <button type="button" onClick={() => completeJob(row)}>完成</button>
+        : <button type="button" disabled={!row.enabled} onClick={() => runJobNow(row)}>执行</button>}
+      <button type="button" onClick={() => setDrawer({ type: "detail", id: row.id })}>详情</button>
+      <button type="button" onClick={() => editJob(row)}>编辑</button>
+      <button type="button" onClick={() => requestDeleteJob(row)}>删除</button>
+    </>
+  );
 
   return (
     <ModulePageShell
@@ -5165,30 +5413,53 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       page={page}
       actions={page === "schedule-failed" ? undefined : <button className="primary" type="button" onClick={() => { setDraft({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" }); setDrawer({ type: "create" }); }}><Plus size={15} /> 新建任务</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索任务、cron 或命令" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={stateFilter} options={["全部", "已启用", "已停用"]} onChange={(value) => setStateByPage((current) => ({ ...current, [page]: value }))} /></>}
-      metrics={<><MetricTile icon={CalendarDays} label="任务数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.result === "失败").length}`} tone="red" /></>}
-      side={drawer && (
-        <DetailDrawer title={drawer.type === "edit" ? "编辑 cron" : "新建任务"} subtitle={drawer.job?.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={saveJob}>保存</button></>}>
+      metrics={<><MetricTile icon={CalendarDays} label="任务数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.result === "失败").length}`} tone="red" /><MetricTile icon={Trash2} label="最近删除" value={`${deletedRows.length}`} tone="orange" /></>}
+      side={drawer?.type === "create" || drawer?.type === "edit" ? (
+        <DetailDrawer title={drawer.type === "edit" ? "编辑 cron" : "新建任务"} subtitle={drawer.type === "edit" ? drawer.job.name : undefined} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={saveJob}>保存</button></>}>
           <FormLine label="任务名" required value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
           <FormLine label="cron" required value={draft.cron} onChange={(value) => setDraft((current) => ({ ...current, cron: value }))} />
           <FormLine label="命令" required value={draft.command} onChange={(value) => setDraft((current) => ({ ...current, command: value }))} />
         </DetailDrawer>
-      )}
+      ) : drawer?.type === "detail" && selectedVisibleJob ? (
+        <DetailDrawer title="任务详情" subtitle={selectedVisibleJob.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => editJob(selectedVisibleJob)}>编辑</button>{selectedVisibleJob.result === "运行中" ? <button className="primary" type="button" onClick={() => completeJob(selectedVisibleJob)}>完成</button> : <button className="primary" type="button" disabled={!selectedVisibleJob.enabled} onClick={() => runJobNow(selectedVisibleJob)}>立即执行</button>}</>}>
+          <div className="detail-kv">
+            <p><span>cron</span><b>{selectedVisibleJob.cron}</b></p>
+            <p><span>命令</span><b>{selectedVisibleJob.command}</b></p>
+            <p><span>状态</span><b>{selectedVisibleJob.enabled ? "启用" : "停用"}</b></p>
+            <p><span>下次执行</span><b>{selectedVisibleJob.nextRun}</b></p>
+            <p><span>最近执行</span><b>{selectedVisibleJob.lastRun}</b></p>
+            <p><span>结果</span><b>{selectedVisibleJob.result}</b></p>
+          </div>
+          <div className="terminal-log compact-log">
+            <p>$ {selectedVisibleJob.command}</p>
+            <p>{selectedVisibleJob.result === "失败" ? "exit code 1: health check failed" : selectedVisibleJob.result === "运行中" ? "job is running..." : selectedVisibleJob.result === "成功" ? "completed successfully" : "not executed yet"}</p>
+          </div>
+        </DetailDrawer>
+      ) : drawer?.type === "delete" && selectedVisibleJob ? (
+        <DetailDrawer title="删除定时任务" subtitle={selectedVisibleJob.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="danger-soft" type="button" onClick={() => deleteJob(selectedVisibleJob)}>确认删除</button></>}>
+          <div className="delete-confirm">
+            <StatusLight tone="red" />
+            <p>删除后会从当前任务列表移除，并暂存在最近删除中。</p>
+            <code>{selectedVisibleJob.cron} · {selectedVisibleJob.command}</code>
+          </div>
+        </DetailDrawer>
+      ) : null}
     >
       {schedulePreset.mode === "calendar" && (
         <div className="schedule-calendar">
-          {filteredRows.map((row) => <article key={row.id}><span>{row.nextRun}</span><strong>{row.name}</strong><em>{row.cron}</em><b className={row.result === "失败" ? "red-text" : row.result === "成功" ? "green-text" : "orange-text"}>{row.enabled ? row.result : "已停用"}</b></article>)}
+          {filteredRows.map((row) => <article key={row.id} role="button" tabIndex={0} onClick={() => setDrawer({ type: "detail", id: row.id })} onKeyDown={(event) => activateOnKeyboard(event, () => setDrawer({ type: "detail", id: row.id }))}><span>{row.nextRun}</span><strong>{row.name}</strong><em>{row.cron}</em><b className={row.result === "失败" ? "red-text" : row.result === "成功" ? "green-text" : "orange-text"}>{row.enabled ? row.result : "已停用"}</b></article>)}
           {filteredRows.length === 0 && <p className="module-empty-card">当前筛选没有日历任务</p>}
         </div>
       )}
       <DataTable
         columns={[
-          { key: "name", label: "任务", width: "190px", render: (row) => <b>{row.name}</b> },
+          { key: "name", label: "任务", width: "190px", render: (row) => <button className="module-row-link" type="button" onClick={() => setDrawer({ type: "detail", id: row.id })}><CalendarDays size={15} /><b>{row.name}</b></button> },
           { key: "cron", label: "cron", render: (row) => <code>{row.cron}</code> },
           { key: "command", label: "命令", render: (row) => row.command },
           { key: "enabled", label: "启用", render: (row) => <span className={`pill ${row.enabled ? "green" : "blue"}`}>{row.enabled ? "启用" : "停用"}</span> },
           { key: "last", label: "最近执行", render: (row) => row.lastRun },
           { key: "result", label: "结果", render: (row) => <span className={`pill ${row.result === "成功" ? "green" : row.result === "失败" ? "red" : "blue"}`}>{row.result}</span> },
-          { key: "ops", label: "操作", width: "320px", render: (row) => <span className="table-actions"><button type="button" onClick={() => { updateJob(row.id, { enabled: !row.enabled, nextRun: row.enabled ? "停用" : "待计算", result: row.enabled && row.result === "运行中" ? "未运行" : row.result }); notify(`${row.name} 已${row.enabled ? "停用" : "启用"}`); }}>{row.enabled ? "停用" : "启用"}</button>{row.result === "运行中" && row.enabled ? <button type="button" onClick={() => { updateJob(row.id, { lastRun: currentClock(), result: "成功", nextRun: "待计算" }); notify(`${row.name} 执行已完成`); }}>完成</button> : <button type="button" disabled={!row.enabled} onClick={() => { updateJob(row.id, { lastRun: "刚刚", result: "运行中", nextRun: "运行中" }); notify(`${row.name} 已开始执行`, "info"); }}>执行</button>}<button type="button" onClick={() => { setDraft({ name: row.name, cron: row.cron, command: row.command }); setDrawer({ type: "edit", job: row }); }}>编辑</button><button type="button" onClick={() => { setRows((current) => current.filter((item) => item.id !== row.id)); notify(`${row.name} 已删除`, "warning"); }}>删除</button></span> },
+          { key: "ops", label: "操作", width: "370px", render: (row) => <span className="table-actions">{scheduleActionButtons(row)}</span> },
         ]}
         rows={filteredRows}
         emptyText="没有匹配的定时任务"
@@ -5196,7 +5467,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
         mobileCard={(row) => (
           <>
             <div className="module-card-head">
-              <span className="module-card-title"><CalendarDays size={15} /><b>{row.name}</b></span>
+              <button className="module-row-link" type="button" onClick={() => setDrawer({ type: "detail", id: row.id })}><CalendarDays size={15} /><b>{row.name}</b></button>
               <span className={`pill ${row.result === "成功" ? "green" : row.result === "失败" ? "red" : "blue"}`}>{row.result}</span>
             </div>
             <code className="module-card-code">{row.cron} · {row.command}</code>
@@ -5207,16 +5478,21 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
               <span><b>结果</b><em>{row.result}</em></span>
             </div>
             <div className="module-card-footer">
-              <div className="table-actions">
-                <button type="button" onClick={() => { updateJob(row.id, { enabled: !row.enabled, nextRun: row.enabled ? "停用" : "待计算", result: row.enabled && row.result === "运行中" ? "未运行" : row.result }); notify(`${row.name} 已${row.enabled ? "停用" : "启用"}`); }}>{row.enabled ? "停用" : "启用"}</button>
-                {row.result === "运行中" && row.enabled ? <button type="button" onClick={() => { updateJob(row.id, { lastRun: currentClock(), result: "成功", nextRun: "待计算" }); notify(`${row.name} 执行已完成`); }}>完成</button> : <button type="button" disabled={!row.enabled} onClick={() => { updateJob(row.id, { lastRun: "刚刚", result: "运行中", nextRun: "运行中" }); notify(`${row.name} 已开始执行`, "info"); }}>执行</button>}
-                <button type="button" onClick={() => { setDraft({ name: row.name, cron: row.cron, command: row.command }); setDrawer({ type: "edit", job: row }); }}>编辑</button>
-                <button type="button" onClick={() => { setRows((current) => current.filter((item) => item.id !== row.id)); notify(`${row.name} 已删除`, "warning"); }}>删除</button>
+              <div className="table-actions actions-5">
+                {scheduleActionButtons(row)}
               </div>
             </div>
           </>
         )}
       />
+      <section className="schedule-deleted-panel">
+        <PanelCard title="最近删除">
+          <div className="restore-mini-list">
+            {deletedRows.map((row) => <p key={row.id}><Trash2 size={14} /><span>{row.name}</span><em>{row.deletedAt} · {row.reason}</em><button type="button" onClick={() => restoreDeletedJob(row)}>恢复</button></p>)}
+            {deletedRows.length === 0 && <p className="module-empty-card">还没有删除记录</p>}
+          </div>
+        </PanelCard>
+      </section>
     </ModulePageShell>
   );
 }
