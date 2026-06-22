@@ -193,6 +193,25 @@ function drawerRestoreFallback(drawer: HTMLElement) {
   return null;
 }
 
+function useIsNarrowViewport() {
+  const [isNarrow, setIsNarrow] = useState(() => (
+    typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
+  ));
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 773px)");
+    const syncNarrow = (event: MediaQueryListEvent | MediaQueryList) => {
+      setIsNarrow(event.matches);
+    };
+
+    syncNarrow(mediaQuery);
+    mediaQuery.addEventListener("change", syncNarrow);
+    return () => mediaQuery.removeEventListener("change", syncNarrow);
+  }, []);
+
+  return isNarrow;
+}
+
 const pageMeta: Record<string, PageMeta> = {
   overview: { title: "首页总览", breadcrumb: "控制台", search: "搜索主机、网站、数据库、任务..." },
   "overview-health": { title: "集群状态", breadcrumb: "首页总览", search: "搜索节点、IP、服务、版本..." },
@@ -1312,6 +1331,7 @@ function App() {
       ) : (
         <DesktopShell page={page} setPage={setPage} notify={notify} topbarUnreadCount={topbarUnreadCount} setTopbarUnreadCount={setTopbarUnreadCount} />
       )}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">{toast?.message ?? ""}</div>
       {toast && <ActionToast toast={toast} />}
     </main>
   );
@@ -1689,6 +1709,12 @@ function TopBar({
     searchInputRef.current?.blur();
     window.requestAnimationFrame(() => {
       setPage(result.page, { message: `已打开${result.label}`, tone: "info" });
+      window.requestAnimationFrame(() => {
+        const heading = document.querySelector<HTMLElement>(".page-head h1, .overview-page h1, .settings-title h1, .mobile-content h2");
+        if (!heading) return;
+        heading.tabIndex = -1;
+        heading.focus({ preventScroll: true });
+      });
     });
   };
 
@@ -2083,6 +2109,7 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
 
   return (
     <div className="overview-page">
+      <h1 className="sr-only">首页总览</h1>
       <div className="cluster-bar">
         <button
           type="button"
@@ -2794,9 +2821,11 @@ function ModulePageShell({
   children: React.ReactNode;
 }) {
   const effectiveViewContext = viewContext ?? (page ? viewContextForPage(page) : null);
+  const isNarrowViewport = useIsNarrowViewport();
+  const isModalSide = Boolean(side) && isNarrowViewport;
   return (
     <div className={`module-page ${page ? `module-page-${page}` : ""}`}>
-      <div className="page-head module-head">
+      <div className="page-head module-head" inert={isModalSide} aria-hidden={isModalSide ? "true" : undefined}>
         <div>
           <h1>{title}</h1>
           {subtitle && <p>{subtitle}</p>}
@@ -2804,7 +2833,7 @@ function ModulePageShell({
         {actions && <div>{actions}</div>}
       </div>
       <div className={`module-layout ${side ? "has-side" : ""}`}>
-        <section className="module-main">
+        <section className="module-main" inert={isModalSide} aria-hidden={isModalSide ? "true" : undefined}>
           {effectiveViewContext && <ModuleViewContext context={effectiveViewContext} />}
           {tabs}
           {filters && <div className="module-filter-line">{filters}</div>}
@@ -2823,7 +2852,6 @@ function ModuleViewContext({ context }: { context: ViewContext }) {
       <div>
         <span>{context.eyebrow}</span>
         <strong>{context.title}</strong>
-        {context.description && <p>{context.description}</p>}
       </div>
       <div>
         {context.chips.map((chip) => <em key={chip}>{chip}</em>)}
@@ -2901,24 +2929,11 @@ function DetailDrawer({
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
   const titleId = useId();
-  const [isModalDrawer, setIsModalDrawer] = useState(() => (
-    typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
-  ));
+  const isModalDrawer = useIsNarrowViewport();
 
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(max-width: 773px)");
-    const syncModalMode = (event: MediaQueryListEvent | MediaQueryList) => {
-      setIsModalDrawer(event.matches);
-    };
-
-    syncModalMode(mediaQuery);
-    mediaQuery.addEventListener("change", syncModalMode);
-    return () => mediaQuery.removeEventListener("change", syncModalMode);
-  }, []);
 
   useEffect(() => {
     const drawer = drawerRef.current;
@@ -2936,9 +2951,36 @@ function DetailDrawer({
     }
 
     const handleDocumentKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || !document.contains(drawer)) return;
-      if (document.querySelector(".topbar-search-panel, .topbar-dropdown")) return;
-      onCloseRef.current();
+      if (event.defaultPrevented || !document.contains(drawer)) return;
+      if (event.key === "Escape") {
+        if (document.querySelector(".topbar-search-panel, .topbar-dropdown")) return;
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab" || !isModalDrawer) return;
+      const focusable = drawerFocusableElements(drawer);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        drawer.focus({ preventScroll: true });
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const activeElement = document.activeElement;
+      if (!drawer.contains(activeElement)) {
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+        return;
+      }
+      if (event.shiftKey && activeElement === first) {
+        event.preventDefault();
+        last.focus({ preventScroll: true });
+        return;
+      }
+      if (!event.shiftKey && activeElement === last) {
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+      }
     };
 
     document.addEventListener("keydown", handleDocumentKeyDown);
@@ -2956,7 +2998,7 @@ function DetailDrawer({
         fallbackTarget.focus({ preventScroll: true });
       }
     };
-  }, [autoFocus]);
+  }, [autoFocus, isModalDrawer]);
 
   const handleFocusCapture = (event: React.FocusEvent<HTMLElement>) => {
     const previousFocus = event.relatedTarget;
@@ -2966,25 +3008,28 @@ function DetailDrawer({
   };
 
   return (
-    <aside
-      ref={drawerRef}
-      className="detail-drawer"
-      role={isModalDrawer ? "dialog" : "region"}
-      aria-modal={isModalDrawer ? "true" : undefined}
-      aria-labelledby={titleId}
-      tabIndex={-1}
-      onFocusCapture={handleFocusCapture}
-    >
-      <div className="drawer-head">
-        <div>
-          <strong id={titleId}>{title}</strong>
-          {subtitle && <span>{subtitle}</span>}
+    <>
+      <button className="drawer-scrim" type="button" aria-label="关闭详情" onClick={onClose} tabIndex={-1} />
+      <aside
+        ref={drawerRef}
+        className="detail-drawer"
+        role={isModalDrawer ? "dialog" : "region"}
+        aria-modal={isModalDrawer ? "true" : undefined}
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onFocusCapture={handleFocusCapture}
+      >
+        <div className="drawer-head">
+          <div>
+            <strong id={titleId}>{title}</strong>
+            {subtitle && <span>{subtitle}</span>}
+          </div>
+          <button type="button" className="icon-action drawer-close-button" onClick={onClose} aria-label="关闭详情"><X size={16} /></button>
         </div>
-        <button type="button" className="icon-action drawer-close-button" onClick={onClose} aria-label="关闭详情"><X size={16} /></button>
-      </div>
-      <div className="drawer-body">{children}</div>
-      {actions && <div className="drawer-actions inline">{actions}</div>}
-    </aside>
+        <div className="drawer-body">{children}</div>
+        {actions && <div className="drawer-actions inline">{actions}</div>}
+      </aside>
+    </>
   );
 }
 
@@ -3016,6 +3061,9 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [healthByPage, setHealthByPage] = useState<Record<string, string>>({});
   const [drawer, setDrawer] = useState<{ type: "detail" | "create"; host?: HostRecord } | null>(null);
   const [draft, setDraft] = useState({ name: "panel-new-05", ip: "10.0.4.55", env: "开发" });
+  const [draftErrors, setDraftErrors] = useState<{ name?: string; ip?: string }>({});
+  const draftNameRef = useRef<HTMLInputElement>(null);
+  const draftIpRef = useRef<HTMLInputElement>(null);
   const search = searchByPage[page] ?? hostPreset.search;
   const envFilter = envByPage[page] ?? hostPreset.env;
   const healthFilter = healthByPage[page] ?? hostPreset.health;
@@ -3033,8 +3081,14 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
   };
 
   const addHost = () => {
-    if (!draft.name.trim() || !draft.ip.trim()) {
+    const nextErrors = {
+      name: draft.name.trim() ? undefined : "请输入主机名",
+      ip: draft.ip.trim() ? undefined : "请输入 IP 地址",
+    };
+    setDraftErrors(nextErrors);
+    if (nextErrors.name || nextErrors.ip) {
       notify("主机名和 IP 不能为空", "danger");
+      window.requestAnimationFrame(() => (nextErrors.name ? draftNameRef : draftIpRef).current?.focus());
       return;
     }
     const next: HostRecord = {
@@ -3062,7 +3116,7 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
       title={resolvePageMeta(page).title}
       subtitle={null}
       page={page}
-      actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 台主机`, "info")}><Download size={15} /> 导出</button><button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 新增主机</button></>}
+      actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 台主机`, "info")}><Download size={15} /> 导出</button><button className="primary" type="button" onClick={() => { setDraftErrors({}); setDrawer({ type: "create" }); }}><Plus size={15} /> 新增主机</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索主机名或 IP" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={(value) => setEnvByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="健康" value={healthFilter} options={["全部", "健康", "警告", "离线"]} onChange={(value) => setHealthByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={Server} label="主机总数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="健康" value={`${rows.filter((row) => row.health === "健康").length}`} tone="green" /><MetricTile icon={Shield} label="需关注" value={`${rows.filter((row) => row.health !== "健康").length}`} tone="orange" /></>}
       side={drawer?.type === "detail" && drawer.host ? (
@@ -3090,8 +3144,8 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
           onClose={() => setDrawer(null)}
           actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={addHost}>保存主机</button></>}
         >
-          <FormLine label="主机名" required value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
-          <FormLine label="IP 地址" required value={draft.ip} onChange={(value) => setDraft((current) => ({ ...current, ip: value }))} />
+          <FormLine label="主机名" required value={draft.name} inputRef={draftNameRef} error={draftErrors.name} onChange={(value) => { setDraft((current) => ({ ...current, name: value })); setDraftErrors((current) => ({ ...current, name: undefined })); }} />
+          <FormLine label="IP 地址" required value={draft.ip} inputRef={draftIpRef} error={draftErrors.ip} onChange={(value) => { setDraft((current) => ({ ...current, ip: value })); setDraftErrors((current) => ({ ...current, ip: undefined })); }} />
           <FormSelectLine label="环境" required value={draft.env} options={["生产", "预发", "开发"]} onChange={(value) => setDraft((current) => ({ ...current, env: value }))} />
         </DetailDrawer>
       ) : null}
@@ -6677,7 +6731,17 @@ function MobileApp({ notify }: { notify: Notify }) {
     : null;
   const selectedActionLabel = mobileSheet?.type === "action" ? mobileSheet.label ?? "" : "";
   const closeMobileSheet = () => setMobileSheet(null);
-  const setMobileTab = (tab: MobileTab, shouldNotify = true) => {
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveTab(readMobileTabFromUrl());
+      setMobileSheet(null);
+      window.requestAnimationFrame(() => mobileContentRef.current?.scrollTo({ top: 0 }));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const setMobileTab = (tab: MobileTab, shouldNotify = true, historyMode: "push" | "replace" = "push") => {
     setActiveTab(tab);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -6687,7 +6751,14 @@ function MobileApp({ notify }: { notify: Notify }) {
         url.searchParams.set("mobileTab", tab);
       }
       url.hash = "mobile";
-      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+      const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+      if (nextUrl !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+        if (historyMode === "replace") {
+          window.history.replaceState(null, "", nextUrl);
+        } else {
+          window.history.pushState(null, "", nextUrl);
+        }
+      }
     }
     if (shouldNotify) notify(`已切换到移动端${tab}`, "info");
   };
@@ -6708,7 +6779,7 @@ function MobileApp({ notify }: { notify: Notify }) {
   };
   const openQuickTarget = (action: MobileQuickAction) => {
     if (["首页", "主机", "网站", "任务", "我的"].includes(action.target)) {
-      setMobileTab(action.target as MobileTab, false);
+      setMobileTab(action.target as MobileTab, false, "push");
       closeMobileSheet();
       notify(`已打开${action.targetHint}`, "info");
       return;
@@ -7107,7 +7178,7 @@ function MobileApp({ notify }: { notify: Notify }) {
           {mobileSheet.type === "menu" && (
             <div className="mobile-sheet-actions">
               {mobileTabs.map(([, label]) => (
-                <button key={label} type="button" onClick={() => { setMobileTab(label); closeMobileSheet(); }}>{label}</button>
+                <button key={label} type="button" onClick={() => { setMobileTab(label, true, "push"); closeMobileSheet(); }}>{label}</button>
               ))}
               <button type="button" onClick={() => { setMobileSheet({ type: "system" }); }}>系统状态</button>
               <button type="button" onClick={() => { setMobileSheet({ type: "notifications" }); }}>通知中心</button>
@@ -7129,7 +7200,7 @@ function MobileApp({ notify }: { notify: Notify }) {
               </div>
               <div className="mobile-sheet-actions split">
                 <button type="button" onClick={() => { setUnreadNoticeIds([]); notify("通知已全部标记为已读", "info"); }}>全部已读</button>
-                <button type="button" onClick={() => { setMobileTab("任务", false); closeMobileSheet(); notify("已打开任务列表处理通知", "info"); }}>去处理</button>
+                <button type="button" onClick={() => { setMobileTab("任务", false, "push"); closeMobileSheet(); notify("已打开任务列表处理通知", "info"); }}>去处理</button>
               </div>
             </>
           )}
@@ -7702,7 +7773,7 @@ function FormLine({
     <div className="form-line">
       <label id={labelId} htmlFor={inputId}>{label}{required && <b>*</b>}</label>
       <div>
-        <input id={inputId} ref={inputRef} type={inputType} value={value} readOnly={!onChange} required={required} aria-required={required ? "true" : undefined} aria-labelledby={labelId} aria-describedby={describedBy} aria-invalid={error ? "true" : undefined} onChange={(event) => onChange?.(event.target.value)} />
+        <input id={inputId} ref={inputRef} type={inputType} value={value} readOnly={!onChange} required={required} aria-label={label} aria-required={required ? "true" : undefined} aria-labelledby={labelId} aria-describedby={describedBy} aria-invalid={error ? "true" : undefined} onChange={(event) => onChange?.(event.target.value)} />
         {hint && <em id={hintId}>{hint}</em>}
         {hintButton && <button type="button" onClick={hintAction}>{hintButton}</button>}
         {success && <small><CheckCircle2 size={12} /> {success}</small>}
