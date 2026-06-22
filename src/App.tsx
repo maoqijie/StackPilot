@@ -102,6 +102,13 @@ type PageMeta = { title: string; breadcrumb: string; search: string };
 type ViewContext = { eyebrow: string; title: string; chips: string[] };
 type TopbarPanel = "search" | "notifications" | "activity" | "help" | "user" | null;
 type TopbarMenuPanel = Exclude<TopbarPanel, "search" | null>;
+type TopbarChrome = {
+  white: boolean;
+  showBreadcrumb: boolean;
+  showCompactSearch: boolean;
+  showStatus: boolean;
+  showActivity: boolean;
+};
 type HelpDrawerState = { id: string; title: string; detail: string } | null;
 type TopbarSearchResult = { id: string; label: string; detail: string; page: PageKey; kind: string };
 type NavChild = { id: string; label: string; meta: string; page?: PageKey; badge?: string };
@@ -482,6 +489,16 @@ function activeNavEntryForPage(page: PageKey) {
   const parent = navItems.find((item) => item.key === parentKey);
   const child = parent?.children.find((item) => (item.page ?? item.id) === page);
   return { parent, child };
+}
+
+function desktopTopbarChrome(): TopbarChrome {
+  return {
+    white: true,
+    showBreadcrumb: true,
+    showCompactSearch: true,
+    showStatus: true,
+    showActivity: true,
+  };
 }
 
 function topbarSearchResults(query: string): TopbarSearchResult[] {
@@ -1742,7 +1759,7 @@ function DesktopShell({
   onLogout: () => void;
 }) {
   const activeModule = navPageFor(page);
-  const whiteTop = !["overview", "overview-health", "overview-tasks", "overview-risks"].includes(page);
+  const topbarChrome = desktopTopbarChrome();
   const [isNarrowSidebar, setIsNarrowSidebar] = useState(() => (
     typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
   ));
@@ -1826,7 +1843,7 @@ function DesktopShell({
   };
 
   return (
-    <section className={`desktop-frame ${whiteTop ? "white-top" : "dark-top"} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+    <section className={`desktop-frame ${topbarChrome.white ? "white-top" : "dark-top"} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       {sidebarOverlayOpen && <div className="sidebar-backdrop" role="presentation" onClick={collapseSidebar} />}
       <Sidebar
         page={page}
@@ -1840,7 +1857,7 @@ function DesktopShell({
         }}
       />
       <div className="desktop-main" inert={sidebarOverlayOpen} aria-hidden={sidebarOverlayOpen ? "true" : undefined}>
-        <TopBar page={page} setPage={setPage} white={whiteTop} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} interactionsDisabled={sessionLocked} onLogout={onLogout} />
+        <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} interactionsDisabled={sessionLocked} onLogout={onLogout} />
         {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
         {page === "overview-health" && <OverviewHealthPage notify={notify} />}
         {page === "overview-tasks" && <OverviewTasksPage notify={notify} />}
@@ -2055,7 +2072,7 @@ function Sidebar({
 function TopBar({
   page,
   setPage,
-  white,
+  chrome,
   notify,
   unreadCount,
   setUnreadCount,
@@ -2064,7 +2081,7 @@ function TopBar({
 }: {
   page: PageKey;
   setPage: SetPage;
-  white: boolean;
+  chrome: TopbarChrome;
   notify: Notify;
   unreadCount: number;
   setUnreadCount: React.Dispatch<React.SetStateAction<number>>;
@@ -2082,14 +2099,13 @@ function TopBar({
   const searchTriggerRef = useRef<HTMLButtonElement | null>(null);
   const menuTriggerRefs = useRef<Partial<Record<TopbarMenuPanel, HTMLButtonElement | null>>>({});
   const meta = resolvePageMeta(page);
-  const activeModule = navPageFor(page);
-  const isSettings = activeModule === "settings";
-  const userName = page === "overview" ? "admin" : page === "databases" ? "张工" : "管理员";
+  const isCompactTopbar = useIsNarrowViewport();
+  const userName = "管理员";
   const searchResults = topbarSearchResults(query);
   const boundedSearchIndex = searchResults.length > 0 ? Math.min(activeSearchIndex, searchResults.length - 1) : 0;
   const visiblePanel = interactionsDisabled ? null : openPanel;
   const activeSearchOptionId = visiblePanel === "search" && searchResults.length > 0 ? `topbar-search-option-${boundedSearchIndex}` : undefined;
-  const compactSearchHidden = interactionsDisabled || (page !== "overview" && visiblePanel !== "search");
+  const compactSearchHidden = interactionsDisabled || (isCompactTopbar && visiblePanel !== "search");
   const togglePanel = (panel: TopbarMenuPanel) => {
     setLastMenuTrigger(panel);
     setOpenPanel((current) => (current === panel ? null : panel));
@@ -2158,8 +2174,8 @@ function TopBar({
   }, [interactionsDisabled]);
 
   return (
-    <header className={`topbar-mock ${white ? "white" : ""}`}>
-      {page !== "overview" && (
+    <header className={`topbar-mock ${chrome.white ? "white" : ""}`}>
+      {chrome.showBreadcrumb && (
         <div className="breadcrumb-title">
           <span>{meta.breadcrumb}</span>
           <em>/</em>
@@ -2255,9 +2271,9 @@ function TopBar({
           </div>
         )}
       </div>
-      {page !== "overview" && <div className="top-spacer" />}
+      <div className="top-spacer" />
       <div className="top-actions" ref={topbarRef}>
-        {page !== "overview" && (
+        {chrome.showCompactSearch && (
           <button
             ref={searchTriggerRef}
             type="button"
@@ -2271,7 +2287,7 @@ function TopBar({
             <Search size={17} />
           </button>
         )}
-        {isSettings && <StatusDot text="面板运行正常" />}
+        {chrome.showStatus && <StatusDot text="面板运行正常" />}
         <span className="notification-wrap">
           <button
             ref={(node) => { menuTriggerRefs.current.notifications = node; }}
@@ -2287,7 +2303,7 @@ function TopBar({
           </button>
           {unreadCount > 0 && <span className="red-badge" aria-hidden="true">{unreadCount}</span>}
         </span>
-        {page !== "overview" && (
+        {chrome.showActivity && (
           <button
             ref={(node) => { menuTriggerRefs.current.activity = node; }}
             type="button"
