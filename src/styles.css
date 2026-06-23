@@ -1911,13 +1911,13 @@ a {
 
 .metric-card {
   min-width: 0;
-  min-height: 104px;
+  min-height: 112px;
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr);
-  grid-template-rows: auto 28px;
+  grid-template-rows: auto 38px;
   gap: 8px 10px;
   background: #ffffff;
   box-shadow: 0 1px 0 rgb(15 23 42 / 3%);
@@ -2003,7 +2003,7 @@ a {
 .metric-card .spark {
   grid-column: 1 / -1;
   width: 100%;
-  height: 28px;
+  height: 38px;
 }
 
 .overview-grid {
@@ -7289,7 +7289,7 @@ a {
   .metric-card {
     min-width: 0;
     grid-template-columns: 38px 1fr;
-    min-height: 100px;
+    min-height: 112px;
     padding: 14px 12px 10px;
     scroll-snap-align: none;
   }
@@ -9687,11 +9687,56 @@ a {
   }
 }
 
-.spark polyline {
+.spark {
+  overflow: visible;
+}
+
+.spark-grid line {
+  stroke: #d9e5ee;
+  stroke-width: 0.8;
+  opacity: 0.62;
+}
+
+.spark-bars rect {
+  fill: currentColor;
+  opacity: 0.14;
+}
+
+.spark-area {
+  opacity: 1;
+}
+
+.spark-baseline {
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.32;
+}
+
+.spark-current-guide {
+  stroke: currentColor;
+  stroke-width: 1;
+  opacity: 0.2;
+}
+
+.spark-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.spark-point {
+  fill: #ffffff;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.spark-point.peak {
+  fill: currentColor;
+  stroke: #ffffff;
+  stroke-width: 1.8;
 }
 
 .blue,
