@@ -3078,7 +3078,7 @@ a {
 .module-page-overview-health .health-workspace .module-table tbody,
 .module-page-overview-health .health-workspace .module-table tr {
   width: 100%;
-  min-width: 1082px;
+  min-width: 956px;
 }
 
 .module-page-overview-health .health-workspace .module-table thead {
@@ -3093,6 +3093,44 @@ a {
 
 .module-page-overview-health .health-workspace .module-table tr {
   display: table-row;
+}
+
+.module-page-overview-health .health-workspace .module-table th:last-child,
+.module-page-overview-health .health-workspace .module-table td:last-child {
+  padding-right: 12px;
+  padding-left: 12px;
+  text-align: center;
+  background: #ffffff;
+  box-shadow: inset 1px 0 0 #e1edf5;
+}
+
+.module-page-overview-health .health-workspace .module-table th:last-child {
+  background: #f7fafc;
+  box-shadow: inset 1px 0 0 #d9e8f2, inset 0 -1px 0 #d9e8f2;
+}
+
+.health-node-actions {
+  justify-content: center;
+}
+
+.health-node-actions button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 1px solid #d8e8f2;
+  border-radius: 6px;
+  color: #0b83b7;
+  background: #f6fbff;
+}
+
+.health-node-actions button:hover,
+.health-node-actions button:focus-visible {
+  border-color: rgb(14 165 233 / 48%);
+  color: #036d9b;
+  background: #e9f7ff;
+  outline: none;
 }
 
 .module-page.module-page-overview-health {
@@ -3512,7 +3550,7 @@ a {
   }
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1440px) {
   .health-workspace {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) minmax(160px, 0.48fr);
