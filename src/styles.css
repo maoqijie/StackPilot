@@ -2614,6 +2614,8 @@ a {
 .module-page-overview-tasks .module-table {
   width: 100%;
   min-width: 1360px;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
 }
 
@@ -2701,15 +2703,18 @@ a {
 
 .module-page-overview-tasks .module-table th:nth-child(9),
 .module-page-overview-tasks .module-table td:nth-child(9) {
-  overflow: visible;
+  position: sticky;
+  right: 0;
+  overflow: hidden;
   background: #ffffff;
-  box-shadow: -8px 0 14px rgba(15, 23, 42, 0.08);
+  background-clip: padding-box;
+  box-shadow: inset 1px 0 0 #d9e8f2;
 }
 
 .module-page-overview-tasks .module-table th:nth-child(9) {
   z-index: 4;
   background: #f1f7fb;
-  box-shadow: -8px 0 14px rgba(15, 23, 42, 0.06), inset 0 -1px 0 #d9e8f2;
+  box-shadow: inset 1px 0 0 #d9e8f2, inset 0 -1px 0 #d9e8f2;
 }
 
 .module-page-overview-tasks .module-table .table-actions {
