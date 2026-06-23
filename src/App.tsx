@@ -2737,7 +2737,6 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
         <div className="workbench-identity">
           <span className="workbench-eyebrow">实时工作台</span>
           <strong><StatusLight tone={healthTone} /> {overview.cluster.current || "等待采集"}</strong>
-          <p>后端实时采样 · 风险、任务、资源统一收敛</p>
         </div>
         <div className="workbench-summary" aria-label="采样摘要">
           {summaryItems.map((item) => (
@@ -3530,7 +3529,6 @@ type MobileCardRenderer<T> = (row: T) => React.ReactNode;
 
 function ModulePageShell({
   title,
-  subtitle,
   page,
   viewContext,
   tabs,
@@ -3559,7 +3557,6 @@ function ModulePageShell({
       <div className="page-head module-head" inert={isModalSide} aria-hidden={isModalSide ? "true" : undefined}>
         <div>
           <h1>{title}</h1>
-          {subtitle && <p>{subtitle}</p>}
         </div>
         {actions && <div>{actions}</div>}
       </div>
@@ -8059,7 +8056,6 @@ function SettingsPage({
       <div className="page-head settings-title" inert={settingsModalOpen} aria-hidden={settingsModalOpen ? "true" : undefined}>
         <div>
           <h1>{resolvePageMeta(page).title}</h1>
-          <p>配置面板身份、访问令牌、备份与恢复策略、安全与通知等全局设置，确保系统安全、可审计、稳定运行。</p>
         </div>
       </div>
       <div inert={settingsModalOpen} aria-hidden={settingsModalOpen ? "true" : undefined}>
