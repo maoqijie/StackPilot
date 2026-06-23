@@ -2887,7 +2887,6 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
   const [envFilter, setEnvFilter] = useState("全部");
   const [statusFilter, setStatusFilter] = useState("全部");
   const [selected, setSelected] = useState<OverviewNode | null>(null);
-  const [lastRefresh, setLastRefresh] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const filteredNodes = nodes.filter((node) => {
@@ -2906,15 +2905,8 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
   const updateCount = nodes.filter((node) => !isCleanUpdate(node.update)).length;
   const envOptions = ["全部", ...uniqueSorted(nodes.map((node) => node.env))];
   const statusOptions = ["全部", ...uniqueSorted(nodes.map((node) => node.status))];
-  const subtitle = loading
-    ? "正在从本机采集器读取集群状态。"
-    : error
-      ? "实时采集失败，页面未回退到示例节点。"
-      : `统一查看真实节点、延迟、资源和服务健康。最近刷新：${lastRefresh || "-"}`;
-
-  const syncHealth = useCallback((nextNodes: OverviewNode[], nextRefresh: string) => {
+  const syncHealth = useCallback((nextNodes: OverviewNode[]) => {
     setNodes(nextNodes);
-    setLastRefresh(nextRefresh);
     setSelected((current) => current ? nextNodes.find((node) => node.id === current.id) ?? null : null);
   }, []);
 
@@ -2922,7 +2914,7 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
     if (!silent) setLoading(true);
     try {
       const payload = await request(signal);
-      syncHealth(payload.nodes, payload.lastRefresh);
+      syncHealth(payload.nodes);
       setError(null);
     } catch (loadError) {
       if (signal?.aborted) return;
@@ -2938,7 +2930,7 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
     const controller = new AbortController();
     fetchOverviewHealth(controller.signal)
       .then((payload) => {
-        syncHealth(payload.nodes, payload.lastRefresh);
+        syncHealth(payload.nodes);
         setError(null);
         setLoading(false);
       })
@@ -2956,7 +2948,7 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
     try {
       setLoading(true);
       const payload = await refreshOverviewHealth();
-      syncHealth(payload.nodes, payload.lastRefresh);
+      syncHealth(payload.nodes);
       setError(null);
       notify("集群状态已刷新");
     } catch (error) {
@@ -2969,8 +2961,8 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
   return (
     <ModulePageShell
       title="集群状态"
-      subtitle={subtitle}
       page="overview-health"
+      viewContext={false}
       actions={<button className="primary" type="button" onClick={refreshHealthFromApi} disabled={loading}><RefreshCw size={14} /> 刷新状态</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索节点、IP、服务、版本" onChange={setSearch} /><FieldSelect label="环境" value={envFilter} options={envOptions} onChange={setEnvFilter} /><FieldSelect label="状态" value={statusFilter} options={statusOptions} onChange={setStatusFilter} /></>}
       metrics={<><MetricTile icon={Server} label="节点总数" value={`${nodes.length}`} tone="blue" /><MetricTile icon={Activity} label="异常节点" value={`${warningCount}`} tone={warningCount ? "orange" : "green"} /><MetricTile icon={RefreshCw} label="待更新" value={`${updateCount}`} tone={updateCount ? "orange" : "green"} /></>}
