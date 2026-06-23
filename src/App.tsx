@@ -302,7 +302,6 @@ const navItems: NavItem[] = [
     label: "主机",
     icon: Server,
     children: [
-      { id: "hosts-all", label: "全部主机", meta: "资源列表" },
       { id: "hosts-prod", label: "生产环境", meta: "按环境筛选" },
       { id: "hosts-alert", label: "健康告警", meta: "按状态筛选" },
     ],
@@ -584,9 +583,14 @@ function resolvePageMeta(page: PageKey): PageMeta {
   return pageMeta.overview;
 }
 
+const routePageAliases: Partial<Record<string, PageKey>> = {
+  "hosts-all": "hosts",
+};
+
 const routePageKeys = new Set<string>([
   ...parentPageKeys,
   "mobile",
+  ...Object.keys(routePageAliases),
   ...Object.keys(pageMeta),
   ...navItems.flatMap((item) => item.children.map((child) => child.page ?? child.id)),
 ]);
@@ -1397,7 +1401,14 @@ function settingsPageForTab(tab: string): PageKey {
 function readPageFromHash(): PageKey {
   const [key] = window.location.hash.replace("#", "").split("?");
   if (!key) return "overview";
-  if (routePageKeys.has(key)) return key;
+  if (routePageKeys.has(key)) {
+    const canonicalPage = routePageAliases[key] ?? key;
+    if (canonicalPage !== key) {
+      const nextUrl = `${window.location.pathname}${window.location.search}#${canonicalPage}`;
+      window.history.replaceState(null, "", nextUrl);
+    }
+    return canonicalPage;
+  }
   const nextUrl = `${window.location.pathname}${window.location.search}#overview`;
   window.history.replaceState(null, "", nextUrl);
   return "overview";
