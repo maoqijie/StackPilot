@@ -684,6 +684,15 @@ type HostRecord = {
   services: string[];
 };
 
+type HostPageMode = "inventory" | "production" | "alerts";
+type HostPagePreset = {
+  mode: HostPageMode;
+  env: string;
+  health: string;
+  search: string;
+  subtitle: string;
+};
+
 type SiteRecord = {
   id: string;
   domain: string;
@@ -1228,12 +1237,83 @@ const initialAclPolicies: AclPolicy[] = [
 
 function hostPagePreset(page: PageKey) {
   if (page === "hosts-prod") {
-    return { env: "生产", health: "全部", search: "", subtitle: "生产环境主机视图，默认筛选生产节点。" };
+    return {
+      mode: "production",
+      env: "生产",
+      health: "全部",
+      search: "",
+      subtitle: "聚焦生产节点的资源水位、备份新鲜度和发布前检查。",
+    } satisfies HostPagePreset;
   }
   if (page === "hosts-alert") {
-    return { env: "全部", health: "警告", search: "", subtitle: "健康告警视图，聚焦需要处理的主机。" };
+    return {
+      mode: "alerts",
+      env: "全部",
+      health: "需关注",
+      search: "",
+      subtitle: "按健康状态、资源水位和备份滞后组织待处理主机。",
+    } satisfies HostPagePreset;
   }
-  return { env: "全部", health: "全部", search: "", subtitle: "" };
+  return {
+    mode: "inventory",
+    env: "全部",
+    health: "全部",
+    search: "",
+    subtitle: "跨环境盘点主机资源、基础状态和常用运维操作。",
+  } satisfies HostPagePreset;
+}
+
+function hostStatusTone(health: HostRecord["health"]): Tone {
+  if (health === "健康") return "green";
+  if (health === "警告") return "orange";
+  return "red";
+}
+
+function hostResourceTone(value: string): Tone {
+  const percent = percentValue(value);
+  if (percent >= 80) return "red";
+  if (percent >= 60) return "orange";
+  return "green";
+}
+
+function hostHighestResource(row: HostRecord) {
+  const resources = [
+    ["CPU", row.cpu],
+    ["内存", row.memory],
+    ["磁盘", row.disk],
+  ] as const;
+  const [label, value] = [...resources].sort((left, right) => percentValue(right[1]) - percentValue(left[1]))[0];
+  return `${label} ${value}`;
+}
+
+function hostPressureScore(row: HostRecord) {
+  return Math.max(percentValue(row.cpu), percentValue(row.memory), percentValue(row.disk));
+}
+
+function hostNeedsAttention(row: HostRecord) {
+  return row.health !== "健康" || hostHasHighResource(row) || hostHasStaleBackup(row) || !isCleanUpdate(row.update);
+}
+
+function hostHasHighResource(row: HostRecord) {
+  return hostPressureScore(row) >= 70;
+}
+
+function hostHasStaleBackup(row: HostRecord) {
+  return !row.backup.startsWith("今天");
+}
+
+function hostRiskReasons(row: HostRecord) {
+  const reasons: string[] = [];
+  if (row.health === "离线") reasons.push("节点离线");
+  if (row.health === "警告") reasons.push("健康告警");
+  if (hostHasHighResource(row)) reasons.push(`资源高压 ${hostHighestResource(row)}`);
+  if (hostHasStaleBackup(row)) reasons.push(`备份滞后 ${row.backup}`);
+  if (!isCleanUpdate(row.update)) reasons.push(row.update);
+  return reasons.length > 0 ? reasons : ["监控正常"];
+}
+
+function hostServiceSummary(row: HostRecord) {
+  return `${row.services.length} 个服务`;
 }
 
 function sitesPagePreset(page: PageKey) {
@@ -3912,6 +3992,102 @@ function MetricTile({ icon: Icon, label, value, tone }: { icon: LucideIcon; labe
   );
 }
 
+function hostViewContext(mode: HostPageMode, rows: HostRecord[], filteredRows: HostRecord[]): ViewContext {
+  const productionRows = rows.filter((row) => row.env === "生产");
+  const alertRows = rows.filter(hostNeedsAttention);
+  if (mode === "production") {
+    return {
+      eyebrow: "主机 / 生产环境",
+      title: "生产运行视图",
+      chips: [`生产 ${productionRows.length} 台`, `告警 ${productionRows.filter(hostNeedsAttention).length} 台`, `筛选 ${filteredRows.length} 台`],
+    };
+  }
+  if (mode === "alerts") {
+    return {
+      eyebrow: "主机 / 健康告警",
+      title: "告警处置队列",
+      chips: [`待处理 ${alertRows.length} 台`, `离线 ${rows.filter((row) => row.health === "离线").length} 台`, `当前 ${filteredRows.length} 台`],
+    };
+  }
+  return {
+    eyebrow: "主机 / 全部主机",
+    title: "资源清单",
+    chips: [`总数 ${rows.length} 台`, `健康 ${rows.filter((row) => row.health === "健康").length} 台`, `环境 ${uniqueSorted(rows.map((row) => row.env)).length} 个`],
+  };
+}
+
+function hostMatchesHealth(row: HostRecord, healthFilter: string) {
+  if (healthFilter === "全部") return true;
+  if (healthFilter === "需关注") return hostNeedsAttention(row);
+  return row.health === healthFilter;
+}
+
+function hostHealthOptions(mode: HostPageMode) {
+  if (mode === "alerts") return ["需关注", "警告", "离线", "全部", "健康"];
+  return ["全部", "健康", "警告", "离线"];
+}
+
+function HostMetrics({ mode, rows, filteredRows }: { mode: HostPageMode; rows: HostRecord[]; filteredRows: HostRecord[] }) {
+  const productionRows = rows.filter((row) => row.env === "生产");
+  const currentRows = mode === "inventory" ? rows : filteredRows;
+  if (mode === "production") {
+    return (
+      <>
+        <MetricTile icon={Server} label="生产主机" value={`${productionRows.length}`} tone="blue" />
+        <MetricTile icon={Activity} label="高水位" value={`${productionRows.filter(hostHasHighResource).length}`} tone="orange" />
+        <MetricTile icon={RefreshCw} label="待更新" value={`${productionRows.filter((row) => !isCleanUpdate(row.update)).length}`} tone="purple" />
+      </>
+    );
+  }
+  if (mode === "alerts") {
+    return (
+      <>
+        <MetricTile icon={Shield} label="待处理" value={`${rows.filter(hostNeedsAttention).length}`} tone="orange" />
+        <MetricTile icon={Activity} label="资源高压" value={`${rows.filter(hostHasHighResource).length}`} tone="red" />
+        <MetricTile icon={Clock3} label="备份滞后" value={`${rows.filter(hostHasStaleBackup).length}`} tone="purple" />
+      </>
+    );
+  }
+  return (
+    <>
+      <MetricTile icon={Server} label="主机总数" value={`${currentRows.length}`} tone="blue" />
+      <MetricTile icon={CheckCircle2} label="健康" value={`${rows.filter((row) => row.health === "健康").length}`} tone="green" />
+      <MetricTile icon={Shield} label="需关注" value={`${rows.filter(hostNeedsAttention).length}`} tone="orange" />
+    </>
+  );
+}
+
+function HostPressureCell({ row }: { row: HostRecord }) {
+  const resources = [
+    { label: "CPU", value: row.cpu },
+    { label: "内存", value: row.memory },
+    { label: "磁盘", value: row.disk },
+  ].sort((left, right) => percentValue(right.value) - percentValue(left.value));
+  const primary = resources[0];
+  return (
+    <div className="host-pressure-cell">
+      <span>{primary.label}</span>
+      <Bar value={primary.value} tone={hostResourceTone(primary.value)} />
+    </div>
+  );
+}
+
+function HostRiskTags({ row }: { row: HostRecord }) {
+  return (
+    <span className="host-risk-tags">
+      {hostRiskReasons(row).slice(0, 3).map((reason) => <em key={reason}>{reason}</em>)}
+    </span>
+  );
+}
+
+function HostServices({ row }: { row: HostRecord }) {
+  return (
+    <span className="host-service-pills">
+      {row.services.slice(0, 3).map((service) => <em key={service}>{service}</em>)}
+    </span>
+  );
+}
+
 function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialHostRecords);
   const hostPreset = hostPagePreset(page);
@@ -3926,18 +4102,41 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const search = searchByPage[page] ?? hostPreset.search;
   const envFilter = envByPage[page] ?? hostPreset.env;
   const healthFilter = healthByPage[page] ?? hostPreset.health;
+  const productionRows = rows.filter((row) => row.env === "生产");
+  const alertRows = rows.filter(hostNeedsAttention);
 
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
-    const matchSearch = !query || row.name.toLowerCase().includes(query) || row.ip.includes(query);
+    const matchSearch = !query || row.name.toLowerCase().includes(query) || row.ip.includes(query) || row.os.toLowerCase().includes(query);
     const matchEnv = envFilter === "全部" || row.env === envFilter;
-    const matchHealth = healthFilter === "全部" || row.health === healthFilter;
+    const matchHealth = hostMatchesHealth(row, healthFilter);
     return matchSearch && matchEnv && matchHealth;
   });
 
   const updateHost = (id: string, patch: Partial<HostRecord>) => {
     setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   };
+  const openHostDetail = (host: HostRecord) => setDrawer({ type: "detail", host });
+  const restartHost = (host: HostRecord) => {
+    updateHost(host.id, { health: "健康", uptime: "刚刚重启" });
+    notify(`${host.name} 已重启`);
+  };
+  const backupHost = (host: HostRecord) => {
+    updateHost(host.id, { backup: currentClock() });
+    notify(`${host.name} 已创建备份`);
+  };
+  const updateHostPackages = (host: HostRecord) => {
+    updateHost(host.id, { update: "已是最新" });
+    notify(`${host.name} 已更新`);
+  };
+  const hostActionButtons = (row: HostRecord, compact = false) => (
+    <span className={`table-actions host-actions ${compact ? "compact actions-3" : "actions-4"}`}>
+      <button type="button" aria-label={`查看主机 ${row.name}`} onClick={() => openHostDetail(row)}>{hostPreset.mode === "alerts" ? "详情" : "查看"}</button>
+      <button type="button" aria-label={`重启主机 ${row.name}`} onClick={() => restartHost(row)}>重启</button>
+      {hostPreset.mode !== "alerts" && <button type="button" aria-label={`备份主机 ${row.name}`} onClick={() => backupHost(row)}>备份</button>}
+      <button type="button" aria-label={`更新主机 ${row.name}`} onClick={() => updateHostPackages(row)}>更新</button>
+    </span>
+  );
 
   const addHost = () => {
     const ip = draft.ip.trim();
@@ -3971,15 +4170,48 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
     notify(`主机 ${next.name} 已新增`);
   };
 
+  const tableColumns: Array<TableColumn<HostRecord>> = hostPreset.mode === "production"
+    ? [
+        { key: "name", label: "生产节点", width: "170px", render: (row) => <><StatusLight tone={hostStatusTone(row.health)} /> <b className="blue-text">{row.name}</b></> },
+        { key: "ip", label: "IP 地址", width: "128px", render: (row) => row.ip },
+        { key: "pressure", label: "资源高水位", width: "150px", sortValue: hostPressureScore, render: (row) => <HostPressureCell row={row} /> },
+        { key: "services", label: "关键服务", width: "168px", render: (row) => <HostServices row={row} /> },
+        { key: "backup", label: "备份", width: "108px", render: (row) => <span className={hostHasStaleBackup(row) ? "orange-text" : "green-text"}>{row.backup}</span> },
+        { key: "update", label: "更新", width: "108px", render: (row) => <span className={isCleanUpdate(row.update) ? "green-text" : "orange-text"}>{row.update}</span> },
+        { key: "status", label: "健康", width: "88px", render: (row) => <><StatusLight tone={hostStatusTone(row.health)} /> {row.health}</> },
+        { key: "ops", label: "操作", width: "190px", render: (row) => hostActionButtons(row) },
+      ]
+    : hostPreset.mode === "alerts"
+      ? [
+          { key: "issue", label: "告警对象", width: "230px", render: (row) => <div className="host-issue-cell"><b>{row.name}</b><HostRiskTags row={row} /></div> },
+          { key: "env", label: "环境 / IP", width: "150px", render: (row) => <span className="host-env-ip"><em>{row.env}</em><code>{row.ip}</code></span> },
+          { key: "pressure", label: "资源压力", width: "150px", sortValue: hostPressureScore, render: (row) => <HostPressureCell row={row} /> },
+          { key: "backup", label: "备份", width: "108px", render: (row) => <span className={hostHasStaleBackup(row) ? "orange-text" : "green-text"}>{row.backup}</span> },
+          { key: "update", label: "更新", width: "108px", render: (row) => <span className={isCleanUpdate(row.update) ? "green-text" : "orange-text"}>{row.update}</span> },
+          { key: "status", label: "状态", width: "88px", render: (row) => <><StatusLight tone={hostStatusTone(row.health)} /> {row.health}</> },
+          { key: "ops", label: "操作", width: "154px", render: (row) => hostActionButtons(row, true) },
+        ]
+      : [
+          { key: "name", label: "主机名", width: "170px", render: (row) => <><StatusLight tone={hostStatusTone(row.health)} /> <b className="blue-text">{row.name}</b></> },
+          { key: "ip", label: "IP 地址", width: "128px", render: (row) => row.ip },
+          { key: "env", label: "环境", width: "78px", render: (row) => <span className="pill blue">{row.env}</span> },
+          { key: "os", label: "系统", width: "128px", render: (row) => row.os },
+          { key: "cpu", label: "CPU", sortValue: (row) => percentValue(row.cpu), render: (row) => <Bar value={row.cpu} tone={hostResourceTone(row.cpu)} /> },
+          { key: "memory", label: "内存", sortValue: (row) => percentValue(row.memory), render: (row) => <Bar value={row.memory} tone={hostResourceTone(row.memory)} /> },
+          { key: "disk", label: "磁盘", sortValue: (row) => percentValue(row.disk), render: (row) => <Bar value={row.disk} tone={hostResourceTone(row.disk)} /> },
+          { key: "status", label: "健康", width: "92px", render: (row) => <><StatusLight tone={hostStatusTone(row.health)} /> {row.health}</> },
+          { key: "ops", label: "操作", width: "210px", render: (row) => hostActionButtons(row) },
+        ];
+
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
-      subtitle={null}
+      subtitle={hostPreset.subtitle}
       page={page}
-      viewContext={false}
+      viewContext={hostViewContext(hostPreset.mode, rows, filteredRows)}
       actions={<><button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 台主机`, "info")}><Download size={15} /> 导出</button><button className="primary" type="button" onClick={() => { setDraftErrors({}); setDrawer({ type: "create" }); }}><Plus size={15} /> 新增主机</button></>}
-      filters={<><ModuleSearch value={search} placeholder="搜索主机名或 IP" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={(value) => setEnvByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="健康" value={healthFilter} options={["全部", "健康", "警告", "离线"]} onChange={(value) => setHealthByPage((current) => ({ ...current, [page]: value }))} /></>}
-      metrics={<><MetricTile icon={Server} label="主机总数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="健康" value={`${rows.filter((row) => row.health === "健康").length}`} tone="green" /><MetricTile icon={Shield} label="需关注" value={`${rows.filter((row) => row.health !== "健康").length}`} tone="orange" /></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索主机名、IP 或系统" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="环境" value={envFilter} options={["全部", "生产", "预发", "开发"]} onChange={(value) => setEnvByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="健康" value={healthFilter} options={hostHealthOptions(hostPreset.mode)} onChange={(value) => setHealthByPage((current) => ({ ...current, [page]: value }))} /></>}
+      metrics={<HostMetrics mode={hostPreset.mode} rows={rows} filteredRows={filteredRows} />}
       side={drawer?.type === "detail" && drawer.host ? (
         <DetailDrawer title={drawer.host.name} subtitle={`${drawer.host.ip} · ${drawer.host.env}`} onClose={() => setDrawer(null)}>
           <div className="detail-kv">
@@ -3987,11 +4219,12 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
             <p><span>运行时间</span><b>{drawer.host.uptime}</b></p>
             <p><span>备份</span><b>{drawer.host.backup}</b></p>
             <p><span>更新</span><b>{drawer.host.update}</b></p>
+            <p><span>关注项</span><b>{hostRiskReasons(drawer.host).join(" / ")}</b></p>
           </div>
           <div className="resource-bars">
-            <p><span>CPU</span><Bar value={drawer.host.cpu} tone={drawer.host.health === "警告" ? "orange" : "green"} /></p>
-            <p><span>内存</span><Bar value={drawer.host.memory} tone={Number(drawer.host.memory.replace("%", "")) > 70 ? "red" : "green"} /></p>
-            <p><span>磁盘</span><Bar value={drawer.host.disk} tone={Number(drawer.host.disk.replace("%", "")) > 80 ? "red" : "green"} /></p>
+            <p><span>CPU</span><Bar value={drawer.host.cpu} tone={hostResourceTone(drawer.host.cpu)} /></p>
+            <p><span>内存</span><Bar value={drawer.host.memory} tone={hostResourceTone(drawer.host.memory)} /></p>
+            <p><span>磁盘</span><Bar value={drawer.host.disk} tone={hostResourceTone(drawer.host.disk)} /></p>
           </div>
           <div className="drawer-list">
             <strong>服务列表</strong>
@@ -4011,46 +4244,140 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
         </DetailDrawer>
       ) : null}
     >
+      <HostFocusPanel
+        mode={hostPreset.mode}
+        rows={rows}
+        filteredRows={filteredRows}
+        productionRows={productionRows}
+        alertRows={alertRows}
+        onOpen={openHostDetail}
+        onBackup={backupHost}
+        onUpdate={updateHostPackages}
+        notify={notify}
+      />
       <DataTable
-        columns={[
-          { key: "name", label: "主机名", width: "170px", render: (row) => <><StatusLight tone={row.health === "健康" ? "green" : row.health === "警告" ? "orange" : "red"} /> <b className="blue-text">{row.name}</b></> },
-          { key: "ip", label: "IP 地址", width: "128px", render: (row) => row.ip },
-          { key: "env", label: "环境", width: "78px", render: (row) => <span className="pill blue">{row.env}</span> },
-          { key: "cpu", label: "CPU", sortValue: (row) => percentValue(row.cpu), render: (row) => <Bar value={row.cpu} tone={row.health === "警告" ? "orange" : "green"} /> },
-          { key: "memory", label: "内存", sortValue: (row) => percentValue(row.memory), render: (row) => <Bar value={row.memory} tone={Number(row.memory.replace("%", "")) > 70 ? "red" : "green"} /> },
-          { key: "disk", label: "磁盘", sortValue: (row) => percentValue(row.disk), render: (row) => <Bar value={row.disk} tone={Number(row.disk.replace("%", "")) > 80 ? "red" : "green"} /> },
-          { key: "status", label: "健康", width: "92px", render: (row) => <><StatusLight tone={row.health === "健康" ? "green" : row.health === "警告" ? "orange" : "red"} /> {row.health}</> },
-          { key: "ops", label: "操作", width: "210px", render: (row) => <span className="table-actions"><button type="button" aria-label={`查看主机 ${row.name}`} onClick={() => setDrawer({ type: "detail", host: row })}>查看</button><button type="button" aria-label={`重启主机 ${row.name}`} onClick={() => { updateHost(row.id, { health: "健康", uptime: "刚刚重启" }); notify(`${row.name} 已重启`); }}>重启</button><button type="button" aria-label={`备份主机 ${row.name}`} onClick={() => { updateHost(row.id, { backup: currentClock() }); notify(`${row.name} 已创建备份`); }}>备份</button><button type="button" aria-label={`更新主机 ${row.name}`} onClick={() => { updateHost(row.id, { update: "已是最新" }); notify(`${row.name} 已更新`); }}>更新</button></span> },
-        ]}
+        columns={tableColumns}
         rows={filteredRows}
         emptyText="没有匹配的主机"
         getRowKey={(row) => row.id}
         mobileCard={(row) => (
           <>
             <div className="module-card-head">
-              <button className="module-row-link" type="button" aria-label={`查看主机 ${row.name}`} onClick={() => setDrawer({ type: "detail", host: row })}><StatusLight tone={row.health === "健康" ? "green" : row.health === "警告" ? "orange" : "red"} /><b>{row.name}</b></button>
+              <button className="module-row-link" type="button" aria-label={`查看主机 ${row.name}`} onClick={() => openHostDetail(row)}><StatusLight tone={hostStatusTone(row.health)} /><b>{row.name}</b></button>
               <span className={`pill ${row.health === "健康" ? "green" : row.health === "警告" ? "orange" : "red"}`}>{row.health}</span>
             </div>
             <code className="module-card-code">{row.ip}</code>
+            {hostPreset.mode === "alerts" && <HostRiskTags row={row} />}
             <div className="module-card-meta">
               <span><b>环境</b><em>{row.env}</em></span>
-              <span><b>CPU</b><em>{row.cpu}</em></span>
-              <span><b>内存</b><em>{row.memory}</em></span>
-              <span><b>磁盘</b><em>{row.disk}</em></span>
+              <span><b>{hostPreset.mode === "production" ? "服务" : "系统"}</b><em>{hostPreset.mode === "production" ? hostServiceSummary(row) : row.os}</em></span>
+              <span><b>高水位</b><em>{hostHighestResource(row)}</em></span>
+              <span><b>备份</b><em>{row.backup}</em></span>
             </div>
             <div className="module-card-footer">
               <span className={row.update === "已是最新" ? "green-text" : "orange-text"}>{row.update}</span>
-              <div className="table-actions">
-                <button type="button" aria-label={`查看主机 ${row.name}`} onClick={() => setDrawer({ type: "detail", host: row })}>查看</button>
-                <button type="button" aria-label={`重启主机 ${row.name}`} onClick={() => { updateHost(row.id, { health: "健康", uptime: "刚刚重启" }); notify(`${row.name} 已重启`); }}>重启</button>
-                <button type="button" aria-label={`备份主机 ${row.name}`} onClick={() => { updateHost(row.id, { backup: currentClock() }); notify(`${row.name} 已创建备份`); }}>备份</button>
-                <button type="button" aria-label={`更新主机 ${row.name}`} onClick={() => { updateHost(row.id, { update: "已是最新" }); notify(`${row.name} 已更新`); }}>更新</button>
-              </div>
+              {hostActionButtons(row, hostPreset.mode === "alerts")}
             </div>
           </>
         )}
       />
     </ModulePageShell>
+  );
+}
+
+function HostFocusPanel({
+  mode,
+  rows,
+  filteredRows,
+  productionRows,
+  alertRows,
+  onOpen,
+  onBackup,
+  onUpdate,
+  notify,
+}: {
+  mode: HostPageMode;
+  rows: HostRecord[];
+  filteredRows: HostRecord[];
+  productionRows: HostRecord[];
+  alertRows: HostRecord[];
+  onOpen: (host: HostRecord) => void;
+  onBackup: (host: HostRecord) => void;
+  onUpdate: (host: HostRecord) => void;
+  notify: Notify;
+}) {
+  if (mode === "production") {
+    const staleBackupRows = productionRows.filter(hostHasStaleBackup);
+    const pendingUpdateRows = productionRows.filter((row) => !isCleanUpdate(row.update));
+    return (
+      <section className="host-focus-panel host-production-board" aria-label="生产主机视图">
+        <div className="host-panel-section">
+          <header><span>生产拓扑</span><strong>{productionRows.length} 台节点</strong></header>
+          <div className="host-lane-list">
+            {productionRows.map((row) => (
+              <button type="button" key={row.id} onClick={() => onOpen(row)}>
+                <StatusLight tone={hostStatusTone(row.health)} />
+                <b>{row.name}</b>
+                <em>{hostHighestResource(row)}</em>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="host-panel-section host-checklist">
+          <header><span>发布前检查</span><strong>{productionRows.filter((row) => row.health === "健康").length}/{productionRows.length} 健康</strong></header>
+          <p><StatusLight tone={staleBackupRows.length ? "orange" : "green"} />备份滞后 <b>{staleBackupRows.length}</b></p>
+          <p><StatusLight tone={pendingUpdateRows.length ? "orange" : "green"} />待更新 <b>{pendingUpdateRows.length}</b></p>
+          <div>
+            <button className="ghost small" type="button" onClick={() => notify(`已检查 ${productionRows.length} 台生产主机`, "info")}><Eye size={14} /> 预检</button>
+            {pendingUpdateRows[0] && <button className="warning small" type="button" onClick={() => onUpdate(pendingUpdateRows[0])}><RefreshCw size={14} /> 更新首项</button>}
+          </div>
+        </div>
+      </section>
+    );
+  }
+  if (mode === "alerts") {
+    return (
+      <section className="host-focus-panel host-alert-board" aria-label="主机告警队列">
+        <div className="host-panel-section">
+          <header><span>处置队列</span><strong>{filteredRows.length} 台命中</strong></header>
+          <div className="host-alert-list">
+            {filteredRows.slice(0, 4).map((row) => (
+              <button type="button" key={row.id} onClick={() => onOpen(row)}>
+                <StatusLight tone={hostStatusTone(row.health)} />
+                <b>{row.name}</b>
+                <em>{hostRiskReasons(row)[0]}</em>
+              </button>
+            ))}
+            {filteredRows.length === 0 && <p>当前筛选没有告警主机</p>}
+          </div>
+        </div>
+        <div className="host-panel-section host-alert-summary">
+          <header><span>告警结构</span><strong>{alertRows.length} 台待处理</strong></header>
+          <p><StatusLight tone="red" />离线节点 <b>{rows.filter((row) => row.health === "离线").length}</b></p>
+          <p><StatusLight tone="orange" />警告节点 <b>{rows.filter((row) => row.health === "警告").length}</b></p>
+          <p><StatusLight tone="purple" />资源高压 <b>{rows.filter(hostHasHighResource).length}</b></p>
+          {alertRows[0] && <button className="warning small" type="button" onClick={() => onBackup(alertRows[0])}><Clock3 size={14} /> 补备份</button>}
+        </div>
+      </section>
+    );
+  }
+  const envCounts = uniqueSorted(rows.map((row) => row.env)).map((env) => [env, rows.filter((row) => row.env === env).length] as const);
+  const serviceCount = uniqueSorted(rows.flatMap((row) => row.services)).length;
+  return (
+    <section className="host-focus-panel host-inventory-grid" aria-label="主机资源清单">
+      {envCounts.map(([env, count]) => (
+        <article key={env}>
+          <span>{env}</span>
+          <strong>{count}</strong>
+          <em>{rows.filter((row) => row.env === env && row.health === "健康").length} 台健康</em>
+        </article>
+      ))}
+      <article>
+        <span>服务覆盖</span>
+        <strong>{serviceCount}</strong>
+        <em>{filteredRows.length} 台当前命中</em>
+      </article>
+    </section>
   );
 }
 
