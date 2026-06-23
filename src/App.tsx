@@ -1622,7 +1622,6 @@ function App() {
         />
       )}
       <div className="sr-only" aria-live="polite" aria-atomic="true">{toast?.message ?? ""}</div>
-      {toast && <ActionToast toast={toast} />}
     </main>
   );
 }
@@ -9770,15 +9769,6 @@ function TokenSecretDrawer({
         <em>完整令牌仅在此处展示一次，关闭后列表只保留前缀。</em>
       </div>
     </DetailDrawer>
-  );
-}
-
-function ActionToast({ toast }: { toast: ToastState }) {
-  return (
-    <div className={`action-toast ${toast.tone}`} role="status" aria-live="polite">
-      <StatusLight tone={toast.tone === "danger" ? "red" : toast.tone === "warning" ? "orange" : toast.tone === "info" ? "blue" : "green"} />
-      <span>{toast.message}</span>
-    </div>
   );
 }
 
