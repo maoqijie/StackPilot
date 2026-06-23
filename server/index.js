@@ -8,6 +8,7 @@ import { URL, fileURLToPath } from "node:url";
 import { createCronJob, deleteCronJob, listCronJobs, runCronJobNow, updateCronJob } from "./cronJobs.js";
 import { collectDeviceTasks } from "./deviceTasks.js";
 import { collectLocalRuntime, localNodeId, runLocalRestart } from "./localRuntime.js";
+import { riskSuggestion } from "./riskSuggestions.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "127.0.0.1";
@@ -303,21 +304,21 @@ function buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent, gitInfo, 
   };
 
   if (cpuPercent >= 85) {
-    pushRisk("risk-cpu", "CPU 使用率过高", "高危", hostname(), `当前采样 ${percentText(cpuPercent)}`, "检查高占用进程，必要时暂停耗时任务。");
+    pushRisk("risk-cpu", "CPU 使用率过高", "高危", hostname(), `当前采样 ${percentText(cpuPercent)}`, riskSuggestion("cpuCritical", { target: hostname(), percent: percentText(cpuPercent) }));
   } else if (cpuPercent >= 70) {
-    pushRisk("risk-cpu", "CPU 使用率偏高", "中危", hostname(), `当前采样 ${percentText(cpuPercent)}`, "观察构建、测试或开发服务器是否持续占用 CPU。");
+    pushRisk("risk-cpu", "CPU 使用率偏高", "中危", hostname(), `当前采样 ${percentText(cpuPercent)}`, riskSuggestion("cpuWarning", { percent: percentText(cpuPercent) }));
   }
 
   if (memoryPercent >= 88) {
-    pushRisk("risk-memory", "内存压力过高", "高危", hostname(), `当前采样 ${percentText(memoryPercent)}`, "关闭不必要进程或扩大可用内存后再运行重任务。");
+    pushRisk("risk-memory", "内存压力过高", "高危", hostname(), `当前采样 ${percentText(memoryPercent)}`, riskSuggestion("memoryCritical", { target: hostname(), percent: percentText(memoryPercent) }));
   } else if (memoryPercent >= 76) {
-    pushRisk("risk-memory", "内存压力偏高", "中危", hostname(), `当前采样 ${percentText(memoryPercent)}`, "运行构建或浏览器验收前先确认可用内存。");
+    pushRisk("risk-memory", "内存压力偏高", "中危", hostname(), `当前采样 ${percentText(memoryPercent)}`, riskSuggestion("memoryWarning", { percent: percentText(memoryPercent) }));
   }
 
   if (diskPercent >= 90) {
-    pushRisk("risk-disk", "磁盘空间不足", "高危", repoRoot, `当前采样 ${percentText(diskPercent)}`, "清理构建产物、缓存或迁移大文件后再继续部署。");
+    pushRisk("risk-disk", "磁盘空间不足", "高危", repoRoot, `当前采样 ${percentText(diskPercent)}`, riskSuggestion("diskCritical", { percent: percentText(diskPercent) }));
   } else if (diskPercent >= 80) {
-    pushRisk("risk-disk", "磁盘使用率偏高", "中危", repoRoot, `当前采样 ${percentText(diskPercent)}`, "关注依赖缓存、截图和打包产物占用。");
+    pushRisk("risk-disk", "磁盘使用率偏高", "中危", repoRoot, `当前采样 ${percentText(diskPercent)}`, riskSuggestion("diskWarning", { percent: percentText(diskPercent) }));
   }
 
   if (gitInfo.changedFiles.length > 0) {
@@ -327,30 +328,30 @@ function buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent, gitInfo, 
       gitInfo.changedFiles.length >= 5 ? "中危" : "低危",
       `${gitInfo.branch} @ ${gitInfo.commit}`,
       `${gitInfo.changedFiles.length} 个变更会影响交付边界`,
-      "完成当前页面后运行 lint/build，再按需提交保存进度。",
+      riskSuggestion("gitDirty", { count: gitInfo.changedFiles.length }),
     );
   }
 
   if (gitInfo.behind > 0) {
-    pushRisk("risk-git-behind", "当前分支落后上游", "中危", gitInfo.branch, `落后 ${gitInfo.behind} 个提交`, "合并远端更新前先确认本地变更和验证结果。");
+    pushRisk("risk-git-behind", "当前分支落后上游", "中危", gitInfo.branch, `落后 ${gitInfo.behind} 个提交`, riskSuggestion("gitBehind", { branch: gitInfo.branch, behind: gitInfo.behind }));
   }
 
   if (runtime.latency.status !== "健康") {
-    pushRisk("risk-api-latency", "本机 API 健康探测失败", "中危", runtime.latency.detail, runtime.latency.label, "检查 StackPilot API 监听端口和 /healthz 响应。");
+    pushRisk("risk-api-latency", "本机 API 健康探测失败", "中危", runtime.latency.detail, runtime.latency.label, riskSuggestion("apiLatency", { target: runtime.latency.detail }));
   }
 
   if (runtime.backup.status !== "健康") {
-    pushRisk("risk-backup", "未发现近期真实备份", "中危", runtime.backup.detail, runtime.backup.label, "配置 STACKPILOT_BACKUP_DIRS 或补齐备份落盘任务。");
+    pushRisk("risk-backup", "未发现近期真实备份", "中危", runtime.backup.detail, runtime.backup.label, riskSuggestion("backup", { detail: runtime.backup.detail }));
   }
 
   runtime.services
     .filter((service) => service.status !== "健康")
     .forEach((service) => {
-      pushRisk(`risk-service-${service.id}`, `${service.name} 服务异常`, "中危", service.target, service.detail, "检查监听进程、端口和 HTTP 健康探测。");
+      pushRisk(`risk-service-${service.id}`, `${service.name} 服务异常`, "中危", service.target, service.detail, riskSuggestion("service", service));
     });
 
   if (!packageInfo.scripts.build || !packageInfo.scripts.lint) {
-    pushRisk("risk-scripts", "缺少标准验证脚本", "低危", "package.json", "交付前验证路径不完整", "补齐 lint/build 脚本，保证工作台页面可重复验证。");
+    pushRisk("risk-scripts", "缺少标准验证脚本", "低危", "package.json", "交付前验证路径不完整", riskSuggestion("scripts"));
   }
 
   return risks;

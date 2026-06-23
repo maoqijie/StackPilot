@@ -3102,9 +3102,117 @@ a {
   }
 }
 
+.risk-modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 149;
+  display: block;
+  border: 0;
+  background: rgb(6 18 28 / 38%);
+  cursor: default;
+  animation: health-scrim-in 160ms ease-out;
+}
+
+.risk-detail-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 150;
+  width: min(720px, calc(100vw - 36px));
+  max-height: min(82dvh, 720px);
+  border: 1px solid #cfe1ee;
+  border-radius: 8px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: #ffffff;
+  box-shadow: 0 28px 70px rgb(15 36 52 / 26%);
+  transform: translate(-50%, -50%);
+  animation: health-modal-in 180ms cubic-bezier(0.2, 0, 0, 1);
+  overflow: hidden;
+}
+
+.risk-modal-head {
+  min-height: 68px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(180deg, #fbfdff, #f6fafc);
+}
+
+.risk-modal-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.risk-modal-head span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #648096;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.risk-modal-head strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #172637;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.risk-modal-body {
+  min-height: 0;
+  padding: 16px 18px 18px;
+  overflow: auto;
+}
+
+.risk-modal-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.risk-modal-summary p {
+  min-width: 0;
+  min-height: 62px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #dceaf3;
+  border-radius: 6px;
+  display: grid;
+  gap: 6px;
+  align-content: center;
+  background: #fbfdff;
+  color: #4c6173;
+}
+
+.risk-modal-summary span {
+  color: #8293a2;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.risk-modal-summary b {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow-wrap: anywhere;
+  color: #1f3242;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.45;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .detail-drawer.health-node-modal,
-  .drawer-scrim.health-node-modal-scrim {
+  .drawer-scrim.health-node-modal-scrim,
+  .risk-detail-modal,
+  .risk-modal-scrim {
     animation: none;
   }
 }
@@ -4196,16 +4304,48 @@ a {
   font-size: 11px;
 }
 
-.overview-risk-note p {
+.overview-risk-note ol {
   margin: 0;
-  padding: 11px 12px;
+  padding: 12px;
   border: 1px solid #ffe1b8;
   border-radius: 6px;
-  color: #7a4b08;
+  color: #65400a;
   background: #fff8ed;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.7;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.65;
+  list-style: none;
+  counter-reset: risk-step;
+}
+
+.overview-risk-note li {
+  position: relative;
+  min-height: 30px;
+  padding-left: 34px;
+  overflow-wrap: anywhere;
+}
+
+.overview-risk-note li + li {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid #ffe4bf;
+}
+
+.overview-risk-note li::before {
+  counter-increment: risk-step;
+  content: counter(risk-step);
+  position: absolute;
+  top: 1px;
+  left: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #9a5a00;
+  background: #ffedcf;
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .overview-inline-detail {
@@ -6085,6 +6225,30 @@ a {
     z-index: 149;
     display: block;
     background: rgb(6 18 28 / 24%);
+  }
+
+  .risk-detail-modal {
+    top: 50%;
+    right: auto;
+    bottom: auto;
+    left: 50%;
+    width: min(560px, calc(100vw - 20px));
+    max-height: min(82dvh, 620px);
+    transform: translate(-50%, -50%);
+  }
+
+  .risk-modal-head {
+    min-height: 62px;
+    padding: 14px 14px;
+    grid-template-columns: minmax(0, 1fr) 44px;
+  }
+
+  .risk-modal-body {
+    padding: 14px;
+  }
+
+  .risk-modal-summary {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .module-layout.has-side .detail-drawer {
