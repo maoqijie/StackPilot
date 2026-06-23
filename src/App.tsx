@@ -109,6 +109,7 @@ type TopbarChrome = {
 type HelpDrawerState = { id: string; title: string; detail: string } | null;
 type TopbarSearchResult = { id: string; label: string; detail: string; page: PageKey; kind: string };
 type TopbarNotification = { id: string; title: string; detail: string; tone: Tone; time: string };
+type TopbarActivity = { id: string; title: string; detail: string; time: string };
 type NavChild = { id: string; label: string; meta: string; page?: PageKey; badge?: string };
 type BackupDraft = {
   frequency: string;
@@ -438,12 +439,6 @@ const navItems: NavItem[] = [
 ];
 
 const topbarNotifications: TopbarNotification[] = [];
-
-const topbarActivities = [
-  { id: "act-1", title: "张工 更新防火墙规则", detail: "允许 10.0.0.0/8 访问 443/TCP", time: "刚刚" },
-  { id: "act-2", title: "admin 重启 systemd 服务", detail: "nginx.service 已恢复 active", time: "12 分钟前" },
-  { id: "act-3", title: "CI 创建部署任务", detail: "api-gateway staging v2.8.2-rc", time: "42 分钟前" },
-] as const;
 
 const topbarHelpLinks = [
   { id: "help-1", title: "快捷排障手册", detail: "查看主机、服务、日志的标准路径" },
@@ -1077,6 +1072,24 @@ function emptyOverviewSummary(): OverviewSummaryPayload {
     resources: {},
     lastRefresh: "",
   };
+}
+
+function topbarStatusText(overview: OverviewSummaryPayload | null) {
+  if (!overview) return "正在采集面板状态";
+  return `${overview.cluster.health} · ${overview.cluster.latency} · ${overview.lastRefresh}`;
+}
+
+function topbarUserName(overview: OverviewSummaryPayload | null) {
+  return overview?.cluster.current || "本机节点";
+}
+
+function topbarActivitiesFromOverview(overview: OverviewSummaryPayload | null): TopbarActivity[] {
+  return (overview?.audits ?? []).slice(0, 5).map((row) => ({
+    id: row[6],
+    title: row[3],
+    detail: `${row[2]} · ${row[4]} · ${row[5]}`,
+    time: row[0],
+  }));
 }
 
 const initialHostRecords: HostRecord[] = [
@@ -1740,6 +1753,7 @@ function DesktopShell({
     typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
   ));
   const [settingsReadOnly, setSettingsReadOnly] = useState(false);
+  const [topbarOverview, setTopbarOverview] = useState<OverviewSummaryPayload | null>(null);
   const sidebarRestoreFocusRef = useRef<HTMLElement | null>(null);
   const sidebarOverlayOpen = isNarrowSidebar && !sidebarCollapsed;
   const settingsReadOnlyState = { readOnly: settingsReadOnly, setReadOnly: setSettingsReadOnly };
@@ -1799,6 +1813,14 @@ function DesktopShell({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [sidebarOverlayOpen]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchOverview(controller.signal)
+      .then(setTopbarOverview)
+      .catch(() => setTopbarOverview(null));
+    return () => controller.abort();
+  }, []);
+
   const expandSidebar = () => {
     sidebarRestoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSidebarCollapsed(false);
@@ -1830,7 +1852,7 @@ function DesktopShell({
         }}
       />
       <div className="desktop-main" inert={sidebarOverlayOpen} aria-hidden={sidebarOverlayOpen ? "true" : undefined}>
-        <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} interactionsDisabled={sessionLocked} onLogout={onLogout} />
+        <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={topbarOverview} interactionsDisabled={sessionLocked} onLogout={onLogout} />
         {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
         {page === "overview-health" && <OverviewHealthPage notify={notify} />}
         {page === "overview-tasks" && <OverviewTasksPage notify={notify} />}
@@ -2036,6 +2058,7 @@ function TopBar({
   notify,
   unreadCount,
   setUnreadCount,
+  overview,
   interactionsDisabled,
   onLogout,
 }: {
@@ -2045,6 +2068,7 @@ function TopBar({
   notify: Notify;
   unreadCount: number;
   setUnreadCount: React.Dispatch<React.SetStateAction<number>>;
+  overview: OverviewSummaryPayload | null;
   interactionsDisabled: boolean;
   onLogout: () => void;
 }) {
@@ -2060,7 +2084,9 @@ function TopBar({
   const menuTriggerRefs = useRef<Partial<Record<TopbarMenuPanel, HTMLButtonElement | null>>>({});
   const meta = resolvePageMeta(page);
   const isCompactTopbar = useIsNarrowViewport();
-  const userName = "管理员";
+  const userName = topbarUserName(overview);
+  const statusText = topbarStatusText(overview);
+  const activities = topbarActivitiesFromOverview(overview);
   const searchResults = topbarSearchResults(query);
   const boundedSearchIndex = searchResults.length > 0 ? Math.min(activeSearchIndex, searchResults.length - 1) : 0;
   const visiblePanel = interactionsDisabled ? null : openPanel;
@@ -2247,7 +2273,7 @@ function TopBar({
             <Search size={17} />
           </button>
         )}
-        {chrome.showStatus && <StatusDot text="面板运行正常" />}
+        {chrome.showStatus && <StatusDot text={statusText} />}
         <span className="notification-wrap">
           <button
             ref={(node) => { menuTriggerRefs.current.notifications = node; }}
@@ -2310,6 +2336,7 @@ function TopBar({
             panel={visiblePanel}
             page={page}
             userName={userName}
+            activities={activities}
             unreadCount={unreadCount}
             setPage={setPage}
             onOpenHelp={openHelpDrawer}
@@ -2409,6 +2436,7 @@ function TopbarDropdown({
   panel,
   page,
   userName,
+  activities,
   unreadCount,
   setPage,
   onOpenHelp,
@@ -2420,6 +2448,7 @@ function TopbarDropdown({
   panel: TopbarMenuPanel;
   page: PageKey;
   userName: string;
+  activities: TopbarActivity[];
   unreadCount: number;
   setPage: SetPage;
   onOpenHelp: (item?: { id: string; title: string; detail: string }) => void;
@@ -2501,8 +2530,9 @@ function TopbarDropdown({
     activity: { title: "操作记录", subtitle: resolvePageMeta(page).title, action: "查看审计" },
     help: { title: "帮助中心", subtitle: "当前页上下文", action: "打开文档" },
   }[panel];
-  const items = panel === "notifications" ? topbarNotifications : panel === "activity" ? topbarActivities : topbarHelpLinks;
+  const items = panel === "notifications" ? topbarNotifications : panel === "activity" ? activities : topbarHelpLinks;
   const isEmptyNotifications = panel === "notifications" && items.length === 0;
+  const isEmptyActivity = panel === "activity" && items.length === 0;
 
   return (
     <div ref={dropdownRef} className={`topbar-dropdown ${panel}-dropdown`} id={`topbar-${panel}-panel`} role="dialog" aria-label={panelMeta.title} onKeyDown={trapDropdownFocus}>
@@ -2526,8 +2556,8 @@ function TopbarDropdown({
       </div>
       <p className="topbar-dropdown-subtitle">{panelMeta.subtitle}</p>
       <div className="topbar-dropdown-list">
-        {isEmptyNotifications ? (
-          <p className="topbar-empty-state">暂无通知</p>
+        {isEmptyNotifications || isEmptyActivity ? (
+          <p className="topbar-empty-state">{isEmptyActivity ? "暂无真实操作记录" : "暂无通知"}</p>
         ) : items.map((item) => (
           <button
             key={item.id}
@@ -2545,7 +2575,7 @@ function TopbarDropdown({
               onClose();
             }}
           >
-            {panel === "notifications" && <StatusLight tone={"tone" in item ? item.tone : "blue"} />}
+            {panel === "notifications" && <StatusLight tone={"tone" in item ? (item.tone as Tone) : "blue"} />}
             <span>
               <strong>{item.title}</strong>
               <em>{item.detail}</em>
