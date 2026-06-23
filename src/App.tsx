@@ -3183,15 +3183,15 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
     >
       <DataTable
         columns={[
-          { key: "type", label: "类型", width: "82px", render: (row) => <span className="pill blue">{row.type}</span> },
-          { key: "title", label: "任务", width: "240px", render: (row) => <b>{row.title}</b> },
-          { key: "target", label: "目标", width: "150px", render: (row) => row.target },
-          { key: "status", label: "状态", width: "92px", render: (row) => <><StatusLight tone={taskTone(row.status)} /> {row.status}</> },
-          { key: "priority", label: "优先级", width: "78px", render: (row) => row.priority },
-          { key: "operator", label: "操作人", width: "86px", render: (row) => row.operator },
-          { key: "queuedAt", label: "时间", width: "105px", render: (row) => row.queuedAt },
-          { key: "duration", label: "耗时", width: "100px", render: (row) => row.duration },
-          { key: "actions", label: "操作", width: "196px", render: (row) => (
+          { key: "type", label: "类型", width: "90px", render: (row) => <span className="pill blue">{row.type}</span> },
+          { key: "title", label: "任务", width: "285px", render: (row) => <b>{row.title}</b> },
+          { key: "target", label: "目标", width: "170px", render: (row) => row.target },
+          { key: "status", label: "状态", width: "96px", render: (row) => <><StatusLight tone={taskTone(row.status)} /> {row.status}</> },
+          { key: "priority", label: "优先级", width: "82px", render: (row) => row.priority },
+          { key: "operator", label: "操作人", width: "96px", render: (row) => row.operator },
+          { key: "queuedAt", label: "时间", width: "130px", render: (row) => row.queuedAt },
+          { key: "duration", label: "耗时", width: "235px", render: (row) => row.duration },
+          { key: "actions", label: "操作", width: "176px", render: (row) => (
             <div className="table-actions">
               <button type="button" onClick={() => setSelected(row)}>日志</button>
               <button type="button" onClick={() => void patchTask(row.id, { status: "成功", duration: row.duration === "运行中" ? "1分02秒" : row.duration, logs: [...row.logs, "人工标记完成"] }, `${row.title} 已完成`)}>完成</button>
