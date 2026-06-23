@@ -2739,7 +2739,19 @@ a {
 }
 
 .module-page-overview-risks .module-table {
+  width: 100%;
   min-width: 1125px;
+}
+
+.module-page-overview-risks .module-table th:last-child,
+.module-page-overview-risks .module-table td:last-child {
+  position: static;
+  right: auto;
+  box-shadow: none;
+}
+
+.module-page-overview-risks .module-table th:last-child {
+  background: #f7fafc;
 }
 
 .module-page-overview-risks .detail-drawer {
