@@ -54,6 +54,7 @@ import {
   type OverviewAuditRow,
   type OverviewMetricIcon,
   type OverviewNode,
+  type OverviewService,
   type OverviewResourceRecord,
   type OverviewRiskRecord,
   type OverviewSummaryPayload,
@@ -1016,6 +1017,28 @@ const overviewMetricIcons: Record<OverviewMetricIcon, LucideIcon> = {
 
 function reportApiError(error: unknown, notify: Notify, fallback = "后端请求失败") {
   notify(error instanceof Error ? error.message : fallback, "danger");
+}
+
+function serviceTone(status: OverviewService["status"]): Tone {
+  if (status === "健康") return "green";
+  if (status === "警告") return "orange";
+  return "red";
+}
+
+function healthProbeTone(status: "健康" | "警告"): Tone {
+  return status === "健康" ? "green" : "orange";
+}
+
+function serviceHealthTone(services: OverviewService[]): Tone {
+  if (services.some((service) => service.status === "离线")) return "red";
+  if (services.some((service) => service.status === "警告")) return "orange";
+  return services.length ? "green" : "gray";
+}
+
+function serviceHealthLabel(services: OverviewService[]) {
+  if (services.length === 0) return "未发现服务";
+  const healthyCount = services.filter((service) => service.status === "健康").length;
+  return `${healthyCount}/${services.length} 健康`;
 }
 
 function emptyOverviewSummary(): OverviewSummaryPayload {
@@ -2597,7 +2620,7 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
           <strong><StatusLight tone={overview.cluster.health === "健康" ? "green" : "orange"} /> {overview.cluster.current || "等待采集"}</strong>
         </div>
         <span>状态：<b className={overview.cluster.health === "健康" ? "green-text" : "orange-text"}>{overview.cluster.health}</b></span>
-        <span>入口：{overview.cluster.latency}</span>
+        <span>延迟：{overview.cluster.latency}</span>
         <span>版本：{overview.cluster.version}</span>
         <span>运行：{overview.cluster.uptime}</span>
         <span>刷新：{overview.lastRefresh || "-"}</span>
@@ -2710,6 +2733,21 @@ function MetricCard({
   );
 }
 
+function OverviewServiceList({ services }: { services: OverviewService[] }) {
+  return (
+    <div className="drawer-list">
+      <strong>服务列表</strong>
+      {services.map((service) => (
+        <p key={service.id}>
+          <StatusLight tone={serviceTone(service.status)} />
+          {service.name}
+          <span>{service.status} · {service.detail}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function HostTable({ nodes, notify }: { nodes: OverviewNode[]; notify: Notify }) {
   const [selectedHostId, setSelectedHostId] = useState<string | null>(null);
   const selectedHost = nodes.find((host) => host.id === selectedHostId) ?? null;
@@ -2742,8 +2780,8 @@ function HostTable({ nodes, notify }: { nodes: OverviewNode[]; notify: Notify })
               <td><Bar value={host.cpu} tone={host.status === "警告" ? "orange" : "green"} /></td>
               <td><Bar value={host.memory} tone={host.status === "警告" ? "red" : "green"} /></td>
               <td><Bar value={host.disk} tone={host.status === "警告" ? "red" : "green"} /></td>
-              <td><StatusLight tone={host.status === "警告" ? "orange" : host.status === "维护" ? "gray" : "green"} /> {host.status}</td>
-              <td><StatusLight tone="green" /> {host.backup}</td>
+              <td><StatusLight tone={serviceHealthTone(host.services)} /> {serviceHealthLabel(host.services)}</td>
+              <td><StatusLight tone={healthProbeTone(host.backupStatus)} /> {host.backup}</td>
               <td className={isCleanUpdate(host.update) ? "green-text" : "orange-text"}>{host.update}</td>
               <td>
                 <button
@@ -2763,10 +2801,10 @@ function HostTable({ nodes, notify }: { nodes: OverviewNode[]; notify: Notify })
         <DetailDrawer title={selectedHost.name} subtitle={`${selectedHost.ip} · ${selectedHost.env}`} onClose={() => setSelectedHostId(null)} autoFocus={false}>
           <div className="detail-kv">
             <p><span>状态</span><b><StatusLight tone={selectedHost.status === "健康" ? "green" : selectedHost.status === "警告" ? "orange" : "gray"} /> {selectedHost.status}</b></p>
-            <p><span>延迟</span><b>{selectedHost.latency}</b></p>
+            <p><span>延迟</span><b><StatusLight tone={healthProbeTone(selectedHost.latencyStatus)} /> {selectedHost.latency}</b></p>
             <p><span>版本</span><b>{selectedHost.version}</b></p>
             <p><span>运行时间</span><b>{selectedHost.uptime}</b></p>
-            <p><span>备份</span><b>{selectedHost.backup}</b></p>
+            <p><span>备份</span><b><StatusLight tone={healthProbeTone(selectedHost.backupStatus)} /> {selectedHost.backup}</b></p>
             <p><span>更新</span><b>{selectedHost.update}</b></p>
             <p><span>负责人</span><b>{selectedHost.owner}</b></p>
           </div>
@@ -2775,10 +2813,7 @@ function HostTable({ nodes, notify }: { nodes: OverviewNode[]; notify: Notify })
             <p><span>内存</span><Bar value={selectedHost.memory} tone={selectedHost.status === "警告" ? "red" : "green"} /></p>
             <p><span>磁盘</span><Bar value={selectedHost.disk} tone={selectedHost.status === "警告" ? "red" : "green"} /></p>
           </div>
-          <div className="drawer-list">
-            <strong>服务列表</strong>
-            {selectedHost.services.map((service) => <p key={service}><StatusLight tone="green" /> {service}<span>已采集</span></p>)}
-          </div>
+          <OverviewServiceList services={selectedHost.services} />
         </DetailDrawer>
       )}
     </>
@@ -2899,7 +2934,12 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
       || node.ip.includes(query)
       || node.owner.toLowerCase().includes(query)
       || node.version.toLowerCase().includes(query)
-      || node.services.join(" ").toLowerCase().includes(query);
+      || node.services.some((service) => [
+        service.name,
+        service.target,
+        service.status,
+        service.detail,
+      ].join(" ").toLowerCase().includes(query));
     const matchEnv = envFilter === "全部" || node.env === envFilter;
     const matchStatus = statusFilter === "全部" || node.status === statusFilter;
     return matchSearch && matchEnv && matchStatus;
@@ -2984,10 +3024,10 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
             { key: "name", label: "节点", width: "170px", render: (row) => <><StatusLight tone={row.status === "健康" ? "green" : row.status === "警告" ? "orange" : "gray"} /> <b className="blue-text">{row.name}</b></> },
             { key: "ip", label: "IP", width: "118px", render: (row) => row.ip },
             { key: "env", label: "环境", width: "78px", render: (row) => row.env },
-            { key: "latency", label: "延迟", width: "78px", sortValue: (row) => latencyValue(row.latency), render: (row) => row.latency },
+            { key: "latency", label: "延迟", width: "78px", sortValue: (row) => latencyValue(row.latency), render: (row) => <span><StatusLight tone={healthProbeTone(row.latencyStatus)} /> {row.latency}</span> },
             { key: "cpu", label: "CPU", width: "110px", sortValue: (row) => percentValue(row.cpu), render: (row) => <Bar value={row.cpu} tone={row.status === "警告" ? "orange" : "green"} /> },
             { key: "memory", label: "内存", width: "110px", sortValue: (row) => percentValue(row.memory), render: (row) => <Bar value={row.memory} tone={row.status === "警告" ? "red" : "green"} /> },
-            { key: "backup", label: "备份", width: "118px", render: (row) => row.backup },
+            { key: "backup", label: "备份", width: "118px", render: (row) => <span><StatusLight tone={healthProbeTone(row.backupStatus)} /> {row.backup}</span> },
             { key: "update", label: "更新", width: "110px", render: (row) => <span className={isCleanUpdate(row.update) ? "green-text" : "orange-text"}>{row.update}</span> },
             { key: "actions", label: "操作", width: "104px", render: (row) => (
               <div className="table-actions">
@@ -3011,10 +3051,10 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
         >
           <div className="detail-kv">
             <p><span>状态</span><b><StatusLight tone={selected.status === "健康" ? "green" : selected.status === "警告" ? "orange" : "gray"} /> {selected.status}</b></p>
-            <p><span>延迟</span><b>{selected.latency}</b></p>
+            <p><span>延迟</span><b><StatusLight tone={healthProbeTone(selected.latencyStatus)} /> {selected.latency}</b></p>
             <p><span>版本</span><b>{selected.version}</b></p>
             <p><span>运行时间</span><b>{selected.uptime}</b></p>
-            <p><span>最后备份</span><b>{selected.backup}</b></p>
+            <p><span>最后备份</span><b><StatusLight tone={healthProbeTone(selected.backupStatus)} /> {selected.backup}</b></p>
             <p><span>负责人</span><b>{selected.owner}</b></p>
           </div>
           <div className="resource-bars">
@@ -3022,10 +3062,7 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
             <p><span>内存</span><Bar value={selected.memory} tone={selected.status === "警告" ? "red" : "green"} /></p>
             <p><span>磁盘</span><Bar value={selected.disk} tone={selected.status === "警告" ? "red" : "green"} /></p>
           </div>
-          <div className="drawer-list">
-            <strong>服务列表</strong>
-            {selected.services.map((service) => <p key={service}><StatusLight tone="green" /> {service}<span>已采集</span></p>)}
-          </div>
+          <OverviewServiceList services={selected.services} />
         </DetailDrawer>
       )}
     </ModulePageShell>

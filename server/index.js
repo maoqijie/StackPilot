@@ -5,6 +5,7 @@ import { cpus, freemem, hostname, loadavg, networkInterfaces, platform, release,
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { URL, fileURLToPath } from "node:url";
+import { collectLocalRuntime, localNodeId, runLocalRestart } from "./localRuntime.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "127.0.0.1";
@@ -183,8 +184,17 @@ function spark(values) {
   return [value, value];
 }
 
-function usageStatus(cpuPercent, memoryPercent, diskPercent, gitInfo) {
-  if (cpuPercent >= 85 || memoryPercent >= 88 || diskPercent >= 90 || gitInfo.behind > 0) return "警告";
+function usageStatus(cpuPercent, memoryPercent, diskPercent, gitInfo, runtime) {
+  const unhealthyService = runtime.services.some((service) => service.status !== "健康");
+  if (
+    cpuPercent >= 85
+    || memoryPercent >= 88
+    || diskPercent >= 90
+    || gitInfo.behind > 0
+    || runtime.latency.status !== "健康"
+    || runtime.backup.status !== "健康"
+    || unhealthyService
+  ) return "警告";
   return "健康";
 }
 
@@ -235,7 +245,7 @@ function buildWorkbenchTasks(packageInfo, gitInfo, processUptimeSeconds) {
   return tasks;
 }
 
-function buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent, gitInfo, packageInfo }) {
+function buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent, gitInfo, packageInfo, runtime }) {
   const risks = [];
   const pushRisk = (id, title, level, target, impact, suggestion) => {
     risks.push({
@@ -285,6 +295,20 @@ function buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent, gitInfo, 
     pushRisk("risk-git-behind", "当前分支落后上游", "中危", gitInfo.branch, `落后 ${gitInfo.behind} 个提交`, "合并远端更新前先确认本地变更和验证结果。");
   }
 
+  if (runtime.latency.status !== "健康") {
+    pushRisk("risk-api-latency", "本机 API 健康探测失败", "中危", runtime.latency.detail, runtime.latency.label, "检查 StackPilot API 监听端口和 /healthz 响应。");
+  }
+
+  if (runtime.backup.status !== "健康") {
+    pushRisk("risk-backup", "未发现近期真实备份", "中危", runtime.backup.detail, runtime.backup.label, "配置 STACKPILOT_BACKUP_DIRS 或补齐备份落盘任务。");
+  }
+
+  runtime.services
+    .filter((service) => service.status !== "健康")
+    .forEach((service) => {
+      pushRisk(`risk-service-${service.id}`, `${service.name} 服务异常`, "中危", service.target, service.detail, "检查监听进程、端口和 HTTP 健康探测。");
+    });
+
   if (!packageInfo.scripts.build || !packageInfo.scripts.lint) {
     pushRisk("risk-scripts", "缺少标准验证脚本", "低危", "package.json", "交付前验证路径不完整", "补齐 lint/build 脚本，保证工作台页面可重复验证。");
   }
@@ -306,12 +330,13 @@ const state = {
 
 async function overviewPayload() {
   const collectedAt = nowTime();
-  const [packageInfo, packageManager, gitInfo, disk, cpu] = await Promise.all([
+  const [packageInfo, packageManager, gitInfo, disk, cpu, runtime] = await Promise.all([
     readPackageInfo(),
     detectPackageManager(),
     collectGitInfo(),
     collectDiskUsage(),
     collectCpuUsage(),
+    collectLocalRuntime({ host, port, repoRoot }),
   ]);
   const totalMemory = totalmem();
   const freeMemory = freemem();
@@ -319,9 +344,9 @@ async function overviewPayload() {
   const cpuPercent = cpu.average;
   const loadPercent = clampPercent((loadavg()[0] / Math.max(cpus().length, 1)) * 100);
   const platformLabel = `${platform()} ${release()}`;
-  const health = usageStatus(cpuPercent, memoryPercent, disk.percent, gitInfo);
+  const health = usageStatus(cpuPercent, memoryPercent, disk.percent, gitInfo, runtime);
   const tasks = buildWorkbenchTasks(packageInfo, gitInfo, process.uptime());
-  const risks = buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent: disk.percent, gitInfo, packageInfo })
+  const risks = buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent: disk.percent, gitInfo, packageInfo, runtime })
     .map((risk) => {
       if (state.resolvedRiskIds.has(risk.id)) return { ...risk, status: "已处理" };
       if (state.deferredRiskIds.has(risk.id)) return { ...risk, status: "已暂缓" };
@@ -331,24 +356,23 @@ async function overviewPayload() {
   const queuedTasks = tasks.filter((task) => ["运行中", "等待"].includes(task.status));
   const failedTasks = tasks.filter((task) => task.status === "失败");
   const node = {
-    id: "node-local",
+    id: localNodeId,
     name: hostname(),
     ip: primaryAddress(),
     env: "本机",
     status: health,
-    latency: "本机",
+    latency: runtime.latency.label,
+    latencyStatus: runtime.latency.status,
     cpu: percentText(cpuPercent),
     memory: percentText(memoryPercent),
     disk: percentText(disk.percent),
     version: `v${packageInfo.version}`,
     uptime: formatDuration(uptime()),
-    backup: "未配置",
+    backup: runtime.backup.label,
+    backupStatus: runtime.backup.status,
     update: gitInfo.updateLabel,
     owner: `${packageManager} / ${gitInfo.branch}`,
-    services: [
-      `api:${port}`,
-      ...Object.keys(packageInfo.scripts).slice(0, 5).map((name) => `npm:${name}`),
-    ],
+    services: runtime.services,
   };
   const audits = gitInfo.logs.map((item) => ([
     item.time,
@@ -488,18 +512,39 @@ async function handleHealthRoute(request, response, parts) {
 
   if (request.method === "POST" && parts[3] === "nodes" && parts.length === 4) {
     await readJson(request);
-    sendError(response, 501, "真实节点接入尚未配置 Agent 注册接口");
+    const overview = await overviewPayload();
+    sendJson(response, 200, {
+      nodes: overview.nodes,
+      lastRefresh: overview.lastRefresh,
+      message: "已刷新真实本机节点；远程 Agent 注册尚未启用",
+      tone: "info",
+    });
     return;
   }
 
   if (request.method === "PATCH" && parts[3] === "nodes" && parts.length === 5) {
     await readJson(request);
-    sendError(response, 501, "真实节点修复尚未配置 Agent 执行器");
+    if (parts[4] !== localNodeId) {
+      sendError(response, 404, "节点不存在");
+      return;
+    }
+    const overview = await overviewPayload();
+    const node = overview.nodes.find((item) => item.id === localNodeId);
+    sendRecordOr404(response, "node", node ? { node, message: "已重新采集真实本机节点状态", tone: "info" } : null);
     return;
   }
 
   if (request.method === "POST" && parts[3] === "nodes" && parts[5] === "restart" && parts.length === 6) {
-    sendError(response, 501, "真实节点重启尚未配置 Agent 执行器");
+    if (parts[4] !== localNodeId) {
+      sendError(response, 404, "节点不存在");
+      return;
+    }
+    const result = await runLocalRestart(repoRoot);
+    if (!result.ok) {
+      sendError(response, result.statusCode, result.message);
+      return;
+    }
+    sendJson(response, 200, { message: result.message, tone: "success" });
     return;
   }
 
