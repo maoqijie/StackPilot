@@ -1,0 +1,64 @@
+.risk-evidence-panel {
+  margin-top: 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.risk-evidence-panel strong {
+  color: #1f3242;
+  font-size: 13px;
+}
+
+.risk-evidence-panel > div {
+  display: grid;
+  gap: 7px;
+}
+
+.risk-evidence-panel p {
+  min-width: 0;
+  min-height: 38px;
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid #dceaf3;
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: 94px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  background: #fbfdff;
+}
+
+.risk-evidence-panel span {
+  color: #72879a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.risk-evidence-panel b {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #26394a;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.risk-evidence-panel em {
+  margin: 0;
+  padding: 10px 11px;
+  border: 1px solid #dceaf3;
+  border-radius: 6px;
+  color: #6b8194;
+  background: #fbfdff;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+@media (max-width: 773px) {
+  .risk-evidence-panel p {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 4px;
+  }
+}

@@ -92,6 +92,11 @@ export type OverviewTaskRecord = {
   logs: string[];
 };
 
+export type OverviewRiskEvidence = {
+  label: string;
+  value: string;
+};
+
 export type OverviewRiskRecord = {
   id: string;
   title: string;
@@ -102,6 +107,7 @@ export type OverviewRiskRecord = {
   impact: string;
   detected: string;
   suggestion: string;
+  evidence?: OverviewRiskEvidence[];
   traceId: string;
 };
 
