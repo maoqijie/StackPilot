@@ -1391,6 +1391,26 @@ a {
   gap: 6px;
 }
 
+.topbar-empty-state {
+  min-height: 56px;
+  margin: 0;
+  padding: 14px 12px;
+  border: 1px dashed #d8e3ec;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: #6f8293;
+  background: #f8fbfd;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.topbar-mock:not(.white) .topbar-empty-state {
+  border-color: rgb(255 255 255 / 12%);
+  color: #9db4c3;
+  background: rgb(255 255 255 / 5%);
+}
+
 .topbar-dropdown-item,
 .user-dropdown > button {
   min-width: 0;

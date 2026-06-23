@@ -107,6 +107,7 @@ type TopbarChrome = {
 };
 type HelpDrawerState = { id: string; title: string; detail: string } | null;
 type TopbarSearchResult = { id: string; label: string; detail: string; page: PageKey; kind: string };
+type TopbarNotification = { id: string; title: string; detail: string; tone: Tone; time: string };
 type NavChild = { id: string; label: string; meta: string; page?: PageKey; badge?: string };
 type BackupDraft = {
   frequency: string;
@@ -312,9 +313,9 @@ const navItems: NavItem[] = [
     label: "主机",
     icon: Server,
     children: [
-      { id: "hosts-all", label: "全部主机", meta: "23 台", badge: "23" },
-      { id: "hosts-prod", label: "生产环境", meta: "8 台在线" },
-      { id: "hosts-alert", label: "健康告警", meta: "3 个待处理", badge: "3" },
+      { id: "hosts-all", label: "全部主机", meta: "资源列表" },
+      { id: "hosts-prod", label: "生产环境", meta: "按环境筛选" },
+      { id: "hosts-alert", label: "健康告警", meta: "按状态筛选" },
     ],
   },
   {
@@ -322,8 +323,8 @@ const navItems: NavItem[] = [
     label: "网站",
     icon: Globe2,
     children: [
-      { id: "sites-running", label: "运行中站点", meta: "48 个" },
-      { id: "sites-cert", label: "证书续期", meta: "5 天内", badge: "3" },
+      { id: "sites-running", label: "运行中站点", meta: "站点列表" },
+      { id: "sites-cert", label: "证书续期", meta: "续期检查" },
       { id: "sites-runtime", label: "运行时分组", meta: "Node / PHP" },
     ],
   },
@@ -332,9 +333,9 @@ const navItems: NavItem[] = [
     label: "数据库",
     icon: Database,
     children: [
-      { id: "databases-instances", label: "实例列表", meta: "19 个" },
-      { id: "databases-backups", label: "备份计划", meta: "02:00 执行" },
-      { id: "databases-slow", label: "慢查询", meta: "4 条", badge: "4" },
+      { id: "databases-instances", label: "实例列表", meta: "资源列表" },
+      { id: "databases-backups", label: "备份计划", meta: "计划管理" },
+      { id: "databases-slow", label: "慢查询", meta: "查询分析" },
     ],
   },
   {
@@ -343,7 +344,7 @@ const navItems: NavItem[] = [
     icon: Folder,
     children: [
       { id: "files-www", label: "站点目录", meta: "/var/www" },
-      { id: "files-upload", label: "上传队列", meta: "2 项" },
+      { id: "files-upload", label: "上传队列", meta: "传输记录" },
       { id: "files-trash", label: "回收站", meta: "7 天保留" },
     ],
   },
@@ -352,9 +353,9 @@ const navItems: NavItem[] = [
     label: "终端",
     icon: TerminalSquare,
     children: [
-      { id: "terminal-sessions", label: "会话列表", meta: "3 在线", badge: "3" },
-      { id: "terminal-snippets", label: "常用命令", meta: "12 条" },
-      { id: "terminal-history", label: "执行历史", meta: "今日 18 次" },
+      { id: "terminal-sessions", label: "会话列表", meta: "在线会话" },
+      { id: "terminal-snippets", label: "常用命令", meta: "命令片段" },
+      { id: "terminal-history", label: "执行历史", meta: "历史记录" },
     ],
   },
   {
@@ -362,8 +363,8 @@ const navItems: NavItem[] = [
     label: "systemd 服务",
     icon: Settings,
     children: [
-      { id: "systemd-active", label: "Active 服务", meta: "36 个" },
-      { id: "systemd-failed", label: "Failed 服务", meta: "1 个", badge: "1" },
+      { id: "systemd-active", label: "Active 服务", meta: "服务列表" },
+      { id: "systemd-failed", label: "Failed 服务", meta: "异常服务" },
       { id: "systemd-logs", label: "服务日志", meta: "实时追踪" },
     ],
   },
@@ -372,9 +373,9 @@ const navItems: NavItem[] = [
     label: "防火墙",
     icon: Shield,
     children: [
-      { id: "firewall-rules", label: "规则列表", meta: "42 条" },
-      { id: "firewall-open", label: "开放端口", meta: "8 个" },
-      { id: "firewall-deny", label: "拦截记录", meta: "今日 12 次" },
+      { id: "firewall-rules", label: "规则列表", meta: "规则管理" },
+      { id: "firewall-open", label: "开放端口", meta: "端口视图" },
+      { id: "firewall-deny", label: "拦截记录", meta: "拒绝记录" },
     ],
   },
   {
@@ -382,8 +383,8 @@ const navItems: NavItem[] = [
     label: "部署",
     icon: CloudUpload,
     children: [
-      { id: "deploy-prod", label: "生产发布", meta: "2 待确认", badge: "2" },
-      { id: "deploy-staging", label: "预发环境", meta: "v2.8.1" },
+      { id: "deploy-prod", label: "生产发布", meta: "发布队列" },
+      { id: "deploy-staging", label: "预发环境", meta: "预发布" },
       { id: "deploy-rollbacks", label: "回滚记录", meta: "近 30 天" },
     ],
   },
@@ -392,9 +393,9 @@ const navItems: NavItem[] = [
     label: "定时任务",
     icon: CalendarDays,
     children: [
-      { id: "schedule-enabled", label: "启用任务", meta: "7 个" },
-      { id: "schedule-failed", label: "失败任务", meta: "1 个", badge: "1" },
-      { id: "schedule-calendar", label: "执行日历", meta: "今日 5 次" },
+      { id: "schedule-enabled", label: "启用任务", meta: "任务列表" },
+      { id: "schedule-failed", label: "失败任务", meta: "失败记录" },
+      { id: "schedule-calendar", label: "执行日历", meta: "日历视图" },
     ],
   },
   {
@@ -403,7 +404,7 @@ const navItems: NavItem[] = [
     icon: FileText,
     children: [
       { id: "audit-all", label: "全部日志", meta: "只读" },
-      { id: "audit-failed", label: "失败操作", meta: "4 条", badge: "4" },
+      { id: "audit-failed", label: "失败操作", meta: "失败记录" },
       { id: "audit-export", label: "导出记录", meta: "CSV / JSON" },
     ],
   },
@@ -412,9 +413,9 @@ const navItems: NavItem[] = [
     label: "权限",
     icon: Lock,
     children: [
-      { id: "acl-users", label: "用户", meta: "12 人" },
-      { id: "acl-roles", label: "角色", meta: "6 组" },
-      { id: "acl-policies", label: "权限项", meta: "34 项" },
+      { id: "acl-users", label: "用户", meta: "用户列表" },
+      { id: "acl-roles", label: "角色", meta: "角色列表" },
+      { id: "acl-policies", label: "权限项", meta: "权限清单" },
     ],
   },
   {
@@ -432,11 +433,7 @@ const navItems: NavItem[] = [
   },
 ];
 
-const topbarNotifications = [
-  { id: "ntf-1", title: "备份延迟 18 分钟", detail: "prod-postgres-01 已进入观察队列", tone: "orange", time: "2 分钟前" },
-  { id: "ntf-2", title: "证书即将过期", detail: "api.stackpilot.local 还剩 5 天", tone: "red", time: "18 分钟前" },
-  { id: "ntf-3", title: "部署任务完成", detail: "web-console v2.8.1 已发布到生产", tone: "green", time: "36 分钟前" },
-] as const;
+const topbarNotifications: TopbarNotification[] = [];
 
 const topbarActivities = [
   { id: "act-1", title: "张工 更新防火墙规则", detail: "允许 10.0.0.0/8 访问 443/TCP", time: "刚刚" },
@@ -610,14 +607,6 @@ const routePageKeys = new Set<string>([
   ...Object.keys(pageMeta),
   ...navItems.flatMap((item) => item.children.map((child) => child.page ?? child.id)),
 ]);
-
-const groupItems = [
-  ["全部主机", "23", "blue"],
-  ["生产环境", "8", "green"],
-  ["预发环境", "5", "blue"],
-  ["开发环境", "6", "orange"],
-  ["测试环境", "4", "purple"],
-];
 
 const auditRows = [
   ["05-22 10:24:31", "10.0.0.55", "李敏", "部署应用", "/api (sg-web-02)", "成功", "a1b2c3d4e5f6"],
@@ -1012,23 +1001,6 @@ type DatabaseSlowQuery = {
   sessionId: string;
   explain?: string;
 };
-
-const initialOverviewTasks: OverviewTaskRecord[] = [
-  { id: "task-1", type: "部署", title: "部署 /api 服务 v2.8.1", target: "demo-sg-01", status: "成功", priority: "中", operator: "李敏", queuedAt: "2 分钟前", duration: "1分24秒", logs: ["拉取 release v2.8.1", "执行健康检查", "发布完成"] },
-  { id: "task-2", type: "备份", title: "备份 shop_db", target: "prod-postgres-01", status: "成功", priority: "低", operator: "系统", queuedAt: "8 分钟前", duration: "32秒", logs: ["创建快照", "上传到 S3", "校验成功"] },
-  { id: "task-3", type: "补丁", title: "更新防火墙规则", target: "panel-bj-02", status: "运行中", priority: "高", operator: "王工", queuedAt: "15 分钟前", duration: "18秒", logs: ["生成规则差异", "应用 TCP 3306 来源限制"] },
-  { id: "task-4", type: "自动化", title: "每日快照", target: "全部生产主机", status: "等待", priority: "中", operator: "系统", queuedAt: "队列 #1", duration: "预计 12 分钟", logs: ["等待前序备份任务释放锁"] },
-  { id: "task-5", type: "修复", title: "重启 mysql.service", target: "panel-hk-03", status: "失败", priority: "高", operator: "张工", queuedAt: "31 分钟前", duration: "7秒", logs: ["尝试重启服务", "systemd 返回 failed", "等待人工处理"] },
-  { id: "task-6", type: "同步", title: "同步静态文件", target: "admin.example.com", status: "等待", priority: "低", operator: "CI", queuedAt: "队列 #2", duration: "预计 18 分钟", logs: ["等待部署窗口"] },
-];
-
-const initialOverviewRisks: OverviewRiskRecord[] = [
-  { id: "risk-1", title: "SSH 密钥过期", level: "高危", status: "待处理", target: "demo-sg-01, panel-hk-03", owner: "安全组", impact: "2 台生产主机无法完成密钥轮换", detected: "10 分钟前", suggestion: "立即轮换 deploy key 并重新验证 SSH 登录链路", traceId: "risk-a1b2c3" },
-  { id: "risk-2", title: "MySQL 端口暴露到公网", level: "高危", status: "待处理", target: "0.0.0.0/0:3306", owner: "数据库组", impact: "外部来源可探测数据库端口", detected: "18 分钟前", suggestion: "收敛来源到 10.0.12.0/24 并触发防火墙重载", traceId: "risk-b2c3d4" },
-  { id: "risk-3", title: "站点证书即将过期", level: "中危", status: "待处理", target: "admin.example.com", owner: "应用组", impact: "4 天后 HTTPS 证书过期", detected: "今天 09:42", suggestion: "执行证书续期并检查 Nginx reload 结果", traceId: "risk-c3d4e5" },
-  { id: "risk-4", title: "systemd 服务反复重启", level: "中危", status: "待处理", target: "mysql.service / panel-hk-03", owner: "运维组", impact: "最近 30 分钟重启 6 次", detected: "8 分钟前", suggestion: "查看服务日志，必要时切换只读副本", traceId: "risk-d4e5f6" },
-  { id: "risk-5", title: "开发节点备份延迟", level: "低危", status: "已暂缓", target: "panel-dev-04", owner: "研发组", impact: "备份晚于策略 3 天", detected: "昨天 18:11", suggestion: "维护窗口结束后重新开启备份计划", traceId: "risk-e5f6g7" },
-];
 
 const overviewMetricIcons: Record<OverviewMetricIcon, LucideIcon> = {
   server: Server,
@@ -1537,7 +1509,7 @@ function useQuickIntent(expectedPage: PageKey, expectedIntent: QuickIntent, onIn
 function App() {
   const [page, setPageState] = useState<PageKey>(readPageFromHash);
   const [toast, setToast] = useState<ToastState | null>(null);
-  const [topbarUnreadCount, setTopbarUnreadCount] = useState(3);
+  const [topbarUnreadCount, setTopbarUnreadCount] = useState(0);
   const [sessionLocked, setSessionLocked] = useState(false);
   const pageRef = useRef(page);
   const sessionLockedRef = useRef(sessionLocked);
@@ -1997,19 +1969,6 @@ function Sidebar({
           );
         })}
       </nav>
-      <div className="host-groups" aria-hidden={collapsed}>
-        <div>
-          <span>主机分组</span>
-          <Plus size={13} />
-        </div>
-        {groupItems.map(([name, count, tone]) => (
-          <p key={name}>
-            <i className={tone} />
-            <span>{name}</span>
-            <em>{count}</em>
-          </p>
-        ))}
-      </div>
       <button
         className="collapse-side"
         type="button"
@@ -2500,6 +2459,7 @@ function TopbarDropdown({
     help: { title: "帮助中心", subtitle: "当前页上下文", action: "打开文档" },
   }[panel];
   const items = panel === "notifications" ? topbarNotifications : panel === "activity" ? topbarActivities : topbarHelpLinks;
+  const isEmptyNotifications = panel === "notifications" && items.length === 0;
 
   return (
     <div ref={dropdownRef} className={`topbar-dropdown ${panel}-dropdown`} id={`topbar-${panel}-panel`} role="dialog" aria-label={panelMeta.title} onKeyDown={trapDropdownFocus}>
@@ -2523,7 +2483,9 @@ function TopbarDropdown({
       </div>
       <p className="topbar-dropdown-subtitle">{panelMeta.subtitle}</p>
       <div className="topbar-dropdown-list">
-        {items.map((item) => (
+        {isEmptyNotifications ? (
+          <p className="topbar-empty-state">暂无通知</p>
+        ) : items.map((item) => (
           <button
             key={item.id}
             type="button"
@@ -3135,7 +3097,7 @@ function HealthSummaryPanel({
 }
 
 function OverviewTasksPage({ notify }: { notify: Notify }) {
-  const [rows, setRows] = useState(initialOverviewTasks);
+  const [rows, setRows] = useState<OverviewTaskRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("全部");
   const [search, setSearch] = useState("");
@@ -3251,7 +3213,7 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
 }
 
 function OverviewRisksPage({ notify }: { notify: Notify }) {
-  const [rows, setRows] = useState(initialOverviewRisks);
+  const [rows, setRows] = useState<OverviewRiskRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState("全部");
