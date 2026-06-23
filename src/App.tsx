@@ -279,7 +279,7 @@ function useIsNarrowViewport() {
 const pageMeta: Record<string, PageMeta> = {
   overview: { title: "工作台", breadcrumb: "控制台", search: "搜索主机、脚本、风险、提交..." },
   "overview-health": { title: "集群状态", breadcrumb: "工作台", search: "搜索节点、IP、服务、版本..." },
-  "overview-tasks": { title: "任务流", breadcrumb: "工作台", search: "搜索任务、类型、操作人..." },
+  "overview-tasks": { title: "任务流", breadcrumb: "工作台", search: "搜索设备任务、服务、计划任务..." },
   "overview-risks": { title: "风险中心", breadcrumb: "工作台", search: "搜索风险、主机、对象..." },
   hosts: { title: "主机", breadcrumb: "资源管理", search: "搜索主机名、IP、环境..." },
   sites: { title: "网站", breadcrumb: "应用管理", search: "搜索域名、运行时、证书..." },
@@ -309,7 +309,7 @@ const navItems: NavItem[] = [
     icon: Home,
     children: [
       { id: "overview-health", label: "集群状态", meta: "实时采样", page: "overview-health" },
-      { id: "overview-tasks", label: "任务流", meta: "脚本 / Git", page: "overview-tasks" },
+      { id: "overview-tasks", label: "任务流", meta: "设备任务", page: "overview-tasks" },
       { id: "overview-risks", label: "风险中心", meta: "实时风险", page: "overview-risks" },
     ],
   },

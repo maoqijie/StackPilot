@@ -5,13 +5,13 @@ import { cpus, freemem, hostname, loadavg, networkInterfaces, platform, release,
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { URL, fileURLToPath } from "node:url";
+import { collectDeviceTasks } from "./deviceTasks.js";
 import { collectLocalRuntime, localNodeId, runLocalRestart } from "./localRuntime.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "127.0.0.1";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const execFileAsync = promisify(execFile);
-const runnableScripts = new Set(["build", "lint"]);
 
 const nowTime = () => new Date().toLocaleString("zh-CN", { hour12: false });
 const clampPercent = (value) => Math.max(0, Math.min(100, Math.round(Number.isFinite(value) ? value : 0)));
@@ -199,25 +199,6 @@ function usageStatus(cpuPercent, memoryPercent, diskPercent, gitInfo, runtime) {
   return "健康";
 }
 
-function taskStatusFromService(service) {
-  return service?.status === "健康" ? "成功" : "失败";
-}
-
-function taskOperatorFromService(service, fallback) {
-  return service?.process?.command || fallback;
-}
-
-function taskDurationFromService(service) {
-  return typeof service?.latencyMs === "number" ? `${service.latencyMs}ms` : "未采集";
-}
-
-function serviceLogs(service, source) {
-  return [
-    service ? `${service.name}：${service.detail}` : "未采集到服务状态",
-    `来源：${source}`,
-  ];
-}
-
 function buildTaskMetrics(tasks) {
   const queuedTasks = tasks.filter((task) => ["运行中", "等待"].includes(task.status));
   const failedTasks = tasks.filter((task) => task.status === "失败");
@@ -231,8 +212,8 @@ function buildTaskMetrics(tasks) {
 function buildTaskPage(tasks, collectedAt) {
   return {
     title: "任务流",
-    subtitle: `本机工作台任务由后端实时采集，最近采集：${collectedAt}`,
-    searchPlaceholder: "搜索后端返回的任务、目标、操作进程或日志",
+    subtitle: `整台设备任务信号由后端实时采集，最近采集：${collectedAt}`,
+    searchPlaceholder: "搜索设备任务、服务、计划任务、目标或日志",
     filters: [
       { id: "all", label: "全部", statuses: [] },
       { id: "queued", label: "队列中", statuses: ["运行中", "等待"] },
@@ -241,89 +222,12 @@ function buildTaskPage(tasks, collectedAt) {
     ],
     metrics: buildTaskMetrics(tasks),
     context: {
-      eyebrow: "工作台 / 任务流",
+      eyebrow: "工作台 / 设备任务",
       title: "任务流",
-      chips: [`实时采集 ${tasks.length} 条`, `采集时间 ${collectedAt}`],
+      chips: [`设备采集 ${tasks.length} 条`, `采集时间 ${collectedAt}`],
     },
     collectedAt,
   };
-}
-
-function buildWorkbenchTasks(packageInfo, gitInfo, runtime, collectedAt) {
-  const apiService = runtime.services.find((service) => service.id === "stackpilot-api");
-  const webService = runtime.services.find((service) => service.id === "stackpilot-web");
-  const tasks = [{
-    id: "task-api-live",
-    type: "服务",
-    title: "检查 StackPilot API 实时采集",
-    target: `http://${host}:${port}`,
-    status: taskStatusFromService(apiService),
-    priority: "中",
-    operator: taskOperatorFromService(apiService, "node"),
-    queuedAt: collectedAt,
-    duration: taskDurationFromService(apiService),
-    source: `HTTP GET http://${host}:${port}/healthz + lsof TCP:${port}`,
-    actionLabel: "检查",
-    collectedAt,
-    logs: [...serviceLogs(apiService, `http://${host}:${port}/healthz`), `仓库路径：${repoRoot}`],
-  }, {
-    id: "task-web-live",
-    type: "服务",
-    title: "检查 StackPilot Web 页面服务",
-    target: webService?.target ?? "未发现 Web 监听",
-    status: taskStatusFromService(webService),
-    priority: webService?.status === "健康" ? "低" : "中",
-    operator: taskOperatorFromService(webService, "未监听"),
-    queuedAt: collectedAt,
-    duration: taskDurationFromService(webService),
-    source: `HTTP GET http://${webService?.target ?? "127.0.0.1:4873"}/ + lsof TCP:${webService?.target?.split(":").at(-1) ?? "4873"}`,
-    actionLabel: "检查",
-    collectedAt,
-    logs: serviceLogs(webService, webService?.target ?? "Web 服务监听端口"),
-  }];
-
-  if (gitInfo.changedFiles.length > 0) {
-    tasks.push({
-      id: "task-git-worktree",
-      type: "版本控制",
-      title: `处理 ${gitInfo.changedFiles.length} 个 Git 工作区变更`,
-      target: gitInfo.branch,
-      status: "等待",
-      priority: gitInfo.changedFiles.length >= 5 ? "高" : "中",
-      operator: "git",
-      queuedAt: collectedAt,
-      duration: "待处理",
-      source: "git status --porcelain=v1 --branch",
-      actionLabel: "检查",
-      collectedAt,
-      logs: [
-        `分支：${gitInfo.branch} @ ${gitInfo.commit}`,
-        `ahead ${gitInfo.ahead} / behind ${gitInfo.behind}`,
-        ...gitInfo.changedFiles.slice(0, 6),
-      ],
-    });
-  }
-
-  [...runnableScripts].filter((name) => packageInfo.scripts[name]).forEach((name) => {
-    const command = String(packageInfo.scripts[name]);
-    tasks.push({
-      id: `task-script-${name}`,
-      type: "脚本",
-      title: `npm run ${name}`,
-      target: "package.json",
-      status: "等待",
-      priority: name === "build" || name === "lint" ? "中" : "低",
-      operator: "npm",
-      queuedAt: collectedAt,
-      duration: "未运行",
-      source: `package.json scripts.${name}`,
-      actionLabel: "运行",
-      collectedAt,
-      logs: [`npm run ${name}`, command],
-    });
-  });
-
-  return tasks;
 }
 
 function mergeTaskState(tasks) {
@@ -331,21 +235,6 @@ function mergeTaskState(tasks) {
     const result = state.taskResults.get(task.id);
     return result ? { ...task, ...result } : task;
   });
-}
-
-function tailLogLines(...values) {
-  return values
-    .join("\n")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(-8);
-}
-
-function taskDuration(startedAt) {
-  const elapsedSeconds = (Date.now() - startedAt) / 1000;
-  if (elapsedSeconds < 1) return `${Math.max(1, Math.round(elapsedSeconds * 1000))}ms`;
-  return `${elapsedSeconds.toFixed(1)}s`;
 }
 
 function rememberTaskResult(task, patch) {
@@ -359,55 +248,6 @@ function rememberTaskResult(task, patch) {
   return { ...task, ...next };
 }
 
-async function checkRuntimeTask(task, serviceId = "stackpilot-api") {
-  const runtime = await collectLocalRuntime({ host, port, repoRoot });
-  const service = runtime.services.find((item) => item.id === serviceId);
-  const healthy = serviceId === "stackpilot-api" ? runtime.latency.status === "健康" : service?.status === "健康";
-  return rememberTaskResult(task, {
-    status: healthy ? "成功" : "失败",
-    duration: serviceId === "stackpilot-api" ? runtime.latency.label : service?.detail ?? "未发现监听进程",
-    logs: [
-      serviceId === "stackpilot-api" ? `API 健康探测：${runtime.latency.detail}` : `Web 服务探测：${service?.detail ?? "未监听"}`,
-      `采集时间：${nowTime()}`,
-    ],
-  });
-}
-
-async function checkGitTask(task) {
-  const gitInfo = await collectGitInfo();
-  return rememberTaskResult(task, {
-    title: gitInfo.changedFiles.length > 0 ? `处理 ${gitInfo.changedFiles.length} 个 Git 工作区变更` : "Git 工作区已清理",
-    status: gitInfo.changedFiles.length > 0 ? "等待" : "成功",
-    priority: gitInfo.changedFiles.length >= 5 ? "高" : gitInfo.changedFiles.length > 0 ? "中" : "低",
-    target: gitInfo.branch,
-    duration: gitInfo.changedFiles.length > 0 ? "待处理" : "0 个变更",
-    logs: gitInfo.changedFiles.length > 0 ? gitInfo.changedFiles.slice(0, 8) : ["git status --porcelain 未返回变更"],
-  });
-}
-
-async function runScriptTask(task, scriptName) {
-  const packageInfo = await readPackageInfo();
-  if (!packageInfo.scripts[scriptName]) {
-    const error = new Error("package.json 中不存在该脚本");
-    error.statusCode = 404;
-    throw error;
-  }
-
-  if (!runnableScripts.has(scriptName)) {
-    const error = new Error("该脚本未配置为可由工作台真实运行");
-    error.statusCode = 409;
-    throw error;
-  }
-
-  const startedAt = Date.now();
-  const result = await runCommand("npm", ["run", scriptName], { timeout: 120000 });
-  return rememberTaskResult(task, {
-    status: result.ok ? "成功" : "失败",
-    duration: taskDuration(startedAt),
-    logs: tailLogLines(`npm run ${scriptName}`, result.stdout, result.stderr),
-  });
-}
-
 async function runWorkbenchTask(taskId) {
   const overview = await overviewPayload();
   const task = overview.tasks.find((item) => item.id === taskId);
@@ -417,14 +257,11 @@ async function runWorkbenchTask(taskId) {
     throw error;
   }
 
-  if (task.id === "task-api-live") return checkRuntimeTask(task, "stackpilot-api");
-  if (task.id === "task-web-live") return checkRuntimeTask(task, "stackpilot-web");
-  if (task.id === "task-git-worktree") return checkGitTask(task);
-  if (task.id.startsWith("task-script-")) return runScriptTask(task, task.id.slice("task-script-".length));
-
-  const error = new Error("该任务没有可执行的本机动作");
-  error.statusCode = 409;
-  throw error;
+  return rememberTaskResult(task, {
+    status: task.status,
+    duration: task.duration,
+    logs: [...task.logs, `重新检查时间：${nowTime()}`].slice(-8),
+  });
 }
 
 async function exportWorkbenchTasks() {
@@ -546,7 +383,8 @@ async function overviewPayload() {
   const loadPercent = clampPercent((loadavg()[0] / Math.max(cpus().length, 1)) * 100);
   const platformLabel = `${platform()} ${release()}`;
   const health = usageStatus(cpuPercent, memoryPercent, disk.percent, gitInfo, runtime);
-  const tasks = mergeTaskState(buildWorkbenchTasks(packageInfo, gitInfo, runtime, collectedAt));
+  const deviceTasks = await collectDeviceTasks({ runtime, collectedAt, host, port });
+  const tasks = mergeTaskState(deviceTasks);
   const taskPage = buildTaskPage(tasks, collectedAt);
   const risks = buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent: disk.percent, gitInfo, packageInfo, runtime });
   const openRisks = risks.filter((risk) => risk.status === "待处理");
@@ -602,7 +440,7 @@ async function overviewPayload() {
       { label: "CPU 使用率", value: String(cpuPercent), suffix: "%", delta: `1 分钟负载 ${percentText(loadPercent)}`, icon: "server", tone: cpuPercent >= 85 ? "red" : cpuPercent >= 70 ? "orange" : "blue", line: cpuLine },
       { label: "内存使用率", value: String(memoryPercent), suffix: "%", delta: `${Math.round(freeMemory / 1024 / 1024 / 1024)} GB 可用`, icon: "database", tone: memoryPercent >= 88 ? "red" : memoryPercent >= 76 ? "orange" : "blue", line: memoryLine },
       { label: "磁盘使用率", value: String(disk.percent), suffix: "%", delta: `${Math.round(disk.free / 1024 / 1024 / 1024)} GB 可用`, icon: "globe", tone: disk.percent >= 90 ? "red" : disk.percent >= 80 ? "orange" : "blue", line: diskLine },
-      { label: "待处理任务", value: String(queuedTasks.length), suffix: "", delta: `${Object.keys(packageInfo.scripts).length} 个 npm 脚本`, icon: "calendar", tone: "gray", line: spark([queuedTasks.length * 10, Object.keys(packageInfo.scripts).length * 10, 20, 35]) },
+      { label: "待处理任务", value: String(queuedTasks.length), suffix: "", delta: `${tasks.length} 个设备信号`, icon: "calendar", tone: "gray", line: spark([queuedTasks.length * 10, tasks.length * 10, 20, 35]) },
       { label: "风险项", value: String(openRisks.length), suffix: "", delta: `${openRisks.filter((risk) => risk.level === "高危").length} 高危`, icon: "shield", tone: openRisks.length ? "orange" : "blue", line: spark([openRisks.length * 20, risks.length * 15, gitInfo.changedFiles.length * 8]) },
       { label: "Git 变更", value: String(gitInfo.changedFiles.length), suffix: "", delta: gitInfo.updateLabel, icon: "bell", tone: gitInfo.changedFiles.length ? "red" : "blue", line: spark([gitInfo.counts.modified * 20, gitInfo.counts.untracked * 20, gitInfo.counts.deleted * 20, gitInfo.changedFiles.length * 10]) },
     ],
