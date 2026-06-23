@@ -60,6 +60,7 @@ import {
   type OverviewTaskPageData,
   type OverviewTaskRecord,
 } from "./overviewApi";
+import { OverviewRiskDetailModal } from "./OverviewRiskDetailModal";
 import {
   createScheduleJob,
   deleteScheduleJob,
@@ -3310,23 +3311,10 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
       actions={<><button className="ghost" type="button" onClick={exportRisksFromApi}><Download size={14} /> 导出报告</button><button className="primary" type="button" onClick={scanRisksFromApi}><RefreshCw size={14} /> 重新扫描</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索风险、目标或 trace id" onChange={setSearch} /><FieldSelect label="等级" value={levelFilter} options={["全部", "高危", "中危", "低危"]} onChange={setLevelFilter} /><FieldSelect label="状态" value={stateFilter} options={["全部", "待处理"]} onChange={setStateFilter} /></>}
       metrics={<><MetricTile icon={Shield} label="待处理风险" value={`${openCount}`} tone={openCount ? "orange" : "green"} /><MetricTile icon={KeyRound} label="高危风险" value={`${highCount}`} tone={highCount ? "red" : "green"} /><MetricTile icon={Clock3} label="实时扫描" value={scannedAt || "-"} tone="blue" /></>}
-      side={selected && (
-        <DetailDrawer title={selected.title} subtitle={selected.traceId} onClose={() => setSelected(null)} autoFocus={false}>
-          <div className="detail-kv">
-            <p><span>等级</span><b><StatusLight tone={riskTone(selected.level)} /> {selected.level}</b></p>
-            <p><span>状态</span><b>{selected.status}</b></p>
-            <p><span>目标</span><b>{selected.target}</b></p>
-            <p><span>负责人</span><b>{selected.owner}</b></p>
-            <p><span>发现时间</span><b>{selected.detected}</b></p>
-            <p><span>影响</span><b>{selected.impact}</b></p>
-          </div>
-          <div className="overview-risk-note">
-            <strong>处理建议</strong>
-            <p>{selected.suggestion}</p>
-          </div>
-        </DetailDrawer>
-      )}
     >
+      {selected && (
+        <OverviewRiskDetailModal risk={selected} onClose={() => setSelected(null)} />
+      )}
       <DataTable
         columns={[
           { key: "title", label: "风险", width: "240px", render: (row) => <b>{row.title}</b> },
