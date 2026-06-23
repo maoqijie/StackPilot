@@ -3100,12 +3100,14 @@ a {
   margin-bottom: 12px;
 }
 
+.module-page-hosts .module-main,
 .module-page-hosts-all .module-main,
 .module-page-hosts-prod .module-main,
 .module-page-hosts-alert .module-main {
   grid-template-rows: auto auto auto auto auto;
 }
 
+.module-page-hosts .module-table,
 .module-page-hosts-all .module-table,
 .module-page-hosts-prod .module-table,
 .module-page-hosts-alert .module-table {
@@ -6987,6 +6989,7 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .module-page-hosts .module-metrics,
   .module-page-hosts-all .module-metrics,
   .module-page-hosts-prod .module-metrics,
   .module-page-hosts-alert .module-metrics {
@@ -6994,6 +6997,7 @@ a {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .module-page-hosts .module-metrics article,
   .module-page-hosts-all .module-metrics article,
   .module-page-hosts-prod .module-metrics article,
   .module-page-hosts-alert .module-metrics article {
@@ -7003,18 +7007,21 @@ a {
     gap: 5px;
   }
 
+  .module-page-hosts .module-metrics svg,
   .module-page-hosts-all .module-metrics svg,
   .module-page-hosts-prod .module-metrics svg,
   .module-page-hosts-alert .module-metrics svg {
     display: none;
   }
 
+  .module-page-hosts .module-metrics span,
   .module-page-hosts-all .module-metrics span,
   .module-page-hosts-prod .module-metrics span,
   .module-page-hosts-alert .module-metrics span {
     font-size: 10px;
   }
 
+  .module-page-hosts .module-metrics strong,
   .module-page-hosts-all .module-metrics strong,
   .module-page-hosts-prod .module-metrics strong,
   .module-page-hosts-alert .module-metrics strong {
