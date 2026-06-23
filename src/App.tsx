@@ -60,6 +60,14 @@ import {
   type OverviewTaskPageData,
   type OverviewTaskRecord,
 } from "./overviewApi";
+import {
+  createScheduleJob,
+  deleteScheduleJob,
+  fetchScheduleJobs,
+  runScheduleJob,
+  updateScheduleJob,
+  type ScheduleJob,
+} from "./scheduleApi";
 
 const parentPageKeys = [
   "overview",
@@ -94,7 +102,6 @@ let pendingQuickRoute: { page: PageKey; intent: QuickIntent } | null = null;
 let pendingDatabaseFocus: string | null = null;
 let pendingAuditSource: AuditSource | null = null;
 const slowRemediationStorageKey = "stackpilot.slow-remediation-ids";
-const scheduleStateStorageKey = "stackpilot.schedule-state";
 type PageMeta = { title: string; breadcrumb: string; search: string };
 type ViewContext = { eyebrow: string; title: string; chips: string[] };
 type TopbarPanel = "search" | "notifications" | "activity" | "help" | "user" | null;
@@ -184,30 +191,6 @@ function writeSlowRemediationIds(ids: string[]) {
   if (typeof window === "undefined") return;
   try {
     window.sessionStorage.setItem(slowRemediationStorageKey, JSON.stringify(ids));
-  } catch {
-    // sessionStorage can be unavailable in restricted browser contexts.
-  }
-}
-
-function readScheduleState() {
-  if (typeof window === "undefined") {
-    return { rows: initialScheduleJobs, deletedRows: [] as DeletedScheduleJob[] };
-  }
-  try {
-    const parsed = JSON.parse(window.sessionStorage.getItem(scheduleStateStorageKey) ?? "null") as Partial<{ rows: ScheduleJob[]; deletedRows: DeletedScheduleJob[] }> | null;
-    return {
-      rows: Array.isArray(parsed?.rows) ? parsed.rows : initialScheduleJobs,
-      deletedRows: Array.isArray(parsed?.deletedRows) ? parsed.deletedRows : [],
-    };
-  } catch {
-    return { rows: initialScheduleJobs, deletedRows: [] as DeletedScheduleJob[] };
-  }
-}
-
-function writeScheduleState(rows: ScheduleJob[], deletedRows: DeletedScheduleJob[]) {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(scheduleStateStorageKey, JSON.stringify({ rows, deletedRows }));
   } catch {
     // sessionStorage can be unavailable in restricted browser contexts.
   }
@@ -836,22 +819,6 @@ type RollbackRecord = {
   createdAt: string;
 };
 
-type ScheduleJob = {
-  id: string;
-  name: string;
-  cron: string;
-  command: string;
-  enabled: boolean;
-  nextRun: string;
-  lastRun: string;
-  result: "成功" | "失败" | "未运行" | "运行中";
-};
-
-type DeletedScheduleJob = ScheduleJob & {
-  deletedAt: string;
-  reason: string;
-};
-
 type AuditRecord = {
   id: string;
   time: string;
@@ -1185,13 +1152,6 @@ const initialRollbackRecords: RollbackRecord[] = [
   { id: "rb-2", app: "shop-web", env: "生产", fromVersion: "2026.06.18", targetVersion: "2026.06.15", status: "回滚中", operator: "李敏", reason: "支付页异常率升高", createdAt: "今天 09:42" },
   { id: "rb-3", app: "admin-console", env: "预发", fromVersion: "rc-18", targetVersion: "rc-17", status: "已回滚", operator: "王工", reason: "菜单权限回归验证", createdAt: "昨天 18:30" },
   { id: "rb-4", app: "worker", env: "开发", fromVersion: "dev-42", targetVersion: "dev-40", status: "可回滚", operator: "系统", reason: "构建失败保留上一版本", createdAt: "昨天 16:12" },
-];
-
-const initialScheduleJobs: ScheduleJob[] = [
-  { id: "sch-1", name: "每日数据备份", cron: "0 2 * * *", command: "backup:run --daily", enabled: true, nextRun: "02:00", lastRun: "今天 02:00", result: "成功" },
-  { id: "sch-2", name: "证书续期检查", cron: "15 3 * * 1", command: "certbot renew --dry-run", enabled: true, nextRun: "周一 03:15", lastRun: "周一 03:15", result: "成功" },
-  { id: "sch-3", name: "日志清理", cron: "30 1 * * 0", command: "logs:prune --days=30", enabled: false, nextRun: "停用", lastRun: "未运行", result: "未运行" },
-  { id: "sch-4", name: "服务健康探测", cron: "*/10 * * * *", command: "health:check", enabled: true, nextRun: "每 10 分钟", lastRun: "10 分钟前", result: "失败" },
 ];
 
 const initialAuditRecords: AuditRecord[] = auditRows.map((row) => ({
@@ -1855,7 +1815,7 @@ function DesktopShell({
         <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={topbarOverview} interactionsDisabled={sessionLocked} onLogout={onLogout} />
         {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
         {page === "overview-health" && <OverviewHealthPage notify={notify} />}
-        {page === "overview-tasks" && <OverviewTasksPage notify={notify} />}
+        {page === "overview-tasks" && <OverviewTasksPage notify={notify} setPage={setPage} />}
         {page === "overview-risks" && <OverviewRisksPage notify={notify} />}
         {activeModule === "hosts" && <HostsPage page={page} notify={notify} />}
         {activeModule === "sites" && <SitesPage page={page} notify={notify} />}
@@ -3156,7 +3116,7 @@ function HealthSummaryPanel({
   );
 }
 
-function OverviewTasksPage({ notify }: { notify: Notify }) {
+function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPage }) {
   const [rows, setRows] = useState<OverviewTaskRecord[]>([]);
   const [pageData, setPageData] = useState<OverviewTaskPageData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -3229,6 +3189,10 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
       reportApiError(error, notify, "运行真实任务失败");
     }
   };
+  const openScheduleCreate = () => {
+    setPage("schedule-enabled", { message: "已打开真实定时任务创建", tone: "info" });
+    window.requestAnimationFrame(() => setQuickRoute("schedule-enabled", "create-schedule"));
+  };
 
   return (
     <ModulePageShell
@@ -3236,7 +3200,7 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
       subtitle={loading ? "正在从后端加载任务流。" : pageData?.subtitle ?? null}
       page="overview-tasks"
       viewContext={pageData?.context ?? false}
-      actions={<><button className="ghost" type="button" onClick={exportTasksFromApi}><Download size={14} /> 导出</button><button className="primary" type="button" onClick={refreshTasksFromApi}><RefreshCw size={14} /> 重新采集</button></>}
+      actions={<><button className="ghost" type="button" onClick={exportTasksFromApi}><Download size={14} /> 导出</button><button className="ghost" type="button" onClick={openScheduleCreate}><Plus size={14} /> 新建计划任务</button><button className="primary" type="button" onClick={refreshTasksFromApi}><RefreshCw size={14} /> 重新采集</button></>}
       filters={<><div className="deploy-tabs">{(pageData?.filters ?? []).map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} type="button" onClick={() => setTab(item.id)}>{item.label}</button>)}</div><ModuleSearch value={search} placeholder={pageData?.searchPlaceholder ?? "搜索后端返回的任务"} onChange={setSearch} /></>}
       metrics={<>{(pageData?.metrics ?? []).map((metric) => <MetricTile key={metric.label} icon={overviewMetricIconForTask(metric.icon)} label={metric.label} value={metric.value} tone={metric.tone} />)}</>}
     >
@@ -5378,9 +5342,8 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
 }
 
 function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
-  const [scheduleState, setScheduleState] = useState(readScheduleState);
-  const rows = scheduleState.rows;
-  const deletedRows = scheduleState.deletedRows;
+  const [rows, setRows] = useState<ScheduleJob[]>([]);
+  const [loading, setLoading] = useState(true);
   const schedulePreset = schedulePagePreset(page);
   const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
   const [stateByPage, setStateByPage] = useState<Record<string, string>>({});
@@ -5398,26 +5361,27 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
     ? rows.find((row) => row.id === drawer.id) ?? null
     : null;
 
-  const setRows = (updater: ScheduleJob[] | ((current: ScheduleJob[]) => ScheduleJob[])) => {
-    setScheduleState((current) => ({
-      ...current,
-      rows: typeof updater === "function" ? updater(current.rows) : updater,
-    }));
-  };
-
-  const setDeletedRows = (updater: DeletedScheduleJob[] | ((current: DeletedScheduleJob[]) => DeletedScheduleJob[])) => {
-    setScheduleState((current) => ({
-      ...current,
-      deletedRows: typeof updater === "function" ? updater(current.deletedRows) : updater,
-    }));
-  };
-
   const openScheduleCreateFromQuick = useCallback(() => {
     setDraft({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" });
     setDrawer({ type: "create" });
   }, []);
 
-  useQuickIntent("schedule", "create-schedule", openScheduleCreateFromQuick);
+  useQuickIntent("schedule-enabled", "create-schedule", openScheduleCreateFromQuick);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchScheduleJobs(controller.signal)
+      .then((payload) => {
+        setRows(payload.jobs);
+        setLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setLoading(false);
+        reportApiError(error, notify, "定时任务后端加载失败");
+      });
+    return () => controller.abort();
+  }, [notify]);
+
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
     const matchSearch = !query || `${row.name} ${row.cron} ${row.command}`.toLowerCase().includes(query);
@@ -5429,11 +5393,17 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
     ? filteredRows.some((row) => row.id === selectedJob.id)
     : true;
   const selectedVisibleJob = selectedJobVisible ? selectedJob : null;
-  useEffect(() => {
-    writeScheduleState(rows, deletedRows);
-  }, [rows, deletedRows]);
-  const updateJob = (id: string, patch: Partial<ScheduleJob>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
-  const saveJob = () => {
+
+  const applySchedulePayload = (jobs: ScheduleJob[], selectedId?: string) => {
+    setRows(jobs);
+    setDrawer((current) => {
+      if (!current || current.type === "create" || current.type === "edit") return current;
+      return jobs.some((row) => row.id === current.id) ? current : null;
+    });
+    if (selectedId) setDrawer({ type: "detail", id: selectedId });
+  };
+
+  const saveJob = async () => {
     const nextName = draft.name.trim();
     const nextCron = draft.cron.trim();
     const nextCommand = draft.command.trim();
@@ -5445,51 +5415,45 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       notify("cron 需要是 5 段表达式，例如 0 4 * * *", "danger");
       return;
     }
-    if (drawer?.type === "edit" && drawer.job) {
-      updateJob(drawer.job.id, { name: nextName, cron: nextCron, command: nextCommand });
-      notify(`${nextName} 已保存`);
-    } else {
-      setRows((current) => [{ id: `sch-${Date.now()}`, name: nextName, cron: nextCron, command: nextCommand, enabled: true, nextRun: "待计算", lastRun: "未运行", result: "未运行" }, ...current]);
-      notify("定时任务已新建");
+    try {
+      const payload = drawer?.type === "edit" && drawer.job
+        ? await updateScheduleJob(drawer.job.id, { name: nextName, cron: nextCron, command: nextCommand })
+        : await createScheduleJob({ name: nextName, cron: nextCron, command: nextCommand });
+      applySchedulePayload(payload.jobs, payload.job.id);
+      notify(payload.message, payload.tone ?? "success");
+      setDrawer({ type: "detail", id: payload.job.id });
+    } catch (error) {
+      reportApiError(error, notify, "保存定时任务失败");
     }
-    setDrawer(null);
   };
   const requestDeleteJob = (row: ScheduleJob) => setDrawer({ type: "delete", id: row.id });
-  const deleteJob = (row: ScheduleJob) => {
-    const deleted: DeletedScheduleJob = { ...row, deletedAt: currentClock(), reason: page === "schedule-failed" ? "从失败任务列表删除" : "操作员手动删除" };
-    setDeletedRows((current) => [deleted, ...current].slice(0, 5));
-    setRows((current) => current.filter((item) => item.id !== row.id));
-    setDrawer(null);
-    notify(`${row.name} 已删除，可在最近删除中恢复`, "warning");
+  const deleteJob = async (row: ScheduleJob) => {
+    try {
+      const payload = await deleteScheduleJob(row.id);
+      setRows(payload.jobs);
+      setDrawer(null);
+      notify(payload.message, payload.tone ?? "warning");
+    } catch (error) {
+      reportApiError(error, notify, "删除定时任务失败");
+    }
   };
-  const restoreDeletedJob = (row: DeletedScheduleJob) => {
-    const restored: ScheduleJob = {
-      id: row.id,
-      name: row.name,
-      cron: row.cron,
-      command: row.command,
-      enabled: row.enabled,
-      nextRun: row.nextRun,
-      lastRun: row.lastRun,
-      result: row.result === "运行中" ? "未运行" : row.result,
-    };
-    setRows((current) => [restored, ...current]);
-    setDeletedRows((current) => current.filter((item) => item.id !== row.id));
-    notify(`${row.name} 已恢复`, "success");
+  const runJobNow = async (row: ScheduleJob) => {
+    try {
+      const payload = await runScheduleJob(row.id);
+      applySchedulePayload(payload.jobs, row.id);
+      notify(payload.message, payload.tone ?? "success");
+    } catch (error) {
+      reportApiError(error, notify, "立即执行定时任务失败");
+    }
   };
-  const runJobNow = (row: ScheduleJob) => {
-    updateJob(row.id, { lastRun: "刚刚", result: "运行中", nextRun: "运行中" });
-    setDrawer(page === "schedule-failed" ? null : { type: "detail", id: row.id });
-    notify(`${row.name} 已开始执行`, "info");
-  };
-  const completeJob = (row: ScheduleJob) => {
-    updateJob(row.id, { lastRun: currentClock(), result: "成功", nextRun: "待计算" });
-    if (page === "schedule-failed") setDrawer(null);
-    notify(`${row.name} 执行已完成`);
-  };
-  const toggleJob = (row: ScheduleJob) => {
-    updateJob(row.id, { enabled: !row.enabled, nextRun: row.enabled ? "停用" : "待计算", result: row.enabled && row.result === "运行中" ? "未运行" : row.result });
-    notify(`${row.name} 已${row.enabled ? "停用" : "启用"}`);
+  const toggleJob = async (row: ScheduleJob) => {
+    try {
+      const payload = await updateScheduleJob(row.id, { enabled: !row.enabled });
+      applySchedulePayload(payload.jobs, row.id);
+      notify(payload.message, payload.tone ?? "success");
+    } catch (error) {
+      reportApiError(error, notify, "切换定时任务状态失败");
+    }
   };
   const editJob = (row: ScheduleJob) => {
     setDraft({ name: row.name, cron: row.cron, command: row.command });
@@ -5498,9 +5462,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
   const scheduleActionButtons = (row: ScheduleJob) => (
     <>
       <button type="button" onClick={() => toggleJob(row)}>{row.enabled ? "停用" : "启用"}</button>
-      {row.result === "运行中" && row.enabled
-        ? <button type="button" onClick={() => completeJob(row)}>完成</button>
-        : <button type="button" disabled={!row.enabled} onClick={() => runJobNow(row)}>执行</button>}
+      <button type="button" disabled={!row.enabled} onClick={() => runJobNow(row)}>执行</button>
       <button type="button" onClick={() => setDrawer({ type: "detail", id: row.id })}>详情</button>
       <button type="button" onClick={() => editJob(row)}>编辑</button>
       <button type="button" onClick={() => requestDeleteJob(row)}>删除</button>
@@ -5510,11 +5472,11 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
-      subtitle={schedulePreset.subtitle}
+      subtitle={loading ? "正在读取当前用户 crontab。" : schedulePreset.subtitle}
       page={page}
       actions={page === "schedule-failed" ? undefined : <button className="primary" type="button" onClick={() => { setDraft({ name: "新建任务", cron: "0 4 * * *", command: "echo ok" }); setDrawer({ type: "create" }); }}><Plus size={15} /> 新建任务</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索任务、cron 或命令" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={stateFilter} options={["全部", "已启用", "已停用"]} onChange={(value) => setStateByPage((current) => ({ ...current, [page]: value }))} /></>}
-      metrics={<><MetricTile icon={CalendarDays} label="任务数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.result === "失败").length}`} tone="red" /><MetricTile icon={Trash2} label="最近删除" value={`${deletedRows.length}`} tone="orange" /></>}
+      metrics={<><MetricTile icon={CalendarDays} label="任务数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.result === "失败").length}`} tone="red" /><MetricTile icon={TerminalSquare} label="来源" value="cron" tone="orange" /></>}
       side={drawer?.type === "create" || drawer?.type === "edit" ? (
         <DetailDrawer title={drawer.type === "edit" ? "编辑 cron" : "新建任务"} subtitle={drawer.type === "edit" ? drawer.job.name : undefined} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={saveJob}>保存</button></>}>
           <FormLine label="任务名" required value={draft.name} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
@@ -5522,7 +5484,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
           <FormLine label="命令" required value={draft.command} onChange={(value) => setDraft((current) => ({ ...current, command: value }))} />
         </DetailDrawer>
       ) : drawer?.type === "detail" && selectedVisibleJob ? (
-        <DetailDrawer title="任务详情" subtitle={selectedVisibleJob.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => editJob(selectedVisibleJob)}>编辑</button>{selectedVisibleJob.result === "运行中" ? <button className="primary" type="button" onClick={() => completeJob(selectedVisibleJob)}>完成</button> : <button className="primary" type="button" disabled={!selectedVisibleJob.enabled} onClick={() => runJobNow(selectedVisibleJob)}>立即执行</button>}</>}>
+        <DetailDrawer title="任务详情" subtitle={selectedVisibleJob.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => editJob(selectedVisibleJob)}>编辑</button><button className="primary" type="button" disabled={!selectedVisibleJob.enabled} onClick={() => runJobNow(selectedVisibleJob)}>立即执行</button></>}>
           <div className="detail-kv">
             <p><span>cron</span><b>{selectedVisibleJob.cron}</b></p>
             <p><span>命令</span><b>{selectedVisibleJob.command}</b></p>
@@ -5533,14 +5495,14 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
           </div>
           <div className="terminal-log compact-log">
             <p>$ {selectedVisibleJob.command}</p>
-            <p>{selectedVisibleJob.result === "失败" ? "exit code 1: health check failed" : selectedVisibleJob.result === "运行中" ? "job is running..." : selectedVisibleJob.result === "成功" ? "completed successfully" : "not executed yet"}</p>
+            <p>{selectedVisibleJob.result === "失败" ? "最近一次立即执行失败" : selectedVisibleJob.result === "成功" ? "最近一次立即执行成功" : "等待 crontab 调度或手动执行"}</p>
           </div>
         </DetailDrawer>
       ) : drawer?.type === "delete" && selectedVisibleJob ? (
         <DetailDrawer title="删除定时任务" subtitle={selectedVisibleJob.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="danger-soft" type="button" onClick={() => deleteJob(selectedVisibleJob)}>确认删除</button></>}>
           <div className="delete-confirm">
             <StatusLight tone="red" />
-            <p>删除后会从当前任务列表移除，并暂存在最近删除中。</p>
+            <p>删除后会从 StackPilot 托管的当前用户 crontab 中移除。</p>
             <code>{selectedVisibleJob.cron} · {selectedVisibleJob.command}</code>
           </div>
         </DetailDrawer>
@@ -5587,10 +5549,9 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
         )}
       />
       <section className="schedule-deleted-panel">
-        <PanelCard title="最近删除">
+        <PanelCard title="真实来源">
           <div className="restore-mini-list">
-            {deletedRows.map((row) => <p key={row.id}><Trash2 size={14} /><span>{row.name}</span><em>{row.deletedAt} · {row.reason}</em><button type="button" onClick={() => restoreDeletedJob(row)}>恢复</button></p>)}
-            {deletedRows.length === 0 && <p className="module-empty-card">还没有删除记录</p>}
+            <p><TerminalSquare size={14} /><span>当前用户 crontab</span><em>仅管理 StackPilot 标记块，保留其他 crontab 行</em></p>
           </div>
         </PanelCard>
       </section>

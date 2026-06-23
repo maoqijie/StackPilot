@@ -5,6 +5,7 @@ import { cpus, freemem, hostname, loadavg, networkInterfaces, platform, release,
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { URL, fileURLToPath } from "node:url";
+import { createCronJob, deleteCronJob, listCronJobs, runCronJobNow, updateCronJob } from "./cronJobs.js";
 import { collectDeviceTasks } from "./deviceTasks.js";
 import { collectLocalRuntime, localNodeId, runLocalRestart } from "./localRuntime.js";
 
@@ -463,11 +464,19 @@ async function overviewPayload() {
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Content-Type": "application/json; charset=utf-8",
   });
   response.end(JSON.stringify(payload));
+}
+
+function assertCrontabWriteAllowed() {
+  const isLocalBind = ["127.0.0.1", "localhost", "::1"].includes(host);
+  if (isLocalBind || process.env.STACKPILOT_ENABLE_CRONTAB_WRITE === "1") return;
+  const error = new Error("当前 API 未绑定本机地址，未启用 crontab 写入");
+  error.statusCode = 403;
+  throw error;
 }
 
 function sendError(response, statusCode, message) {
@@ -667,6 +676,41 @@ async function handleRisksRoute(request, response, parts) {
   sendError(response, 404, "风险中心接口不存在");
 }
 
+async function handleCrontabRoute(request, response, parts) {
+  if (request.method === "GET" && parts.length === 3) {
+    sendJson(response, 200, await listCronJobs());
+    return;
+  }
+
+  if (request.method === "POST" && parts.length === 3) {
+    assertCrontabWriteAllowed();
+    const payload = await readJson(request);
+    const result = await createCronJob(payload);
+    sendJson(response, 201, { ...result, message: `${result.job.name} 已写入当前用户 crontab`, tone: "success" });
+    return;
+  }
+
+  if (request.method === "PATCH" && parts.length === 4) {
+    assertCrontabWriteAllowed();
+    const payload = await readJson(request);
+    const result = payload.action === "run"
+      ? await runCronJobNow(parts[3], repoRoot)
+      : await updateCronJob(parts[3], payload);
+    const verb = payload.action === "run" ? "已立即执行" : "已保存到当前用户 crontab";
+    sendJson(response, 200, { ...result, message: `${result.job.name} ${verb}`, tone: result.job.result === "失败" ? "warning" : "success" });
+    return;
+  }
+
+  if (request.method === "DELETE" && parts.length === 4) {
+    assertCrontabWriteAllowed();
+    const result = await deleteCronJob(parts[3]);
+    sendJson(response, 200, { ...result, message: `${result.job.name} 已从当前用户 crontab 删除`, tone: "warning" });
+    return;
+  }
+
+  sendError(response, 404, "定时任务接口不存在");
+}
+
 async function handleRequest(request, response) {
   if (request.method === "OPTIONS") {
     sendJson(response, 204, {});
@@ -698,6 +742,11 @@ async function handleRequest(request, response) {
 
   if (parts[2] === "risks") {
     await handleRisksRoute(request, response, parts);
+    return;
+  }
+
+  if (parts[2] === "current-user-crontab") {
+    await handleCrontabRoute(request, response, parts);
     return;
   }
 
