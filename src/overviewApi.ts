@@ -1,5 +1,38 @@
 export type OverviewMetricIcon = "server" | "globe" | "database" | "calendar" | "shield" | "bell";
 
+export type OverviewTaskStatus = "成功" | "运行中" | "等待" | "失败";
+
+export type OverviewTaskPriority = "高" | "中" | "低";
+
+export type OverviewTaskFilter = {
+  id: string;
+  label: string;
+  statuses: OverviewTaskStatus[];
+};
+
+export type OverviewTaskMetric = {
+  label: string;
+  value: string;
+  icon: OverviewMetricIcon;
+  tone: string;
+};
+
+export type OverviewTaskPageContext = {
+  eyebrow: string;
+  title: string;
+  chips: string[];
+};
+
+export type OverviewTaskPageData = {
+  title: string;
+  subtitle: string;
+  searchPlaceholder: string;
+  filters: OverviewTaskFilter[];
+  metrics: OverviewTaskMetric[];
+  context: OverviewTaskPageContext;
+  collectedAt: string;
+};
+
 export type OverviewMetricData = {
   label: string;
   value: string;
@@ -36,6 +69,11 @@ export type OverviewService = {
   target: string;
   status: "健康" | "警告" | "离线";
   detail: string;
+  latencyMs?: number;
+  process?: {
+    pid: number;
+    command: string;
+  };
 };
 
 export type OverviewTaskRecord = {
@@ -43,11 +81,14 @@ export type OverviewTaskRecord = {
   type: string;
   title: string;
   target: string;
-  status: "成功" | "运行中" | "等待" | "失败";
-  priority: "高" | "中" | "低";
+  status: OverviewTaskStatus;
+  priority: OverviewTaskPriority;
   operator: string;
   queuedAt: string;
   duration: string;
+  source: string;
+  actionLabel: string;
+  collectedAt: string;
   logs: string[];
 };
 
@@ -88,6 +129,7 @@ export type OverviewSummaryPayload = {
   metrics: OverviewMetricData[];
   nodes: OverviewNode[];
   tasks: OverviewTaskRecord[];
+  taskPage: OverviewTaskPageData;
   audits: OverviewAuditRow[];
   risks: OverviewRiskRecord[];
   resources: Record<string, OverviewResourceRecord[]>;
@@ -101,6 +143,7 @@ export type OverviewHealthPayload = {
 
 export type OverviewTasksPayload = {
   tasks: OverviewTaskRecord[];
+  page: OverviewTaskPageData;
 };
 
 export type OverviewRisksPayload = {
@@ -165,7 +208,7 @@ export function refreshOverviewTasks() {
 }
 
 export function runOverviewTask(id: string) {
-  return requestJson<{ task: OverviewTaskRecord } & ApiNotice>(`/overview/tasks/${id}`, {
+  return requestJson<{ task: OverviewTaskRecord; tasks: OverviewTaskRecord[]; page: OverviewTaskPageData } & ApiNotice>(`/overview/tasks/${id}`, {
     method: "PATCH",
     body: JSON.stringify({ action: "run" }),
   });

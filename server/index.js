@@ -203,7 +203,53 @@ function taskStatusFromService(service) {
   return service?.status === "健康" ? "成功" : "失败";
 }
 
-function buildWorkbenchTasks(packageInfo, gitInfo, runtime, processUptimeSeconds) {
+function taskOperatorFromService(service, fallback) {
+  return service?.process?.command || fallback;
+}
+
+function taskDurationFromService(service) {
+  return typeof service?.latencyMs === "number" ? `${service.latencyMs}ms` : "未采集";
+}
+
+function serviceLogs(service, source) {
+  return [
+    service ? `${service.name}：${service.detail}` : "未采集到服务状态",
+    `来源：${source}`,
+  ];
+}
+
+function buildTaskMetrics(tasks) {
+  const queuedTasks = tasks.filter((task) => ["运行中", "等待"].includes(task.status));
+  const failedTasks = tasks.filter((task) => task.status === "失败");
+  return [
+    { label: "任务总数", value: String(tasks.length), icon: "calendar", tone: "blue" },
+    { label: "队列中", value: String(queuedTasks.length), icon: "bell", tone: queuedTasks.length ? "orange" : "green" },
+    { label: "失败任务", value: String(failedTasks.length), icon: "shield", tone: failedTasks.length ? "red" : "green" },
+  ];
+}
+
+function buildTaskPage(tasks, collectedAt) {
+  return {
+    title: "任务流",
+    subtitle: `本机工作台任务由后端实时采集，最近采集：${collectedAt}`,
+    searchPlaceholder: "搜索后端返回的任务、目标、操作进程或日志",
+    filters: [
+      { id: "all", label: "全部", statuses: [] },
+      { id: "queued", label: "队列中", statuses: ["运行中", "等待"] },
+      { id: "success", label: "成功", statuses: ["成功"] },
+      { id: "failed", label: "失败", statuses: ["失败"] },
+    ],
+    metrics: buildTaskMetrics(tasks),
+    context: {
+      eyebrow: "工作台 / 任务流",
+      title: "任务流",
+      chips: [`实时采集 ${tasks.length} 条`, `采集时间 ${collectedAt}`],
+    },
+    collectedAt,
+  };
+}
+
+function buildWorkbenchTasks(packageInfo, gitInfo, runtime, collectedAt) {
   const apiService = runtime.services.find((service) => service.id === "stackpilot-api");
   const webService = runtime.services.find((service) => service.id === "stackpilot-web");
   const tasks = [{
@@ -213,21 +259,27 @@ function buildWorkbenchTasks(packageInfo, gitInfo, runtime, processUptimeSeconds
     target: `http://${host}:${port}`,
     status: taskStatusFromService(apiService),
     priority: "中",
-    operator: "node",
-    queuedAt: "本次请求",
-    duration: formatDuration(processUptimeSeconds),
-    logs: [apiService?.detail ?? runtime.latency.detail, `仓库路径：${repoRoot}`],
+    operator: taskOperatorFromService(apiService, "node"),
+    queuedAt: collectedAt,
+    duration: taskDurationFromService(apiService),
+    source: `HTTP GET http://${host}:${port}/healthz + lsof TCP:${port}`,
+    actionLabel: "检查",
+    collectedAt,
+    logs: [...serviceLogs(apiService, `http://${host}:${port}/healthz`), `仓库路径：${repoRoot}`],
   }, {
     id: "task-web-live",
     type: "服务",
     title: "检查 StackPilot Web 页面服务",
-    target: webService?.target ?? "127.0.0.1:4873",
+    target: webService?.target ?? "未发现 Web 监听",
     status: taskStatusFromService(webService),
     priority: webService?.status === "健康" ? "低" : "中",
-    operator: "vite",
-    queuedAt: "本次请求",
-    duration: webService?.detail ?? "未发现监听进程",
-    logs: [webService?.detail ?? "Web 服务未监听"],
+    operator: taskOperatorFromService(webService, "未监听"),
+    queuedAt: collectedAt,
+    duration: taskDurationFromService(webService),
+    source: `HTTP GET http://${webService?.target ?? "127.0.0.1:4873"}/ + lsof TCP:${webService?.target?.split(":").at(-1) ?? "4873"}`,
+    actionLabel: "检查",
+    collectedAt,
+    logs: serviceLogs(webService, webService?.target ?? "Web 服务监听端口"),
   }];
 
   if (gitInfo.changedFiles.length > 0) {
@@ -239,24 +291,35 @@ function buildWorkbenchTasks(packageInfo, gitInfo, runtime, processUptimeSeconds
       status: "等待",
       priority: gitInfo.changedFiles.length >= 5 ? "高" : "中",
       operator: "git",
-      queuedAt: "实时扫描",
+      queuedAt: collectedAt,
       duration: "待处理",
-      logs: gitInfo.changedFiles.slice(0, 6),
+      source: "git status --porcelain=v1 --branch",
+      actionLabel: "检查",
+      collectedAt,
+      logs: [
+        `分支：${gitInfo.branch} @ ${gitInfo.commit}`,
+        `ahead ${gitInfo.ahead} / behind ${gitInfo.behind}`,
+        ...gitInfo.changedFiles.slice(0, 6),
+      ],
     });
   }
 
   [...runnableScripts].filter((name) => packageInfo.scripts[name]).forEach((name) => {
+    const command = String(packageInfo.scripts[name]);
     tasks.push({
       id: `task-script-${name}`,
       type: "脚本",
       title: `npm run ${name}`,
       target: "package.json",
-      status: name === "api" ? "运行中" : "等待",
+      status: "等待",
       priority: name === "build" || name === "lint" ? "中" : "低",
       operator: "npm",
-      queuedAt: "package.json",
-      duration: String(packageInfo.scripts[name]),
-      logs: [String(packageInfo.scripts[name])],
+      queuedAt: collectedAt,
+      duration: "未运行",
+      source: `package.json scripts.${name}`,
+      actionLabel: "运行",
+      collectedAt,
+      logs: [`npm run ${name}`, command],
     });
   });
 
@@ -286,9 +349,11 @@ function taskDuration(startedAt) {
 }
 
 function rememberTaskResult(task, patch) {
+  const refreshedAt = nowTime();
   const next = {
     ...patch,
-    queuedAt: nowTime(),
+    queuedAt: refreshedAt,
+    collectedAt: refreshedAt,
   };
   state.taskResults.set(task.id, next);
   return { ...task, ...next };
@@ -368,7 +433,7 @@ async function exportWorkbenchTasks() {
   await mkdir(exportDir, { recursive: true });
   const filename = `tasks-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
   const filePath = join(exportDir, filename);
-  await writeFile(filePath, JSON.stringify({ exportedAt: nowTime(), tasks: overview.tasks }, null, 2), "utf8");
+  await writeFile(filePath, JSON.stringify({ exportedAt: nowTime(), page: overview.taskPage, tasks: overview.tasks }, null, 2), "utf8");
   return { tasks: overview.tasks, filePath };
 }
 
@@ -481,7 +546,8 @@ async function overviewPayload() {
   const loadPercent = clampPercent((loadavg()[0] / Math.max(cpus().length, 1)) * 100);
   const platformLabel = `${platform()} ${release()}`;
   const health = usageStatus(cpuPercent, memoryPercent, disk.percent, gitInfo, runtime);
-  const tasks = mergeTaskState(buildWorkbenchTasks(packageInfo, gitInfo, runtime, process.uptime()));
+  const tasks = mergeTaskState(buildWorkbenchTasks(packageInfo, gitInfo, runtime, collectedAt));
+  const taskPage = buildTaskPage(tasks, collectedAt);
   const risks = buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent: disk.percent, gitInfo, packageInfo, runtime });
   const openRisks = risks.filter((risk) => risk.status === "待处理");
   const queuedTasks = tasks.filter((task) => ["运行中", "等待"].includes(task.status));
@@ -542,6 +608,7 @@ async function overviewPayload() {
     ],
     nodes: [node],
     tasks,
+    taskPage,
     audits,
     risks,
     resources: {
@@ -685,7 +752,7 @@ async function handleHealthRoute(request, response, parts) {
 async function handleTasksRoute(request, response, parts) {
   if (request.method === "GET" && parts.length === 3) {
     const overview = await overviewPayload();
-    sendJson(response, 200, { tasks: overview.tasks });
+    sendJson(response, 200, { tasks: overview.tasks, page: overview.taskPage });
     return;
   }
 
@@ -693,7 +760,7 @@ async function handleTasksRoute(request, response, parts) {
     await readJson(request);
     state.taskResults.clear();
     const overview = await overviewPayload();
-    sendJson(response, 200, { tasks: overview.tasks, message: "已重新采集真实任务流", tone: "info" });
+    sendJson(response, 200, { tasks: overview.tasks, page: overview.taskPage, message: "已重新采集真实任务流", tone: "info" });
     return;
   }
 
@@ -710,9 +777,17 @@ async function handleTasksRoute(request, response, parts) {
       return;
     }
     const task = await runWorkbenchTask(parts[3]);
-    const actionLabel = task.id.startsWith("task-script-") ? "运行" : "检查";
+    const actionLabel = task.actionLabel;
     const resultLabel = task.status === "失败" ? `${actionLabel}并失败` : task.status === "等待" ? `${actionLabel}，仍有待处理项` : actionLabel;
-    sendJson(response, 200, { task, message: `${task.title} 已完成真实${resultLabel}`, tone: task.status === "成功" ? "success" : "warning" });
+    const overview = await overviewPayload();
+    const refreshedTask = overview.tasks.find((item) => item.id === task.id) ?? task;
+    sendJson(response, 200, {
+      task: refreshedTask,
+      tasks: overview.tasks,
+      page: overview.taskPage,
+      message: `${refreshedTask.title} 已完成真实${resultLabel}`,
+      tone: refreshedTask.status === "成功" ? "success" : "warning",
+    });
     return;
   }
 
