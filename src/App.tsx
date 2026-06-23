@@ -57,6 +57,7 @@ import {
   type OverviewResourceRecord,
   type OverviewRiskRecord,
   type OverviewSummaryPayload,
+  type OverviewTaskPageData,
   type OverviewTaskRecord,
 } from "./overviewApi";
 
@@ -1040,6 +1041,22 @@ function serviceHealthLabel(services: OverviewService[]) {
   return `${healthyCount}/${services.length} 健康`;
 }
 
+function emptyTaskPageData(): OverviewTaskPageData {
+  return {
+    title: "任务流",
+    subtitle: "正在从后端加载任务流。",
+    searchPlaceholder: "搜索后端返回的任务",
+    filters: [],
+    metrics: [],
+    context: {
+      eyebrow: "工作台 / 任务流",
+      title: "任务流",
+      chips: [],
+    },
+    collectedAt: "",
+  };
+}
+
 function emptyOverviewSummary(): OverviewSummaryPayload {
   return {
     cluster: {
@@ -1054,6 +1071,7 @@ function emptyOverviewSummary(): OverviewSummaryPayload {
     metrics: [],
     nodes: [],
     tasks: [],
+    taskPage: emptyTaskPageData(),
     audits: [],
     risks: [],
     resources: {},
@@ -3110,24 +3128,28 @@ function HealthSummaryPanel({
 
 function OverviewTasksPage({ notify }: { notify: Notify }) {
   const [rows, setRows] = useState<OverviewTaskRecord[]>([]);
+  const [pageData, setPageData] = useState<OverviewTaskPageData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("全部");
+  const [tab, setTab] = useState("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<OverviewTaskRecord | null>(null);
+  const activeFilter = pageData?.filters.find((filter) => filter.id === tab) ?? pageData?.filters[0];
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
-    const matchSearch = !query || row.title.toLowerCase().includes(query) || row.target.toLowerCase().includes(query) || row.operator.toLowerCase().includes(query);
-    const matchTab = tab === "全部" || (tab === "队列中" ? ["运行中", "等待"].includes(row.status) : row.status === tab);
+    const searchText = [row.type, row.title, row.target, row.status, row.priority, row.operator, row.source, row.duration, ...row.logs].join(" ").toLowerCase();
+    const matchSearch = !query || searchText.includes(query);
+    const matchTab = !activeFilter || activeFilter.statuses.length === 0 || activeFilter.statuses.includes(row.status);
     return matchSearch && matchTab;
   });
-  const queueCount = rows.filter((row) => ["运行中", "等待"].includes(row.status)).length;
-  const failedCount = rows.filter((row) => row.status === "失败").length;
+  const overviewMetricIconForTask = (icon: OverviewMetricIcon) => overviewMetricIcons[icon] ?? CalendarDays;
 
   useEffect(() => {
     const controller = new AbortController();
     fetchOverviewTasks(controller.signal)
       .then((payload) => {
         setRows(payload.tasks);
+        setPageData(payload.page);
+        setTab((current) => payload.page.filters.some((filter) => filter.id === current) ? current : payload.page.filters[0]?.id ?? "all");
         setSelected((current) => current ? payload.tasks.find((row) => row.id === current.id) ?? null : null);
         setLoading(false);
       })
@@ -3148,6 +3170,8 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
     try {
       const payload = await refreshOverviewTasks();
       setRows(payload.tasks);
+      setPageData(payload.page);
+      setTab(payload.page.filters[0]?.id ?? "all");
       setSelected(payload.tasks[0] ?? null);
       notify(payload.message, payload.tone ?? "info");
     } catch (error) {
@@ -3167,6 +3191,8 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
   const runTaskFromApi = async (id: string) => {
     try {
       const payload = await runOverviewTask(id);
+      setRows(payload.tasks);
+      setPageData(payload.page);
       applyTask(payload.task);
       notify(payload.message, payload.tone ?? "success");
     } catch (error) {
@@ -3176,12 +3202,13 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
 
   return (
     <ModulePageShell
-      title="任务流"
-      subtitle={loading ? "正在从后端加载任务流。" : "集中处理首页总览中的最近任务、排队任务和失败任务。"}
+      title={pageData?.title ?? "任务流"}
+      subtitle={loading ? "正在从后端加载任务流。" : pageData?.subtitle ?? null}
       page="overview-tasks"
+      viewContext={pageData?.context ?? false}
       actions={<><button className="ghost" type="button" onClick={exportTasksFromApi}><Download size={14} /> 导出</button><button className="primary" type="button" onClick={refreshTasksFromApi}><RefreshCw size={14} /> 重新采集</button></>}
-      filters={<><div className="deploy-tabs">{["全部", "队列中", "成功", "失败"].map((item) => <button key={item} className={tab === item ? "active" : ""} type="button" onClick={() => setTab(item)}>{item}</button>)}</div><ModuleSearch value={search} placeholder="搜索任务、目标或操作人" onChange={setSearch} /></>}
-      metrics={<><MetricTile icon={CalendarDays} label="任务总数" value={`${rows.length}`} tone="blue" /><MetricTile icon={Clock3} label="队列中" value={`${queueCount}`} tone={queueCount ? "orange" : "green"} /><MetricTile icon={Bell} label="失败任务" value={`${failedCount}`} tone={failedCount ? "red" : "green"} /></>}
+      filters={<><div className="deploy-tabs">{(pageData?.filters ?? []).map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} type="button" onClick={() => setTab(item.id)}>{item.label}</button>)}</div><ModuleSearch value={search} placeholder={pageData?.searchPlaceholder ?? "搜索后端返回的任务"} onChange={setSearch} /></>}
+      metrics={<>{(pageData?.metrics ?? []).map((metric) => <MetricTile key={metric.label} icon={overviewMetricIconForTask(metric.icon)} label={metric.label} value={metric.value} tone={metric.tone} />)}</>}
       side={selected && (
         <DetailDrawer title={selected.title} subtitle={`${selected.type} · ${selected.target}`} onClose={() => setSelected(null)} autoFocus={false}>
           <div className="detail-kv">
@@ -3190,6 +3217,8 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
             <p><span>操作人</span><b>{selected.operator}</b></p>
             <p><span>排队时间</span><b>{selected.queuedAt}</b></p>
             <p><span>耗时</span><b>{selected.duration}</b></p>
+            <p><span>来源</span><b>{selected.source}</b></p>
+            <p><span>采集时间</span><b>{selected.collectedAt}</b></p>
           </div>
           <div className="overview-event-log">
             <strong>执行日志</strong>
@@ -3211,9 +3240,7 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
           { key: "actions", label: "操作", width: "176px", render: (row) => (
             <div className="table-actions">
               <button type="button" onClick={() => setSelected(row)}>日志</button>
-              {row.id.startsWith("task-script-") && ["task-script-build", "task-script-lint"].includes(row.id)
-                ? <button type="button" onClick={() => void runTaskFromApi(row.id)}>运行</button>
-                : <button type="button" onClick={() => void runTaskFromApi(row.id)}>检查</button>}
+              <button type="button" onClick={() => void runTaskFromApi(row.id)}>{row.actionLabel}</button>
             </div>
           ) },
         ]}

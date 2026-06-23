@@ -146,7 +146,7 @@ function serviceStatus(probe, processInfo) {
 function serviceDetail(probe, processInfo) {
   const parts = [probe.detail];
   if (probe.latency !== null) parts.push(`${probe.latency}ms`);
-  parts.push(processInfo ? `PID ${processInfo.pid}` : "未监听");
+  parts.push(processInfo ? `${processInfo.command || "unknown"} PID ${processInfo.pid}` : "未监听");
   return parts.join(" · ");
 }
 
@@ -176,6 +176,8 @@ export async function collectLocalRuntime({ host, port, repoRoot }) {
         target: `${host}:${port}`,
         status: serviceStatus(apiProbe, apiProcess),
         detail: serviceDetail(apiProbe, apiProcess),
+        latencyMs: apiProbe.latency ?? undefined,
+        process: apiProcess ? { pid: apiProcess.pid, command: apiProcess.command || "unknown" } : undefined,
       },
       {
         id: "stackpilot-web",
@@ -183,6 +185,8 @@ export async function collectLocalRuntime({ host, port, repoRoot }) {
         target: `127.0.0.1:${webPort}`,
         status: serviceStatus(webProbe, webProcess),
         detail: serviceDetail(webProbe, webProcess),
+        latencyMs: webProbe.latency ?? undefined,
+        process: webProcess ? { pid: webProcess.pid, command: webProcess.command || "unknown" } : undefined,
       },
     ],
   };
