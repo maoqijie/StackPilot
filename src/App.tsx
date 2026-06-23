@@ -141,6 +141,9 @@ type NavItem = {
   children: NavChild[];
 };
 
+declare const __APP_VERSION__: string;
+declare const __APP_REPOSITORY_URL__: string;
+
 function currentClock() {
   return new Date().toLocaleTimeString("zh-CN", {
     hour: "2-digit",
@@ -9641,10 +9644,23 @@ function ActionToast({ toast }: { toast: ToastState }) {
 }
 
 function DesktopFooter() {
+  const footerLinks = [
+    { label: "文档", icon: BookOpen, href: `${__APP_REPOSITORY_URL__}/blob/main/README.md` },
+    { label: "GitHub", icon: Globe2, href: __APP_REPOSITORY_URL__ },
+    { label: "社区反馈", icon: FileBox, href: `${__APP_REPOSITORY_URL__}/issues` },
+    { label: "帮助中心", icon: CircleHelp, href: `${__APP_REPOSITORY_URL__}/blob/main/docs/help.md` },
+  ];
   return (
     <footer className="desktop-footer">
-      <span>© 2025 StackPilot 开源版 v2.8.1</span>
-      <div><BookOpen size={14} /> 文档 <Globe2 size={14} /> GitHub <FileBox size={14} /> 社区论坛 <CircleHelp size={14} /> 帮助中心</div>
+      <span>© {new Date().getFullYear()} StackPilot 开源版 v{__APP_VERSION__}</span>
+      <nav aria-label="底部资源链接">
+        {footerLinks.map(({ label, icon: Icon, href }) => (
+          <a key={label} href={href} target="_blank" rel="noreferrer">
+            <Icon size={14} aria-hidden="true" />
+            <span>{label}</span>
+          </a>
+        ))}
+      </nav>
     </footer>
   );
 }

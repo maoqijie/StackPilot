@@ -8706,15 +8706,43 @@ a {
   font-size: 12px;
 }
 
-.desktop-footer div {
+.desktop-footer nav {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 4px;
+}
+
+.desktop-footer a {
+  min-height: 32px;
+  padding: 0 7px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  transition: color 160ms ease, background 160ms ease;
+}
+
+.desktop-footer a:hover,
+.desktop-footer a:focus-visible {
+  color: var(--blue);
+  background: #eef8ff;
 }
 
 @media (max-width: 773px) {
   .desktop-footer {
     left: 64px;
+    height: auto;
+    min-height: 47px;
+    padding-block: 8px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .desktop-footer nav {
+    flex-wrap: wrap;
   }
 }
 
