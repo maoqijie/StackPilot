@@ -3037,9 +3037,11 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
             { key: "memory", label: "内存", width: "110px", sortValue: (row) => percentValue(row.memory), render: (row) => <Bar value={row.memory} tone={row.status === "警告" ? "red" : "green"} /> },
             { key: "backup", label: "备份", width: "118px", render: (row) => <span><StatusLight tone={healthProbeTone(row.backupStatus)} /> {row.backup}</span> },
             { key: "update", label: "更新", width: "110px", render: (row) => <span className={isCleanUpdate(row.update) ? "green-text" : "orange-text"}>{row.update}</span> },
-            { key: "actions", label: "操作", width: "104px", render: (row) => (
-              <div className="table-actions">
-                <button type="button" onClick={() => setSelected(row)}>详情</button>
+            { key: "actions", label: "操作", width: "64px", render: (row) => (
+              <div className="table-icon-actions health-node-actions">
+                <button type="button" aria-label={`查看 ${row.name} 节点详情`} title="查看详情" onClick={() => setSelected(row)}>
+                  <Eye size={15} />
+                </button>
               </div>
             ) },
           ]}
