@@ -2562,6 +2562,20 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
   const highRiskCount = overview.risks.filter((risk) => risk.status === "待处理" && risk.level === "高危").length;
   const hasOverview = overview.nodes.length > 0 || overview.metrics.length > 0;
   const currentNode = overview.nodes[0] ?? null;
+  const healthTone = overview.cluster.health === "健康" ? "green" : overview.cluster.health === "维护" ? "gray" : "orange";
+  const statusToneClass = overview.cluster.health === "健康" ? "green-text" : overview.cluster.health === "维护" ? "gray-text" : "orange-text";
+  const summaryItems = [
+    { label: "状态", value: overview.cluster.health, className: statusToneClass },
+    { label: "延迟", value: overview.cluster.latency },
+    { label: "版本", value: overview.cluster.version },
+    { label: "运行", value: overview.cluster.uptime },
+    { label: "刷新", value: overview.lastRefresh || "-" },
+    {
+      label: "待处理",
+      value: `${overview.cluster.pendingUpdates}`,
+      className: overview.cluster.pendingUpdates ? "red-text" : "green-text",
+    },
+  ];
 
   const loadOverview = useCallback(async (signal?: AbortSignal, silent = false) => {
     if (!silent) setLoading(true);
@@ -2611,18 +2625,21 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
   return (
     <div className="overview-page">
       <h1 className="sr-only">工作台</h1>
-      <div className="workbench-status-bar">
-        <div>
+      <section className="workbench-hero" aria-label="实时工作台状态">
+        <div className="workbench-identity">
           <span className="workbench-eyebrow">实时工作台</span>
-          <strong><StatusLight tone={overview.cluster.health === "健康" ? "green" : "orange"} /> {overview.cluster.current || "等待采集"}</strong>
+          <strong><StatusLight tone={healthTone} /> {overview.cluster.current || "等待采集"}</strong>
+          <p>后端实时采样 · 风险、任务、资源统一收敛</p>
         </div>
-        <span>状态：<b className={overview.cluster.health === "健康" ? "green-text" : "orange-text"}>{overview.cluster.health}</b></span>
-        <span>延迟：{overview.cluster.latency}</span>
-        <span>版本：{overview.cluster.version}</span>
-        <span>运行：{overview.cluster.uptime}</span>
-        <span>刷新：{overview.lastRefresh || "-"}</span>
-        <span>待处理：<b className={overview.cluster.pendingUpdates ? "red-text" : "green-text"}>{overview.cluster.pendingUpdates}</b></span>
-        <div className="cluster-actions">
+        <div className="workbench-summary" aria-label="采样摘要">
+          {summaryItems.map((item) => (
+            <span key={item.label}>
+              <em>{item.label}</em>
+              <b className={item.className}>{item.value}</b>
+            </span>
+          ))}
+        </div>
+        <div className="workbench-actions">
           <button
             className="ghost small"
             type="button"
@@ -2649,7 +2666,7 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
           </button>
           <button className="warning small" type="button" onClick={() => setPage("overview-risks", { message: "已打开风险中心", tone: "warning" })}>风险中心 <b>{pendingRiskCount}</b></button>
         </div>
-      </div>
+      </section>
       {loading && <div className="overview-inline-detail"><StatusLight tone="blue" /> 正在从后端实时采集工作台数据...</div>}
       {error && (
         <div className="overview-error-state">
@@ -2718,9 +2735,9 @@ function MetricCard({
   line: number[];
 }) {
   return (
-    <article className="metric-card">
-      <Icon className={tone} size={37} />
-      <div>
+    <article className={`metric-card ${tone}`}>
+      <div className="metric-icon"><Icon size={24} /></div>
+      <div className="metric-copy">
         <span>{label}</span>
         <strong>{value}<em>{suffix}</em></strong>
         <p className={tone === "red" || tone === "orange" ? "orange-text" : "green-text"}>{delta}</p>
@@ -2839,33 +2856,31 @@ function TaskTable({ tasks, queued }: { tasks: OverviewTaskRecord[]; queued?: bo
 
 function AuditTable({ rows }: { rows: OverviewAuditRow[] }) {
   return (
-    <table className="mini-table audit-table">
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row[0] + row[6]}>
-            <td>{row[0]}</td>
-            <td>{row[1]}</td>
-            <td>{row[2]}</td>
-            <td>{row[3]}</td>
-            <td>{row[4]}</td>
-            <td><span className={row[5] === "失败" ? "pill red" : "pill green"}>{row[5]}</span></td>
-            <td>{row[6]}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="audit-feed">
+      {rows.slice(0, 6).map((row) => (
+        <article key={row[0] + row[6]}>
+          <span>{row[0]}</span>
+          <strong>{row[3]}</strong>
+          <p>{row[1]} · {row[2]} · {row[4]}</p>
+          <em className={row[5] === "失败" ? "pill red" : "pill green"}>{row[5]}</em>
+        </article>
+      ))}
+      {rows.length === 0 && <div className="feed-empty">暂无近期动态</div>}
+    </div>
   );
 }
 
 function RiskList({ risks }: { risks: OverviewRiskRecord[] }) {
   return (
     <div className="risk-list">
-      {risks.map((row) => (
+      {risks.slice(0, 4).map((row) => (
         <div key={row.id}>
-          <KeyRound size={17} />
-          <span>{row.title}</span>
-          <b>{row.target}</b>
-          <em className={row.level === "高危" ? "red-text" : "orange-text"}>{row.status === "待处理" ? row.level : row.status}</em>
+          <KeyRound size={16} />
+          <span>
+            <strong>{row.title}</strong>
+            <b>{row.target}</b>
+          </span>
+          <em className={row.level === "高危" ? "red-text" : row.level === "中危" ? "orange-text" : "blue-text"}>{row.level}</em>
           <small>{row.detected}</small>
         </div>
       ))}
@@ -2881,11 +2896,16 @@ function WorkbenchProgress({ node, taskCount, riskCount }: { node: OverviewNode 
   const stability = Math.max(0, Math.min(100, Math.round(100 - (cpu + memory + disk) / 6 - riskCount * 8 - taskCount * 4)));
   return (
     <div className="workbench-progress">
-      <strong>{node?.version ?? "-"} 工作区</strong>
-      <b>{stability}%</b>
-      <i><span style={{ width: `${stability}%` }} /></i>
+      <header>
+        <span>当前目标</span>
+        <strong>{node?.version ?? "-"} 工作区</strong>
+      </header>
+      <div className="progress-score">
+        <b>{stability}%</b>
+        <i><span style={{ width: `${stability}%` }} /></i>
+      </div>
       <p>待处理任务 {taskCount} · 风险 {riskCount} · {node?.owner ?? "等待采集"}</p>
-      <div>
+      <div className="progress-meta">
         <span>CPU {node?.cpu ?? "-"}</span>
         <span>内存 {node?.memory ?? "-"}</span>
         <span>磁盘 {node?.disk ?? "-"}</span>
