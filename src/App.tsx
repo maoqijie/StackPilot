@@ -39,17 +39,16 @@ import {
 import type { LucideIcon } from "lucide-react";
 import {
   checkOverviewUpdates,
-  createOverviewTask,
   exportOverviewRisks,
   exportOverviewTasks,
   fetchOverview,
   fetchOverviewHealth,
   fetchOverviewRisks,
   fetchOverviewTasks,
-  patchOverviewRisk,
-  patchOverviewTask,
   refreshOverview,
   refreshOverviewHealth,
+  refreshOverviewTasks,
+  runOverviewTask,
   scanOverviewRisks,
   type OverviewAuditRow,
   type OverviewMetricIcon,
@@ -2600,17 +2599,6 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
     }
   };
 
-  const resolveOverviewRisk = async (risk: OverviewRiskRecord) => {
-    try {
-      await patchOverviewRisk(risk.id, { status: "已处理" });
-      const payload = await fetchOverview();
-      setOverview(payload);
-      notify(`已处理风险：${risk.title}`);
-    } catch (error) {
-      reportApiError(error, notify, "风险处理失败");
-    }
-  };
-
   return (
     <div className="overview-page">
       <h1 className="sr-only">工作台</h1>
@@ -2689,7 +2677,7 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
         </div>
         <div className="right-stack">
           <PanelCard title={`风险预警 ${highRiskCount ? `(${highRiskCount} 高危)` : ""}`} action="查看详情" onAction={() => setPage("overview-risks", { message: "已打开风险中心", tone: "warning" })}>
-            <RiskList risks={overview.risks} notify={notify} onResolve={resolveOverviewRisk} />
+            <RiskList risks={overview.risks} />
           </PanelCard>
           <PanelCard title="当前目标">
             <WorkbenchProgress node={currentNode} taskCount={queuedTaskCount} riskCount={pendingRiskCount} />
@@ -2860,24 +2848,16 @@ function AuditTable({ rows }: { rows: OverviewAuditRow[] }) {
   );
 }
 
-function RiskList({ risks, onResolve }: { risks: OverviewRiskRecord[]; notify: Notify; onResolve: (risk: OverviewRiskRecord) => void }) {
+function RiskList({ risks }: { risks: OverviewRiskRecord[] }) {
   return (
     <div className="risk-list">
       {risks.map((row) => (
-        <div key={row.id} className={row.status === "已处理" ? "is-resolved" : ""}>
+        <div key={row.id}>
           <KeyRound size={17} />
           <span>{row.title}</span>
           <b>{row.target}</b>
           <em className={row.level === "高危" ? "red-text" : "orange-text"}>{row.status === "待处理" ? row.level : row.status}</em>
-          <button
-            type="button"
-            disabled={row.status === "已处理"}
-            onClick={() => {
-              onResolve(row);
-            }}
-          >
-            {row.status === "已处理" ? "完成" : "立即处理"}
-          </button>
+          <small>{row.detected}</small>
         </div>
       ))}
       {risks.length === 0 && <div className="risk-empty"><CheckCircle2 size={17} /><span>当前没有实时风险</span></div>}
@@ -3164,14 +3144,14 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
     setSelected((current) => current?.id === task.id ? task : current);
   };
 
-  const createTaskFromApi = async () => {
+  const refreshTasksFromApi = async () => {
     try {
-      const payload = await createOverviewTask();
+      const payload = await refreshOverviewTasks();
       setRows(payload.tasks);
       setSelected(payload.tasks[0] ?? null);
       notify(payload.message, payload.tone ?? "info");
     } catch (error) {
-      reportApiError(error, notify, "创建任务失败");
+      reportApiError(error, notify, "重新采集任务失败");
     }
   };
 
@@ -3184,13 +3164,13 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
     }
   };
 
-  const patchTask = async (id: string, patch: Partial<OverviewTaskRecord>, message: string, tone: ToastTone = "success") => {
+  const runTaskFromApi = async (id: string) => {
     try {
-      const payload = await patchOverviewTask(id, patch);
+      const payload = await runOverviewTask(id);
       applyTask(payload.task);
-      notify(payload.message ?? message, tone);
+      notify(payload.message, payload.tone ?? "success");
     } catch (error) {
-      reportApiError(error, notify, message);
+      reportApiError(error, notify, "运行真实任务失败");
     }
   };
 
@@ -3199,8 +3179,8 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
       title="任务流"
       subtitle={loading ? "正在从后端加载任务流。" : "集中处理首页总览中的最近任务、排队任务和失败任务。"}
       page="overview-tasks"
-      actions={<><button className="ghost" type="button" onClick={exportTasksFromApi}><Download size={14} /> 导出</button><button className="primary" type="button" onClick={createTaskFromApi}><Plus size={14} /> 新建任务</button></>}
-      filters={<><div className="deploy-tabs">{["全部", "队列中", "成功", "失败", "已取消"].map((item) => <button key={item} className={tab === item ? "active" : ""} type="button" onClick={() => setTab(item)}>{item}</button>)}</div><ModuleSearch value={search} placeholder="搜索任务、目标或操作人" onChange={setSearch} /></>}
+      actions={<><button className="ghost" type="button" onClick={exportTasksFromApi}><Download size={14} /> 导出</button><button className="primary" type="button" onClick={refreshTasksFromApi}><RefreshCw size={14} /> 重新采集</button></>}
+      filters={<><div className="deploy-tabs">{["全部", "队列中", "成功", "失败"].map((item) => <button key={item} className={tab === item ? "active" : ""} type="button" onClick={() => setTab(item)}>{item}</button>)}</div><ModuleSearch value={search} placeholder="搜索任务、目标或操作人" onChange={setSearch} /></>}
       metrics={<><MetricTile icon={CalendarDays} label="任务总数" value={`${rows.length}`} tone="blue" /><MetricTile icon={Clock3} label="队列中" value={`${queueCount}`} tone={queueCount ? "orange" : "green"} /><MetricTile icon={Bell} label="失败任务" value={`${failedCount}`} tone={failedCount ? "red" : "green"} /></>}
       side={selected && (
         <DetailDrawer title={selected.title} subtitle={`${selected.type} · ${selected.target}`} onClose={() => setSelected(null)} autoFocus={false}>
@@ -3231,8 +3211,9 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
           { key: "actions", label: "操作", width: "176px", render: (row) => (
             <div className="table-actions">
               <button type="button" onClick={() => setSelected(row)}>日志</button>
-              <button type="button" onClick={() => void patchTask(row.id, { status: "成功", duration: row.duration === "运行中" ? "1分02秒" : row.duration, logs: [...row.logs, "人工标记完成"] }, `${row.title} 已完成`)}>完成</button>
-              <button type="button" onClick={() => void patchTask(row.id, { status: row.status === "已取消" ? "运行中" : "已取消", logs: [...row.logs, row.status === "已取消" ? "重新进入运行队列" : "任务已取消"] }, row.status === "已取消" ? `${row.title} 已重新运行` : `${row.title} 已取消`, "info")}>{row.status === "已取消" ? "重跑" : "取消"}</button>
+              {row.id.startsWith("task-script-") && ["task-script-build", "task-script-lint"].includes(row.id)
+                ? <button type="button" onClick={() => void runTaskFromApi(row.id)}>运行</button>
+                : <button type="button" onClick={() => void runTaskFromApi(row.id)}>检查</button>}
             </div>
           ) },
         ]}
@@ -3261,7 +3242,6 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
   });
   const openCount = rows.filter((row) => row.status === "待处理").length;
   const highCount = rows.filter((row) => row.level === "高危" && row.status === "待处理").length;
-  const postponedCount = rows.filter((row) => row.status === "已暂缓").length;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -3279,21 +3259,6 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
       });
     return () => controller.abort();
   }, [notify]);
-
-  const applyRisk = (risk: OverviewRiskRecord) => {
-    setRows((current) => current.map((row) => row.id === risk.id ? risk : row));
-    setSelected((current) => current?.id === risk.id ? risk : current);
-  };
-
-  const patchRisk = async (id: string, patch: Partial<OverviewRiskRecord>, message: string, tone: ToastTone = "success") => {
-    try {
-      const payload = await patchOverviewRisk(id, patch);
-      applyRisk(payload.risk);
-      notify(payload.message ?? message, tone);
-    } catch (error) {
-      reportApiError(error, notify, message);
-    }
-  };
 
   const scanRisksFromApi = async () => {
     try {
@@ -3322,8 +3287,8 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
       subtitle={loading ? "正在从后端加载风险中心。" : `集中处理首页总览暴露的安全、证书和服务健康风险。最近扫描：${scannedAt}`}
       page="overview-risks"
       actions={<><button className="ghost" type="button" onClick={exportRisksFromApi}><Download size={14} /> 导出报告</button><button className="primary" type="button" onClick={scanRisksFromApi}><RefreshCw size={14} /> 重新扫描</button></>}
-      filters={<><ModuleSearch value={search} placeholder="搜索风险、目标或 trace id" onChange={setSearch} /><FieldSelect label="等级" value={levelFilter} options={["全部", "高危", "中危", "低危"]} onChange={setLevelFilter} /><FieldSelect label="状态" value={stateFilter} options={["全部", "待处理", "已处理", "已暂缓"]} onChange={setStateFilter} /></>}
-      metrics={<><MetricTile icon={Shield} label="待处理风险" value={`${openCount}`} tone={openCount ? "orange" : "green"} /><MetricTile icon={KeyRound} label="高危风险" value={`${highCount}`} tone={highCount ? "red" : "green"} /><MetricTile icon={Clock3} label="暂缓项" value={`${postponedCount}`} tone="blue" /></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索风险、目标或 trace id" onChange={setSearch} /><FieldSelect label="等级" value={levelFilter} options={["全部", "高危", "中危", "低危"]} onChange={setLevelFilter} /><FieldSelect label="状态" value={stateFilter} options={["全部", "待处理"]} onChange={setStateFilter} /></>}
+      metrics={<><MetricTile icon={Shield} label="待处理风险" value={`${openCount}`} tone={openCount ? "orange" : "green"} /><MetricTile icon={KeyRound} label="高危风险" value={`${highCount}`} tone={highCount ? "red" : "green"} /><MetricTile icon={Clock3} label="实时扫描" value={scannedAt || "-"} tone="blue" /></>}
       side={selected && (
         <DetailDrawer title={selected.title} subtitle={selected.traceId} onClose={() => setSelected(null)} autoFocus={false}>
           <div className="detail-kv">
@@ -3345,16 +3310,14 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
         columns={[
           { key: "title", label: "风险", width: "240px", render: (row) => <b>{row.title}</b> },
           { key: "level", label: "等级", width: "82px", render: (row) => <span className={`pill ${row.level === "高危" ? "red" : row.level === "中危" ? "blue" : "green"}`}>{row.level}</span> },
-          { key: "status", label: "状态", width: "90px", render: (row) => <><StatusLight tone={row.status === "待处理" ? riskTone(row.level) : row.status === "已暂缓" ? "blue" : "green"} /> {row.status}</> },
+          { key: "status", label: "状态", width: "90px", render: (row) => <><StatusLight tone={riskTone(row.level)} /> {row.status}</> },
           { key: "target", label: "目标", width: "200px", render: (row) => row.target },
           { key: "owner", label: "负责人", width: "86px", render: (row) => row.owner },
           { key: "detected", label: "发现时间", width: "105px", render: (row) => row.detected },
           { key: "impact", label: "影响", width: "230px", render: (row) => row.impact },
-          { key: "actions", label: "操作", width: "204px", render: (row) => (
+          { key: "actions", label: "操作", width: "92px", render: (row) => (
             <div className="table-actions">
               <button type="button" onClick={() => setSelected(row)}>详情</button>
-              <button type="button" onClick={() => void patchRisk(row.id, { status: "已处理" }, `${row.title} 已处理`)}>处理</button>
-              <button type="button" onClick={() => void patchRisk(row.id, { status: "已暂缓" }, `${row.title} 已暂缓`, "warning")}>暂缓</button>
             </div>
           ) },
         ]}
@@ -3370,7 +3333,6 @@ function taskTone(status: OverviewTaskRecord["status"]): Tone {
   if (status === "成功") return "green";
   if (status === "运行中") return "blue";
   if (status === "失败") return "red";
-  if (status === "已取消") return "gray";
   return "orange";
 }
 

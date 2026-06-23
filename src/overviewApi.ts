@@ -43,7 +43,7 @@ export type OverviewTaskRecord = {
   type: string;
   title: string;
   target: string;
-  status: "成功" | "运行中" | "等待" | "失败" | "已取消";
+  status: "成功" | "运行中" | "等待" | "失败";
   priority: "高" | "中" | "低";
   operator: string;
   queuedAt: string;
@@ -55,7 +55,7 @@ export type OverviewRiskRecord = {
   id: string;
   title: string;
   level: "高危" | "中危" | "低危";
-  status: "待处理" | "已处理" | "已暂缓";
+  status: "待处理";
   target: string;
   owner: string;
   impact: string;
@@ -136,23 +136,12 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
   return response.json() as Promise<T>;
 }
 
-function jsonBody<T>(body: T): RequestInit {
-  return {
-    method: "POST",
-    body: JSON.stringify(body),
-  };
-}
-
 export function fetchOverview(signal?: AbortSignal) {
   return requestJson<OverviewSummaryPayload>("/overview", { signal });
 }
 
 export function refreshOverview() {
   return requestJson<OverviewSummaryPayload>("/overview/refresh", { method: "POST" });
-}
-
-export function switchOverviewCluster(cluster: string) {
-  return requestJson<OverviewSummaryPayload>("/overview/cluster", jsonBody({ cluster }));
 }
 
 export function checkOverviewUpdates() {
@@ -167,33 +156,18 @@ export function refreshOverviewHealth() {
   return requestJson<OverviewHealthPayload>("/overview/health/refresh", { method: "POST" });
 }
 
-export function createOverviewNode() {
-  return requestJson<OverviewHealthPayload & ApiNotice>("/overview/health/nodes", { method: "POST" });
-}
-
-export function patchOverviewNode(id: string, patch: Partial<OverviewNode>) {
-  return requestJson<{ node: OverviewNode } & ApiNotice>(`/overview/health/nodes/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
-}
-
-export function restartOverviewNode(id: string) {
-  return requestJson<ApiNotice>(`/overview/health/nodes/${id}/restart`, { method: "POST" });
-}
-
 export function fetchOverviewTasks(signal?: AbortSignal) {
   return requestJson<OverviewTasksPayload>("/overview/tasks", { signal });
 }
 
-export function createOverviewTask() {
+export function refreshOverviewTasks() {
   return requestJson<OverviewTasksPayload & ApiNotice>("/overview/tasks", { method: "POST" });
 }
 
-export function patchOverviewTask(id: string, patch: Partial<OverviewTaskRecord>) {
+export function runOverviewTask(id: string) {
   return requestJson<{ task: OverviewTaskRecord } & ApiNotice>(`/overview/tasks/${id}`, {
     method: "PATCH",
-    body: JSON.stringify(patch),
+    body: JSON.stringify({ action: "run" }),
   });
 }
 
@@ -203,13 +177,6 @@ export function exportOverviewTasks() {
 
 export function fetchOverviewRisks(signal?: AbortSignal) {
   return requestJson<OverviewRisksPayload>("/overview/risks", { signal });
-}
-
-export function patchOverviewRisk(id: string, patch: Partial<OverviewRiskRecord>) {
-  return requestJson<{ risk: OverviewRiskRecord } & ApiNotice>(`/overview/risks/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
 }
 
 export function scanOverviewRisks() {

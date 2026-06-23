@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
-import { readFile, statfs } from "node:fs/promises";
+import { mkdir, readFile, statfs, writeFile } from "node:fs/promises";
 import { cpus, freemem, hostname, loadavg, networkInterfaces, platform, release, totalmem, uptime } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -11,6 +11,7 @@ const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "127.0.0.1";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const execFileAsync = promisify(execFile);
+const runnableScripts = new Set(["build", "lint"]);
 
 const nowTime = () => new Date().toLocaleString("zh-CN", { hour12: false });
 const clampPercent = (value) => Math.max(0, Math.min(100, Math.round(Number.isFinite(value) ? value : 0)));
@@ -198,18 +199,35 @@ function usageStatus(cpuPercent, memoryPercent, diskPercent, gitInfo, runtime) {
   return "健康";
 }
 
-function buildWorkbenchTasks(packageInfo, gitInfo, processUptimeSeconds) {
+function taskStatusFromService(service) {
+  return service?.status === "健康" ? "成功" : "失败";
+}
+
+function buildWorkbenchTasks(packageInfo, gitInfo, runtime, processUptimeSeconds) {
+  const apiService = runtime.services.find((service) => service.id === "stackpilot-api");
+  const webService = runtime.services.find((service) => service.id === "stackpilot-web");
   const tasks = [{
     id: "task-api-live",
     type: "服务",
-    title: "StackPilot API 已响应工作台实时采集",
+    title: "检查 StackPilot API 实时采集",
     target: `http://${host}:${port}`,
-    status: "成功",
+    status: taskStatusFromService(apiService),
     priority: "中",
     operator: "node",
     queuedAt: "本次请求",
     duration: formatDuration(processUptimeSeconds),
-    logs: ["HTTP 服务在线", `仓库路径：${repoRoot}`],
+    logs: [apiService?.detail ?? runtime.latency.detail, `仓库路径：${repoRoot}`],
+  }, {
+    id: "task-web-live",
+    type: "服务",
+    title: "检查 StackPilot Web 页面服务",
+    target: webService?.target ?? "127.0.0.1:4873",
+    status: taskStatusFromService(webService),
+    priority: webService?.status === "健康" ? "低" : "中",
+    operator: "vite",
+    queuedAt: "本次请求",
+    duration: webService?.detail ?? "未发现监听进程",
+    logs: [webService?.detail ?? "Web 服务未监听"],
   }];
 
   if (gitInfo.changedFiles.length > 0) {
@@ -227,7 +245,7 @@ function buildWorkbenchTasks(packageInfo, gitInfo, processUptimeSeconds) {
     });
   }
 
-  Object.keys(packageInfo.scripts).slice(0, 6).forEach((name) => {
+  [...runnableScripts].filter((name) => packageInfo.scripts[name]).forEach((name) => {
     tasks.push({
       id: `task-script-${name}`,
       type: "脚本",
@@ -243,6 +261,125 @@ function buildWorkbenchTasks(packageInfo, gitInfo, processUptimeSeconds) {
   });
 
   return tasks;
+}
+
+function mergeTaskState(tasks) {
+  return tasks.map((task) => {
+    const result = state.taskResults.get(task.id);
+    return result ? { ...task, ...result } : task;
+  });
+}
+
+function tailLogLines(...values) {
+  return values
+    .join("\n")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-8);
+}
+
+function taskDuration(startedAt) {
+  const elapsedSeconds = (Date.now() - startedAt) / 1000;
+  if (elapsedSeconds < 1) return `${Math.max(1, Math.round(elapsedSeconds * 1000))}ms`;
+  return `${elapsedSeconds.toFixed(1)}s`;
+}
+
+function rememberTaskResult(task, patch) {
+  const next = {
+    ...patch,
+    queuedAt: nowTime(),
+  };
+  state.taskResults.set(task.id, next);
+  return { ...task, ...next };
+}
+
+async function checkRuntimeTask(task, serviceId = "stackpilot-api") {
+  const runtime = await collectLocalRuntime({ host, port, repoRoot });
+  const service = runtime.services.find((item) => item.id === serviceId);
+  const healthy = serviceId === "stackpilot-api" ? runtime.latency.status === "健康" : service?.status === "健康";
+  return rememberTaskResult(task, {
+    status: healthy ? "成功" : "失败",
+    duration: serviceId === "stackpilot-api" ? runtime.latency.label : service?.detail ?? "未发现监听进程",
+    logs: [
+      serviceId === "stackpilot-api" ? `API 健康探测：${runtime.latency.detail}` : `Web 服务探测：${service?.detail ?? "未监听"}`,
+      `采集时间：${nowTime()}`,
+    ],
+  });
+}
+
+async function checkGitTask(task) {
+  const gitInfo = await collectGitInfo();
+  return rememberTaskResult(task, {
+    title: gitInfo.changedFiles.length > 0 ? `处理 ${gitInfo.changedFiles.length} 个 Git 工作区变更` : "Git 工作区已清理",
+    status: gitInfo.changedFiles.length > 0 ? "等待" : "成功",
+    priority: gitInfo.changedFiles.length >= 5 ? "高" : gitInfo.changedFiles.length > 0 ? "中" : "低",
+    target: gitInfo.branch,
+    duration: gitInfo.changedFiles.length > 0 ? "待处理" : "0 个变更",
+    logs: gitInfo.changedFiles.length > 0 ? gitInfo.changedFiles.slice(0, 8) : ["git status --porcelain 未返回变更"],
+  });
+}
+
+async function runScriptTask(task, scriptName) {
+  const packageInfo = await readPackageInfo();
+  if (!packageInfo.scripts[scriptName]) {
+    const error = new Error("package.json 中不存在该脚本");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!runnableScripts.has(scriptName)) {
+    const error = new Error("该脚本未配置为可由工作台真实运行");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const startedAt = Date.now();
+  const result = await runCommand("npm", ["run", scriptName], { timeout: 120000 });
+  return rememberTaskResult(task, {
+    status: result.ok ? "成功" : "失败",
+    duration: taskDuration(startedAt),
+    logs: tailLogLines(`npm run ${scriptName}`, result.stdout, result.stderr),
+  });
+}
+
+async function runWorkbenchTask(taskId) {
+  const overview = await overviewPayload();
+  const task = overview.tasks.find((item) => item.id === taskId);
+  if (!task) {
+    const error = new Error("任务不存在");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (task.id === "task-api-live") return checkRuntimeTask(task, "stackpilot-api");
+  if (task.id === "task-web-live") return checkRuntimeTask(task, "stackpilot-web");
+  if (task.id === "task-git-worktree") return checkGitTask(task);
+  if (task.id.startsWith("task-script-")) return runScriptTask(task, task.id.slice("task-script-".length));
+
+  const error = new Error("该任务没有可执行的本机动作");
+  error.statusCode = 409;
+  throw error;
+}
+
+async function exportWorkbenchTasks() {
+  const overview = await overviewPayload();
+  const exportDir = join(repoRoot, "output", "overview-tasks");
+  await mkdir(exportDir, { recursive: true });
+  const filename = `tasks-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+  const filePath = join(exportDir, filename);
+  await writeFile(filePath, JSON.stringify({ exportedAt: nowTime(), tasks: overview.tasks }, null, 2), "utf8");
+  return { tasks: overview.tasks, filePath };
+}
+
+async function exportWorkbenchRisks() {
+  const overview = await overviewPayload();
+  const exportDir = join(repoRoot, "output", "overview-risks");
+  await mkdir(exportDir, { recursive: true });
+  const filename = `risks-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+  const filePath = join(exportDir, filename);
+  await writeFile(filePath, JSON.stringify({ exportedAt: nowTime(), risks: overview.risks }, null, 2), "utf8");
+  return { risks: overview.risks, filePath };
 }
 
 function buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent, gitInfo, packageInfo, runtime }) {
@@ -319,8 +456,7 @@ function buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent, gitInfo, 
 const state = {
   lastRefresh: "2025-05-22 02:15",
   scannedAt: "2025-05-22 10:24:31",
-  resolvedRiskIds: new Set(),
-  deferredRiskIds: new Set(),
+  taskResults: new Map(),
   updateCheck: {
     lastCheckedAt: "2025-05-22 02:15",
     availableUpdates: 2,
@@ -345,13 +481,8 @@ async function overviewPayload() {
   const loadPercent = clampPercent((loadavg()[0] / Math.max(cpus().length, 1)) * 100);
   const platformLabel = `${platform()} ${release()}`;
   const health = usageStatus(cpuPercent, memoryPercent, disk.percent, gitInfo, runtime);
-  const tasks = buildWorkbenchTasks(packageInfo, gitInfo, process.uptime());
-  const risks = buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent: disk.percent, gitInfo, packageInfo, runtime })
-    .map((risk) => {
-      if (state.resolvedRiskIds.has(risk.id)) return { ...risk, status: "已处理" };
-      if (state.deferredRiskIds.has(risk.id)) return { ...risk, status: "已暂缓" };
-      return risk;
-    });
+  const tasks = mergeTaskState(buildWorkbenchTasks(packageInfo, gitInfo, runtime, process.uptime()));
+  const risks = buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent: disk.percent, gitInfo, packageInfo, runtime });
   const openRisks = risks.filter((risk) => risk.status === "待处理");
   const queuedTasks = tasks.filter((task) => ["运行中", "等待"].includes(task.status));
   const failedTasks = tasks.filter((task) => task.status === "失败");
@@ -560,18 +691,28 @@ async function handleTasksRoute(request, response, parts) {
 
   if (request.method === "POST" && parts.length === 3) {
     await readJson(request);
-    sendError(response, 501, "真实任务创建尚未配置任务执行器");
+    state.taskResults.clear();
+    const overview = await overviewPayload();
+    sendJson(response, 200, { tasks: overview.tasks, message: "已重新采集真实任务流", tone: "info" });
     return;
   }
 
   if (request.method === "POST" && parts[3] === "export" && parts.length === 4) {
-    sendJson(response, 200, { message: "已复制当前任务流摘要", tone: "info" });
+    const exported = await exportWorkbenchTasks();
+    sendJson(response, 200, { message: `任务流已导出到 ${exported.filePath}`, tone: "success" });
     return;
   }
 
   if (request.method === "PATCH" && parts.length === 4) {
-    await readJson(request);
-    sendError(response, 501, "真实任务状态修改尚未配置任务执行器");
+    const patch = await readJson(request);
+    if (patch.action && patch.action !== "run") {
+      sendError(response, 400, "任务流只支持真实运行或检查动作");
+      return;
+    }
+    const task = await runWorkbenchTask(parts[3]);
+    const actionLabel = task.id.startsWith("task-script-") ? "运行" : "检查";
+    const resultLabel = task.status === "失败" ? `${actionLabel}并失败` : task.status === "等待" ? `${actionLabel}，仍有待处理项` : actionLabel;
+    sendJson(response, 200, { task, message: `${task.title} 已完成真实${resultLabel}`, tone: task.status === "成功" ? "success" : "warning" });
     return;
   }
 
@@ -599,23 +740,14 @@ async function handleRisksRoute(request, response, parts) {
   }
 
   if (request.method === "POST" && parts[3] === "export" && parts.length === 4) {
-    sendJson(response, 200, { message: "风险报告已导出", tone: "info" });
+    const exported = await exportWorkbenchRisks();
+    sendJson(response, 200, { message: `风险报告已导出到 ${exported.filePath}`, tone: "success" });
     return;
   }
 
   if (request.method === "PATCH" && parts.length === 4) {
-    const patch = await readJson(request);
-    if (patch.status === "已处理") {
-      state.resolvedRiskIds.add(parts[3]);
-      state.deferredRiskIds.delete(parts[3]);
-    }
-    if (patch.status === "已暂缓") {
-      state.deferredRiskIds.add(parts[3]);
-      state.resolvedRiskIds.delete(parts[3]);
-    }
-    const overview = await overviewPayload();
-    const risk = overview.risks.find((item) => item.id === parts[3]);
-    sendRecordOr404(response, "risk", risk ? { risk, message: `${risk.title} 已更新` } : null);
+    await readJson(request);
+    sendError(response, 501, "真实风险处置器尚未配置，未修改风险状态");
     return;
   }
 
