@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
 import type { OverviewRiskRecord } from "./overviewApi";
+import "./OverviewRiskDetailModal.css";
 
 type Tone = "green" | "blue" | "orange" | "red" | "gray" | "purple";
 
@@ -70,6 +71,7 @@ export function OverviewRiskDetailModal({
   }, [onClose]);
 
   const steps = suggestionSteps(risk.suggestion);
+  const evidence = risk.evidence ?? [];
 
   return (
     <>
@@ -93,6 +95,22 @@ export function OverviewRiskDetailModal({
             <p><span>负责人</span><b>{risk.owner}</b></p>
             <p><span>发现时间</span><b>{risk.detected}</b></p>
             <p><span>影响</span><b>{risk.impact}</b></p>
+          </section>
+
+          <section className="risk-evidence-panel" aria-label="当前依据">
+            <strong>当前依据</strong>
+            {evidence.length > 0 ? (
+              <div>
+                {evidence.map((item, index) => (
+                  <p key={`${risk.id}-evidence-${index}`}>
+                    <span>{item.label}</span>
+                    <b>{item.value}</b>
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <em>本次扫描没有返回更细的证据明细。</em>
+            )}
           </section>
 
           <section className="overview-risk-note" aria-label="处理建议">

@@ -8,6 +8,7 @@ import { URL, fileURLToPath } from "node:url";
 import { createCronJob, deleteCronJob, listCronJobs, runCronJobNow, updateCronJob } from "./cronJobs.js";
 import { collectDeviceTasks } from "./deviceTasks.js";
 import { collectLocalRuntime, localNodeId, runLocalRestart } from "./localRuntime.js";
+import { collectRiskEvidence } from "./riskEvidence.js";
 import { riskSuggestion } from "./riskSuggestions.js";
 
 const port = Number(process.env.PORT ?? 8787);
@@ -286,9 +287,9 @@ async function exportWorkbenchRisks() {
   return { risks: overview.risks, filePath };
 }
 
-function buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent, gitInfo, packageInfo, runtime }) {
+function buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent, gitInfo, packageInfo, runtime, evidenceSet }) {
   const risks = [];
-  const pushRisk = (id, title, level, target, impact, suggestion) => {
+  const pushRisk = (id, title, level, target, impact, suggestion, evidence = []) => {
     risks.push({
       id,
       title,
@@ -299,36 +300,45 @@ function buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent, gitInfo, 
       impact,
       detected: "实时采样",
       suggestion,
+      evidence,
       traceId: `${id}-${Date.now().toString(36)}`,
     });
   };
 
   if (cpuPercent >= 85) {
-    pushRisk("risk-cpu", "CPU 使用率过高", "高危", hostname(), `当前采样 ${percentText(cpuPercent)}`, riskSuggestion("cpuCritical", { target: hostname(), percent: percentText(cpuPercent) }));
+    const evidence = evidenceSet.cpuProcesses;
+    pushRisk("risk-cpu", "CPU 使用率过高", "高危", hostname(), `当前采样 ${percentText(cpuPercent)}`, riskSuggestion("cpuCritical", { target: hostname(), percent: percentText(cpuPercent), evidence }), evidence);
   } else if (cpuPercent >= 70) {
-    pushRisk("risk-cpu", "CPU 使用率偏高", "中危", hostname(), `当前采样 ${percentText(cpuPercent)}`, riskSuggestion("cpuWarning", { percent: percentText(cpuPercent) }));
+    const evidence = evidenceSet.cpuProcesses;
+    pushRisk("risk-cpu", "CPU 使用率偏高", "中危", hostname(), `当前采样 ${percentText(cpuPercent)}`, riskSuggestion("cpuWarning", { percent: percentText(cpuPercent), evidence }), evidence);
   }
 
   if (memoryPercent >= 88) {
-    pushRisk("risk-memory", "内存压力过高", "高危", hostname(), `当前采样 ${percentText(memoryPercent)}`, riskSuggestion("memoryCritical", { target: hostname(), percent: percentText(memoryPercent) }));
+    const evidence = evidenceSet.memoryProcesses;
+    pushRisk("risk-memory", "内存压力过高", "高危", hostname(), `当前采样 ${percentText(memoryPercent)}`, riskSuggestion("memoryCritical", { target: hostname(), percent: percentText(memoryPercent), evidence }), evidence);
   } else if (memoryPercent >= 76) {
-    pushRisk("risk-memory", "内存压力偏高", "中危", hostname(), `当前采样 ${percentText(memoryPercent)}`, riskSuggestion("memoryWarning", { percent: percentText(memoryPercent) }));
+    const evidence = evidenceSet.memoryProcesses;
+    pushRisk("risk-memory", "内存压力偏高", "中危", hostname(), `当前采样 ${percentText(memoryPercent)}`, riskSuggestion("memoryWarning", { percent: percentText(memoryPercent), evidence }), evidence);
   }
 
   if (diskPercent >= 90) {
-    pushRisk("risk-disk", "磁盘空间不足", "高危", repoRoot, `当前采样 ${percentText(diskPercent)}`, riskSuggestion("diskCritical", { percent: percentText(diskPercent) }));
+    const evidence = evidenceSet.diskRows;
+    pushRisk("risk-disk", "磁盘空间不足", "高危", repoRoot, `当前采样 ${percentText(diskPercent)}`, riskSuggestion("diskCritical", { percent: percentText(diskPercent), evidence }), evidence);
   } else if (diskPercent >= 80) {
-    pushRisk("risk-disk", "磁盘使用率偏高", "中危", repoRoot, `当前采样 ${percentText(diskPercent)}`, riskSuggestion("diskWarning", { percent: percentText(diskPercent) }));
+    const evidence = evidenceSet.diskRows;
+    pushRisk("risk-disk", "磁盘使用率偏高", "中危", repoRoot, `当前采样 ${percentText(diskPercent)}`, riskSuggestion("diskWarning", { percent: percentText(diskPercent), evidence }), evidence);
   }
 
   if (gitInfo.changedFiles.length > 0) {
+    const evidence = evidenceSet.gitChanges;
     pushRisk(
       "risk-git-dirty",
       "Git 工作区存在未提交变更",
       gitInfo.changedFiles.length >= 5 ? "中危" : "低危",
       `${gitInfo.branch} @ ${gitInfo.commit}`,
       `${gitInfo.changedFiles.length} 个变更会影响交付边界`,
-      riskSuggestion("gitDirty", { count: gitInfo.changedFiles.length }),
+      riskSuggestion("gitDirty", { count: gitInfo.changedFiles.length, evidence }),
+      evidence,
     );
   }
 
@@ -337,17 +347,20 @@ function buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent, gitInfo, 
   }
 
   if (runtime.latency.status !== "健康") {
-    pushRisk("risk-api-latency", "本机 API 健康探测失败", "中危", runtime.latency.detail, runtime.latency.label, riskSuggestion("apiLatency", { target: runtime.latency.detail }));
+    const evidence = [{ label: "健康探测", value: runtime.latency.detail }, { label: "目标", value: `${host}:${port}` }];
+    pushRisk("risk-api-latency", "本机 API 健康探测失败", "中危", runtime.latency.detail, runtime.latency.label, riskSuggestion("apiLatency", { target: runtime.latency.detail, evidence }), evidence);
   }
 
   if (runtime.backup.status !== "健康") {
-    pushRisk("risk-backup", "未发现近期真实备份", "中危", runtime.backup.detail, runtime.backup.label, riskSuggestion("backup", { detail: runtime.backup.detail }));
+    const evidence = evidenceSet.backupRows;
+    pushRisk("risk-backup", "未发现近期真实备份", "中危", runtime.backup.detail, runtime.backup.label, riskSuggestion("backup", { detail: runtime.backup.detail, evidence }), evidence);
   }
 
   runtime.services
     .filter((service) => service.status !== "健康")
     .forEach((service) => {
-      pushRisk(`risk-service-${service.id}`, `${service.name} 服务异常`, "中危", service.target, service.detail, riskSuggestion("service", service));
+      const evidence = evidenceSet.services.get(service.id) ?? [];
+      pushRisk(`risk-service-${service.id}`, `${service.name} 服务异常`, "中危", service.target, service.detail, riskSuggestion("service", { ...service, evidence }), evidence);
     });
 
   if (!packageInfo.scripts.build || !packageInfo.scripts.lint) {
@@ -388,7 +401,8 @@ async function overviewPayload() {
   const deviceTasks = await collectDeviceTasks({ runtime, collectedAt, host, port });
   const tasks = mergeTaskState(deviceTasks);
   const taskPage = buildTaskPage(tasks, collectedAt);
-  const risks = buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent: disk.percent, gitInfo, packageInfo, runtime });
+  const evidenceSet = await collectRiskEvidence({ gitInfo, repoRoot, runtime });
+  const risks = buildWorkbenchRisks({ cpuPercent, memoryPercent, diskPercent: disk.percent, gitInfo, packageInfo, runtime, evidenceSet });
   const openRisks = risks.filter((risk) => risk.status === "待处理");
   const queuedTasks = tasks.filter((task) => ["运行中", "等待"].includes(task.status));
   const failedTasks = tasks.filter((task) => task.status === "失败");
