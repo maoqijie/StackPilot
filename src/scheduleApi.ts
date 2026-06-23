@@ -46,10 +46,10 @@ export function fetchScheduleJobs(signal?: AbortSignal) {
   return requestJson<SchedulePayload>("/overview/current-user-crontab", { signal });
 }
 
-export function createScheduleJob(payload: Pick<ScheduleJob, "name" | "cron" | "command">) {
+export function createScheduleJob(payload: Pick<ScheduleJob, "name" | "cron" | "command"> & Partial<Pick<ScheduleJob, "enabled">>) {
   return requestJson<SchedulePayload & { job: ScheduleJob } & ScheduleNotice>("/overview/current-user-crontab", {
     method: "POST",
-    body: JSON.stringify({ ...payload, enabled: true }),
+    body: JSON.stringify({ ...payload, enabled: payload.enabled ?? true }),
   });
 }
 
