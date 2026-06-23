@@ -3239,8 +3239,9 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
       actions={<><button className="ghost" type="button" onClick={exportTasksFromApi}><Download size={14} /> 导出</button><button className="primary" type="button" onClick={refreshTasksFromApi}><RefreshCw size={14} /> 重新采集</button></>}
       filters={<><div className="deploy-tabs">{(pageData?.filters ?? []).map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} type="button" onClick={() => setTab(item.id)}>{item.label}</button>)}</div><ModuleSearch value={search} placeholder={pageData?.searchPlaceholder ?? "搜索后端返回的任务"} onChange={setSearch} /></>}
       metrics={<>{(pageData?.metrics ?? []).map((metric) => <MetricTile key={metric.label} icon={overviewMetricIconForTask(metric.icon)} label={metric.label} value={metric.value} tone={metric.tone} />)}</>}
-      side={selected && (
-        <DetailDrawer title={selected.title} subtitle={`${selected.type} · ${selected.target}`} onClose={() => setSelected(null)} autoFocus={false}>
+    >
+      {selected && (
+        <DetailDrawer title={selected.title} subtitle={`${selected.type} · ${selected.target}`} onClose={() => setSelected(null)} className="task-log-modal" modal>
           <div className="detail-kv">
             <p><span>状态</span><b><StatusLight tone={taskTone(selected.status)} /> {selected.status}</b></p>
             <p><span>优先级</span><b>{selected.priority}</b></p>
@@ -3252,11 +3253,10 @@ function OverviewTasksPage({ notify }: { notify: Notify }) {
           </div>
           <div className="overview-event-log">
             <strong>执行日志</strong>
-            {selected.logs.map((log, index) => <p key={log}><span>{index + 1}</span>{log}</p>)}
+            {selected.logs.map((log, index) => <p key={`${selected.id}-${index}-${log}`}><span>{index + 1}</span>{log}</p>)}
           </div>
         </DetailDrawer>
       )}
-    >
       <DataTable
         columns={[
           { key: "type", label: "类型", width: "90px", render: (row) => <span className="pill blue">{row.type}</span> },

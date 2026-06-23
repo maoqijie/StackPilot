@@ -2961,6 +2961,22 @@ a {
   animation: health-modal-in 180ms cubic-bezier(0.2, 0, 0, 1);
 }
 
+.detail-drawer.task-log-modal {
+  position: fixed;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  z-index: 150;
+  width: min(680px, calc(100vw - 36px));
+  max-height: min(78vh, 680px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  box-shadow: 0 28px 70px rgb(15 36 52 / 26%);
+  transform: translate(-50%, -50%);
+  animation: health-modal-in 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+
 .drawer-scrim.health-node-modal-scrim {
   position: fixed;
   inset: 0;
@@ -2970,7 +2986,24 @@ a {
   animation: health-scrim-in 160ms ease-out;
 }
 
+.drawer-scrim.task-log-modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 149;
+  display: block;
+  background: rgb(6 18 28 / 26%);
+  animation: health-scrim-in 160ms ease-out;
+}
+
 .detail-drawer.health-node-modal .drawer-body {
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  padding-bottom: 16px;
+  overflow: auto;
+}
+
+.detail-drawer.task-log-modal .drawer-body {
   min-height: 0;
   height: auto;
   max-height: none;
