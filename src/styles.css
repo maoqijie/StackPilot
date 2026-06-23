@@ -2611,6 +2611,31 @@ a {
   font-size: 12px;
 }
 
+.module-page-overview-tasks .module-table {
+  width: 100%;
+  min-width: 1129px;
+}
+
+.module-page-overview-tasks .module-table thead {
+  display: table-header-group;
+  width: auto;
+  min-width: 0;
+}
+
+.module-page-overview-tasks .module-table tbody {
+  display: table-row-group;
+  width: auto;
+  min-width: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+.module-page-overview-tasks .module-table tr {
+  display: table-row;
+  width: auto;
+  min-width: 0;
+}
+
 .health-workspace {
   min-width: 0;
   min-height: 0;
