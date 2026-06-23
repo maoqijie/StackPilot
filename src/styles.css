@@ -2724,6 +2724,78 @@ a {
   justify-content: flex-start;
 }
 
+.module-page-overview-risks .module-layout {
+  height: auto;
+  min-height: 0;
+}
+
+.module-page-overview-risks .module-main {
+  grid-template-rows: auto auto auto auto;
+  align-content: start;
+}
+
+.module-page-overview-risks .module-table-wrap {
+  align-self: start;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.module-page-overview-risks .module-table {
+  width: 100%;
+  min-width: 1125px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.module-page-overview-risks .module-table thead {
+  display: table-header-group;
+  width: auto;
+  min-width: 0;
+  color: #41586b;
+  background: #f1f7fb;
+}
+
+.module-page-overview-risks .module-table tbody {
+  display: table-row-group;
+  width: auto;
+  min-width: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+.module-page-overview-risks .module-table tr {
+  display: table-row;
+  width: auto;
+  min-width: 0;
+}
+
+.module-page-overview-risks .module-table th {
+  height: 38px;
+  border-bottom: 1px solid #d9e8f2;
+  color: #40586b;
+  background: #f1f7fb;
+  font-size: 11px;
+  letter-spacing: 0;
+  box-shadow: inset 0 -1px 0 #d9e8f2;
+}
+
+.module-page-overview-risks .module-table th:last-child {
+  background: #f1f7fb;
+  box-shadow: inset 1px 0 0 #d9e8f2, inset 0 -1px 0 #d9e8f2;
+}
+
+.module-page-overview-risks .module-table td {
+  height: 45px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.module-page-overview-risks .detail-drawer {
+  align-self: start;
+}
+
 .health-workspace {
   min-width: 0;
   min-height: 0;
