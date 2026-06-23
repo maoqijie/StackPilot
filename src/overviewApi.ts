@@ -17,15 +17,25 @@ export type OverviewNode = {
   env: string;
   status: "健康" | "警告" | "维护";
   latency: string;
+  latencyStatus: "健康" | "警告";
   cpu: string;
   memory: string;
   disk: string;
   version: string;
   uptime: string;
   backup: string;
+  backupStatus: "健康" | "警告";
   update: string;
   owner: string;
-  services: string[];
+  services: OverviewService[];
+};
+
+export type OverviewService = {
+  id: string;
+  name: string;
+  target: string;
+  status: "健康" | "警告" | "离线";
+  detail: string;
 };
 
 export type OverviewTaskRecord = {
