@@ -14,11 +14,13 @@ export default defineConfig({
     __APP_REPOSITORY_URL__: JSON.stringify("https://github.com/maoqijie/StackPilot"),
   },
   server: {
+    host: "127.0.0.1",
     proxy: {
       "/api": apiProxy,
     },
   },
   preview: {
+    host: "127.0.0.1",
     proxy: {
       "/api": apiProxy,
     },
