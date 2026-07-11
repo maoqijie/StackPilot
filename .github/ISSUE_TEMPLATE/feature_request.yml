@@ -1,0 +1,36 @@
+name: Feature request
+description: Propose a focused improvement to StackPilot
+title: "[Feature]: "
+body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Preflight checks
+      options:
+        - label: I searched existing issues for a similar proposal.
+          required: true
+        - label: This proposal does not contain confidential infrastructure or security details.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the user or operational problem, not only a preferred implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Explain the expected behavior and who benefits.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and compatibility impact
+      description: Note any effect on authentication, host commands, stored data, APIs, or supported platforms.

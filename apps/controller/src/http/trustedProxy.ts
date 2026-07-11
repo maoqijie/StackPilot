@@ -1,0 +1,8 @@
+import { BlockList, isIP } from "node:net";
+import type { IncomingMessage } from "node:http";
+
+function normalize(address:string){return address.startsWith("::ffff:")?address.slice(7):address;}
+function list(entries:readonly string[]){const result=new BlockList();for(const entry of entries){const [address,prefix]=entry.split("/");const family=isIP(address??"")==6?"ipv6":"ipv4";if(prefix===undefined)result.addAddress(address!,family);else result.addSubnet(address!,Number(prefix),family);}return result;}
+export function trustedProxyRequest(request:IncomingMessage,entries:readonly string[]):boolean{const address=normalize(request.socket.remoteAddress??"");return Boolean(address)&&list(entries).check(address,isIP(address)===6?"ipv6":"ipv4");}
+export function requestSource(request:IncomingMessage,entries:readonly string[]):string{if(!trustedProxyRequest(request,entries))return normalize(request.socket.remoteAddress??"unknown");const forwarded=request.headers.forwarded;if(typeof forwarded==="string"){const match=forwarded.match(/(?:^|;)\s*for=(?:"?\[?)([^;\],"]+)/i);if(match?.[1])return match[1];}const xff=request.headers["x-forwarded-for"];return typeof xff==="string"?(xff.split(",")[0]?.trim()||"unknown"):normalize(request.socket.remoteAddress??"unknown");}
+export function requestProtocol(request:IncomingMessage,entries:readonly string[]):"http"|"https"{if("encrypted" in request.socket&&request.socket.encrypted===true)return"https";if(trustedProxyRequest(request,entries)){const forwarded=request.headers.forwarded;if(typeof forwarded==="string"&&/proto=https/i.test(forwarded))return"https";if(request.headers["x-forwarded-proto"]==="https")return"https";}return"http";}

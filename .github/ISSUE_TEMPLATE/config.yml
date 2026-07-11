@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/maoqijie/StackPilot/security
+    about: Review SECURITY.md and use GitHub Private Vulnerability Reporting. Do not disclose sensitive vulnerabilities publicly.

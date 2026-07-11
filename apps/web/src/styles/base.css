@@ -1,0 +1,147 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+  background: var(--canvas);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+input {
+  min-width: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button,
+[role="button"],
+input {
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease;
+}
+
+button:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible {
+  outline: 2px solid rgb(10 152 213 / 42%);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.shot-canvas {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.shot-canvas.mobile-canvas {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  height: 100dvh;
+  min-height: 100dvh;
+  background: #f7fafc;
+}
+
+.app-interaction-layer {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+}
+
+.session-lock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  padding: 20px;
+  display: grid;
+  place-items: center;
+  background: rgb(8 18 28 / 58%);
+  backdrop-filter: blur(8px);
+}
+
+.session-lock-overlay > div {
+  width: min(390px, 100%);
+  padding: 22px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  color: #203244;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 22%);
+}
+
+.session-lock-overlay svg {
+  color: #0a98d5;
+}
+
+.session-lock-overlay span {
+  color: #0b8fcc;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.session-lock-overlay h2,
+.session-lock-overlay p {
+  margin: 0;
+}
+
+.session-lock-overlay h2 {
+  color: #111827;
+  font-size: 22px;
+}
+
+.session-lock-overlay p {
+  color: #637789;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
