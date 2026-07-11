@@ -1,0 +1,102 @@
+import assert from "node:assert/strict";
+import { createHash, generateKeyPairSync, randomBytes, sign } from "node:crypto";
+import test from "node:test";
+import { AGENT_PROTOCOL_VERSION, agentSignaturePayload } from "@stackpilot/contracts";
+import { EnrollmentService } from "../../apps/controller/dist/modules/enrollments/enrollmentService.js";
+import { NodeService } from "../../apps/controller/dist/modules/nodes/nodeService.js";
+import { RemoteTaskService, transitionTask } from "../../apps/controller/dist/modules/remote-tasks/remoteTaskService.js";
+import { MemoryAgentControlRepository } from "../../apps/controller/dist/repositories/agentControlRepository.js";
+
+function keys() { const pair = generateKeyPairSync("ed25519"); return { privateKey: pair.privateKey.export({ type: "pkcs8", format: "pem" }).toString(), publicKey: pair.publicKey.export({ type: "spki", format: "pem" }).toString() }; }
+async function enrolledFixture() {
+  const repository = new MemoryAgentControlRepository(); const enrollments = new EnrollmentService(repository); const pair = keys();
+  const created = await enrollments.create({ nodeName: "node-a", expiresInSeconds: 300 }, "admin", crypto.randomUUID());
+  const enrolled = await enrollments.enroll({ enrollmentToken: created.token, nodeName: "node-a", publicKey: pair.publicKey, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, platform: "linux", capabilities: ["system.summary.read", "service.status.read"] }, crypto.randomUUID());
+  return { repository, enrollments, pair, created, enrolled, nodes: new NodeService(repository, 10), tasks: new RemoteTaskService(repository, 2) };
+}
+
+test("enrollment token is purpose-bound, single-use, expiring and revocable", async () => {
+  const fixture = await enrolledFixture();
+  await assert.rejects(() => fixture.enrollments.enroll({ enrollmentToken: fixture.created.token, nodeName: "node-a", publicKey: keys().publicKey, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, platform: "linux", capabilities: [] }, crypto.randomUUID()), (error) => error.status === 401);
+  const other = await fixture.enrollments.create({ nodeName: "node-b", expiresInSeconds: 300 }, "admin", crypto.randomUUID()); await fixture.enrollments.revoke(other.enrollmentId, "admin", crypto.randomUUID());
+  await assert.rejects(() => fixture.enrollments.enroll({ enrollmentToken: other.token, nodeName: "node-b", publicKey: keys().publicKey, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, platform: "linux", capabilities: [] }, crypto.randomUUID()), (error) => error.status === 401);
+  const state = await fixture.repository.read(); assert.ok(state.enrollments.every((item) => !Object.hasOwn(item, "token")));
+  const expired = await fixture.enrollments.create({ nodeName: "expired", expiresInSeconds: 60 }, "admin", crypto.randomUUID());
+  await fixture.repository.update((next) => { next.enrollments.find((item) => item.enrollmentId === expired.enrollmentId).expiresAt = new Date(Date.now() - 1).toISOString(); });
+  await assert.rejects(() => fixture.enrollments.enroll({ enrollmentToken: expired.token, nodeName: "expired", publicKey: keys().publicKey, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, platform: "linux", capabilities: [] }, crypto.randomUUID()), (error) => error.status === 401);
+});
+
+test("signed identity rejects forged, replayed, stale and incompatible requests", async () => {
+  const fixture = await enrolledFixture(); const body = Buffer.from("{}");
+  const input = { protocolVersion: AGENT_PROTOCOL_VERSION, nodeId: fixture.enrolled.nodeId, credentialId: fixture.enrolled.credentialId, method: "POST", path: "/api/agent/heartbeat", timestamp: new Date().toISOString(), nonce: randomBytes(18).toString("base64url"), bodySha256: createHash("sha256").update(body).digest("hex") };
+  const signed = { ...input, signature: sign(null, Buffer.from(agentSignaturePayload(input)), fixture.pair.privateKey).toString("base64url") };
+  assert.equal((await fixture.nodes.authenticate(signed)).nodeId, fixture.enrolled.nodeId);
+  await assert.rejects(() => fixture.nodes.authenticate(signed), /重放/);
+  await assert.rejects(() => fixture.nodes.authenticate({ ...signed, nonce: randomBytes(18).toString("base64url"), signature: sign(null, Buffer.from("forged"), fixture.pair.privateKey).toString("base64url") }), (error) => error.status === 401);
+  await assert.rejects(() => fixture.nodes.authenticate({ ...signed, protocolVersion: "2.0", nonce: randomBytes(18).toString("base64url") }), /不兼容/);
+  await assert.rejects(() => fixture.nodes.authenticate({ ...signed, timestamp: new Date(Date.now() - 600_000).toISOString(), nonce: randomBytes(18).toString("base64url") }), /时间/);
+});
+
+test("heartbeat controls online/offline lifecycle and node revocation rejects identity", async () => {
+  const fixture = await enrolledFixture();
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID());
+  assert.equal((await fixture.nodes.list())[0].status, "online"); await new Promise((resolve) => setTimeout(resolve, 15)); assert.equal((await fixture.nodes.list())[0].status, "offline");
+  await fixture.nodes.revoke(fixture.enrolled.nodeId, "admin", crypto.randomUUID()); assert.equal((await fixture.nodes.list())[0].status, "revoked");
+});
+
+test("task state machine enforces capability, idempotency, expiry, cancellation and queue limit", async () => {
+  const fixture = await enrolledFixture(); await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read", "service.status.read"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID());
+  const input = { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "idempotent-summary-a" };
+  const first = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID()); const duplicate = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID()); assert.equal(duplicate.taskId, first.taskId);
+  const dispatched = await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID()); assert.equal(dispatched.length, 1);
+  await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: first.taskId, attempt: 1, status: "running", timestamp: new Date().toISOString() }, crypto.randomUUID());
+  assert.equal((await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: first.taskId, attempt: 1, status: "running", timestamp: new Date().toISOString() }, crypto.randomUUID())).status, "running");
+  await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: first.taskId, attempt: 1, status: "succeeded", timestamp: new Date().toISOString(), result: { message: "ok", truncated: false } }, crypto.randomUUID());
+  assert.equal((await fixture.tasks.list())[0].status, "succeeded");
+  const second = await fixture.tasks.create(fixture.enrolled.nodeId, { ...input, idempotencyKey: "idempotent-summary-b" }, "admin", crypto.randomUUID()); await fixture.tasks.cancel(second.taskId, "admin", "test", crypto.randomUUID()); assert.equal((await fixture.tasks.list()).find((item) => item.taskId === second.taskId).status, "cancelled");
+  const fake = structuredClone(first); fake.status = "succeeded"; assert.throws(() => transitionTask(fake, "running"));
+});
+
+test("credential rotation revokes the old credential", async () => {
+  const fixture = await enrolledFixture(); const replacement = keys(); const rotationId = crypto.randomUUID(); const rotated = await fixture.nodes.rotate(fixture.enrolled.nodeId, fixture.enrolled.credentialId, rotationId, replacement.publicKey, crypto.randomUUID());
+  const repeated = await fixture.nodes.rotate(fixture.enrolled.nodeId, fixture.enrolled.credentialId, rotationId, replacement.publicKey, crypto.randomUUID()); assert.deepEqual(repeated, rotated);
+  const state = await fixture.repository.read(); assert.ok(state.credentials.find((item) => item.credentialId === fixture.enrolled.credentialId).revokedAt); assert.equal(state.credentials.find((item) => item.credentialId === rotated.credentialId).publicKey, replacement.publicKey);
+});
+
+test("retry uses bounded attempts and rejects stale result delivery", async () => {
+  const fixture = await enrolledFixture(); await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID());
+  const created = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "retry-summary-once" }, "admin", crypto.randomUUID());
+  await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID());
+  await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: created.taskId, attempt: 1, status: "running", timestamp: new Date().toISOString() }, crypto.randomUUID());
+  const retry = await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: created.taskId, attempt: 1, status: "failed", timestamp: new Date().toISOString(), errorCode: "TRANSIENT" }, crypto.randomUUID());
+  assert.equal(retry.status, "queued"); assert.equal(retry.attempt, 1); assert.ok(retry.nextAttemptAt);
+  await assert.rejects(() => fixture.tasks.update(fixture.enrolled.nodeId, { taskId: created.taskId, attempt: 2, status: "succeeded", timestamp: new Date().toISOString(), result: { message: "stale", truncated: false } }, crypto.randomUUID()), /attempt/);
+});
+
+test("task results reject sensitive fields and oversized output", async () => {
+  const fixture = await enrolledFixture(); await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 1 } }, crypto.randomUUID());
+  const created = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "result-boundaries-1" }, "admin", crypto.randomUUID()); await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID());
+  await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: created.taskId, attempt: 1, status: "running", timestamp: new Date().toISOString() }, crypto.randomUUID());
+  await assert.rejects(() => fixture.tasks.update(fixture.enrolled.nodeId, { taskId: created.taskId, attempt: 1, status: "succeeded", timestamp: new Date().toISOString(), result: { message: "bad", truncated: false, data: { environment: "secret" } } }, crypto.randomUUID()), /禁止字段/);
+  await assert.rejects(() => fixture.tasks.update(fixture.enrolled.nodeId, { taskId: created.taskId, attempt: 1, status: "succeeded", timestamp: new Date().toISOString(), result: { message: "x".repeat(17_000), truncated: false } }, crypto.randomUUID()), /大小限制/);
+});
+
+test("Controller policy and Agent declaration are both required for a task", async () => {
+  const fixture = await enrolledFixture();
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 1 } }, crypto.randomUUID());
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "service.status.read", parameters: { serviceName: "sshd" }, expiresInSeconds: 60, idempotencyKey: "missing-agent-capability" }, "admin", crypto.randomUUID()), (error) => error.status === 403);
+  await fixture.repository.update((state) => { state.nodes[0].allowedCapabilities = []; });
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "missing-controller-policy" }, "admin", crypto.randomUUID()), (error) => error.status === 403);
+});
+
+test("task expiry, queue limits and audit redaction are persisted", async () => {
+  const fixture = await enrolledFixture(); await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 1 } }, crypto.randomUUID());
+  const first = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "expire-task-one" }, "admin", crypto.randomUUID());
+  await fixture.repository.update((state) => { state.tasks.find((item) => item.taskId === first.taskId).expiresAt = new Date(Date.now() - 1).toISOString(); state.audits.push({ eventId: crypto.randomUUID(), timestamp: new Date().toISOString(), requester: "test", nodeId: fixture.enrolled.nodeId, taskId: first.taskId, event: "redaction.test", taskType: "system.summary.read", parameters: { nested: { authorization: "Bearer secret", safe: "visible" } }, fromStatus: null, toStatus: null, resultSummary: "ok", traceId: crypto.randomUUID() }); });
+  assert.equal((await fixture.tasks.list()).find((item) => item.taskId === first.taskId).status, "expired");
+  await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "queue-task-one" }, "admin", crypto.randomUUID());
+  await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "queue-task-two" }, "admin", crypto.randomUUID());
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "queue-task-three" }, "admin", crypto.randomUUID()), /队列已满/);
+  const state = await fixture.repository.read(); assert.ok(state.audits.some((event) => event.event === "task.expired" && event.taskId === first.taskId));
+  const redacted = state.audits.find((event) => event.event === "redaction.test"); assert.equal(redacted.parameters.nested.authorization, "[REDACTED]"); assert.equal(redacted.parameters.nested.safe, "visible");
+});

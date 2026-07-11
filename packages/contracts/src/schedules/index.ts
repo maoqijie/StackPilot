@@ -1,0 +1,30 @@
+import { z } from "zod";
+import { ApiNoticeSchema } from "../common/index.js";
+
+const SafeLineSchema = z.string().trim().min(1).max(400).refine((value) => !/[\r\n]/.test(value), "不能包含换行");
+export const CronExpressionSchema = z.string().trim().refine((value) => {
+  const parts = value.split(/\s+/);
+  return parts.length === 5 && parts.every((part) => /^[\dA-Z*/?,-]+$/i.test(part));
+}, "cron 需要是 5 段表达式，例如 0 4 * * *");
+export const ScheduleJobSchema = z.object({
+  id: z.string(), name: z.string(), cron: z.string(), command: z.string(), enabled: z.boolean(),
+  nextRun: z.string(), lastRun: z.string(), result: z.enum(["成功", "失败", "未运行", "运行中"]),
+});
+export const SchedulePayloadSchema = z.object({ jobs: z.array(ScheduleJobSchema), scannedAt: z.string().optional() });
+export const CreateScheduleJobRequestSchema = z.object({
+  name: SafeLineSchema.max(160), cron: CronExpressionSchema, command: SafeLineSchema, enabled: z.boolean().optional(),
+}).strict();
+export const UpdateScheduleJobRequestSchema = z.object({
+  name: SafeLineSchema.max(160).optional(), cron: CronExpressionSchema.optional(), command: SafeLineSchema.optional(), enabled: z.boolean().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, "至少提供一个可更新字段");
+export const RunScheduleJobRequestSchema = z.object({ action: z.literal("run") }).strict();
+export const ScheduleNoticeSchema = ApiNoticeSchema;
+export const ScheduleMutationResponseSchema = ApiNoticeSchema.extend({ job: ScheduleJobSchema, jobs: z.array(ScheduleJobSchema) });
+
+export type ScheduleJob = z.infer<typeof ScheduleJobSchema>;
+export type SchedulePayload = z.infer<typeof SchedulePayloadSchema>;
+export type ScheduleNotice = z.infer<typeof ScheduleNoticeSchema>;
+export type ScheduleMutationResponse = z.infer<typeof ScheduleMutationResponseSchema>;
+export type CreateScheduleJobRequest = z.infer<typeof CreateScheduleJobRequestSchema>;
+export type UpdateScheduleJobRequest = z.infer<typeof UpdateScheduleJobRequestSchema>;
+export type RunScheduleJobRequest = z.infer<typeof RunScheduleJobRequestSchema>;

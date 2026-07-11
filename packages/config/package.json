@@ -1,0 +1,19 @@
+{
+  "name": "@stackpilot/config",
+  "private": true,
+  "version": "0.2.0-preview.2",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "types": "./src/index.d.ts",
+  "scripts": {
+    "build": "node --check src/index.js",
+    "lint": "eslint src",
+    "test": "node --test ../../tests/config/config.test.js"
+  }
+}
