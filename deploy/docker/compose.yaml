@@ -1,0 +1,120 @@
+name: stackpilot
+services:
+  web:
+    image: ghcr.io/maoqijie/stackpilot-web:${STACKPILOT_VERSION:-0.2.0-preview.1}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.web
+    depends_on:
+      controller:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=16m,uid=101,gid=101,mode=0700
+      - /var/run:size=1m,uid=101,gid=101,mode=0700
+    ports:
+      - "${STACKPILOT_HTTPS_BIND:-0.0.0.0}:443:8443"
+    volumes:
+      - type: bind
+        source: ${STACKPILOT_TLS_CERT_PATH:?Set STACKPILOT_TLS_CERT_PATH}
+        target: /run/secrets/web-tls.crt
+        read_only: true
+      - type: bind
+        source: ${STACKPILOT_TLS_KEY_PATH:?Set STACKPILOT_TLS_KEY_PATH}
+        target: /run/secrets/web-tls.key
+        read_only: true
+    networks: [edge, control]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 256M }
+  controller:
+    image: ghcr.io/maoqijie/stackpilot-controller:${STACKPILOT_VERSION:-0.2.0-preview.1}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.controller
+    expose: ["8787", "9443"]
+    ports:
+      - "${STACKPILOT_AGENT_BIND:-127.0.0.1}:9443:9443"
+    environment:
+      HOST: 0.0.0.0
+      STACKPILOT_AGENT_HOST: 0.0.0.0
+      STACKPILOT_MASTER_KEY_FILE: /run/secrets/controller-master-key
+      STACKPILOT_AGENT_TLS_CERT_PATH: /run/secrets/agent-tls.crt
+      STACKPILOT_AGENT_TLS_KEY_PATH: /run/secrets/agent-tls.key
+      STACKPILOT_ALLOWED_ORIGINS: ${STACKPILOT_PUBLIC_ORIGIN:?Set STACKPILOT_PUBLIC_ORIGIN}
+      STACKPILOT_TRUSTED_PROXIES: ${STACKPILOT_TRUSTED_PROXIES:-172.30.20.0/24}
+      STACKPILOT_COOKIE_SECURE: "1"
+      STACKPILOT_PRODUCTION: "1"
+    secrets:
+      - controller-master-key
+    volumes:
+      - controller-data:/var/lib/stackpilot
+      - type: bind
+        source: ${STACKPILOT_AGENT_TLS_CERT_PATH:?Set STACKPILOT_AGENT_TLS_CERT_PATH}
+        target: /run/secrets/agent-tls.crt
+        read_only: true
+      - type: bind
+        source: ${STACKPILOT_AGENT_TLS_KEY_PATH:?Set STACKPILOT_AGENT_TLS_KEY_PATH}
+        target: /run/secrets/agent-tls.key
+        read_only: true
+    networks: [control]
+    read_only: true
+    tmpfs: [/tmp:size=16m,uid=10001,gid=10001,mode=0700]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    init: true
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 1G }
+  agent:
+    profiles: ["agent"]
+    image: ghcr.io/maoqijie/stackpilot-agent:${STACKPILOT_VERSION:-0.2.0-preview.1}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.agent
+    environment:
+      STACKPILOT_CONTROLLER_URL: https://controller:9443
+      STACKPILOT_AGENT_CA_PATH: /run/secrets/controller-agent-ca
+      STACKPILOT_AGENT_ENROLLMENT_TOKEN_FILE: /run/secrets/agent-enrollment-token
+      STACKPILOT_AGENT_NAME: ${STACKPILOT_AGENT_NAME:-stackpilot-agent}
+      STACKPILOT_AGENT_ALLOW_ROOT: "0"
+    secrets:
+      - controller-agent-ca
+      - agent-enrollment-token
+    volumes:
+      - agent-state:/var/lib/stackpilot-agent
+    networks: [control]
+    read_only: true
+    tmpfs: [/tmp:size=8m,uid=10002,gid=10002,mode=0700]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    init: true
+    restart: unless-stopped
+    depends_on:
+      controller:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 256M }
+secrets:
+  controller-master-key:
+    file: ${STACKPILOT_MASTER_KEY_PATH:?Set STACKPILOT_MASTER_KEY_PATH}
+  controller-agent-ca:
+    file: ${STACKPILOT_AGENT_CA_PATH:-/dev/null}
+  agent-enrollment-token:
+    file: ${STACKPILOT_AGENT_ENROLLMENT_TOKEN_PATH:-/dev/null}
+volumes:
+  controller-data: {}
+  agent-state: {}
+networks:
+  edge:
+    ipam:
+      config: [{ subnet: 172.30.10.0/24 }]
+  control:
+    internal: true
+    ipam:
+      config: [{ subnet: 172.30.20.0/24 }]

@@ -1,0 +1,111 @@
+import {
+  CreateScheduleJobRequestSchema, EmptyObjectSchema, HealthResponseSchema, OverviewHealthPayloadSchema,
+  OverviewCheckUpdatesResponseSchema, OverviewHealthRefreshResponseSchema, OverviewNodeMutationResponseSchema,
+  OverviewRisksPayloadSchema, OverviewRisksScanResponseSchema, OverviewSummaryPayloadSchema,
+  OverviewTaskMutationResponseSchema, OverviewTasksPayloadSchema, OverviewTasksRefreshResponseSchema, PathIdSchema,
+  ReadinessResponseSchema, RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
+  ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
+} from "@stackpilot/contracts";
+import type { RequestContext } from "./types.js";
+import { ApiNoticeSchema } from "@stackpilot/contracts";
+import { ApiError, badRequest, forbidden, notFound } from "./errors/ApiError.js";
+import { sendJson } from "./response/json.js";
+import { parseSchema } from "./validation.js";
+import { routeControlPlaneRequest } from "./controlPlaneRouter.js";
+import { routeIdentityRequest } from "./identityRouter.js";
+
+function idAt(context: RequestContext, index: number) {
+  try {
+    return parseSchema(PathIdSchema, decodeURIComponent(context.parts[index] ?? ""), "路径参数");
+  } catch (error) {
+    if (error instanceof URIError) throw badRequest("路径参数编码无效");
+    throw error;
+  }
+}
+
+
+export async function routeRequest(context: RequestContext): Promise<void> {
+  const { request, response, parts, services } = context;
+  const method = request.method ?? "GET";
+  if (context.url.searchParams.size > 0) throw new ApiError(400, "BAD_REQUEST", "查询参数无效：当前接口不接受查询参数");
+
+  if (context.url.pathname === "/healthz" && method === "GET") {
+    sendJson(response, 200, { ok: true, service: "stackpilot-api", time: new Date().toLocaleString("zh-CN", { hour12: false }) }, HealthResponseSchema);
+    return;
+  }
+  if (context.url.pathname === "/readyz" && method === "GET") {
+    const ready = await context.platform.readiness();
+    sendJson(response, ready ? 200 : 503, { ready, service: "stackpilot-api" }, ReadinessResponseSchema);
+    return;
+  }
+  if (parts[0] === "api" && ["auth", "tokens", "roles", "users", "audit"].includes(parts[1] ?? "")) { await routeIdentityRequest(context); return; }
+  if (parts[0] === "api" && ["enrollments", "nodes", "remote-tasks"].includes(parts[1] ?? "")) {
+    await routeControlPlaneRequest(context); return;
+  }
+  if (parts[0] !== "api" || parts[1] !== "overview") throw notFound();
+  context.identity?.require(context.principal, "overview:read");
+
+  if (parts.length === 2 && method === "GET") {
+    sendJson(response, 200, await services.overview.getOverview(), OverviewSummaryPayloadSchema); return;
+  }
+  if (parts[2] === "refresh" && parts.length === 3 && method === "POST") {
+    parseSchema(EmptyObjectSchema, context.body, "请求体");
+    sendJson(response, 200, await services.overview.getOverview(), OverviewSummaryPayloadSchema); return;
+  }
+  if (parts[2] === "cluster" && parts.length === 3 && method === "POST") {
+    parseSchema(EmptyObjectSchema, context.body, "请求体");
+    sendJson(response, 200, await services.overview.getOverview(), OverviewSummaryPayloadSchema); return;
+  }
+  if (parts[2] === "check-updates" && parts.length === 3 && method === "POST") {
+    parseSchema(EmptyObjectSchema, context.body, "请求体");
+    const overview = await services.overview.getOverview();
+    sendJson(response, 200, { message: `检查完成：${overview.cluster.pendingUpdates} 个待处理项`, tone: overview.cluster.pendingUpdates ? "warning" : "success", overview }, OverviewCheckUpdatesResponseSchema); return;
+  }
+  if (parts[2] === "health") { await routeHealth(context); return; }
+  if (parts[2] === "tasks") { await routeTasks(context); return; }
+  if (parts[2] === "risks") { await routeRisks(context); return; }
+  if (parts[2] === "current-user-crontab") { await routeSchedules(context); return; }
+  throw notFound("总览接口不存在");
+}
+
+async function routeHealth(context: RequestContext) {
+  const { request, response, parts, services } = context; const method = request.method;
+  if (parts.length === 3 && method === "GET") { const overview = await services.overview.getOverview(); sendJson(response, 200, { nodes: overview.nodes, lastRefresh: overview.lastRefresh }, OverviewHealthPayloadSchema); return; }
+  if (parts[3] === "refresh" && parts.length === 4 && method === "POST") { parseSchema(EmptyObjectSchema, context.body, "请求体"); const overview = await services.overview.getOverview(); sendJson(response, 200, { nodes: overview.nodes, lastRefresh: overview.lastRefresh }, OverviewHealthPayloadSchema); return; }
+  if (parts[3] === "nodes" && parts.length === 4 && method === "POST") { context.identity?.require(context.principal,"overview:operate"); parseSchema(EmptyObjectSchema, context.body, "请求体"); const overview = await services.overview.getOverview(); sendJson(response, 200, { nodes: overview.nodes, lastRefresh: overview.lastRefresh, message: "已刷新真实本机节点；远程 Agent 通过受保护节点 API管理", tone: "info" }, OverviewHealthRefreshResponseSchema); return; }
+  if (parts[3] === "nodes" && parts.length === 5 && method === "PATCH") { context.identity?.require(context.principal,"overview:operate"); parseSchema(EmptyObjectSchema, context.body, "请求体"); const id = idAt(context, 4); if (id !== context.platform.nodeId) throw notFound("节点不存在"); const overview = await services.overview.getOverview(); const node = overview.nodes[0]; if (!node) throw notFound("节点不存在"); sendJson(response, 200, { node, message: "已重新采集真实本机节点状态", tone: "info" }, OverviewNodeMutationResponseSchema); return; }
+  if (parts[3] === "nodes" && parts[5] === "restart" && parts.length === 6 && method === "POST") { context.identity?.require(context.principal,"overview:operate"); parseSchema(EmptyObjectSchema, context.body, "请求体"); const id = idAt(context, 4); if (id !== context.platform.nodeId) throw notFound("节点不存在"); const result = await context.platform.restartNode(); if (!result.ok) throw new ApiError(result.status, result.status < 500 ? "BAD_REQUEST" : "INTERNAL_ERROR", result.status < 500 ? result.message : "服务内部错误"); sendJson(response, 200, { message: result.message, tone: "success" }, ApiNoticeSchema); return; }
+  throw notFound("集群状态接口不存在");
+}
+
+async function routeTasks(context: RequestContext) {
+  const { request, response, parts, services } = context; const method = request.method;
+  if (parts.length === 3 && method === "GET") { sendJson(response, 200, await services.tasks.list(), OverviewTasksPayloadSchema); return; }
+  if (method !== "GET") context.identity?.require(context.principal,"overview:operate");
+  if (parts.length === 3 && method === "POST") { parseSchema(EmptyObjectSchema, context.body, "请求体"); const payload = await services.tasks.refresh(); sendJson(response, 200, { ...payload, message: "已重新采集真实任务流", tone: "info" }, OverviewTasksRefreshResponseSchema); return; }
+  if (parts[3] === "export" && parts.length === 4 && method === "POST") { parseSchema(EmptyObjectSchema, context.body, "请求体"); await services.tasks.export(); sendJson(response, 200, { message: "任务流已导出", tone: "success" }, ApiNoticeSchema); return; }
+  if (parts.length === 4 && method === "PATCH") { parseSchema(RunOverviewTaskRequestSchema, context.body, "请求体"); const payload = await services.tasks.run(idAt(context, 3)); sendJson(response, 200, { ...payload, message: `${payload.task.title} 已完成真实检查`, tone: payload.task.status === "成功" ? "success" : "warning" }, OverviewTaskMutationResponseSchema); return; }
+  throw notFound("任务流接口不存在");
+}
+
+async function routeRisks(context: RequestContext) {
+  const { request, response, parts, services } = context; const method = request.method;
+  if (parts.length === 3 && method === "GET") { sendJson(response, 200, await services.risks.list(), OverviewRisksPayloadSchema); return; }
+  if (method !== "GET") context.identity?.require(context.principal,"overview:operate");
+  if (parts.length === 3 && method === "POST") { parseSchema(EmptyObjectSchema, context.body, "请求体"); throw new ApiError(501, "NOT_IMPLEMENTED", "真实风险创建尚未配置风险扫描器写入接口"); }
+  if (parts[3] === "scan" && parts.length === 4 && method === "POST") { parseSchema(EmptyObjectSchema, context.body, "请求体"); const payload = await services.risks.scan(); sendJson(response, 200, { ...payload, message: "已触发风险重新扫描", tone: "info" }, OverviewRisksScanResponseSchema); return; }
+  if (parts[3] === "export" && parts.length === 4 && method === "POST") { parseSchema(EmptyObjectSchema, context.body, "请求体"); await services.risks.export(); sendJson(response, 200, { message: "风险报告已导出", tone: "success" }, ApiNoticeSchema); return; }
+  if (parts.length === 4 && method === "PATCH") { parseSchema(EmptyObjectSchema, context.body, "请求体"); throw new ApiError(501, "NOT_IMPLEMENTED", "真实风险处置器尚未配置，未修改风险状态"); }
+  throw notFound("风险中心接口不存在");
+}
+
+async function routeSchedules(context: RequestContext) {
+  const { request, response, parts, services, config } = context; const method = request.method;
+  context.identity?.require(context.principal,method === "GET" ? "schedules:read" : "schedules:write");
+  if (parts.length === 3 && method === "GET") { sendJson(response, 200, await services.schedules.list(), SchedulePayloadSchema); return; }
+  if (["POST", "PATCH", "DELETE"].includes(method ?? "") && !config.crontabWriteEnabled) throw forbidden("crontab 写入与立即执行能力未开启");
+  if (parts.length === 3 && method === "POST") { const payload = parseSchema(CreateScheduleJobRequestSchema, context.body, "请求体"); const result = await services.schedules.create(payload); sendJson(response, 201, { ...result, message: `${result.job.name} 已写入当前用户 crontab`, tone: "success" }, ScheduleMutationResponseSchema); return; }
+  if (parts.length === 4 && method === "PATCH") { const id = idAt(context, 3); const run = RunScheduleJobRequestSchema.safeParse(context.body); const result = run.success ? await services.schedules.run(id) : await services.schedules.update(id, parseSchema(UpdateScheduleJobRequestSchema, context.body, "请求体")); sendJson(response, 200, { ...result, message: `${result.job.name} ${run.success ? "已立即执行" : "已保存到当前用户 crontab"}`, tone: result.job.result === "失败" ? "warning" : "success" }, ScheduleMutationResponseSchema); return; }
+  if (parts.length === 4 && method === "DELETE") { parseSchema(EmptyObjectSchema, context.body, "请求体"); const result = await services.schedules.delete(idAt(context, 3)); sendJson(response, 200, { ...result, message: `${result.job.name} 已从当前用户 crontab 删除`, tone: "warning" }, ScheduleMutationResponseSchema); return; }
+  throw notFound("定时任务接口不存在");
+}

@@ -1,0 +1,49 @@
+# Controller-Agent Threat Model
+
+Status: protocol design for StackPilot `0.2.0-preview.2`. This document is normative for the initial Controller-Agent implementation. The feature remains preview quality and is not a stable release.
+
+## Scope and assets
+
+The system has three trust domains: the Controller, each independently operated Agent host, and the network between them. Assets include enrollment tokens, Agent private keys, Controller TLS private keys, node identity and revocation state, task intent, task results, audit events, and host metadata. Browser sessions and user API tokens are not Agent credentials and cannot authenticate an Agent.
+
+The Controller is trusted to define node policy and task intent. An Agent is trusted only for the host on which its private key is installed. Agent-reported health and results are observations, not authorization facts. Source IP, `Host`, `Origin`, and `X-Forwarded-*` are never identities.
+
+## Protocol security decisions
+
+- Agent traffic uses HTTPS with normal certificate-chain and hostname verification. Agent endpoints reject plaintext HTTP. Development certificates use a local CA that must be explicitly trusted; `rejectUnauthorized: false`, `NODE_TLS_REJECT_UNAUTHORIZED=0`, and equivalent bypasses are prohibited.
+- Mutual identity uses verified Controller TLS plus per-node Ed25519 request signatures. The Agent creates its private key locally and sends only its public key during enrollment. This is application-layer mutual authentication equivalent to client-certificate authentication for this protocol.
+- Signed requests cover protocol version, node ID, credential ID, HTTP method, path including query, timestamp, one-use nonce, and SHA-256 body digest. The Controller checks the signature, a five-minute clock window, revocation state, and persisted nonce uniqueness.
+- Enrollment credentials are random, purpose-limited, expire within minutes, are stored only as SHA-256 digests, are single-use, and can be revoked before use. They never become long-term Agent credentials.
+- Every node has a distinct credential. Rotation requires a request signed by the current credential and installs a new Agent-generated public key while revoking the old credential. Node revocation rejects current and future signed requests until a new administrator-approved enrollment.
+- Protocol compatibility is explicit. This implementation accepts protocol major `1` only. Minor additions must remain backward compatible; incompatible changes require a new major version and are rejected before processing.
+- Remote tasks are discriminated schemas in a closed registry. The initial registry contains only `system.summary.read` and `service.status.read`. No `run-shell`, `exec`, `command`, script-body, or dynamic executable-path field exists.
+- Controller task policy is independent of Agent claims. A task must be allowed by the Controller policy and present in the most recent Agent capability declaration. Agent execution repeats type, target, parameter, expiry, platform, and capability checks.
+
+## Threats and controls
+
+| Threat | Security controls | Residual risk |
+| --- | --- | --- |
+| Forged Agent registration | 256-bit random enrollment token; digest-only storage; explicit `agent-enrollment` purpose; short expiry; single use; revocation; TLS-only submission; public-key and schema validation. | Anyone who steals an unused token before expiry can enroll once. Operators must transmit it through a separate protected channel. |
+| Controller or node credential leakage | Per-node Ed25519 keys; private key generated and stored only on the Agent with owner-only permissions; Controller stores public keys only; secrets recursively redacted; no credential in Web or ordinary checked-in config. | Host compromise can use that node's key until revocation. It does not impersonate other nodes. Controller TLS-key compromise enables interception until certificate replacement. |
+| Request replay or duplicate task execution | Signed timestamp and nonce; persisted nonce ledger; body digest; task TTL; idempotency key uniqueness per node; Agent execution receipt persisted before execution; terminal tasks are never re-executed. | A crash exactly between an irreversible external side effect and receipt persistence would require handler-specific reconciliation. Initial read-only tasks have no such side effect. |
+| Man-in-the-middle attack | TLS chain and hostname validation is mandatory; local CA explicitly trusted; request signatures bind message content; no long-term credential over plaintext. | A compromised trusted CA can impersonate the Controller. Certificate pinning is not implemented in this step. |
+| Malicious or compromised Agent falsifies state | Agent reports are schema-checked and attributed to its node identity; capabilities are not authorization; Controller records last-seen and audit history; results are treated as reported observations. | Controller cannot independently prove host telemetry without hardware attestation, which is out of scope. |
+| Compromised Controller sends dangerous work to all nodes | Closed, read-only task registry; server-side node/task policy; no generic shell; per-node target and capability checks; short TTL; queue limit; audit events; cancellation. | A compromised Controller can request allowed read-only data from every connected node. Future mutating handlers require separate threat review and explicit feature flags. |
+| Task parameter injection or privilege escalation | Zod strict schemas; fixed executable and argument arrays; service names restricted to a conservative identifier grammar; executable path never supplied by a caller; Agent runs as a non-root account; no broad sudo requirement. | Platform tools may expose metadata readable by the Agent account. Output redaction and size limits reduce disclosure. |
+| Agent logs or errors leak secrets | Structured recursive redaction for authorization, token, key, secret, cookie, environment, stdout, and stderr fields; bounded safe result summaries; API errors omit stacks and internal paths. | Novel sensitive field names may evade key-name redaction, so handlers must return purpose-built summaries rather than raw configuration. |
+| Offline node, network partition, or incompatible version | Heartbeat timestamps drive online/offline status; finite queue and task TTL; exponential backoff with jitter; only queued/dispatched recoverable tasks resume; running task receipts prevent blind replay; incompatible major versions receive a stable error. | Long partitions may expire tasks. Clock skew beyond the signed-request window blocks the Agent until time is corrected. |
+| Credential rotation or revocation fails | Credential records have explicit active/revoked state; old credential atomically revoked during rotation; every request rechecks repository state; node revocation cascades to active credentials and queued work; audit trail records changes. | A filesystem rollback could restore old state. Tamper-evident/database-backed persistence belongs to Step 7. |
+
+## Task and lifecycle controls
+
+Task states are `queued`, `dispatched`, `running`, `succeeded`, `failed`, `cancelled`, and `expired`. Allowed transitions are explicit and enforced by the Controller. Cancellation is cooperative after dispatch. Initial tasks are read-only and may be retried at most twice after transport failure with exponential backoff; an Agent never automatically reruns a task for which it has a persisted running or terminal receipt.
+
+The Controller limits outstanding tasks per node and expires stale work before dispatch. Reconnected Agents receive only non-expired queued tasks. A stale `running` task is reported for reconciliation and is not blindly dispatched again. Results contain a bounded structured summary, never raw environment variables or full command output.
+
+## Privilege model
+
+The Agent must run as a dedicated non-root operating-system user. The initial handlers require no root privileges and no sudo configuration. The process refuses to start as UID 0 unless the explicit development-only `STACKPILOT_AGENT_ALLOW_ROOT=1` override is set; that override is not a production recommendation. Any future privileged helper or sudoers entry requires a separate review, a fixed operation vocabulary, fixed executable paths, and a minimal argument grammar.
+
+## Persistence after Step 7
+
+Controller state now uses SQLite transactions, foreign keys, migrations and an online backup flow. The former owner-only JSON state is imported only by the explicit, idempotent `db:import-legacy` command; the source remains unchanged. User authorization uses explicit permissions and node scopes. Security-relevant HTTP and Controller-Agent events are appended to an HMAC-SHA-256 audit chain guarded against ordinary update/delete by database triggers. The audit key is random and encrypted by the environment-provided master key. This does not provide multi-controller consensus, hardware-backed keys, or protection after full Controller host compromise.

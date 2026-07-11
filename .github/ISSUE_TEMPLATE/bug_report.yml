@@ -1,0 +1,67 @@
+name: Bug report
+description: Report a reproducible defect in StackPilot
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report vulnerabilities here. Use the private process in SECURITY.md.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Preflight checks
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true
+        - label: This report does not contain tokens, private keys, private host data, or vulnerability details.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Provide the package version and preferably the Git commit.
+      placeholder: 0.1.0 / commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node.js and npm versions
+      placeholder: Node.js 22.x, npm 10.x
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest repeatable sequence. Redact secrets and private system data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Additional evidence
+      description: Sanitized logs, screenshots, or other context. Do not include credentials or sensitive command output.

@@ -1,0 +1,251 @@
+import { fetchOverview } from "../../api/overviewApi";
+import type { OverviewSummaryPayload } from "../../api/overviewApi";
+import { Lock } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { desktopTopbarChrome, navPageFor } from "../../app/navigation";
+import { lockedRouteForPage } from "../../app/routing";
+import { DesktopFooter } from "./DesktopFooter";
+import { Sidebar } from "./Sidebar";
+import { TopBar } from "./TopBar";
+import { SettingsProxyPage } from "../../features/settings/SettingsProxyPage";
+import { AclPage } from "../../pages/AclPage";
+import { AuditPage } from "../../pages/AuditPage";
+import { DatabaseBackupsPage } from "../../pages/DatabaseBackupsPage";
+import { DatabaseSlowQueriesPage } from "../../pages/DatabaseSlowQueriesPage";
+import { DatabasesPage } from "../../pages/DatabasesPage";
+import { DeployPage } from "../../pages/DeployPage";
+import { FilesModule } from "../../pages/FilesPages";
+import { FirewallPage } from "../../pages/FirewallPage";
+import { HostsPage } from "../../pages/HostsPage";
+import { OverviewHealthPage } from "../../pages/OverviewHealthPage";
+import { OverviewPage } from "../../pages/OverviewPage";
+import { OverviewRisksPage } from "../../pages/OverviewRisksPage";
+import { OverviewTasksPage } from "../../pages/OverviewTasksPage";
+import { SchedulePage } from "../../pages/SchedulePage";
+import { SettingsPage } from "../../pages/SettingsPage";
+import { SitesPage } from "../../pages/SitesPage";
+import { SystemdPage } from "../../pages/SystemdPage";
+import { TerminalPage } from "../../pages/TerminalPage";
+import type { Notify, PageKey, SetPage } from "../../types/app";
+import { drawerFocusableElements } from "../../utils/focus";
+
+function SessionLockOverlay({ page, onRestore }: { page: PageKey; onRestore: () => void }) {
+  const overlayRef = useRef<HTMLElement>(null);
+  const restoreButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    restoreButtonRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  const trapFocus = (event: React.KeyboardEvent<HTMLElement>) => {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      restoreButtonRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (event.key !== "Tab" || !overlayRef.current) return;
+    const controls = drawerFocusableElements(overlayRef.current);
+    if (controls.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    const active = document.activeElement;
+    if (!overlayRef.current.contains(active)) {
+      event.preventDefault();
+      first.focus();
+      return;
+    }
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+    if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  const restore = () => {
+    const lockedRoute = lockedRouteForPage(page);
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== lockedRoute) {
+      window.history.replaceState(null, "", lockedRoute);
+    }
+    onRestore();
+  };
+
+  return (
+    <section ref={overlayRef} className="session-lock-overlay" role="dialog" aria-modal="true" aria-labelledby="session-lock-title" onKeyDown={trapFocus}>
+      <div>
+        <Lock size={22} />
+        <span>会话已退出</span>
+        <h2 id="session-lock-title">StackPilot 控制台已锁定</h2>
+        <p>服务端会话已经撤销。请重新登录后继续访问控制台。</p>
+        <button ref={restoreButtonRef} className="primary" type="button" onClick={restore}>返回登录</button>
+      </div>
+    </section>
+  );
+}
+
+function DesktopShell({
+  page,
+  setPage,
+  notify,
+  topbarUnreadCount,
+  setTopbarUnreadCount,
+  sessionLocked,
+  onLogout,
+}: {
+  page: PageKey;
+  setPage: SetPage;
+  notify: Notify;
+  topbarUnreadCount: number;
+  setTopbarUnreadCount: React.Dispatch<React.SetStateAction<number>>;
+  sessionLocked: boolean;
+  onLogout: () => void;
+}) {
+  const activeModule = navPageFor(page);
+  const topbarChrome = desktopTopbarChrome();
+  const [isNarrowSidebar, setIsNarrowSidebar] = useState(() => (
+    typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
+  ));
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
+    typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
+  ));
+  const [settingsReadOnly, setSettingsReadOnly] = useState(false);
+  const [topbarOverview, setTopbarOverview] = useState<OverviewSummaryPayload | null>(null);
+  const sidebarRestoreFocusRef = useRef<HTMLElement | null>(null);
+  const sidebarOverlayOpen = isNarrowSidebar && !sidebarCollapsed;
+  const settingsReadOnlyState = { readOnly: settingsReadOnly, setReadOnly: setSettingsReadOnly };
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 773px)");
+    const syncSidebar = (event: MediaQueryListEvent | MediaQueryList) => {
+      setIsNarrowSidebar(event.matches);
+      setSidebarCollapsed(event.matches);
+    };
+
+    syncSidebar(mediaQuery);
+    mediaQuery.addEventListener("change", syncSidebar);
+    return () => mediaQuery.removeEventListener("change", syncSidebar);
+  }, []);
+
+  useEffect(() => {
+    if (!sidebarOverlayOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSidebarCollapsed(true);
+        window.requestAnimationFrame(() => sidebarRestoreFocusRef.current?.focus({ preventScroll: true }));
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const sidebar = document.querySelector<HTMLElement>(".sidebar-mock:not(.collapsed)");
+      if (!sidebar) return;
+      const controls = drawerFocusableElements(sidebar);
+      if (controls.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      const active = document.activeElement;
+      if (!sidebar.contains(active)) {
+        event.preventDefault();
+        first.focus();
+        return;
+      }
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+        return;
+      }
+      if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.requestAnimationFrame(() => {
+      const sidebar = document.querySelector<HTMLElement>(".sidebar-mock:not(.collapsed)");
+      const focusTarget = sidebar ? drawerFocusableElements(sidebar)[0] : null;
+      focusTarget?.focus();
+    });
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [sidebarOverlayOpen]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchOverview(controller.signal)
+      .then(setTopbarOverview)
+      .catch(() => setTopbarOverview(null));
+    return () => controller.abort();
+  }, []);
+
+  const expandSidebar = () => {
+    sidebarRestoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSidebarCollapsed(false);
+  };
+  const collapseSidebar = () => {
+    setSidebarCollapsed(true);
+    window.requestAnimationFrame(() => sidebarRestoreFocusRef.current?.focus({ preventScroll: true }));
+  };
+  const toggleSidebar = () => {
+    if (sidebarCollapsed) {
+      expandSidebar();
+      return;
+    }
+    collapseSidebar();
+  };
+
+  return (
+    <section className={`desktop-frame ${topbarChrome.white ? "white-top" : "dark-top"} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      {sidebarOverlayOpen && <div className="sidebar-backdrop" role="presentation" onClick={collapseSidebar} />}
+      <Sidebar
+        page={page}
+        setPage={setPage}
+        notify={notify}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={toggleSidebar}
+        onExpandCollapsed={expandSidebar}
+        onNavigate={() => {
+          if (isNarrowSidebar) setSidebarCollapsed(true);
+        }}
+      />
+      <div className="desktop-main" inert={sidebarOverlayOpen} aria-hidden={sidebarOverlayOpen ? "true" : undefined}>
+        <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={topbarOverview} interactionsDisabled={sessionLocked} onLogout={onLogout} />
+        {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
+        {page === "overview-health" && <OverviewHealthPage notify={notify} />}
+        {page === "overview-tasks" && <OverviewTasksPage notify={notify} setPage={setPage} />}
+        {page === "overview-risks" && <OverviewRisksPage notify={notify} />}
+        {activeModule === "hosts" && <HostsPage page={page} notify={notify} />}
+        {activeModule === "sites" && <SitesPage page={page} notify={notify} />}
+        {activeModule === "databases" && (
+          page === "databases-backups"
+            ? <DatabaseBackupsPage page={page} notify={notify} />
+            : page === "databases-slow"
+              ? <DatabaseSlowQueriesPage page={page} setPage={setPage} notify={notify} />
+            : <DatabasesPage page={page} setPage={setPage} notify={notify} />
+        )}
+        {activeModule === "files" && <FilesModule page={page} notify={notify} />}
+        {activeModule === "terminal" && <TerminalPage page={page} notify={notify} />}
+        {activeModule === "systemd" && <SystemdPage page={page} notify={notify} />}
+        {activeModule === "firewall" && <FirewallPage page={page} notify={notify} />}
+        {activeModule === "deploy" && <DeployPage page={page} notify={notify} />}
+        {activeModule === "schedule" && <SchedulePage page={page} notify={notify} />}
+        {activeModule === "audit" && <AuditPage page={page} notify={notify} />}
+        {activeModule === "acl" && <AclPage page={page} setPage={setPage} notify={notify} />}
+        {activeModule === "settings" && (
+          page === "settings-proxy"
+            ? <SettingsProxyPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} />
+            : <SettingsPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} />
+        )}
+      </div>
+      {activeModule === "overview" && <DesktopFooter />}
+    </section>
+  );
+}
+
+export { SessionLockOverlay, DesktopShell };

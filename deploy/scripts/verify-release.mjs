@@ -1,0 +1,3 @@
+import { createHash } from "node:crypto";import { readFileSync } from "node:fs";import { dirname,join,resolve } from "node:path";
+const manifest=resolve(process.argv[2]??"");if(!process.argv[2])throw new Error("用法: node deploy/scripts/verify-release.mjs <SHA256SUMS>");for(const line of readFileSync(manifest,"utf8").trim().split(/\r?\n/)){const[expected,...parts]=line.split(/\s+/);const name=parts.join(" ");const actual=createHash("sha256").update(readFileSync(join(dirname(manifest),name))).digest("hex");if(actual!==expected)throw new Error(`校验失败: ${name}`);}process.stdout.write("所有发布制品 SHA-256 校验通过。\n");
+

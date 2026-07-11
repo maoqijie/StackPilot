@@ -1,0 +1,28 @@
+{
+  "name": "@stackpilot/contracts",
+  "private": true,
+  "version": "0.2.0-preview.2",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
+    "lint": "eslint src",
+    "test": "npm run build && node --test ../../tests/contracts/contracts.test.js"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "tsx": "^4.23.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,172 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Code, security, E2E and release artifacts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Set up Node.js 22.22.0
+        uses: actions/setup-node@49933ea5288caeca8643d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.0
+          cache: npm
+      - name: Install locked workspace dependencies
+        run: npm ci
+      - name: Lint all workspaces
+        run: npm run lint
+      - name: Type-check contracts, Controller and Agent
+        run: npm run typecheck
+      - name: Run unit, integration and security tests
+        run: npm test
+      - name: Run deployment and migration tests
+        run: |
+          npm run test:deploy
+          npm run release:drill
+      - name: Build all production workspaces
+        run: npm run build
+      - name: Audit high and critical dependency vulnerabilities
+        run: npm audit --audit-level=high
+      - name: Install Chromium runtime
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Run HTTPS desktop and mobile E2E
+        run: npm run test:e2e
+      - name: Generate release archive, SBOM and checksums
+        env:
+          SOURCE_DATE_EPOCH: "0"
+        run: npm run release:build
+      - name: Verify release checksums and scan for leaked secrets
+        run: |
+          npm run release:verify -- output/release/$(node -p "require('./package.json').version")/SHA256SUMS
+          npm run release:scan
+      - name: Upload E2E and release evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verification-evidence
+          path: |
+            output/playwright/
+            output/release/
+          if-no-files-found: warn
+          retention-days: 14
+
+  deployment:
+    name: Containers and systemd hardening
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - name: Validate Compose and systemd definitions
+        run: |
+          mkdir -p output/ci-secrets
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
+            -addext subjectAltName=DNS:localhost,IP:127.0.0.1 \
+            -keyout output/ci-secrets/web.key -out output/ci-secrets/web.crt
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=controller \
+            -addext subjectAltName=DNS:controller,IP:127.0.0.1 \
+            -keyout output/ci-secrets/agent.key -out output/ci-secrets/agent.crt
+          openssl rand -base64 32 > output/ci-secrets/master-key
+          chmod 0444 output/ci-secrets/web.crt output/ci-secrets/agent.crt
+          sudo chown 101:101 output/ci-secrets/web.key
+          sudo chown 10001:10001 output/ci-secrets/agent.key
+          chmod 0400 output/ci-secrets/web.key output/ci-secrets/agent.key
+          STACKPILOT_TLS_CERT_PATH="$PWD/output/ci-secrets/web.crt" \
+          STACKPILOT_TLS_KEY_PATH="$PWD/output/ci-secrets/web.key" \
+          STACKPILOT_AGENT_TLS_CERT_PATH="$PWD/output/ci-secrets/agent.crt" \
+          STACKPILOT_AGENT_TLS_KEY_PATH="$PWD/output/ci-secrets/agent.key" \
+          STACKPILOT_MASTER_KEY_PATH="$PWD/output/ci-secrets/master-key" \
+          STACKPILOT_PUBLIC_ORIGIN="https://stackpilot.invalid" \
+          docker compose -f deploy/docker/compose.yaml config --quiet
+          sudo systemd-sysusers deploy/systemd/stackpilot-controller.sysusers
+          sudo systemd-sysusers deploy/systemd/stackpilot-agent.sysusers
+          systemd-analyze verify deploy/systemd/*.service
+      - name: Build pinned production images
+        run: |
+          docker build -f deploy/docker/Dockerfile.web -t stackpilot-web:ci .
+          docker build -f deploy/docker/Dockerfile.controller -t stackpilot-controller:ci .
+          docker build -f deploy/docker/Dockerfile.agent -t stackpilot-agent:ci .
+      - name: Confirm container runtime identities
+        run: |
+          test "$(docker image inspect stackpilot-web:ci --format '{{.Config.User}}')" = "101:101"
+          test "$(docker image inspect stackpilot-controller:ci --format '{{.Config.User}}')" = "10001:10001"
+          test "$(docker image inspect stackpilot-agent:ci --format '{{.Config.User}}')" = "10002:10002"
+      - name: Run clean Compose HTTPS smoke installation
+        env:
+          STACKPILOT_TLS_CERT_PATH: ${{ github.workspace }}/output/ci-secrets/web.crt
+          STACKPILOT_TLS_KEY_PATH: ${{ github.workspace }}/output/ci-secrets/web.key
+          STACKPILOT_AGENT_TLS_CERT_PATH: ${{ github.workspace }}/output/ci-secrets/agent.crt
+          STACKPILOT_AGENT_TLS_KEY_PATH: ${{ github.workspace }}/output/ci-secrets/agent.key
+          STACKPILOT_MASTER_KEY_PATH: ${{ github.workspace }}/output/ci-secrets/master-key
+          STACKPILOT_PUBLIC_ORIGIN: https://localhost
+          STACKPILOT_HTTPS_BIND: 127.0.0.1
+        run: |
+          docker tag stackpilot-web:ci ghcr.io/maoqijie/stackpilot-web:0.2.0-preview.1
+          docker tag stackpilot-controller:ci ghcr.io/maoqijie/stackpilot-controller:0.2.0-preview.1
+          docker compose -f deploy/docker/compose.yaml up -d --no-build web controller
+          healthy=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --cacert output/ci-secrets/web.crt https://localhost/healthz; then healthy=1; break; fi
+            sleep 2
+          done
+          test "$healthy" = "1"
+          test "$(docker compose -f deploy/docker/compose.yaml exec -T controller id -u)" = "10001"
+          test "$(docker compose -f deploy/docker/compose.yaml exec -T web id -u)" = "101"
+          test "$(docker compose -f deploy/docker/compose.yaml port controller 8787)" = ""
+      - name: Stop clean Compose installation
+        if: always()
+        env:
+          STACKPILOT_TLS_CERT_PATH: ${{ github.workspace }}/output/ci-secrets/web.crt
+          STACKPILOT_TLS_KEY_PATH: ${{ github.workspace }}/output/ci-secrets/web.key
+          STACKPILOT_AGENT_TLS_CERT_PATH: ${{ github.workspace }}/output/ci-secrets/agent.crt
+          STACKPILOT_AGENT_TLS_KEY_PATH: ${{ github.workspace }}/output/ci-secrets/agent.key
+          STACKPILOT_MASTER_KEY_PATH: ${{ github.workspace }}/output/ci-secrets/master-key
+          STACKPILOT_PUBLIC_ORIGIN: https://localhost
+          STACKPILOT_HTTPS_BIND: 127.0.0.1
+        run: docker compose -f deploy/docker/compose.yaml down --volumes
+      - name: Scan Web image
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
+        with:
+          image-ref: stackpilot-web:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "1"
+      - name: Scan Controller image
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
+        with:
+          image-ref: stackpilot-controller:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "1"
+      - name: Scan Agent image
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
+        with:
+          image-ref: stackpilot-agent:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "1"
+      - name: Scan deployment configuration
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
+        with:
+          scan-type: config
+          scan-ref: deploy
+          severity: HIGH,CRITICAL
+          exit-code: "1"

@@ -1,0 +1,145 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Verify, build, sign and publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Set up Node.js 22.22.0
+        uses: actions/setup-node@49933ea5288caeca8643d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.0
+          cache: npm
+      - name: Require tag and package version to match
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          test "$version" = "$(node -p "require('./package.json').version")"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+      - name: Install and verify source
+        run: |
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run test:deploy
+          npm run release:drill
+          npm audit --audit-level=high
+          npx --no-install playwright install --with-deps chromium
+          npm run test:e2e
+      - name: Generate release archive, SBOM and checksums
+        run: |
+          SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD) npm run release:build
+          npm run release:verify -- output/release/${{ steps.version.outputs.value }}/SHA256SUMS
+          npm run release:scan
+          rm output/release/${{ steps.version.outputs.value }}/SIGNING_REQUIRED.txt
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - name: Log in to GHCR with short-lived workflow token
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push Web image
+        id: web
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          file: deploy/docker/Dockerfile.web
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/stackpilot-web:${{ steps.version.outputs.value }}
+          provenance: mode=max
+          sbom: true
+      - name: Build and push Controller image
+        id: controller
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          file: deploy/docker/Dockerfile.controller
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/stackpilot-controller:${{ steps.version.outputs.value }}
+          provenance: mode=max
+          sbom: true
+      - name: Build and push Agent image
+        id: agent
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          file: deploy/docker/Dockerfile.agent
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/stackpilot-agent:${{ steps.version.outputs.value }}
+          provenance: mode=max
+          sbom: true
+      - name: Scan published images
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/stackpilot-controller@${{ steps.controller.outputs.digest }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "1"
+      - name: Scan published Web image
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/stackpilot-web@${{ steps.web.outputs.digest }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "1"
+      - name: Scan published Agent image
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/stackpilot-agent@${{ steps.agent.outputs.digest }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "1"
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb
+      - name: Sign image digests and downloadable artifacts with OIDC
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          WEB_DIGEST: ${{ steps.web.outputs.digest }}
+          CONTROLLER_DIGEST: ${{ steps.controller.outputs.digest }}
+          AGENT_DIGEST: ${{ steps.agent.outputs.digest }}
+        run: |
+          printf '%s  %s\n' "$WEB_DIGEST" "ghcr.io/${GITHUB_REPOSITORY_OWNER}/stackpilot-web:${VERSION}" > "output/release/${VERSION}/IMAGE_DIGESTS"
+          printf '%s  %s\n' "$CONTROLLER_DIGEST" "ghcr.io/${GITHUB_REPOSITORY_OWNER}/stackpilot-controller:${VERSION}" >> "output/release/${VERSION}/IMAGE_DIGESTS"
+          printf '%s  %s\n' "$AGENT_DIGEST" "ghcr.io/${GITHUB_REPOSITORY_OWNER}/stackpilot-agent:${VERSION}" >> "output/release/${VERSION}/IMAGE_DIGESTS"
+          cd "output/release/${VERSION}"
+          sha256sum IMAGE_DIGESTS >> SHA256SUMS
+          cd -
+          cosign sign --yes "ghcr.io/${GITHUB_REPOSITORY_OWNER}/stackpilot-web@${WEB_DIGEST}"
+          cosign sign --yes "ghcr.io/${GITHUB_REPOSITORY_OWNER}/stackpilot-controller@${CONTROLLER_DIGEST}"
+          cosign sign --yes "ghcr.io/${GITHUB_REPOSITORY_OWNER}/stackpilot-agent@${AGENT_DIGEST}"
+          cd "output/release/${VERSION}"
+          for file in "stackpilot-${VERSION}.tar.gz" stackpilot-sbom.cdx.json provenance.json SHA256SUMS IMAGE_DIGESTS third-party-packages.json; do
+            cosign sign-blob --yes --bundle "${file}.sigstore.json" "$file"
+          done
+      - name: Publish immutable GitHub release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          gh release create "$TAG" "output/release/${VERSION}/"* \
+            --verify-tag \
+            --title "StackPilot $TAG" \
+            --notes-file "docs/upgrades/${VERSION}.md" \
+            --prerelease
