@@ -1,7 +1,7 @@
 {
   "name": "@stackpilot/agent",
   "private": true,
-  "version": "0.2.0-preview.2",
+  "version": "0.2.0-preview.3",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
@@ -13,6 +13,6 @@
     "lint": "eslint src",
     "test": "npm run build && node --test ../../tests/agent/*.test.js"
   },
-  "dependencies": { "@stackpilot/contracts": "0.2.0-preview.2", "zod": "^4.4.3" },
+  "dependencies": { "@stackpilot/contracts": "0.2.0-preview.3", "zod": "^4.4.3" },
   "devDependencies": { "@types/node": "^25.9.3", "tsx": "^4.23.0", "typescript": "^5.9.3" }
 }

@@ -22,11 +22,11 @@ function consumePendingAuditSource() {
 
 const routePageAliases: Partial<Record<string, PageKey>> = {
   "hosts-all": "hosts",
+  "mobile": "overview",
 };
 
 const routePageKeys = new Set<string>([
   ...parentPageKeys,
-  "mobile",
   ...Object.keys(routePageAliases),
   ...Object.keys(pageMeta),
   ...navItems.flatMap((item) => item.children.map((child) => child.page ?? child.id)),

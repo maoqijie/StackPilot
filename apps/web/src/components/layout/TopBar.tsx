@@ -1,5 +1,5 @@
 import type { OverviewSummaryPayload } from "../../api/overviewApi";
-import { Bell, CheckCircle2, ChevronDown, CircleHelp, FileText, Search, UserRound } from "lucide-react";
+import { Bell, CheckCircle2, ChevronDown, CircleHelp, FileText, Moon, Search, Sun, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { navItems, navPageFor, resolvePageMeta, topbarSearchResults } from "../../app/navigation";
 import type { HelpDrawerState, TopbarActivity, TopbarChrome, TopbarMenuPanel, TopbarPanel, TopbarSearchResult } from "./types";
@@ -9,6 +9,7 @@ import { useIsNarrowViewport } from "../../hooks/useIsNarrowViewport";
 import { topbarHelpLinks, topbarNotifications } from "../../mocks/demoData";
 import type { Notify, PageKey, SetPage, Tone } from "../../types/app";
 import { drawerFocusableElements } from "../../utils/focus";
+import { useTheme } from "../../theme/theme";
 
 function topbarStatusText(overview: OverviewSummaryPayload | null) {
   if (!overview) return "正在采集面板状态";
@@ -54,6 +55,7 @@ function TopBar({
   const [helpDrawer, setHelpDrawer] = useState<HelpDrawerState>(null);
   const [lastMenuTrigger, setLastMenuTrigger] = useState<TopbarMenuPanel | null>(null);
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
+  const { theme, toggleTheme } = useTheme();
   const topbarRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -251,6 +253,15 @@ function TopBar({
           </button>
         )}
         {chrome.showStatus && <StatusDot text={statusText} />}
+        <button
+          type="button"
+          className="icon-action theme-toggle"
+          onClick={toggleTheme}
+          aria-label={theme === "light" ? "切换到深色主题" : "切换到浅色主题"}
+          title={theme === "light" ? "深色主题" : "浅色主题"}
+        >
+          {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
+        </button>
         <span className="notification-wrap">
           <button
             ref={(node) => { menuTriggerRefs.current.notifications = node; }}

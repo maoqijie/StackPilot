@@ -9,6 +9,16 @@
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>StackPilot - 自托管多服务器运维面板</title>
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem("stackpilot.theme");
+          document.documentElement.dataset.theme = theme === "dark" ? "dark" : "light";
+        } catch {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
