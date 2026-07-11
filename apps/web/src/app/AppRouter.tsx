@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cleanCurrentRouteForPage, collectUrlParams, deleteContextRouteParams, expireTransientRoutes, hasExpiredInteractionParams, hasHashRouteQuery, isStaleTransientRoute, lockedRouteForPage, readPageFromHash, writeRouteState } from "./routing";
 import { DesktopShell, SessionLockOverlay } from "../components/layout/DesktopShell";
-import { MobileApp } from "../features/mobile/MobileApp";
 import type { Notify, PageKey, SetPage, ToastState } from "../types/app";
 import { AuthGate } from "../features/auth/AuthGate";
 import { logout } from "../api/authApi";
@@ -88,13 +87,9 @@ function AuthenticatedApp() {
   }, [sessionLocked]);
 
   return (
-    <main className={`shot-canvas ${page === "mobile" ? "mobile-canvas" : ""}`}>
+    <main className="shot-canvas">
       <div className="app-interaction-layer" inert={sessionLocked} aria-hidden={sessionLocked ? "true" : undefined}>
-        {page === "mobile" ? (
-          <MobileApp notify={notify} />
-        ) : (
-          <DesktopShell page={page} setPage={setPage} notify={notify} topbarUnreadCount={topbarUnreadCount} setTopbarUnreadCount={setTopbarUnreadCount} sessionLocked={sessionLocked} onLogout={lockSession} />
-        )}
+        <DesktopShell page={page} setPage={setPage} notify={notify} topbarUnreadCount={topbarUnreadCount} setTopbarUnreadCount={setTopbarUnreadCount} sessionLocked={sessionLocked} onLogout={lockSession} />
       </div>
       {sessionLocked && (
         <SessionLockOverlay

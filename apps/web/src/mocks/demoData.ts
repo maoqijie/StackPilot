@@ -6,12 +6,10 @@ import type { DeployJob, RollbackRecord } from "../features/deployments/types";
 import type { FileRecord, FileUploadRecord, TrashFileRecord } from "../features/files/types";
 import type { FirewallDenyRecord, FirewallRule } from "../features/firewall/types";
 import type { HostRecord } from "../features/hosts/types";
-import type { MobileAuditRecord, MobileQuickAction } from "../features/mobile/types";
 import type { ServiceRecord } from "../features/services/types";
 import type { ProxyEndpoint, ProxyRouteRule, SettingsChangeRow, TokenRow } from "../features/settings/types";
 import type { SiteRecord } from "../features/sites/types";
 import type { TerminalHistoryRecord, TerminalSessionRecord, TerminalSnippetRecord } from "../features/terminal/types";
-import type { Tone } from "../types/app";
 
 const topbarNotifications: TopbarNotification[] = [];
 
@@ -246,28 +244,4 @@ const initialAclPolicies: AclPolicy[] = [
   { id: "pol-8", name: "权限管理", module: "权限", risk: "高", desc: "允许变更用户、角色和权限项绑定。", roles: ["管理员"], lastUpdated: "今天 10:02" },
 ];
 
-const mobileQuickActions: MobileQuickAction[] = [
-  { label: "添加主机", target: "主机", targetHint: "主机列表 / 新增主机", draft: "主机接入草稿" },
-  { label: "创建网站", target: "网站", targetHint: "网站列表 / 添加网站", draft: "站点配置草稿" },
-  { label: "新建数据库", target: "数据库", targetHint: "数据库模块 / 实例创建", draft: "数据库实例草稿" },
-  { label: "上传文件", target: "文件", targetHint: "文件模块 / 上传队列", draft: "文件上传草稿" },
-  { label: "终端连接", target: "终端", targetHint: "终端模块 / 会话连接", draft: "终端会话草稿" },
-  { label: "系统服务", target: "系统服务", targetHint: "systemd 服务 / 单元管理", draft: "服务变更草稿" },
-  { label: "计划任务", target: "任务", targetHint: "任务列表 / 定时任务", draft: "计划任务草稿" },
-  { label: "防火墙规则", target: "防火墙", targetHint: "防火墙模块 / 规则编辑", draft: "防火墙规则草稿" },
-];
-
-const mobileNoticeRows = [
-  { id: "cert", title: "证书即将过期", detail: "shop.example.com 证书剩余 11 天", tone: "orange" as Tone, time: "刚刚" },
-  { id: "host", title: "主机资源告警", detail: "db-01 内存使用率 62%", tone: "orange" as Tone, time: "8 分钟前" },
-  { id: "backup", title: "备份完成", detail: "shop_db 备份已写入对象存储", tone: "green" as Tone, time: "15 分钟前" },
-];
-
-const mobileAuditRows: MobileAuditRecord[] = [
-  { id: "ma-1", action: "登录控制台", object: "移动端会话", result: "成功", ip: "10.0.12.24", time: "刚刚" },
-  { id: "ma-2", action: "重启主机", object: "web-02", result: "成功", ip: "10.0.12.24", time: "18 分钟前" },
-  { id: "ma-3", action: "导出审计", object: "今日操作审计 CSV", result: "成功", ip: "10.0.12.24", time: "52 分钟前" },
-  { id: "ma-4", action: "访问终端", object: "panel-hk-03", result: "失败", ip: "10.0.12.24", time: "昨天 22:18" },
-];
-
-export { topbarNotifications, topbarHelpLinks, auditRows, dbRows, initialDatabaseBackupPlans, initialDatabaseBackupTasks, initialDatabaseRestorePoints, initialDatabaseSlowQueries, initialProxyEndpoints, initialProxyRules, initialSettingsChanges, initialTokenRows, initialHostRecords, initialSiteRecords, initialFileRecords, initialFileUploads, initialTrashFiles, initialTerminalSessions, initialTerminalSnippets, initialTerminalHistory, initialServiceRecords, initialFirewallRules, initialFirewallDenyRecords, initialDeployJobs, initialRollbackRecords, initialAuditRecords, databaseAuditRecords, initialAuditExports, permissionOptions, initialAclUsers, initialAclRoles, initialAclPolicies, mobileQuickActions, mobileNoticeRows, mobileAuditRows };
+export { topbarNotifications, topbarHelpLinks, auditRows, dbRows, initialDatabaseBackupPlans, initialDatabaseBackupTasks, initialDatabaseRestorePoints, initialDatabaseSlowQueries, initialProxyEndpoints, initialProxyRules, initialSettingsChanges, initialTokenRows, initialHostRecords, initialSiteRecords, initialFileRecords, initialFileUploads, initialTrashFiles, initialTerminalSessions, initialTerminalSnippets, initialTerminalHistory, initialServiceRecords, initialFirewallRules, initialFirewallDenyRecords, initialDeployJobs, initialRollbackRecords, initialAuditRecords, databaseAuditRecords, initialAuditExports, permissionOptions, initialAclUsers, initialAclRoles, initialAclPolicies };

@@ -2,6 +2,14 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.2.0-preview.3 - 2026-07-11
+
+### Changed
+
+- Rebuilt the Web console around the CloudPulse visual system with local variable fonts, persistent light/dark themes and responsive shared navigation.
+- Consolidated legacy mobile routes and CSS into the desktop/mobile application shell while retaining routing compatibility and operational page behavior.
+- Added theme coverage and updated routing tests, mock data and interface documentation for the refreshed control console.
+
 ## 0.2.0-preview.1 - 2026-07-11
 
 ### Added

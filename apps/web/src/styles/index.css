@@ -1,12 +1,6 @@
 @import "./tokens.css";
 @import "./base.css";
-@import "./layout.css";
-@import "./features/overview.css";
-@import "./features/modules.css";
-@import "./features/databases.css";
+@import "./shell.css";
+@import "./components.css";
+@import "./pages.css";
 @import "./responsive.css";
-@import "./features/databases-legacy.css";
-@import "./features/settings.css";
-@import "./features/mobile.css";
-@import "./components/risk-modal.css";
-@import "./features/auth.css";

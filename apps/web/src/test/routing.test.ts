@@ -17,6 +17,10 @@ describe("application routing", () => {
     expect(readPageFromHash()).toBe("hosts");
     expect(window.location.hash).toBe("#hosts");
 
+    window.history.replaceState(null, "", "/#mobile");
+    expect(readPageFromHash()).toBe("overview");
+    expect(window.location.hash).toBe("#overview");
+
     window.history.replaceState(null, "", "/#not-a-page");
     expect(readPageFromHash()).toBe("overview");
     expect(window.location.hash).toBe("#overview");
