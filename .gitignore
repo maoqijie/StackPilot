@@ -2,8 +2,14 @@ node_modules/
 dist/
 output/
 .playwright-cli/
+.idea/
 .DS_Store
 *.log
 .env
 .env.*
 !.env.example
+*.local
+*.local.*
+secrets/
+*.key
+*.pem

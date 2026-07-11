@@ -10,6 +10,14 @@ import { collectDeviceTasks } from "./deviceTasks.js";
 import { collectLocalRuntime, localNodeId, runLocalRestart } from "./localRuntime.js";
 import { collectRiskEvidence } from "./riskEvidence.js";
 import { riskSuggestion } from "./riskSuggestions.js";
+import {
+  applyCors,
+  assertCrontabWriteAllowed,
+  authenticateWriteRequest,
+  HttpError,
+  loadSecurityConfig,
+  readJsonBody,
+} from "./httpSecurity.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "127.0.0.1";
@@ -477,39 +485,31 @@ async function overviewPayload() {
 }
 
 function sendJson(response, statusCode, payload) {
-  response.writeHead(statusCode, {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Content-Type": "application/json; charset=utf-8",
-  });
+  response.statusCode = statusCode;
+  response.setHeader("Content-Type", "application/json; charset=utf-8");
+  if (statusCode === 204) {
+    response.end();
+    return;
+  }
   response.end(JSON.stringify(payload));
 }
 
-function assertCrontabWriteAllowed() {
-  const isLocalBind = ["127.0.0.1", "localhost", "::1"].includes(host);
-  if (isLocalBind || process.env.STACKPILOT_ENABLE_CRONTAB_WRITE === "1") return;
-  const error = new Error("当前 API 未绑定本机地址，未启用 crontab 写入");
-  error.statusCode = 403;
-  throw error;
-}
-
-function sendError(response, statusCode, message) {
+function sendError(response, statusCode, message, headers = {}) {
+  for (const [name, value] of Object.entries(headers)) response.setHeader(name, value);
   sendJson(response, statusCode, { error: message });
 }
 
-async function readJson(request) {
-  let raw = "";
-  for await (const chunk of request) raw += chunk;
-  if (!raw.trim()) return {};
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const error = new Error("请求体必须是合法 JSON");
-    error.statusCode = 400;
-    throw error;
+function sendCaughtError(response, error) {
+  if (response.headersSent) {
+    response.end();
+    return;
   }
+  const legacyStatusCode = Number(error?.statusCode);
+  const isSafeClientError = Number.isInteger(legacyStatusCode) && legacyStatusCode >= 400 && legacyStatusCode < 500;
+  const isExpected = error instanceof HttpError;
+  const statusCode = isExpected ? error.statusCode : isSafeClientError ? legacyStatusCode : 500;
+  const message = isExpected && error.expose || isSafeClientError ? error.message : "服务内部错误";
+  sendError(response, statusCode, message, isExpected ? error.headers : undefined);
 }
 
 function sendRecordOr404(response, key, record, message = "记录不存在") {
@@ -521,7 +521,7 @@ function sendRecordOr404(response, key, record, message = "记录不存在") {
   return true;
 }
 
-async function handleOverviewRoute(request, response, parts) {
+async function handleOverviewRoute(request, response, parts, securityConfig) {
   if (request.method === "GET" && parts.length === 2) {
     sendJson(response, 200, await overviewPayload());
     return;
@@ -534,7 +534,7 @@ async function handleOverviewRoute(request, response, parts) {
   }
 
   if (request.method === "POST" && parts[2] === "cluster" && parts.length === 3) {
-    await readJson(request);
+    await readJsonBody(request, securityConfig.jsonBodyLimitBytes);
     sendJson(response, 200, await overviewPayload());
     return;
   }
@@ -557,7 +557,7 @@ async function handleOverviewRoute(request, response, parts) {
   sendError(response, 404, "总览接口不存在");
 }
 
-async function handleHealthRoute(request, response, parts) {
+async function handleHealthRoute(request, response, parts, securityConfig) {
   if (request.method === "GET" && parts.length === 3) {
     const overview = await overviewPayload();
     sendJson(response, 200, { nodes: overview.nodes, lastRefresh: overview.lastRefresh });
@@ -571,7 +571,7 @@ async function handleHealthRoute(request, response, parts) {
   }
 
   if (request.method === "POST" && parts[3] === "nodes" && parts.length === 4) {
-    await readJson(request);
+    await readJsonBody(request, securityConfig.jsonBodyLimitBytes);
     const overview = await overviewPayload();
     sendJson(response, 200, {
       nodes: overview.nodes,
@@ -583,7 +583,7 @@ async function handleHealthRoute(request, response, parts) {
   }
 
   if (request.method === "PATCH" && parts[3] === "nodes" && parts.length === 5) {
-    await readJson(request);
+    await readJsonBody(request, securityConfig.jsonBodyLimitBytes);
     if (parts[4] !== localNodeId) {
       sendError(response, 404, "节点不存在");
       return;
@@ -601,7 +601,7 @@ async function handleHealthRoute(request, response, parts) {
     }
     const result = await runLocalRestart(repoRoot);
     if (!result.ok) {
-      sendError(response, result.statusCode, result.message);
+      sendError(response, result.statusCode, result.statusCode < 500 ? result.message : "服务内部错误");
       return;
     }
     sendJson(response, 200, { message: result.message, tone: "success" });
@@ -611,7 +611,7 @@ async function handleHealthRoute(request, response, parts) {
   sendError(response, 404, "集群状态接口不存在");
 }
 
-async function handleTasksRoute(request, response, parts) {
+async function handleTasksRoute(request, response, parts, securityConfig) {
   if (request.method === "GET" && parts.length === 3) {
     const overview = await overviewPayload();
     sendJson(response, 200, { tasks: overview.tasks, page: overview.taskPage });
@@ -619,7 +619,7 @@ async function handleTasksRoute(request, response, parts) {
   }
 
   if (request.method === "POST" && parts.length === 3) {
-    await readJson(request);
+    await readJsonBody(request, securityConfig.jsonBodyLimitBytes);
     state.taskResults.clear();
     const overview = await overviewPayload();
     sendJson(response, 200, { tasks: overview.tasks, page: overview.taskPage, message: "已重新采集真实任务流", tone: "info" });
@@ -633,7 +633,7 @@ async function handleTasksRoute(request, response, parts) {
   }
 
   if (request.method === "PATCH" && parts.length === 4) {
-    const patch = await readJson(request);
+    const patch = await readJsonBody(request, securityConfig.jsonBodyLimitBytes);
     if (patch.action && patch.action !== "run") {
       sendError(response, 400, "任务流只支持真实运行或检查动作");
       return;
@@ -656,7 +656,7 @@ async function handleTasksRoute(request, response, parts) {
   sendError(response, 404, "任务流接口不存在");
 }
 
-async function handleRisksRoute(request, response, parts) {
+async function handleRisksRoute(request, response, parts, securityConfig) {
   if (request.method === "GET" && parts.length === 3) {
     const overview = await overviewPayload();
     sendJson(response, 200, { risks: overview.risks, scannedAt: overview.lastRefresh });
@@ -664,7 +664,7 @@ async function handleRisksRoute(request, response, parts) {
   }
 
   if (request.method === "POST" && parts.length === 3) {
-    await readJson(request);
+    await readJsonBody(request, securityConfig.jsonBodyLimitBytes);
     sendError(response, 501, "真实风险创建尚未配置风险扫描器写入接口");
     return;
   }
@@ -683,7 +683,7 @@ async function handleRisksRoute(request, response, parts) {
   }
 
   if (request.method === "PATCH" && parts.length === 4) {
-    await readJson(request);
+    await readJsonBody(request, securityConfig.jsonBodyLimitBytes);
     sendError(response, 501, "真实风险处置器尚未配置，未修改风险状态");
     return;
   }
@@ -691,23 +691,23 @@ async function handleRisksRoute(request, response, parts) {
   sendError(response, 404, "风险中心接口不存在");
 }
 
-async function handleCrontabRoute(request, response, parts) {
+async function handleCrontabRoute(request, response, parts, securityConfig) {
   if (request.method === "GET" && parts.length === 3) {
     sendJson(response, 200, await listCronJobs());
     return;
   }
 
   if (request.method === "POST" && parts.length === 3) {
-    assertCrontabWriteAllowed();
-    const payload = await readJson(request);
+    assertCrontabWriteAllowed(securityConfig.crontabWriteEnabled);
+    const payload = await readJsonBody(request, securityConfig.jsonBodyLimitBytes);
     const result = await createCronJob(payload);
     sendJson(response, 201, { ...result, message: `${result.job.name} 已写入当前用户 crontab`, tone: "success" });
     return;
   }
 
   if (request.method === "PATCH" && parts.length === 4) {
-    assertCrontabWriteAllowed();
-    const payload = await readJson(request);
+    assertCrontabWriteAllowed(securityConfig.crontabWriteEnabled);
+    const payload = await readJsonBody(request, securityConfig.jsonBodyLimitBytes);
     const result = payload.action === "run"
       ? await runCronJobNow(parts[3], repoRoot)
       : await updateCronJob(parts[3], payload);
@@ -717,7 +717,7 @@ async function handleCrontabRoute(request, response, parts) {
   }
 
   if (request.method === "DELETE" && parts.length === 4) {
-    assertCrontabWriteAllowed();
+    assertCrontabWriteAllowed(securityConfig.crontabWriteEnabled);
     const result = await deleteCronJob(parts[3]);
     sendJson(response, 200, { ...result, message: `${result.job.name} 已从当前用户 crontab 删除`, tone: "warning" });
     return;
@@ -726,13 +726,20 @@ async function handleCrontabRoute(request, response, parts) {
   sendError(response, 404, "定时任务接口不存在");
 }
 
-async function handleRequest(request, response) {
+async function handleRequest(request, response, securityConfig) {
+  applyCors(request, response, securityConfig.allowedOrigins);
+
   if (request.method === "OPTIONS") {
     sendJson(response, 204, {});
     return;
   }
 
-  const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
+  if (["POST", "PATCH", "DELETE"].includes(request.method)) {
+    authenticateWriteRequest(request, securityConfig.apiToken);
+    await readJsonBody(request, securityConfig.jsonBodyLimitBytes);
+  }
+
+  const url = new URL(request.url ?? "/", "http://127.0.0.1");
   const parts = url.pathname.split("/").filter(Boolean);
 
   if (url.pathname === "/healthz") {
@@ -746,34 +753,46 @@ async function handleRequest(request, response) {
   }
 
   if (parts[2] === "health") {
-    await handleHealthRoute(request, response, parts);
+    await handleHealthRoute(request, response, parts, securityConfig);
     return;
   }
 
   if (parts[2] === "tasks") {
-    await handleTasksRoute(request, response, parts);
+    await handleTasksRoute(request, response, parts, securityConfig);
     return;
   }
 
   if (parts[2] === "risks") {
-    await handleRisksRoute(request, response, parts);
+    await handleRisksRoute(request, response, parts, securityConfig);
     return;
   }
 
   if (parts[2] === "current-user-crontab") {
-    await handleCrontabRoute(request, response, parts);
+    await handleCrontabRoute(request, response, parts, securityConfig);
     return;
   }
 
-  await handleOverviewRoute(request, response, parts);
+  await handleOverviewRoute(request, response, parts, securityConfig);
 }
 
-const server = createServer((request, response) => {
-  handleRequest(request, response).catch((error) => {
-    sendError(response, error.statusCode ?? 500, error.message || "服务内部错误");
+export function createStackPilotServer(options = {}) {
+  const securityConfig = options.securityConfig ?? loadSecurityConfig(options.env);
+  return createServer((request, response) => {
+    handleRequest(request, response, securityConfig).catch((error) => {
+      sendCaughtError(response, error);
+    });
   });
-});
+}
 
-server.listen(port, host, () => {
-  console.log(`StackPilot API listening on http://${host}:${port}`);
-});
+const isMainModule = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMainModule) {
+  try {
+    const server = createStackPilotServer();
+    server.listen(port, host, () => {
+      console.log(`StackPilot API listening on http://${host}:${port}`);
+    });
+  } catch {
+    console.error("StackPilot API 安全配置无效，服务未启动");
+    process.exitCode = 1;
+  }
+}
