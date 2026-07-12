@@ -1,6 +1,6 @@
-import { checkOverviewUpdates, fetchOverview, refreshOverview } from "../api/overviewApi";
+import { checkOverviewUpdates, fetchOverview } from "../api/overviewApi";
 import type { OverviewAuditRow, OverviewNode, OverviewResourceRecord, OverviewRiskRecord, OverviewService, OverviewSummaryPayload, OverviewTaskRecord } from "../api/overviewApi";
-import { CheckCircle2, CircleHelp, Code2, KeyRound, MoreVertical, RefreshCw, Shield } from "lucide-react";
+import { Activity, CheckCircle2, CircleHelp, CircleX, Clock3, Eye, HardDrive, KeyRound, LoaderCircle, PackageSearch, Server, Shield, ShieldAlert } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { PanelCard } from "../components/ui/Cards";
@@ -8,7 +8,8 @@ import { DetailDrawer } from "../components/ui/DetailDrawer";
 import { Bar, Sparkline, StatusLight } from "../components/ui/StatusVisuals";
 import { isCleanUpdate, percentValue } from "../features/hosts/model";
 import { emptyOverviewSummary, healthProbeTone, overviewMetricIcons, reportApiError, serviceHealthLabel, serviceHealthTone, serviceTone, taskTone } from "../features/overview/model";
-import type { Notify, SetPage, ToastTone } from "../types/app";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
+import type { Notify, SetPage } from "../types/app";
 
 function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify }) {
   const [overview, setOverview] = useState<OverviewSummaryPayload>(() => emptyOverviewSummary());
@@ -46,9 +47,11 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
       setError(null);
     } catch (loadError) {
       if (signal?.aborted) return;
-      const message = loadError instanceof Error ? loadError.message : "工作台数据加载失败";
-      setError(message);
-      reportApiError(loadError, notify, "工作台数据加载失败");
+      if (!silent) {
+        const message = loadError instanceof Error ? loadError.message : "工作台数据加载失败";
+        setError(message);
+        reportApiError(loadError, notify, "工作台数据加载失败");
+      }
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
@@ -72,20 +75,18 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
     return () => controller.abort();
   }, [notify]);
 
-  const reloadOverview = async (request: () => Promise<OverviewSummaryPayload>, success?: string, tone: ToastTone = "success") => {
-    try {
-      const payload = await request();
-      setOverview(payload);
-      setError(null);
-      if (success) notify(success, tone);
-    } catch (error) {
-      reportApiError(error, notify, "工作台后端请求失败");
-    }
-  };
+  useAutoRefresh((signal) => loadOverview(signal, true), undefined, !loading);
 
   return (
     <div className="overview-page">
-      <h1 className="sr-only">工作台</h1>
+      <header className="overview-page-head">
+        <div>
+          <span>Operations overview</span>
+          <h1>工作台</h1>
+          <p>基础设施、任务与风险的实时运行视图</p>
+        </div>
+        <span className="overview-freshness"><StatusLight tone={error ? "red" : loading ? "blue" : healthTone} />{loading ? "正在采集" : error ? "采集异常" : `更新于 ${overview.lastRefresh || "刚刚"}`}</span>
+      </header>
       <section className="workbench-hero" aria-label="实时工作台状态">
         <div className="workbench-identity">
           <span className="workbench-eyebrow">实时工作台</span>
@@ -103,15 +104,6 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
           <button
             className="ghost small"
             type="button"
-            onClick={() => {
-              void reloadOverview(refreshOverview, "工作台数据已刷新");
-            }}
-          >
-            <RefreshCw size={14} /> 刷新
-          </button>
-          <button
-            className="ghost small"
-            type="button"
             onClick={async () => {
               try {
                 const payload = await checkOverviewUpdates();
@@ -122,9 +114,9 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
               }
             }}
           >
-            <RefreshCw size={14} /> 检查更新
+            <PackageSearch size={14} /> 检查更新
           </button>
-          <button className="warning small" type="button" onClick={() => setPage("overview-risks", { message: "已打开风险中心", tone: "warning" })}>风险中心 <b>{pendingRiskCount}</b></button>
+          <button className="warning small" type="button" onClick={() => setPage("overview-risks", { message: "已打开风险中心", tone: "warning" })}><ShieldAlert size={14} /> 风险中心 <b>{pendingRiskCount}</b></button>
         </div>
       </section>
       {loading && <div className="overview-inline-detail"><StatusLight tone="blue" /> 正在从后端实时采集工作台数据...</div>}
@@ -138,8 +130,7 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
       {!loading && !error && !hasOverview && (
         <div className="overview-error-state">
           <CircleHelp size={18} />
-          <span>后端返回了空工作台数据。</span>
-          <button type="button" onClick={() => void loadOverview(undefined, false)}>重新采集</button>
+          <span>后端暂未返回工作台数据，系统将继续自动采集。</span>
         </div>
       )}
       <section className="metric-row">
@@ -184,7 +175,7 @@ function MetricCard({
   delta,
   icon: Icon,
   tone,
-  line,
+  details,
 }: {
   label: string;
   value: string;
@@ -193,31 +184,96 @@ function MetricCard({
   icon: LucideIcon;
   tone: string;
   line: number[];
+  details?: Array<{ label: string; value: string; detail: string }>;
 }) {
+  const numericValue = percentValue(`${value}${suffix}`);
+  const isPercentage = suffix === "%";
+  const progress = isPercentage ? numericValue : 100;
+  const radius = 38;
   return (
-    <article className={`metric-card ${tone}`}>
-      <div className="metric-icon"><Icon size={24} /></div>
+    <article className={`metric-card ${tone} ${details?.length ? "has-details" : ""}`} tabIndex={details?.length ? 0 : undefined} aria-describedby={details?.length ? `metric-details-${label}` : undefined}>
+      <div className={`metric-ring ${isPercentage ? "is-progress" : "is-count"}`}>
+        <svg viewBox="0 0 96 96" aria-hidden="true">
+          <circle className="metric-ring-track" cx="48" cy="48" r={radius} />
+          <circle
+            className="metric-ring-value"
+            cx="48"
+            cy="48"
+            r={radius}
+            pathLength="100"
+            strokeDasharray="100"
+            strokeDashoffset={100 - progress}
+          />
+        </svg>
+        <span><Icon size={16} /><strong>{value}<em>{suffix}</em></strong></span>
+      </div>
       <div className="metric-copy">
         <span>{label}</span>
-        <strong>{value}<em>{suffix}</em></strong>
         <p className={tone === "red" || tone === "orange" ? "orange-text" : "green-text"}>{delta}</p>
       </div>
-      <Sparkline values={line} tone={tone} />
+      {details?.length ? (
+        <div className="metric-details-tooltip" id={`metric-details-${label}`} role="tooltip">
+          <header><strong>磁盘明细</strong><span>{details.length} 个盘</span></header>
+          <div>
+            {details.map((detail) => (
+              <p key={`${detail.label}-${detail.value}`}>
+                <span><b>{detail.label}</b><small>{detail.detail}</small></span>
+                <strong>{detail.value}</strong>
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 }
 
 function OverviewServiceList({ services }: { services: OverviewService[] }) {
   return (
-    <div className="drawer-list">
-      <strong>服务列表</strong>
+    <div className="node-service-list">
       {services.map((service) => (
-        <p key={service.id}>
+        <article key={service.id}>
           <StatusLight tone={serviceTone(service.status)} />
-          {service.name}
-          <span>{service.status} · {service.detail}</span>
-        </p>
+          <span><strong>{service.name}</strong><small>{service.target}</small></span>
+          <span><b>{service.status}</b><small>{service.detail}</small></span>
+        </article>
       ))}
+      {services.length === 0 && <p className="node-detail-empty">未发现服务实例</p>}
+    </div>
+  );
+}
+
+function NodeDetailContent({ node }: { node: OverviewNode }) {
+  const statusTone = node.status === "健康" ? "green" : node.status === "警告" ? "orange" : "gray";
+  return (
+    <div className="node-detail-content">
+      <section className="node-detail-summary">
+        <span className="node-detail-summary-icon"><Server size={20} /></span>
+        <div><span>节点状态</span><strong><StatusLight tone={statusTone} /> {node.status}</strong></div>
+        <div><span>网络延迟</span><strong><StatusLight tone={healthProbeTone(node.latencyStatus)} /> {node.latency}</strong></div>
+      </section>
+      <section className="node-detail-section">
+        <header><Server size={17} /><strong>节点信息</strong></header>
+        <div className="node-detail-facts">
+          <p><span>版本</span><b>{node.version}</b></p>
+          <p><span>运行时间</span><b>{node.uptime}</b></p>
+          <p><span>最后备份</span><b><StatusLight tone={healthProbeTone(node.backupStatus)} /> {node.backup}</b></p>
+          <p><span>更新状态</span><b className={isCleanUpdate(node.update) ? "green-text" : "orange-text"}>{node.update}</b></p>
+          <p><span>负责人</span><b>{node.owner}</b></p>
+        </div>
+      </section>
+      <section className="node-detail-section">
+        <header><Activity size={17} /><strong>资源使用</strong></header>
+        <div className="node-resource-list">
+          <p><span>CPU</span><Bar value={node.cpu} tone={node.status === "警告" ? "orange" : "green"} /></p>
+          <p><span>内存</span><Bar value={node.memory} tone={node.status === "警告" ? "red" : "green"} /></p>
+          <p><span>磁盘</span><Bar value={node.disk} tone={node.status === "警告" ? "red" : "green"} /></p>
+        </div>
+      </section>
+      <section className="node-detail-section">
+        <header><HardDrive size={17} /><strong>服务列表</strong><span>{node.services.length} 个实例</span></header>
+        <OverviewServiceList services={node.services} />
+      </section>
     </div>
   );
 }
@@ -249,7 +305,7 @@ function HostTable({ nodes, notify }: { nodes: OverviewNode[]; notify: Notify })
         <tbody>
           {nodes.map((host) => (
             <tr className={selectedHostId === host.id ? "is-selected" : ""} key={host.id}>
-              <td><StatusLight tone={host.status === "警告" ? "orange" : host.status === "维护" ? "gray" : "green"} /> {host.name}</td>
+              <td><span className="overview-host-name" title={host.name}><StatusLight tone={host.status === "警告" ? "orange" : host.status === "维护" ? "gray" : "green"} /><b>{host.name}</b></span></td>
               <td>{host.ip}</td>
               <td><Bar value={host.cpu} tone={host.status === "警告" ? "orange" : "green"} /></td>
               <td><Bar value={host.memory} tone={host.status === "警告" ? "red" : "green"} /></td>
@@ -262,9 +318,10 @@ function HostTable({ nodes, notify }: { nodes: OverviewNode[]; notify: Notify })
                   className="icon-action inline"
                   type="button"
                   onClick={() => openHostDetail(host)}
-                  aria-label={`${host.name} 更多操作`}
+                  aria-label={`查看 ${host.name} 节点详情`}
+                  title="查看详情"
                 >
-                  <MoreVertical size={17} />
+                  <Eye size={16} />
                 </button>
               </td>
             </tr>
@@ -273,21 +330,7 @@ function HostTable({ nodes, notify }: { nodes: OverviewNode[]; notify: Notify })
       </table>
       {selectedHost && (
         <DetailDrawer title={selectedHost.name} subtitle={`${selectedHost.ip} · ${selectedHost.env}`} onClose={() => setSelectedHostId(null)} autoFocus={false}>
-          <div className="detail-kv">
-            <p><span>状态</span><b><StatusLight tone={selectedHost.status === "健康" ? "green" : selectedHost.status === "警告" ? "orange" : "gray"} /> {selectedHost.status}</b></p>
-            <p><span>延迟</span><b><StatusLight tone={healthProbeTone(selectedHost.latencyStatus)} /> {selectedHost.latency}</b></p>
-            <p><span>版本</span><b>{selectedHost.version}</b></p>
-            <p><span>运行时间</span><b>{selectedHost.uptime}</b></p>
-            <p><span>备份</span><b><StatusLight tone={healthProbeTone(selectedHost.backupStatus)} /> {selectedHost.backup}</b></p>
-            <p><span>更新</span><b>{selectedHost.update}</b></p>
-            <p><span>负责人</span><b>{selectedHost.owner}</b></p>
-          </div>
-          <div className="resource-bars">
-            <p><span>CPU</span><Bar value={selectedHost.cpu} tone={selectedHost.status === "警告" ? "orange" : "green"} /></p>
-            <p><span>内存</span><Bar value={selectedHost.memory} tone={selectedHost.status === "警告" ? "red" : "green"} /></p>
-            <p><span>磁盘</span><Bar value={selectedHost.disk} tone={selectedHost.status === "警告" ? "red" : "green"} /></p>
-          </div>
-          <OverviewServiceList services={selectedHost.services} />
+          <NodeDetailContent node={selectedHost} />
         </DetailDrawer>
       )}
     </>
@@ -300,16 +343,12 @@ function TaskTable({ tasks, queued }: { tasks: OverviewTaskRecord[]; queued?: bo
     <div className="task-flow">
       {rows.map((row) => (
         <div key={row.id}>
-          <StatusLight tone={taskTone(row.status)} />
-          <span className="task-icon"><Code2 size={15} /></span>
-          <strong>{row.type}</strong>
-          <p>{row.title}</p>
-          <b>{row.status}</b>
-          <em>{row.queuedAt}</em>
-          <small>{row.duration}</small>
+          <FeedStatusIcon status={row.status} />
+          <span className="feed-copy"><strong>{row.type}</strong><p>{row.title}</p><time>{row.queuedAt}</time></span>
+          <span className="feed-result"><b className={`${taskTone(row.status)}-text`}>{row.status}</b><small>{row.duration}</small></span>
         </div>
       ))}
-      {rows.length === 0 && <div><StatusLight tone="gray" /><p>暂无任务</p></div>}
+      {rows.length === 0 && <div className="feed-empty">暂无任务</div>}
     </div>
   );
 }
@@ -319,10 +358,13 @@ function AuditTable({ rows }: { rows: OverviewAuditRow[] }) {
     <div className="audit-feed">
       {rows.slice(0, 6).map((row) => (
         <article key={row[0] + row[6]}>
-          <span>{row[0]}</span>
-          <strong>{row[3]}</strong>
-          <p>{row[1]} · {row[2]} · {row[4]}</p>
-          <em className={row[5] === "失败" ? "pill red" : "pill green"}>{row[5]}</em>
+          <FeedStatusIcon status={row[5]} />
+          <span className="feed-copy">
+            <strong>{row[3]}</strong>
+            <span className="feed-context"><span>{row[1]}</span><span>{row[2]}</span><span>{row[4]}</span></span>
+            <time>{row[0]}</time>
+          </span>
+          <span className="feed-result"><b className={row[5] === "失败" ? "red-text" : "green-text"}>{row[5]}</b><code>{row[6]}</code></span>
         </article>
       ))}
       {rows.length === 0 && <div className="feed-empty">暂无近期动态</div>}
@@ -330,18 +372,20 @@ function AuditTable({ rows }: { rows: OverviewAuditRow[] }) {
   );
 }
 
+function FeedStatusIcon({ status }: { status: OverviewTaskRecord["status"] | OverviewAuditRow[5] }) {
+  const tone = status === "成功" ? "green" : status === "失败" ? "red" : status === "运行中" ? "blue" : "orange";
+  const Icon = status === "成功" ? CheckCircle2 : status === "失败" ? CircleX : status === "运行中" ? LoaderCircle : Clock3;
+  return <span className={`feed-status-icon ${tone}`} aria-hidden="true"><Icon size={18} /></span>;
+}
+
 function RiskList({ risks }: { risks: OverviewRiskRecord[] }) {
   return (
     <div className="risk-list">
       {risks.slice(0, 4).map((row) => (
         <div key={row.id}>
-          <KeyRound size={16} />
-          <span>
-            <strong>{row.title}</strong>
-            <b>{row.target}</b>
-          </span>
-          <em className={row.level === "高危" ? "red-text" : row.level === "中危" ? "orange-text" : "blue-text"}>{row.level}</em>
-          <small>{row.detected}</small>
+          <span className={`risk-icon ${row.level === "高危" ? "red" : row.level === "中危" ? "orange" : "blue"}`}><KeyRound size={15} /></span>
+          <span className="feed-copy"><strong>{row.title}</strong><p>{row.target}</p><em>{row.detected}</em></span>
+          <span className="feed-result"><b className={row.level === "高危" ? "red-text" : row.level === "中危" ? "orange-text" : "blue-text"}>{row.level}</b><small>{row.owner}</small></span>
         </div>
       ))}
       {risks.length === 0 && <div className="risk-empty"><CheckCircle2 size={17} /><span>当前没有实时风险</span></div>}
@@ -388,4 +432,4 @@ function ResourceOverview({ resources }: { resources: OverviewResourceRecord[] }
   );
 }
 
-export { OverviewPage, MetricCard, OverviewServiceList, HostTable, TaskTable, AuditTable, RiskList, WorkbenchProgress, ResourceOverview };
+export { OverviewPage, MetricCard, NodeDetailContent, HostTable, TaskTable, AuditTable, RiskList, WorkbenchProgress, ResourceOverview };

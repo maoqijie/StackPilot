@@ -58,6 +58,7 @@
   --sidebar-collapsed: 72px;
   --topbar-height: 64px;
   --content-max: 1680px;
+  --content-max-collapsed: calc(var(--content-max) + var(--sidebar-width) - var(--sidebar-collapsed));
   --ease: 180ms cubic-bezier(0.2, 0, 0, 1);
 }
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { OverviewService } from "../../apps/controller/dist/modules/overview/overviewService.js";
+import { summarizeDiskVolumes } from "../../apps/controller/dist/platform/nativeAdapter.js";
 import { RiskService } from "../../apps/controller/dist/modules/risks/riskService.js";
 import { ScheduleService } from "../../apps/controller/dist/modules/schedules/scheduleService.js";
 import { TaskService } from "../../apps/controller/dist/modules/tasks/taskService.js";
@@ -35,6 +36,10 @@ test("overview, task and risk services run against a fake platform", async () =>
   const summary = await overview.getOverview();
   assert.equal(summary.nodes[0].id, "node-local");
   assert.equal(summary.tasks[0].id, "task-test");
+  const diskMetric = summary.metrics.find((metric) => metric.label === "磁盘使用率");
+  assert.equal(diskMetric.value, "80");
+  assert.equal(diskMetric.delta, "2 个盘 · 100 GB 可用");
+  assert.deepEqual(diskMetric.details?.map((detail) => [detail.label, detail.value]), [["C: (C:\\)", "60%"], ["D: (D:\\)", "93%"]]);
   assert.equal((await tasks.run("task-test")).task.id, "task-test");
   assert.ok(Array.isArray((await risks.scan()).risks));
   await tasks.export();
@@ -42,6 +47,18 @@ test("overview, task and risk services run against a fake platform", async () =>
   assert.deepEqual(exports.writes.map((write) => write.area), ["overview-tasks", "overview-risks"]);
   assert.equal(platform.calls.writeCrontab, 0);
   assert.equal(platform.calls.runScheduledCommand, 0);
+});
+
+test("disk usage summary is weighted by capacity across volumes", () => {
+  const gib = 1024 ** 3;
+  const summary = summarizeDiskVolumes([
+    { label: "C:", mount: "C:\\", totalBytes: 200 * gib, freeBytes: 80 * gib, usedBytes: 120 * gib, percent: 60 },
+    { label: "D:", mount: "D:\\", totalBytes: 300 * gib, freeBytes: 20 * gib, usedBytes: 280 * gib, percent: 93 },
+  ]);
+  assert.equal(summary.totalBytes, 500 * gib);
+  assert.equal(summary.usedBytes, 400 * gib);
+  assert.equal(summary.freeBytes, 100 * gib);
+  assert.equal(summary.percent, 80);
 });
 
 test("schedule service performs storage and execution only through injected interfaces", async () => {

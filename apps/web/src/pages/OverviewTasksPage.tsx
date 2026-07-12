@@ -1,23 +1,43 @@
-import { exportOverviewTasks, fetchOverviewTasks, refreshOverviewTasks, runOverviewTask } from "../api/overviewApi";
-import type { OverviewMetricIcon, OverviewTaskPageData, OverviewTaskRecord } from "../api/overviewApi";
-import { CalendarDays, Download, Plus, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { exportOverviewTasks, fetchOverviewTasks, runOverviewTask } from "../api/overviewApi";
+import type { OverviewMetricIcon, OverviewTaskPageData, OverviewTaskRecord, OverviewTaskStatus } from "../api/overviewApi";
+import {
+  CalendarDays,
+  CheckCircle2,
+  CircleX,
+  Clock3,
+  Download,
+  ListRestart,
+  LoaderCircle,
+  Plus,
+  RefreshCw,
+  TerminalSquare,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { setQuickRoute } from "../app/routing";
 import { ModulePageShell } from "../components/layout/ModulePageShell";
 import { MetricTile, ModuleSearch } from "../components/ui/Cards";
-import { DataTable } from "../components/ui/DataTable";
 import { DetailDrawer } from "../components/ui/DetailDrawer";
-import { StatusLight } from "../components/ui/StatusVisuals";
 import { overviewMetricIcons, reportApiError, taskTone } from "../features/overview/model";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import type { Notify, SetPage } from "../types/app";
+
+const taskStatusIcons: Record<OverviewTaskStatus, LucideIcon> = {
+  成功: CheckCircle2,
+  运行中: LoaderCircle,
+  等待: Clock3,
+  失败: CircleX,
+};
 
 function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPage }) {
   const [rows, setRows] = useState<OverviewTaskRecord[]>([]);
   const [pageData, setPageData] = useState<OverviewTaskPageData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<OverviewTaskRecord | null>(null);
+  const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
   const activeFilter = pageData?.filters.find((filter) => filter.id === tab) ?? pageData?.filters[0];
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
@@ -28,41 +48,54 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
   });
   const overviewMetricIconForTask = (icon: OverviewMetricIcon) => overviewMetricIcons[icon] ?? CalendarDays;
 
+  const syncTasks = useCallback((payload: Awaited<ReturnType<typeof fetchOverviewTasks>>) => {
+    setRows(payload.tasks);
+    setPageData(payload.page);
+    setTab((current) => payload.page.filters.some((filter) => filter.id === current) ? current : payload.page.filters[0]?.id ?? "all");
+    setSelected((current) => current ? payload.tasks.find((row) => row.id === current.id) ?? null : null);
+  }, []);
+
+  const loadTasks = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const payload = await fetchOverviewTasks(signal);
+      syncTasks(payload);
+    } catch (error) {
+      if (signal?.aborted) return;
+      const message = error instanceof Error ? error.message : "任务流后端加载失败";
+      setLoadError(message);
+      reportApiError(error, notify, "任务流后端加载失败");
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
+  }, [notify, syncTasks]);
+
   useEffect(() => {
     const controller = new AbortController();
     fetchOverviewTasks(controller.signal)
       .then((payload) => {
-        setRows(payload.tasks);
-        setPageData(payload.page);
-        setTab((current) => payload.page.filters.some((filter) => filter.id === current) ? current : payload.page.filters[0]?.id ?? "all");
-        setSelected((current) => current ? payload.tasks.find((row) => row.id === current.id) ?? null : null);
-        setLoading(false);
+        syncTasks(payload);
+        setLoadError(null);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        setLoading(false);
+        const message = error instanceof Error ? error.message : "任务流后端加载失败";
+        setLoadError(message);
         reportApiError(error, notify, "任务流后端加载失败");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [notify]);
+  }, [notify, syncTasks]);
 
-  const applyTask = (task: OverviewTaskRecord) => {
-    setRows((current) => current.map((row) => row.id === task.id ? task : row));
-    setSelected((current) => current?.id === task.id ? task : current);
-  };
+  const autoRefreshTasks = useCallback(async (signal: AbortSignal) => {
+    const payload = await fetchOverviewTasks(signal);
+    syncTasks(payload);
+  }, [syncTasks]);
 
-  const refreshTasksFromApi = async () => {
-    try {
-      const payload = await refreshOverviewTasks();
-      setRows(payload.tasks);
-      setPageData(payload.page);
-      setTab(payload.page.filters[0]?.id ?? "all");
-      setSelected(payload.tasks[0] ?? null);
-      notify(payload.message, payload.tone ?? "info");
-    } catch (error) {
-      reportApiError(error, notify, "重新采集任务失败");
-    }
-  };
+  useAutoRefresh(autoRefreshTasks, undefined, !loading && !loadError);
 
   const exportTasksFromApi = async () => {
     try {
@@ -74,35 +107,55 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
   };
 
   const runTaskFromApi = async (id: string) => {
+    if (runningTaskId) return;
+    setRunningTaskId(id);
     try {
       const payload = await runOverviewTask(id);
-      setRows(payload.tasks);
-      setPageData(payload.page);
-      applyTask(payload.task);
+      syncTasks(payload);
       notify(payload.message, payload.tone ?? "success");
     } catch (error) {
       reportApiError(error, notify, "运行真实任务失败");
+    } finally {
+      setRunningTaskId(null);
     }
   };
+
   const openScheduleCreate = () => {
     setPage("schedule-enabled", { message: "已打开真实定时任务创建", tone: "info" });
     window.requestAnimationFrame(() => setQuickRoute("schedule-enabled", "create-schedule"));
   };
 
+  const freshness = pageData?.collectedAt;
+
   return (
     <ModulePageShell
       title={pageData?.title ?? "任务流"}
-      subtitle={loading ? "正在从后端加载任务流。" : pageData?.subtitle ?? null}
+      subtitle={loading ? "正在加载设备任务与自动化执行记录" : pageData?.subtitle ?? "集中查看任务队列、状态与执行日志"}
       page="overview-tasks"
       viewContext={pageData?.context ?? false}
-      actions={<><button className="ghost" type="button" onClick={exportTasksFromApi}><Download size={14} /> 导出</button><button className="ghost" type="button" onClick={openScheduleCreate}><Plus size={14} /> 新建计划任务</button><button className="primary" type="button" onClick={refreshTasksFromApi}><RefreshCw size={14} /> 重新采集</button></>}
-      filters={<><div className="deploy-tabs">{(pageData?.filters ?? []).map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} type="button" onClick={() => setTab(item.id)}>{item.label}</button>)}</div><ModuleSearch value={search} placeholder={pageData?.searchPlaceholder ?? "搜索后端返回的任务"} onChange={setSearch} /></>}
+      actions={(
+        <>
+          <span className="task-page-freshness" role="status"><Clock3 size={14} aria-hidden="true" />{freshness ? `采集于 ${freshness}` : "等待采集"}</span>
+          <button className="ghost" type="button" onClick={exportTasksFromApi}><Download size={14} /> 导出</button>
+          <button className="ghost" type="button" onClick={openScheduleCreate}><Plus size={14} /> 新建计划任务</button>
+        </>
+      )}
+      filters={(
+        <>
+          <div className="deploy-tabs" aria-label="任务状态筛选">
+            {(pageData?.filters ?? []).map((item) => (
+              <button key={item.id} className={tab === item.id ? "active" : ""} type="button" aria-pressed={tab === item.id} onClick={() => setTab(item.id)}>{item.label}</button>
+            ))}
+          </div>
+          <ModuleSearch value={search} placeholder={pageData?.searchPlaceholder ?? "搜索后端返回的任务"} onChange={setSearch} />
+        </>
+      )}
       metrics={<>{(pageData?.metrics ?? []).map((metric) => <MetricTile key={metric.label} icon={overviewMetricIconForTask(metric.icon)} label={metric.label} value={metric.value} tone={metric.tone} />)}</>}
     >
       {selected && (
         <DetailDrawer title={selected.title} subtitle={`${selected.type} · ${selected.target}`} onClose={() => setSelected(null)} className="task-log-modal" modal>
-          <div className="detail-kv">
-            <p><span>状态</span><b><StatusLight tone={taskTone(selected.status)} /> {selected.status}</b></p>
+          <div className="detail-kv task-detail-kv">
+            <p><span>状态</span><b className={`task-inline-status ${taskTone(selected.status)}`}>{renderTaskStatusIcon(selected.status, 15)} {selected.status}</b></p>
             <p><span>优先级</span><b>{selected.priority}</b></p>
             <p><span>操作人</span><b>{selected.operator}</b></p>
             <p><span>排队时间</span><b>{selected.queuedAt}</b></p>
@@ -116,29 +169,90 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
           </div>
         </DetailDrawer>
       )}
-      <DataTable
-        columns={[
-          { key: "type", label: "类型", width: "90px", render: (row) => <span className="pill blue">{row.type}</span> },
-          { key: "title", label: "任务", width: "285px", render: (row) => <b>{row.title}</b> },
-          { key: "target", label: "目标", width: "170px", render: (row) => row.target },
-          { key: "status", label: "状态", width: "96px", render: (row) => <><StatusLight tone={taskTone(row.status)} /> {row.status}</> },
-          { key: "priority", label: "优先级", width: "82px", render: (row) => row.priority },
-          { key: "operator", label: "操作人", width: "96px", render: (row) => row.operator },
-          { key: "queuedAt", label: "时间", width: "130px", render: (row) => row.queuedAt },
-          { key: "duration", label: "耗时", width: "235px", render: (row) => row.duration },
-          { key: "actions", label: "操作", width: "176px", render: (row) => (
-            <div className="table-actions">
-              <button type="button" onClick={() => setSelected(row)}>日志</button>
-              <button type="button" onClick={() => void runTaskFromApi(row.id)}>{row.actionLabel}</button>
-            </div>
-          ) },
-        ]}
-        rows={filteredRows}
-        emptyText="没有匹配的任务"
-        getRowKey={(row) => row.id}
-      />
+
+      <section className="task-workflow" aria-label="任务执行记录">
+        <header className="task-workflow-head">
+          <div>
+            <strong>任务执行记录</strong>
+            <span>{loading ? "正在采集" : `${filteredRows.length} 条结果`}</span>
+          </div>
+          {activeFilter && <span>{activeFilter.label}</span>}
+        </header>
+
+        {loading && rows.length === 0 && (
+          <div className="task-page-state" role="status"><LoaderCircle className="is-spinning" size={20} />正在采集任务</div>
+        )}
+        {loadError && (
+          <div className="task-page-state error" role="alert">
+            <CircleX size={20} />
+            <span><strong>任务数据暂不可用</strong><small>{loadError}</small></span>
+            <button className="ghost small" type="button" onClick={() => void loadTasks()}><RefreshCw size={14} /> 重试</button>
+          </div>
+        )}
+        {!loading && !loadError && filteredRows.length === 0 && (
+          <div className="task-page-state" role="status"><Clock3 size={20} />没有匹配的任务，自动采集将继续运行</div>
+        )}
+        {!loadError && filteredRows.map((row) => (
+          <TaskWorkflowRow
+            key={row.id}
+            task={row}
+            running={runningTaskId === row.id}
+            actionsDisabled={runningTaskId !== null}
+            onOpen={() => setSelected(row)}
+            onRun={() => void runTaskFromApi(row.id)}
+          />
+        ))}
+      </section>
     </ModulePageShell>
   );
+}
+
+function TaskWorkflowRow({
+  task,
+  running,
+  actionsDisabled,
+  onOpen,
+  onRun,
+}: {
+  task: OverviewTaskRecord;
+  running: boolean;
+  actionsDisabled: boolean;
+  onOpen: () => void;
+  onRun: () => void;
+}) {
+  const StatusIcon = taskStatusIcons[task.status];
+  const tone = taskTone(task.status);
+  return (
+    <article className="task-workflow-row">
+      <span className={`task-status-icon ${tone}`} title={task.status}><StatusIcon size={20} aria-hidden="true" /></span>
+      <div className="task-row-primary">
+        <span>{task.type}</span>
+        <strong title={task.title}>{task.title}</strong>
+        <small><span title={task.target}>{task.target}</span><span>{task.source}</span><span>{task.operator}</span><span>{task.priority}优先级</span></small>
+      </div>
+      <div className="task-row-time">
+        <span>排队时间</span>
+        <strong>{task.queuedAt}</strong>
+        <small>采集 {task.collectedAt}</small>
+      </div>
+      <div className="task-row-result">
+        <strong className={tone}>{task.status}</strong>
+        <small>{task.duration}</small>
+      </div>
+      <div className="task-row-actions">
+        <button type="button" onClick={onOpen}><TerminalSquare size={14} /> 日志</button>
+        <button type="button" disabled={actionsDisabled} onClick={onRun}>
+          {running ? <LoaderCircle className="is-spinning" size={14} /> : <ListRestart size={14} />}
+          {running ? "运行中" : task.actionLabel}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function renderTaskStatusIcon(status: OverviewTaskStatus, size: number) {
+  const StatusIcon = taskStatusIcons[status];
+  return <StatusIcon size={size} aria-hidden="true" />;
 }
 
 export { OverviewTasksPage };

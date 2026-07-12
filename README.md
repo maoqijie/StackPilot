@@ -2,7 +2,7 @@
 
 StackPilot 是面向新手站长的开源自托管多服务器总控台。当前仓库采用 npm workspaces，包含前端控制台、本机 Node.js Controller API、共享契约和未实现的 Agent 占位包。
 
-> **项目成熟度：预览版。** 当前版本为 `0.2.0-preview.3`，提供可重复的部署、迁移、回滚和发布验证流程，但尚未达到稳定生产发布条件，也不提供 SLA。正式支持范围和已验证边界见[兼容性矩阵](docs/compatibility.md)。
+> **项目成熟度：预览版。** 当前版本为 `0.2.0-preview.4`，提供可重复的部署、迁移、回滚和发布验证流程，但尚未达到稳定生产发布条件，也不提供 SLA。正式支持范围和已验证边界见[兼容性矩阵](docs/compatibility.md)。
 
 ## 当前前端范围
 
@@ -195,7 +195,7 @@ npm run build
 npm run test:e2e
 npm audit --audit-level=high
 npm run release:build
-npm run release:verify -- output/release/0.2.0-preview.3/SHA256SUMS
+npm run release:verify -- output/release/0.2.0-preview.4/SHA256SUMS
 npm run release:scan
 ```
 

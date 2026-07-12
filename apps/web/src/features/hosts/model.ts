@@ -1,6 +1,6 @@
 import type { OverviewNode } from "../../api/overviewApi";
 import { latencyValue, uniqueSorted } from "../../utils/data";
-import type { HostPageMode, HostPagePreset, HostRecord } from "./types";
+import type { HostPageMode, HostPagePreset } from "./types";
 import type { PageKey, Tone, ViewContext } from "../../types/app";
 
 function hostPagePreset(page: PageKey) {
@@ -31,10 +31,10 @@ function hostPagePreset(page: PageKey) {
   } satisfies HostPagePreset;
 }
 
-function hostStatusTone(health: HostRecord["health"]): Tone {
-  if (health === "健康") return "green";
-  if (health === "警告") return "orange";
-  return "red";
+function hostStatusTone(status: OverviewNode["status"]): Tone {
+  if (status === "健康") return "green";
+  if (status === "警告") return "orange";
+  return "gray";
 }
 
 function hostResourceTone(value: string): Tone {
@@ -44,7 +44,7 @@ function hostResourceTone(value: string): Tone {
   return "green";
 }
 
-function hostHighestResource(row: HostRecord) {
+function hostHighestResource(row: OverviewNode) {
   const resources = [
     ["CPU", row.cpu],
     ["内存", row.memory],
@@ -54,33 +54,33 @@ function hostHighestResource(row: HostRecord) {
   return `${label} ${value}`;
 }
 
-function hostPressureScore(row: HostRecord) {
+function hostPressureScore(row: OverviewNode) {
   return Math.max(percentValue(row.cpu), percentValue(row.memory), percentValue(row.disk));
 }
 
-function hostNeedsAttention(row: HostRecord) {
-  return row.health !== "健康" || hostHasHighResource(row) || hostHasStaleBackup(row) || !isCleanUpdate(row.update);
+function hostNeedsAttention(row: OverviewNode) {
+  return row.status !== "健康" || hostHasHighResource(row) || hostHasStaleBackup(row) || !isCleanUpdate(row.update);
 }
 
-function hostHasHighResource(row: HostRecord) {
+function hostHasHighResource(row: OverviewNode) {
   return hostPressureScore(row) >= 70;
 }
 
-function hostHasStaleBackup(row: HostRecord) {
-  return !row.backup.startsWith("今天");
+function hostHasStaleBackup(row: OverviewNode) {
+  return row.backupStatus !== "健康";
 }
 
-function hostRiskReasons(row: HostRecord) {
+function hostRiskReasons(row: OverviewNode) {
   const reasons: string[] = [];
-  if (row.health === "离线") reasons.push("节点离线");
-  if (row.health === "警告") reasons.push("健康告警");
+  if (row.status === "维护") reasons.push("节点维护中");
+  if (row.status === "警告") reasons.push("健康告警");
   if (hostHasHighResource(row)) reasons.push(`资源高压 ${hostHighestResource(row)}`);
   if (hostHasStaleBackup(row)) reasons.push(`备份滞后 ${row.backup}`);
   if (!isCleanUpdate(row.update)) reasons.push(row.update);
   return reasons.length > 0 ? reasons : ["监控正常"];
 }
 
-function hostServiceSummary(row: HostRecord) {
+function hostServiceSummary(row: OverviewNode) {
   return `${row.services.length} 个服务`;
 }
 
@@ -101,39 +101,39 @@ function averageLatency(nodes: OverviewNode[]) {
   return `${Math.round(average)}ms`;
 }
 
-function hostViewContext(mode: HostPageMode, rows: HostRecord[], filteredRows: HostRecord[]): ViewContext {
+function hostViewContext(mode: HostPageMode, rows: OverviewNode[], filteredRows: OverviewNode[]): ViewContext {
   const productionRows = rows.filter((row) => row.env === "生产");
   const alertRows = rows.filter(hostNeedsAttention);
   if (mode === "production") {
     return {
       eyebrow: "主机 / 生产环境",
       title: "生产运行视图",
-      chips: [`生产 ${productionRows.length} 台`, `告警 ${productionRows.filter(hostNeedsAttention).length} 台`, `筛选 ${filteredRows.length} 台`],
+      chips: [`生产 ${productionRows.length} 台`, `需关注 ${productionRows.filter(hostNeedsAttention).length} 台`, `当前 ${filteredRows.length} 台`],
     };
   }
   if (mode === "alerts") {
     return {
       eyebrow: "主机 / 健康告警",
       title: "告警处置队列",
-      chips: [`待处理 ${alertRows.length} 台`, `离线 ${rows.filter((row) => row.health === "离线").length} 台`, `当前 ${filteredRows.length} 台`],
+      chips: [`待处理 ${alertRows.length} 台`, `警告 ${rows.filter((row) => row.status === "警告").length} 台`, `当前 ${filteredRows.length} 台`],
     };
   }
   return {
     eyebrow: "主机 / 全部主机",
     title: "资源清单",
-    chips: [`总数 ${rows.length} 台`, `健康 ${rows.filter((row) => row.health === "健康").length} 台`, `环境 ${uniqueSorted(rows.map((row) => row.env)).length} 个`],
+    chips: [`总数 ${rows.length} 台`, `健康 ${rows.filter((row) => row.status === "健康").length} 台`, `环境 ${uniqueSorted(rows.map((row) => row.env)).length} 个`],
   };
 }
 
-function hostMatchesHealth(row: HostRecord, healthFilter: string) {
+function hostMatchesHealth(row: OverviewNode, healthFilter: string) {
   if (healthFilter === "全部") return true;
   if (healthFilter === "需关注") return hostNeedsAttention(row);
-  return row.health === healthFilter;
+  return row.status === healthFilter;
 }
 
 function hostHealthOptions(mode: HostPageMode) {
-  if (mode === "alerts") return ["需关注", "警告", "离线", "全部", "健康"];
-  return ["全部", "健康", "警告", "离线"];
+  if (mode === "alerts") return ["需关注", "警告", "维护", "全部", "健康"];
+  return ["全部", "健康", "警告", "维护"];
 }
 
 export { hostPagePreset, hostStatusTone, hostResourceTone, hostHighestResource, hostPressureScore, hostNeedsAttention, hostHasHighResource, hostHasStaleBackup, hostRiskReasons, hostServiceSummary, percentValue, isCleanUpdate, averageLatency, hostViewContext, hostMatchesHealth, hostHealthOptions };

@@ -3,7 +3,7 @@ const collectedAt = "2026/07/11 10:00:00";
 function fakeNode() {
   return {
     id: "node-local", name: "fake-host", ip: "127.0.0.1", env: "测试", status: "健康",
-    latency: "1ms", latencyStatus: "健康", cpu: "12%", memory: "34%", disk: "56%",
+    latency: "1ms", latencyStatus: "健康", cpu: "12%", memory: "34%", disk: "80%",
     version: "v0.1.0", uptime: "1 小时", backup: "测试备份正常", backupStatus: "健康",
     update: "已同步", owner: "test",
     services: [{ id: "stackpilot-api", name: "StackPilot API", target: "127.0.0.1:8787", status: "健康", detail: "HTTP 200", latencyMs: 1 }],
@@ -21,10 +21,15 @@ export class FakePlatformAdapter {
     this.calls.collectSnapshot += 1;
     if (this.failSnapshot) throw new Error("sensitive fake platform failure");
     return {
-      node: fakeNode(), cpuPercent: 12, memoryPercent: 34, diskPercent: 56, loadPercent: 10,
+      node: fakeNode(), cpuPercent: 12, memoryPercent: 34, diskPercent: 80, loadPercent: 10,
       changedFiles: [], branch: "main", commit: "abc1234", behind: 0, version: "0.1.0",
       cpuCorePercents: [10, 14], loadAverages: [0.1, 0.2, 0.3], totalMemoryGb: 16, freeMemoryGb: 10,
-      diskFreeGb: 100, platformLabel: "test 1.0",
+      diskFreeGb: 100,
+      disks: [
+        { label: "C:", mount: "C:\\", totalBytes: 200 * 1024 ** 3, freeBytes: 80 * 1024 ** 3, usedBytes: 120 * 1024 ** 3, percent: 60 },
+        { label: "D:", mount: "D:\\", totalBytes: 300 * 1024 ** 3, freeBytes: 20 * 1024 ** 3, usedBytes: 280 * 1024 ** 3, percent: 93 },
+      ],
+      platformLabel: "test 1.0",
       auditRows: [[collectedAt, "git", "tester", "test commit", "main", "成功", "abc1234"]],
     };
   }

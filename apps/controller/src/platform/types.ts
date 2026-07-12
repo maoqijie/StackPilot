@@ -1,6 +1,7 @@
 import type { OverviewNode, OverviewTaskRecord } from "@stackpilot/contracts";
 
 export type CommandResult = { ok: boolean; stdout: string; stderr: string; elapsedMs: number };
+export type DiskVolume = { label: string; mount: string; totalBytes: number; freeBytes: number; usedBytes: number; percent: number };
 export type PlatformSnapshot = {
   node: OverviewNode;
   cpuPercent: number;
@@ -17,6 +18,7 @@ export type PlatformSnapshot = {
   totalMemoryGb: number;
   freeMemoryGb: number;
   diskFreeGb: number;
+  disks: DiskVolume[];
   platformLabel: string;
   auditRows: Array<[string, string, string, string, string, "成功" | "失败", string]>;
 };
