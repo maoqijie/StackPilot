@@ -273,6 +273,20 @@ test("overview excludes unavailable local resource values instead of projecting 
   assert.deepEqual(payload.resources["node-local"].slice(0, 3).map((metric) => [metric.value, metric.values]), [["暂不可用", []], ["暂不可用", []], ["暂不可用", []]]);
 });
 
+test("overview omits missing load and averages only available load samples", async () => {
+  const platform = new FakePlatformAdapter();
+  const originalCollect = platform.collectSnapshot.bind(platform);
+  platform.collectSnapshot = async () => ({ ...await originalCollect(), loadAverages: [] });
+  const localOnly = await new OverviewService(platform, new MemoryTaskStateRepository()).getOverview();
+  assert.deepEqual(localOnly.resources["node-local"].at(-1), { label: "系统负载", value: "暂不可用", delta: "等待采集", values: [], collectedAt: localOnly.collectedAt, freshness: "current" });
+  assert.deepEqual(localOnly.resources.cluster.at(-1), { label: "系统负载", value: "暂不可用", delta: "等待采集", values: [], collectedAt: localOnly.collectedAt, freshness: "current" });
+
+  const repository = new MemoryAgentControlRepository();
+  await repository.update((state) => state.nodes.push(agentNode(nodeIds.allowed, "load-agent", telemetry("load-agent", 10, 1, 0.5, 1, 2))));
+  const withAgent = await new OverviewService(platform, new MemoryTaskStateRepository(), repository).getOverview();
+  assert.deepEqual(withAgent.resources.cluster.at(-1), { label: "系统负载", value: "1.00", delta: "1 个实时节点", values: [1, 2, 3], collectedAt: withAgent.collectedAt, freshness: "current" });
+});
+
 test("schedule service performs storage and execution only through injected interfaces", async () => {
   const platform = new FakePlatformAdapter();
   const repository = new MemoryScheduleRepository();
