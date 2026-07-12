@@ -30,14 +30,15 @@ export class NodeService {
     let valid = false;
     try { valid = verify(null, Buffer.from(payload), credential.publicKey, Buffer.from(input.signature, "base64url")); } catch { valid = false; }
     if (!valid) throw new ServiceError(401, "UNAUTHORIZED", "Agent 请求签名无效");
-    await this.repository.update((next) => {
-      const currentNode = next.nodes.find((item) => item.nodeId === input.nodeId);
-      const currentCredential = next.credentials.find((item) => item.credentialId === input.credentialId && item.nodeId === input.nodeId);
-      const currentRotationRecovery = input.path === "/api/agent/credentials/rotate" && currentCredential?.revokedAt && currentCredential.replacedBy && currentCredential.rotationId;
-      if (!currentNode || currentNode.revokedAt || !currentCredential || (currentCredential.revokedAt && !currentRotationRecovery)) throw new ServiceError(401, "UNAUTHORIZED", "Agent 身份无效或已撤销");
-      if (next.nonces.some((item) => item.credentialId === input.credentialId && item.nonce === input.nonce)) throw new ServiceError(409, "BAD_REQUEST", "Agent 请求已重放");
-      next.nonces.push({ credentialId: input.credentialId, nonce: input.nonce, expiresAt: new Date(Date.now() + AGENT_REQUEST_TIME_WINDOW_MS).toISOString() });
+    const nonceResult = await this.repository.consumeNonce({
+      nodeId: input.nodeId,
+      credentialId: input.credentialId,
+      nonce: input.nonce,
+      expiresAt: new Date(Date.now() + AGENT_REQUEST_TIME_WINDOW_MS).toISOString(),
+      allowRevokedCredential: input.path === "/api/agent/credentials/rotate",
     });
+    if (nonceResult === "unauthorized") throw new ServiceError(401, "UNAUTHORIZED", "Agent 身份无效或已撤销");
+    if (nonceResult === "replayed") throw new ServiceError(409, "BAD_REQUEST", "Agent 请求已重放");
     return { nodeId: input.nodeId, credential };
   }
 
@@ -51,6 +52,7 @@ export class NodeService {
       const previous = node.status;
       node.status = "online"; node.lastSeenAt = acceptedAt; node.agentVersion = heartbeat.agentVersion;
       node.protocolVersion = heartbeat.protocolVersion; node.platform = heartbeat.platform; node.declaredCapabilities = heartbeat.capabilities;
+      node.heartbeatHealthStatus = heartbeat.health.status;
       if (heartbeat.telemetry) node.telemetry = heartbeat.telemetry;
       return audit({ requester: `agent:${nodeId}`, nodeId, taskId: null, event: "node.heartbeat", taskType: null, parameters: { health: heartbeat.health.status, capabilities: heartbeat.capabilities }, fromStatus: previous, toStatus: "online", resultSummary: null, traceId });
     });

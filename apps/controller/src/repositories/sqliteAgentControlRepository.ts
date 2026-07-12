@@ -1,7 +1,6 @@
 import type Database from "better-sqlite3";
-import type { AgentControlRepository, AgentControlState, AgentNodeState, AuditEvent } from "./agentControlRepository.js";
+import { AgentNodeStateSchema, type AgentControlRepository, type AgentControlState, type AgentNodeState, type AgentNonceRequest, type AuditEvent } from "./agentControlRepository.js";
 import type { AuditRepository } from "../audit/auditRepository.js";
-import { AgentNodeRecordSchema, AgentTelemetrySnapshotSchema } from "@stackpilot/contracts";
 
 const empty = (): AgentControlState => ({ enrollments: [], credentials: [], nodes: [], nonces: [], tasks: [], audits: [] });
 export class SqliteAgentControlRepository implements AgentControlRepository {
@@ -30,11 +29,30 @@ export class SqliteAgentControlRepository implements AgentControlRepository {
     })();for(const event of state.audits.filter(x=>!previousAudits.has(x.eventId)))this.appendAudit(event);return structuredClone(state);});this.queue=operation.then(()=>undefined,()=>undefined);return operation;
   }
 
+  async consumeNonce(request:AgentNonceRequest){
+    const operation=this.queue.catch(()=>undefined).then(async()=>this.database.transaction(()=>{
+      this.database.prepare("DELETE FROM agent_nonces WHERE expires_at<=?").run(new Date().toISOString());
+      const node=this.database.prepare("SELECT revoked_at FROM agent_nodes WHERE node_id=?").get(request.nodeId) as {revoked_at:string|null}|undefined;
+      const credential=this.database.prepare("SELECT revoked_at,replaced_by,rotation_id FROM agent_credentials WHERE credential_id=? AND node_id=?").get(request.credentialId,request.nodeId) as {revoked_at:string|null;replaced_by:string|null;rotation_id:string|null}|undefined;
+      const revokedCredentialAllowed=request.allowRevokedCredential&&Boolean(credential?.revoked_at&&credential.replaced_by&&credential.rotation_id);
+      if(!node||node.revoked_at||!credential||(credential.revoked_at&&!revokedCredentialAllowed))return "unauthorized" as const;
+      try{
+        this.database.prepare("INSERT INTO agent_nonces VALUES(?,?,?)").run(request.credentialId,request.nonce,request.expiresAt);
+        return "accepted" as const;
+      }catch(error){
+        if((error as {code?:string}).code?.startsWith("SQLITE_CONSTRAINT"))return "replayed" as const;
+        throw error;
+      }
+    })());
+    this.queue=operation.then(()=>undefined,()=>undefined);
+    return operation;
+  }
+
   async updateNodeWithAudit(nodeId:string,mutate:(node:AgentNodeState)=>AuditEvent):Promise<AgentNodeState|null>{
     const operation=this.queue.catch(()=>undefined).then(async()=>{
       const row=this.database.prepare("SELECT payload FROM agent_nodes WHERE node_id=?").get(nodeId) as {payload:string}|undefined;
       if(!row)return null;
-      const node=AgentNodeRecordSchema.extend({telemetry:AgentTelemetrySnapshotSchema.optional()}).parse(JSON.parse(row.payload)) as AgentNodeState;
+      const node=AgentNodeStateSchema.parse(JSON.parse(row.payload)) as AgentNodeState;
       const event=mutate(node);
       this.database.transaction(()=>{
         this.database.prepare("UPDATE agent_nodes SET payload=?,revoked_at=?,updated_at=? WHERE node_id=?").run(JSON.stringify(node),node.revokedAt,node.lastSeenAt??node.enrolledAt,nodeId);

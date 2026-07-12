@@ -29,6 +29,8 @@ test("collector exposes unavailable metrics without inventing zero values and he
   assert.deepEqual(heartbeat.telemetry, telemetry); assert.equal(heartbeat.protocolVersion, "1.0"); assert.equal(heartbeat.health.status, "degraded");
   const legacyHeartbeat = createHeartbeat({ agentVersion: "0.1.0", platform: "win32" }, "11111111-1111-4111-8111-111111111111", ["system.summary.read"]);
   assert.equal("telemetry" in legacyHeartbeat, false); assert.equal(legacyHeartbeat.protocolVersion, "1.0");
+  const failedHeartbeat = createHeartbeat({ agentVersion: "0.2.0", platform: "win32" }, "11111111-1111-4111-8111-111111111111", ["system.summary.read"], undefined, true);
+  assert.equal("telemetry" in failedHeartbeat, false); assert.equal(failedHeartbeat.health.status, "degraded");
 });
 
 test("collector degrades individual source failures to unavailable values", async () => {

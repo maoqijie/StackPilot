@@ -191,6 +191,7 @@
 
 .host-status.green { color: #16a34a; }
 .host-status.orange { color: #ca8a04; }
+.host-status.red { color: var(--danger); }
 .host-status.gray { color: var(--muted); }
 .host-neutral-text,
 .host-metric-unavailable { color: var(--muted); }
@@ -271,6 +272,21 @@
   transition: opacity var(--ease), transform var(--ease), visibility 0s linear 400ms;
   pointer-events: none;
 }
+
+.host-disk-tooltip-portal {
+  position: fixed;
+  z-index: 210;
+  max-height: min(50vh, 360px);
+  overflow-y: auto;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: none;
+  pointer-events: auto;
+}
+
+.host-disk-tooltip-portal.above { transform: translateY(-100%); }
+.host-disk-tooltip-portal.below::after { top: auto; bottom: 100%; transform: translateY(4px) rotate(45deg); }
 
 .host-detail-drawer .host-disk-tooltip {
   width: 100%;
