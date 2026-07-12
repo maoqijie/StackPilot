@@ -4,6 +4,7 @@ import type { PageKey, ViewContext } from "../../types/app";
 
 function ModulePageShell({
   title,
+  subtitle,
   page,
   viewContext,
   tabs,
@@ -32,6 +33,7 @@ function ModulePageShell({
       <div className="page-head module-head" inert={isModalSide} aria-hidden={isModalSide ? "true" : undefined}>
         <div>
           <h1>{title}</h1>
+          {subtitle && <p className="page-subtitle">{subtitle}</p>}
         </div>
         {actions && <div>{actions}</div>}
       </div>

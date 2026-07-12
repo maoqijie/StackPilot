@@ -1,7 +1,7 @@
 import { fetchOverview } from "../../api/overviewApi";
 import type { OverviewSummaryPayload } from "../../api/overviewApi";
 import { Lock } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { desktopTopbarChrome, navPageFor } from "../../app/navigation";
 import { lockedRouteForPage } from "../../app/routing";
 import { DesktopFooter } from "./DesktopFooter";
@@ -28,6 +28,7 @@ import { SystemdPage } from "../../pages/SystemdPage";
 import { TerminalPage } from "../../pages/TerminalPage";
 import type { Notify, PageKey, SetPage } from "../../types/app";
 import { drawerFocusableElements } from "../../utils/focus";
+import { useAutoRefresh } from "../../hooks/useAutoRefresh";
 
 function SessionLockOverlay({ page, onRestore }: { page: PageKey; onRestore: () => void }) {
   const overlayRef = useRef<HTMLElement>(null);
@@ -118,6 +119,7 @@ function DesktopShell({
   const [settingsReadOnly, setSettingsReadOnly] = useState(false);
   const [topbarOverview, setTopbarOverview] = useState<OverviewSummaryPayload | null>(null);
   const sidebarRestoreFocusRef = useRef<HTMLElement | null>(null);
+  const desktopContentRef = useRef<HTMLDivElement | null>(null);
   const sidebarOverlayOpen = isNarrowSidebar && !sidebarCollapsed;
   const settingsReadOnlyState = { readOnly: settingsReadOnly, setReadOnly: setSettingsReadOnly };
 
@@ -133,6 +135,17 @@ function DesktopShell({
     return () => mediaQuery.removeEventListener("change", syncSidebar);
   }, []);
 
+  const refreshTopbarOverview = useCallback(async (signal: AbortSignal) => {
+    const payload = await fetchOverview(signal);
+    setTopbarOverview(payload);
+  }, []);
+
+  useAutoRefresh(refreshTopbarOverview);
+
+  useEffect(() => {
+    desktopContentRef.current?.scrollTo({ top: 0 });
+  }, [page]);
+
   useEffect(() => {
     if (!sidebarOverlayOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -142,7 +155,7 @@ function DesktopShell({
         return;
       }
       if (event.key !== "Tab") return;
-      const sidebar = document.querySelector<HTMLElement>(".sidebar-mock:not(.collapsed)");
+      const sidebar = document.querySelector<HTMLElement>("[data-sidebar-root]");
       if (!sidebar) return;
       const controls = drawerFocusableElements(sidebar);
       if (controls.length === 0) {
@@ -168,7 +181,7 @@ function DesktopShell({
       }
     };
     window.requestAnimationFrame(() => {
-      const sidebar = document.querySelector<HTMLElement>(".sidebar-mock:not(.collapsed)");
+      const sidebar = document.querySelector<HTMLElement>("[data-sidebar-root]");
       const focusTarget = sidebar ? drawerFocusableElements(sidebar)[0] : null;
       focusTarget?.focus();
     });
@@ -202,11 +215,10 @@ function DesktopShell({
 
   return (
     <section className={`desktop-frame ${topbarChrome.white ? "white-top" : "dark-top"} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-      {sidebarOverlayOpen && <div className="sidebar-backdrop" role="presentation" onClick={collapseSidebar} />}
+      {sidebarOverlayOpen && <div className="cloud-sidebar-backdrop" role="presentation" onClick={collapseSidebar} />}
       <Sidebar
         page={page}
         setPage={setPage}
-        notify={notify}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={toggleSidebar}
         onExpandCollapsed={expandSidebar}
@@ -216,34 +228,36 @@ function DesktopShell({
       />
       <div className="desktop-main" inert={sidebarOverlayOpen} aria-hidden={sidebarOverlayOpen ? "true" : undefined}>
         <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={topbarOverview} interactionsDisabled={sessionLocked} onLogout={onLogout} />
-        {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
-        {page === "overview-health" && <OverviewHealthPage notify={notify} />}
-        {page === "overview-tasks" && <OverviewTasksPage notify={notify} setPage={setPage} />}
-        {page === "overview-risks" && <OverviewRisksPage notify={notify} />}
-        {activeModule === "hosts" && <HostsPage page={page} notify={notify} />}
-        {activeModule === "sites" && <SitesPage page={page} notify={notify} />}
-        {activeModule === "databases" && (
-          page === "databases-backups"
-            ? <DatabaseBackupsPage page={page} notify={notify} />
-            : page === "databases-slow"
-              ? <DatabaseSlowQueriesPage page={page} setPage={setPage} notify={notify} />
-            : <DatabasesPage page={page} setPage={setPage} notify={notify} />
-        )}
-        {activeModule === "files" && <FilesModule page={page} notify={notify} />}
-        {activeModule === "terminal" && <TerminalPage page={page} notify={notify} />}
-        {activeModule === "systemd" && <SystemdPage page={page} notify={notify} />}
-        {activeModule === "firewall" && <FirewallPage page={page} notify={notify} />}
-        {activeModule === "deploy" && <DeployPage page={page} notify={notify} />}
-        {activeModule === "schedule" && <SchedulePage page={page} notify={notify} />}
-        {activeModule === "audit" && <AuditPage page={page} notify={notify} />}
-        {activeModule === "acl" && <AclPage page={page} setPage={setPage} notify={notify} />}
-        {activeModule === "settings" && (
-          page === "settings-proxy"
-            ? <SettingsProxyPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} />
-            : <SettingsPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} />
-        )}
+        <div className="desktop-content" ref={desktopContentRef}>
+          {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
+          {page === "overview-health" && <OverviewHealthPage notify={notify} />}
+          {page === "overview-tasks" && <OverviewTasksPage notify={notify} setPage={setPage} />}
+          {page === "overview-risks" && <OverviewRisksPage notify={notify} />}
+          {activeModule === "hosts" && <HostsPage page={page} notify={notify} />}
+          {activeModule === "sites" && <SitesPage page={page} notify={notify} />}
+          {activeModule === "databases" && (
+            page === "databases-backups"
+              ? <DatabaseBackupsPage page={page} notify={notify} />
+              : page === "databases-slow"
+                ? <DatabaseSlowQueriesPage page={page} setPage={setPage} notify={notify} />
+              : <DatabasesPage page={page} setPage={setPage} notify={notify} />
+          )}
+          {activeModule === "files" && <FilesModule page={page} notify={notify} />}
+          {activeModule === "terminal" && <TerminalPage page={page} notify={notify} />}
+          {activeModule === "systemd" && <SystemdPage page={page} notify={notify} />}
+          {activeModule === "firewall" && <FirewallPage page={page} notify={notify} />}
+          {activeModule === "deploy" && <DeployPage page={page} notify={notify} />}
+          {activeModule === "schedule" && <SchedulePage page={page} notify={notify} />}
+          {activeModule === "audit" && <AuditPage page={page} notify={notify} />}
+          {activeModule === "acl" && <AclPage page={page} setPage={setPage} notify={notify} />}
+          {activeModule === "settings" && (
+            page === "settings-proxy"
+              ? <SettingsProxyPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} />
+              : <SettingsPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} />
+          )}
+        </div>
+        <DesktopFooter />
       </div>
-      {activeModule === "overview" && <DesktopFooter />}
     </section>
   );
 }

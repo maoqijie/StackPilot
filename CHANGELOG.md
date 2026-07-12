@@ -2,6 +2,14 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.2.0-preview.4 - 2026-07-12
+
+### Changed
+
+- Added silent 10-second monitoring refresh with visibility-aware recovery for Overview and host surfaces while preserving filters and open details.
+- Aggregated local disk utilization across all detected volumes and exposed per-volume capacity details through accessible host and metric detail views.
+- Refined CloudPulse overview, host, drawer and sidebar layouts for stable responsive scanning, long-hostname handling and clearer operational freshness states.
+
 ## 0.2.0-preview.3 - 2026-07-11
 
 ### Changed

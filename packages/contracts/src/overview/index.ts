@@ -13,6 +13,9 @@ export const OverviewNodeSchema = z.object({
   latency: z.string(), latencyStatus: z.enum(["健康", "警告"]), cpu: z.string(), memory: z.string(), disk: z.string(),
   version: z.string(), uptime: z.string(), backup: z.string(), backupStatus: z.enum(["健康", "警告"]),
   update: z.string(), owner: z.string(), services: z.array(OverviewServiceSchema),
+  diskVolumes: z.array(z.object({
+    label: z.string(), mount: z.string(), totalBytes: z.number().nonnegative(), usedBytes: z.number().nonnegative(), percent: z.number().min(0).max(100),
+  })).optional(),
 });
 export const OverviewAuditRowSchema = z.tuple([z.string(), z.string(), z.string(), z.string(), z.string(), z.enum(["成功", "失败"]), z.string()]);
 export const OverviewResourceRecordSchema = z.object({ label: z.string(), value: z.string(), delta: z.string(), values: z.array(z.number()) });
@@ -23,6 +26,7 @@ export const OverviewClusterSchema = z.object({
 export const OverviewMetricDataSchema = z.object({
   label: z.string(), value: z.string(), suffix: z.string(), delta: z.string(), icon: OverviewMetricIconSchema,
   tone: z.string(), line: z.array(z.number()),
+  details: z.array(z.object({ label: z.string(), value: z.string(), detail: z.string() })).optional(),
 });
 export const OverviewSummaryPayloadSchema = z.object({
   cluster: OverviewClusterSchema, metrics: z.array(OverviewMetricDataSchema), nodes: z.array(OverviewNodeSchema),

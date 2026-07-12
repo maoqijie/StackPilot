@@ -1,5 +1,6 @@
 .primary,
 .ghost,
+.icon-action,
 .warning,
 .danger-soft,
 .panel-link,
@@ -34,6 +35,8 @@
 .warning { color: #a16207; border-color: var(--warning-line); background: var(--warning-soft); }
 .danger-soft { color: #dc2626; border-color: var(--danger-line); background: var(--danger-soft); }
 .small { min-height: var(--control-sm); padding-inline: 11px; font-size: 12px; }
+.icon-action { width: var(--control-sm); min-height: var(--control-sm); padding: 0; color: var(--muted); border-color: var(--line); background: var(--surface); }
+.icon-action:hover { color: var(--text); background: var(--surface-hover); }
 
 .panel-card,
 .module-table-wrap,
@@ -45,7 +48,6 @@
 .proxy-policy-panel,
 .proxy-test-panel,
 .slow-trend-panel,
-.risk-evidence-panel,
 .identity-summary,
 .identity-users,
 .identity-role-form {
@@ -180,8 +182,7 @@
 .toggle-line > em { grid-column: 1; color: var(--muted); font-size: 12px; font-style: normal; }
 
 .pill,
-.status-chip,
-.side-child-badge {
+.status-chip {
   min-height: 24px;
   padding: 3px 8px;
   border: 1px solid var(--line);
@@ -229,14 +230,13 @@
 .module-card-list,
 .module-card-sort { display: none; }
 
-.drawer-scrim,
-.risk-modal-scrim { position: fixed; inset: 0; z-index: 190; background: var(--overlay); backdrop-filter: blur(3px); }
+.drawer-scrim { position: fixed; inset: 0; z-index: 190; background: var(--overlay); backdrop-filter: blur(3px); }
 .detail-drawer {
   position: fixed;
   top: 0;
   right: 0;
   z-index: 200;
-  width: min(480px, 100vw);
+  width: min(520px, 100vw);
   height: 100dvh;
   border-left: 1px solid var(--line);
   display: grid;
@@ -247,9 +247,11 @@
 }
 .drawer-head { min-height: 72px; padding: 14px 18px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .drawer-head > div { min-width: 0; display: grid; gap: 3px; }
+.drawer-head strong,
+.drawer-head span { min-width: 0; overflow-wrap: anywhere; }
 .drawer-head strong { font: 650 18px/1.25 var(--font-display); }
 .drawer-head span { color: var(--muted); font-size: 12px; }
-.drawer-body { min-height: 0; padding: 18px; overflow: auto; }
+.drawer-body { min-height: 0; padding: 24px; overflow: auto; }
 .drawer-actions { padding: 12px 18px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; background: var(--surface); }
 .drawer-list,
 .detail-kv { display: grid; gap: 8px; }
@@ -261,10 +263,7 @@
 .drawer-warning { padding: 12px; border: 1px solid var(--primary-line); border-radius: var(--radius-md); color: var(--text-soft); background: var(--primary-soft); }
 .drawer-warning { border-color: var(--warning-line); background: var(--warning-soft); }
 
-.risk-detail-modal,
 .schedule-job-modal,
-.task-log-modal,
-.health-node-modal,
 .delete-confirm {
   position: fixed;
   inset: 50% auto auto 50%;
@@ -279,9 +278,6 @@
   transform: translate(-50%, -50%);
   overflow: auto;
 }
-.risk-modal-head { min-height: 68px; padding: 14px 18px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
-.risk-modal-body { padding: 18px; }
-
 .progress-score,
 .storage-bar,
 .bar-cell { position: relative; overflow: hidden; border-radius: 999px; background: var(--line); }
@@ -300,9 +296,16 @@
 .bar-cell > i > b.red { background: var(--danger); }
 .bar-cell > i > b.purple { background: var(--secondary); }
 
-.spark-area { fill: rgb(14 165 233 / 10%); }
-.spark-line { fill: none; stroke: var(--primary); stroke-width: 2; }
+.spark { color: var(--primary); }
+.spark.green { color: var(--tertiary); }
+.spark.orange { color: var(--warning); }
+.spark.red { color: var(--danger); }
+.spark.purple { color: var(--secondary); }
+.spark-area { fill: currentColor; fill-opacity: 0.1; }
+.spark-bars rect { fill: currentColor; fill-opacity: 0.28; }
+.spark-line { fill: none; stroke: currentColor; stroke-width: 2; }
 .spark-grid,
 .spark-baseline { stroke: var(--line); }
-.spark-point { fill: var(--primary); }
+.spark-current-guide { stroke: currentColor; stroke-opacity: 0.16; }
+.spark-point { fill: currentColor; }
 .donut { border-radius: 50%; }

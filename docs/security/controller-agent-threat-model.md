@@ -1,6 +1,6 @@
 # Controller-Agent Threat Model
 
-Status: protocol design for StackPilot `0.2.0-preview.3`. This document is normative for the initial Controller-Agent implementation. The feature remains preview quality and is not a stable release.
+Status: protocol design for StackPilot `0.2.0-preview.4`. This document is normative for the initial Controller-Agent implementation. The feature remains preview quality and is not a stable release.
 
 ## Scope and assets
 

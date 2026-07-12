@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useIsNarrowViewport } from "../../hooks/useIsNarrowViewport";
 import { drawerFocusableElements, drawerRestoreFallback, isFocusableElement } from "../../utils/focus";
 
@@ -53,7 +54,7 @@ function DetailDrawer({
     const handleDocumentKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || !document.contains(drawer)) return;
       if (event.key === "Escape") {
-        if (document.querySelector(".topbar-search-panel, .topbar-dropdown")) return;
+        if (document.querySelector(".cloud-header-results")) return;
         onCloseRef.current();
         return;
       }
@@ -107,7 +108,7 @@ function DetailDrawer({
     }
   };
 
-  return (
+  return createPortal(
     <>
       <button className={scrimClassName} type="button" aria-label="关闭详情" onClick={onClose} tabIndex={-1} />
       <aside
@@ -129,7 +130,8 @@ function DetailDrawer({
         <div className="drawer-body">{children}</div>
         {actions && <div className="drawer-actions inline">{actions}</div>}
       </aside>
-    </>
+    </>,
+    document.body,
   );
 }
 

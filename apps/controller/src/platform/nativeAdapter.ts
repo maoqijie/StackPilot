@@ -4,12 +4,71 @@ import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import type { OverviewNode, OverviewService, OverviewTaskRecord } from "@stackpilot/contracts";
 import type { ControllerConfig } from "../config/environment.js";
 import { runFixedCommand } from "./commandRunner.js";
-import type { PlatformAdapter, PlatformSnapshot } from "./types.js";
+import type { DiskVolume, PlatformAdapter, PlatformSnapshot } from "./types.js";
 
 const nodeId = "node-local";
 const clamp = (value: number) => Math.max(0, Math.min(100, Math.round(Number.isFinite(value) ? value : 0)));
 const percent = (value: number) => `${clamp(value)}%`;
 const gb = (bytes: number) => Math.max(0, Math.round(bytes / 1024 / 1024 / 1024));
+const diskPercent = (usedBytes: number, totalBytes: number) => clamp(usedBytes / Math.max(totalBytes, 1) * 100);
+
+function summarizeDiskVolumes(disks: DiskVolume[]) {
+  const totalBytes = disks.reduce((sum, disk) => sum + disk.totalBytes, 0);
+  const freeBytes = disks.reduce((sum, disk) => sum + disk.freeBytes, 0);
+  return { totalBytes, freeBytes, usedBytes: Math.max(0, totalBytes - freeBytes), percent: diskPercent(totalBytes - freeBytes, totalBytes) };
+}
+
+function decodeMountPath(value: string) {
+  return value.replace(/\\([0-7]{3})/g, (_match, octal: string) => String.fromCharCode(Number.parseInt(octal, 8)));
+}
+
+async function mountedPaths(repoRoot: string): Promise<Array<{ label: string; mount: string }>> {
+  if (platform() === "win32") {
+    return "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((letter) => ({ label: `${letter}:`, mount: `${letter}:\\` }));
+  }
+  if (platform() === "linux") {
+    const mountInfo = await readFile("/proc/self/mountinfo", "utf8").catch(() => "");
+    const ignored = /^(proc|sysfs|tmpfs|devtmpfs|devpts|cgroup|cgroup2|mqueue|pstore|securityfs|tracefs|debugfs|configfs|fusectl|hugetlbfs|rpc_pipefs|autofs|binfmt_misc)$/;
+    const seenDevices = new Set<string>();
+    const mounts: Array<{ label: string; mount: string }> = [];
+    for (const line of mountInfo.split(/\r?\n/).filter(Boolean)) {
+      const fields = line.split(" ");
+      const separator = fields.indexOf("-");
+      const device = fields[2] ?? "";
+      const mount = decodeMountPath(fields[4] ?? "");
+      const filesystem = separator >= 0 ? fields[separator + 1] ?? "" : "";
+      if (!mount || ignored.test(filesystem) || seenDevices.has(device)) continue;
+      seenDevices.add(device);
+      mounts.push({ label: mount === "/" ? "根目录" : basename(mount), mount });
+    }
+    return mounts.length ? mounts : [{ label: "根目录", mount: "/" }];
+  }
+  if (platform() === "darwin") {
+    const volumes = await readdir("/Volumes", { withFileTypes: true }).catch(() => []);
+    return [{ label: "根目录", mount: "/" }, ...volumes.filter((entry) => entry.isDirectory()).map((entry) => ({ label: entry.name, mount: join("/Volumes", entry.name) }))];
+  }
+  return [{ label: basename(repoRoot) || repoRoot, mount: repoRoot }];
+}
+
+async function collectDiskVolumes(repoRoot: string): Promise<DiskVolume[]> {
+  const candidates = await mountedPaths(repoRoot);
+  const collected = await Promise.all(candidates.map(async ({ label, mount }) => {
+    const stats = await statfs(mount).catch(() => null);
+    if (!stats || stats.blocks <= 0 || stats.bsize <= 0) return null;
+    const totalBytes = stats.blocks * stats.bsize;
+    const freeBytes = Math.max(0, stats.bavail * stats.bsize);
+    const usedBytes = Math.max(0, totalBytes - freeBytes);
+    return { label, mount, totalBytes, freeBytes, usedBytes, percent: diskPercent(usedBytes, totalBytes) } satisfies DiskVolume;
+  }));
+  const disks = collected.filter((disk): disk is DiskVolume => disk !== null);
+  if (disks.length) return disks;
+  const fallback = await statfs(repoRoot).catch(() => null);
+  if (!fallback) return [];
+  const totalBytes = fallback.blocks * fallback.bsize;
+  const freeBytes = Math.max(0, fallback.bavail * fallback.bsize);
+  const usedBytes = Math.max(0, totalBytes - freeBytes);
+  return [{ label: basename(repoRoot) || "仓库所在卷", mount: repoRoot, totalBytes, freeBytes, usedBytes, percent: diskPercent(usedBytes, totalBytes) }];
+}
 
 type BackupStatus = { label: string; status: "健康" | "警告"; detail: string };
 
@@ -89,8 +148,9 @@ export class NativePlatformAdapter implements PlatformAdapter {
     });
     const cpuPercent = clamp(cpuCorePercents.reduce((sum, value) => sum + value, 0) / Math.max(cpuCorePercents.length, 1));
     const memoryPercent = clamp(((totalmem() - freemem()) / Math.max(totalmem(), 1)) * 100);
-    const disk = await statfs(this.repoRoot).catch(() => null);
-    const diskPercent = disk ? clamp(((disk.blocks - disk.bavail) / Math.max(disk.blocks, 1)) * 100) : 0;
+    const disks = await collectDiskVolumes(this.repoRoot);
+    const diskSummary = summarizeDiskVolumes(disks);
+    const aggregateDiskPercent = diskSummary.percent;
     const [gitStatus, branchResult, commitResult, logResult, apiProbe, webProbe, packageRaw, backup] = await Promise.all([
       runFixedCommand("git", ["status", "--porcelain=v1", "--branch"], { cwd: this.repoRoot }),
       runFixedCommand("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: this.repoRoot }),
@@ -109,16 +169,19 @@ export class NativePlatformAdapter implements PlatformAdapter {
     const commit = commitResult.ok ? commitResult.stdout : "unknown";
     const version = String((JSON.parse(packageRaw) as { version?: string }).version ?? "0.0.0");
     const services = [service("stackpilot-api", "StackPilot API", `${this.config.host}:${this.config.port}`, apiProbe), service("stackpilot-web", "StackPilot Web", `127.0.0.1:${this.config.webPort}`, webProbe)];
-    const health = cpuPercent >= 85 || memoryPercent >= 88 || diskPercent >= 90 || services.some((item) => item.status !== "健康") ? "警告" : "健康";
+    const health = cpuPercent >= 85 || memoryPercent >= 88 || aggregateDiskPercent >= 90 || services.some((item) => item.status !== "健康") ? "警告" : "健康";
     const totalSeconds = Math.max(0, Math.floor(uptime()));
     const uptimeLabel = `${Math.floor(totalSeconds / 3600)} 小时 ${Math.floor(totalSeconds % 3600 / 60)} 分钟`;
     const node: OverviewNode = {
       id: nodeId, name: hostname(), ip: primaryAddress(), env: "本机", status: health,
       latency: apiProbe.latency ? `${apiProbe.latency}ms` : "不可达", latencyStatus: apiProbe.ok ? "健康" : "警告",
-      cpu: percent(cpuPercent), memory: percent(memoryPercent), disk: percent(diskPercent), version: `v${version}`,
+      cpu: percent(cpuPercent), memory: percent(memoryPercent), disk: percent(aggregateDiskPercent), version: `v${version}`,
       uptime: uptimeLabel, backup: backup.label, backupStatus: backup.status,
       update: changedFiles.length ? `${changedFiles.length} 个工作区变更` : behind ? `落后 ${behind} 个提交` : "已同步",
       owner: `npm / ${branch}`, services,
+      diskVolumes: disks.map(({ label, mount, totalBytes, usedBytes, percent: volumePercent }) => ({
+        label, mount, totalBytes, usedBytes, percent: volumePercent,
+      })),
     };
     const auditRows = logResult.ok ? logResult.stdout.split(/\r?\n/).filter(Boolean).map((line): PlatformSnapshot["auditRows"][number] => {
       const [time = "", author = "", subject = "", hash = ""] = line.split("\x1f");
@@ -126,11 +189,11 @@ export class NativePlatformAdapter implements PlatformAdapter {
     }) : [];
     const loadAverages = loadavg();
     return {
-      node, cpuPercent, memoryPercent, diskPercent,
+      node, cpuPercent, memoryPercent, diskPercent: aggregateDiskPercent,
       loadPercent: clamp((loadAverages[0] ?? 0) / Math.max(cpus().length, 1) * 100),
       changedFiles, branch, commit, behind, version, auditRows, cpuCorePercents, loadAverages,
       totalMemoryGb: gb(totalmem()), freeMemoryGb: gb(freemem()),
-      diskFreeGb: disk ? gb(disk.bavail * disk.bsize) : 0,
+      diskFreeGb: gb(diskSummary.freeBytes), disks,
       platformLabel: `${platform()} ${release()}`,
     };
   }
@@ -212,3 +275,5 @@ export class NativePlatformAdapter implements PlatformAdapter {
     }
   }
 }
+
+export { summarizeDiskVolumes };
