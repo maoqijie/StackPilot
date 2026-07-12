@@ -1,6 +1,6 @@
 # Compatibility Matrix
 
-StackPilot `0.2.0-preview.4` is a preview release, not a stable production release. Support below means the release gates are designed for that target; it does not imply an SLA.
+StackPilot `0.2.0-preview.5` is a preview release, not a stable production release. Support below means the release gates are designed for that target; it does not imply an SLA.
 
 | Surface | Supported range | Evidence and limits |
 | --- | --- | --- |
@@ -9,7 +9,7 @@ StackPilot `0.2.0-preview.4` is a preview release, not a stable production relea
 | Node.js | `22.x`, release build pinned to `22.22.0` | Node 20 remains usable for development but is not a production release target |
 | npm | 10 or 11 with committed lockfile | production installation uses `npm ci` |
 | Database | embedded SQLite, schema `2` | direct upgrade only from schema `1`; restore accepts schemas 1 and 2 |
-| Controller | `0.2.0-preview.4` | must match Web release version |
+| Controller | `0.2.0-preview.5` | must match Web release version |
 | Agent | `0.1.x` or `0.2.x`, protocol `1.0` | incompatible protocol major is rejected; future capabilities are not implied |
 | Browser | current and previous major Chrome, Edge and Firefox | Chromium desktop/mobile E2E is automated; Firefox is a compatibility target, not yet an E2E gate |
 

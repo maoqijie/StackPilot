@@ -1,0 +1,53 @@
+/* Runtime monitoring surfaces use contrast and elevation instead of decorative lines. */
+.module-page-sites-runtime :is(
+  .module-view-context,
+  .module-view-context em,
+  .module-filter-line,
+  .module-metrics article,
+  .module-table-wrap,
+  .module-table th,
+  .module-table td,
+  .module-card-sort,
+  .module-card-row,
+  .module-card-empty,
+  .table-icon-actions button,
+  .module-card-footer .ghost
+),
+.module-page-sites-runtime :is(
+  .module-card-row,
+  .table-icon-actions button,
+  .module-card-footer .ghost
+):is(:hover, :focus, :focus-visible, :focus-within, :active) {
+  border: 0;
+  outline: 0;
+}
+
+.module-page-sites-runtime :is(.table-icon-actions button, .module-card-footer .ghost) {
+  background: transparent;
+  box-shadow: none;
+}
+
+.module-page-sites-runtime :is(.table-icon-actions button, .module-card-footer .ghost):is(:hover, :focus-visible, :active) {
+  color: var(--primary-hover);
+  background: var(--primary-soft);
+  box-shadow: none;
+}
+
+.module-page-sites-runtime :is(.module-card-row:hover, .module-card-row:focus-within) {
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-subtle);
+  transform: none;
+}
+
+.runtime-detail-drawer,
+.runtime-detail-drawer .drawer-head,
+.runtime-detail-drawer .drawer-head .icon-action,
+.runtime-detail-drawer .drawer-head .icon-action:is(:hover, :focus-visible, :active),
+.runtime-detail-drawer .runtime-detail-facts p {
+  border: 0;
+  outline: 0;
+}
+
+.runtime-detail-drawer .drawer-head { box-shadow: var(--shadow-subtle); }
+.runtime-detail-drawer .drawer-head .icon-action { box-shadow: none; }
+.runtime-detail-drawer .drawer-head .icon-action:is(:hover, :focus-visible, :active) { background: var(--surface-hover); }

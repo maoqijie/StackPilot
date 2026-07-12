@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TopBar } from "../components/layout/TopBar";
 import { ThemeProvider } from "../theme/ThemeProvider";
 import { THEME_STORAGE_KEY, useTheme } from "../theme/theme";
 
@@ -28,5 +29,30 @@ describe("theme provider", () => {
     fireEvent.click(screen.getByRole("button"));
     expect(screen.getByRole("button")).toHaveTextContent("light");
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
+  });
+
+  it("keeps the top-bar theme control available for a partial monitoring response", () => {
+    render(
+      <ThemeProvider>
+        <TopBar
+          page="sites-runtime"
+          setPage={vi.fn()}
+          chrome={{ white: true, showBreadcrumb: true, showCompactSearch: true, showStatus: true, showActivity: true }}
+          notify={vi.fn()}
+          unreadCount={0}
+          setUnreadCount={vi.fn()}
+          overview={{ lastRefresh: "" } as never}
+          interactionsDisabled={false}
+          onLogout={vi.fn()}
+        />
+      </ThemeProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "切换到深色主题" }));
+
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(document.documentElement.style.colorScheme).toBe("dark");
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
+    expect(screen.getByRole("button", { name: "切换到浅色主题" })).toBeInTheDocument();
   });
 });

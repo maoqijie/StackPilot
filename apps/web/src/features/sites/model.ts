@@ -5,7 +5,8 @@ import type { PageKey, Tone } from "../../types/app";
 function sitesPagePreset(page: PageKey) {
   if (page === "sites-cert") return { status: "全部", runtime: "全部", search: "", subtitle: "证书续期视图，优先展示即将过期的站点。" };
   if (page === "sites-runtime") return { status: "全部", runtime: "全部", search: "", subtitle: "运行时分组视图，按 Node、PHP、静态站点聚合容量与风险。" };
-  return { status: page === "sites-running" ? "运行中" : "全部", runtime: "全部", search: "", subtitle: "管理域名、运行时、证书有效期和站点启停状态。" };
+  if (page === "sites-running") return { status: "活跃", runtime: "全部", search: "", subtitle: "监控正在运行或处于告警状态的站点、上游延迟和错误率。" };
+  return { status: "全部", runtime: "全部", search: "", subtitle: "管理域名、运行时、证书有效期和站点启停状态。" };
 }
 
 function isSiteCertDue(site: SiteRecord) {
@@ -16,6 +17,13 @@ function siteStatusTone(status: SiteRecord["status"]): Tone {
   if (status === "运行中") return "green";
   if (status === "告警") return "orange";
   return "gray";
+}
+
+function runtimeGroupHealth(group: SiteRuntimeGroup) {
+  if (group.warning > 0) return { label: "告警", tone: "orange" as const };
+  if (group.running === 0) return { label: "已停止", tone: "gray" as const };
+  if (group.stopped > 0 || group.certDue > 0) return { label: "需关注", tone: "orange" as const };
+  return { label: "健康", tone: "green" as const };
 }
 
 function siteTrafficGb(site: SiteRecord) {
@@ -53,4 +61,4 @@ function runtimeGroupsFromSites(sites: SiteRecord[]): SiteRuntimeGroup[] {
   }).sort((left, right) => right.sites.length - left.sites.length || left.runtime.localeCompare(right.runtime, "zh-Hans-CN"));
 }
 
-export { sitesPagePreset, isSiteCertDue, siteStatusTone, siteTrafficGb, formatTrafficGb, runtimeGroupsFromSites };
+export { sitesPagePreset, isSiteCertDue, siteStatusTone, runtimeGroupHealth, siteTrafficGb, formatTrafficGb, runtimeGroupsFromSites };

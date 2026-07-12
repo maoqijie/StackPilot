@@ -4,7 +4,7 @@
 
 This file governs all user-interface work in this repository. `DESIGN.md` is the source of truth for the visual system. Implement the CloudPulse design language exactly as specified here. Do not introduce colors, type scales, spacing values, radii, shadows, component variants, or monitoring behavior that conflict with these rules.
 
-CloudPulse must feel airy, calm, trustworthy, and visibly active. It is intended for cloud infrastructure monitoring and DevOps dashboards. Interfaces must communicate complex system health without overwhelming operators during routine checks or incidents. Use generous whitespace, soft rounded surfaces, and the defined sky-to-violet language. Dark variants are optional only for ambient monitoring panels.
+CloudPulse must feel airy, calm, trustworthy, and visibly active. It is intended for cloud infrastructure monitoring and DevOps dashboards. Interfaces must communicate complex system health without overwhelming operators during routine checks or incidents. Use generous whitespace, soft rounded surfaces, and the defined sky-to-violet language.
 
 ## UI implementation constraints learned from review
 
@@ -222,7 +222,6 @@ Use the primary glow only on cards representing live or actively updating servic
 - Use the primary glow on live or actively updating monitoring cards.
 - Do not refresh data more frequently than every `10` seconds unless a visible loading indicator is present.
 - Never display more than three alert banners at once. When more alerts exist, summarize them in one grouped notification.
-- Dark panel variants may be provided for ambient, wall-mounted monitoring displays.
 - Never communicate status using color alone; include a text label or icon.
 
 ## Review checklist
@@ -243,4 +242,3 @@ Before completing UI work, verify all of the following:
 - Automatic polling uses read-only requests at `10` seconds or slower, preserves operator context, and produces no toast spam.
 - Desktop and mobile rendering have been inspected with a real browser; computed overflow, removed controls, drawers, hover states, and at least one complete polling cycle have been verified.
 - Every status remains understandable without relying on color alone.
-- Any dark styling is limited to an ambient monitoring panel variant.

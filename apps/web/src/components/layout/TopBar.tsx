@@ -42,9 +42,9 @@ function TopBar({
   const selectedIndex = results.length ? Math.min(activeIndex, results.length - 1) : 0;
   const visibleSearchOpen = searchOpen && !interactionsDisabled;
   const freshness = overview?.lastRefresh || "等待首次采集";
-  const health = overview?.cluster.health || "采集中";
+  const health = overview?.cluster?.health || "采集中";
   const healthTone = !overview ? "info" : health === "健康" ? "success" : health === "警告" ? "warning" : "neutral";
-  const userName = overview?.cluster.current || "本机节点";
+  const userName = overview?.cluster?.current || "本机节点";
 
   const closeSearch = () => {
     setSearchOpen(false);

@@ -2,6 +2,14 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.2.0-preview.5 - 2026-07-12
+
+### Changed
+
+- Refined website inventory, active-runtime, certificate-risk and runtime-group views with semantic statuses, focused risk workflows and complete body-level detail drawers.
+- Added certificate risk and renewal-mode filters, runtime health summaries and compact action controls while preserving responsive long-domain handling.
+- Expanded site-page and theme coverage, and hardened shell monitoring fallbacks for incomplete overview responses.
+
 ## 0.2.0-preview.4 - 2026-07-12
 
 ### Changed
