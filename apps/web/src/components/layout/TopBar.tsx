@@ -5,6 +5,7 @@ import { resolvePageMeta, topbarSearchResults } from "../../app/navigation";
 import { useTheme } from "../../theme/theme";
 import type { TopbarChrome, TopbarSearchResult } from "./types";
 import type { Notify, PageKey, SetPage } from "../../types/app";
+import { formatBackendDateTime, overviewCollectedAt } from "../../utils/time";
 
 function TopBar({
   page,
@@ -41,7 +42,7 @@ function TopBar({
   const results = topbarSearchResults(query);
   const selectedIndex = results.length ? Math.min(activeIndex, results.length - 1) : 0;
   const visibleSearchOpen = searchOpen && !interactionsDisabled;
-  const freshness = overview?.lastRefresh || "等待首次采集";
+  const freshness = overview ? formatBackendDateTime(overviewCollectedAt(overview), "等待首次采集") : "等待首次采集";
   const health = overview?.cluster?.health || "采集中";
   const healthTone = !overview ? "info" : health === "健康" ? "success" : health === "警告" ? "warning" : "neutral";
   const userName = overview?.cluster?.current || "本机节点";

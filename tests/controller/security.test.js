@@ -101,13 +101,82 @@ test("administrator control-plane APIs manage enrollment, nodes and task status 
     const enrollmentReauthResponse=await fetch(`${baseUrl}/api/auth/reauthenticate`,{method:"POST",headers:{Origin:allowedOrigin,Cookie:cookie,"X-CSRF-Token":loginBody.csrfToken,"Content-Type":"application/json"},body:JSON.stringify({password:"correct horse battery staple"})});const enrollmentReauth=await enrollmentReauthResponse.json();
     const enrollment = await jsonResponse(await fetch(`${baseUrl}/api/enrollments`, { method: "POST", headers: {Origin:allowedOrigin,Cookie:cookie,"X-CSRF-Token":loginBody.csrfToken,"X-Reauth-Proof":enrollmentReauth.proof,"Content-Type":"application/json"}, body: JSON.stringify({ nodeName: "remote-node", expiresInSeconds: 300 }) })); assert.equal(enrollment.status, 201);
     const enrolled = await services.enrollments.enroll({ enrollmentToken: enrollment.body.token, nodeName: "remote-node", publicKey: pair.publicKey.export({ type: "spki", format: "pem" }).toString(), agentVersion: "0.1.0", protocolVersion: "1.0", platform: "linux", capabilities: ["system.summary.read"] }, crypto.randomUUID());
-    await services.nodes.heartbeat(enrolled.nodeId, { nodeId: enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: "1.0", timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 1 } }, crypto.randomUUID());
-    const nodes = await jsonResponse(await fetch(`${baseUrl}/api/nodes`, { headers: authHeaders(apiToken) })); assert.equal(nodes.body.nodes[0].nodeName, "remote-node"); assert.doesNotMatch(JSON.stringify(nodes.body), /BEGIN PUBLIC KEY|credentialId/);
+    const heartbeatAt = new Date().toISOString();
+    await services.nodes.heartbeat(enrolled.nodeId, { nodeId: enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: "1.0", timestamp: heartbeatAt, platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 1 }, telemetry: { collectedAt: heartbeatAt, hostname: "remote-node", primaryIp: "10.0.0.2", cpu: { usagePercent: 10, coreUsagePercents: [10] }, memory: { totalBytes: 1024, availableBytes: 512 }, loadAverage: [0.1, 0.2, 0.3], disks: [], uptimeSeconds: 1 } }, crypto.randomUUID());
+    const nodes = await jsonResponse(await fetch(`${baseUrl}/api/nodes`, { headers: authHeaders(apiToken) })); assert.equal(nodes.body.nodes[0].nodeName, "remote-node"); assert.doesNotMatch(JSON.stringify(nodes.body), /BEGIN PUBLIC KEY|credentialId|telemetry|10\.0\.0\.2/);
     const reauthResponse=await fetch(`${baseUrl}/api/auth/reauthenticate`,{method:"POST",headers:{Origin:allowedOrigin,Cookie:cookie,"X-CSRF-Token":loginBody.csrfToken,"Content-Type":"application/json"},body:JSON.stringify({password:"correct horse battery staple"})});const reauth=await reauthResponse.json();
     const task = await jsonResponse(await fetch(`${baseUrl}/api/nodes/${enrolled.nodeId}/tasks`, { method: "POST", headers: {Origin:allowedOrigin,Cookie:cookie,"X-CSRF-Token":loginBody.csrfToken,"X-Reauth-Proof":reauth.proof,"Content-Type":"application/json"}, body: JSON.stringify({ type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "http-control-task-1" }) })); assert.equal(task.status, 201);
     const tasks = await jsonResponse(await fetch(`${baseUrl}/api/remote-tasks`, { headers: authHeaders(apiToken) })); assert.equal(tasks.body.tasks.length, 1);
     const cancelled = await jsonResponse(await fetch(`${baseUrl}/api/remote-tasks/${task.body.taskId}/cancel`, { method: "POST", headers: authHeaders(apiToken), body: JSON.stringify({ reason: "test" }) })); assert.equal(cancelled.body.status, "cancelled");
-    const health = await jsonResponse(await fetch(`${baseUrl}/api/overview/health`, { headers: authHeaders(apiToken) })); assert.equal(health.body.nodes.some((node) => node.id === enrolled.nodeId), false); assert.doesNotMatch(JSON.stringify(health.body), /BEGIN PUBLIC KEY|credentialId|remote-node/);
+    const health = await jsonResponse(await fetch(`${baseUrl}/api/overview/health`, { headers: authHeaders(apiToken) })); assert.equal(health.body.nodes.some((node) => node.id === enrolled.nodeId), true); assert.doesNotMatch(JSON.stringify(health.body), /BEGIN PUBLIC KEY|credentialId|"telemetry"/);
+  }, { platform, services });
+});
+
+test("overview read models enforce all, partial and empty node scopes without leaking task logs or audits", async () => {
+  const { randomUUID } = await import("node:crypto");
+  const { MemoryAgentControlRepository } = await import("../../apps/controller/dist/repositories/agentControlRepository.js");
+  const { createControllerServices } = await import("../../apps/controller/dist/app.js");
+  const { loadControllerConfig } = await import("../../apps/controller/dist/config/environment.js");
+  const repository = new MemoryAgentControlRepository();
+  const allowedId = "11111111-1111-4111-8111-111111111111";
+  const hiddenId = "22222222-2222-4222-8222-222222222222";
+  const now = new Date().toISOString();
+  const makeNode = (nodeId, marker, cpu) => ({
+    nodeId, nodeName: marker, status: "online", agentVersion: "0.2.0", protocolVersion: "1.0", platform: "linux",
+    declaredCapabilities: ["system.summary.read"], allowedCapabilities: ["system.summary.read"], enrolledAt: now, lastSeenAt: now, revokedAt: null,
+    telemetry: { collectedAt: now, hostname: marker, primaryIp: "10.0.0.2", cpu: { usagePercent: cpu, coreUsagePercents: [cpu] }, memory: { totalBytes: 1024, availableBytes: 256 }, loadAverage: [1, 2, 3], disks: [{ label: "/dev/test", mount: "/", totalBytes: 1024, usedBytes: 900 }], uptimeSeconds: 60 },
+  });
+  const makeTask = (targetNodeId, marker) => ({
+    protocolVersion: "1.0", taskId: randomUUID(), type: "system.summary.read", targetNodeId, parameters: {}, createdAt: now,
+    expiresAt: new Date(Date.now() + 60_000).toISOString(), idempotencyKey: `security-${marker}`, requester: marker,
+    traceId: randomUUID(), requiredCapability: "system.summary.read", attempt: 1, maxAttempts: 3, status: "succeeded",
+    updatedAt: now, result: { message: `${marker}-task-log`, truncated: false }, errorCode: null, retryable: false, nextAttemptAt: null,
+  });
+  const makeAudit = (nodeId, marker) => ({
+    eventId: randomUUID(), timestamp: now, requester: marker, nodeId, taskId: null, event: `${marker}-audit`, taskType: null,
+    parameters: null, fromStatus: null, toStatus: "online", resultSummary: null, traceId: randomUUID(),
+  });
+  await repository.update((state) => {
+    state.nodes.push(makeNode(allowedId, "allowed-agent", 90), makeNode(hiddenId, "hidden-agent", 99));
+    state.tasks.push(makeTask(allowedId, "allowed-agent"), makeTask(hiddenId, "hidden-agent"));
+    state.audits.push(makeAudit(allowedId, "allowed-agent"), makeAudit(hiddenId, "hidden-agent"), makeAudit(null, "global-enrollment"));
+  });
+  const platform = new FakePlatformAdapter();
+  const services = createControllerServices(platform, process.cwd(), loadControllerConfig({}), repository);
+
+  await withServer({}, async (baseUrl, { identity }) => {
+    const admin = (await identity.login("admin", "correct horse battery staple", "scope-test", "node-test")).principal;
+    const token = (name, permissions, nodeScope) => identity.createApiToken(admin, { name, permissions, nodeScope, expiresAt: null }).token;
+    const all = token("all-overview", ["overview:read", "tasks:read", "audit:read"], "all");
+    const partial = token("partial-overview", ["overview:read", "tasks:read", "audit:read"], [allowedId]);
+    const empty = token("empty-overview", ["overview:read", "tasks:read", "audit:read"], []);
+    const summaryOnly = token("summary-only", ["overview:read"], [allowedId]);
+    const readEndpoints = ["/api/overview", "/api/overview/health", "/api/overview/tasks", "/api/overview/risks"];
+    const readAll = async (apiToken) => Promise.all(readEndpoints.map(async (path) => (await jsonResponse(await fetch(`${baseUrl}${path}`, { headers: authHeaders(apiToken) }))).body));
+
+    const allPayloads = await readAll(all);
+    assert.match(JSON.stringify(allPayloads), /allowed-agent/);
+    assert.match(JSON.stringify(allPayloads), /hidden-agent/);
+
+    const partialPayloads = await readAll(partial);
+    const partialText = JSON.stringify(partialPayloads);
+    assert.match(partialText, /allowed-agent/);
+    assert.match(partialText, /allowed-agent-task-log|allowed-agent-audit/);
+    assert.doesNotMatch(partialText, /hidden-agent|global-enrollment/);
+
+    const emptyText = JSON.stringify(await readAll(empty));
+    assert.doesNotMatch(emptyText, /allowed-agent|hidden-agent|global-enrollment/);
+
+    const restrictedPayloads = await readAll(summaryOnly);
+    const restrictedText = JSON.stringify(restrictedPayloads);
+    assert.match(restrictedText, /allowed-agent/);
+    assert.doesNotMatch(restrictedText, /allowed-agent-task-log|allowed-agent-audit|hidden-agent|global-enrollment/);
+    assert.doesNotMatch(restrictedText, /credentialId|publicKey|"telemetry"/);
+
+    for (const path of ["/api/overview/refresh", "/api/overview/check-updates", "/api/overview/health/refresh", "/api/overview/tasks", "/api/overview/risks/scan"]) {
+      const response = await jsonResponse(await fetch(`${baseUrl}${path}`, { method: "POST", headers: authHeaders(summaryOnly), body: "{}" }));
+      assert.equal(response.status, 403, path);
+    }
   }, { platform, services });
 });
 

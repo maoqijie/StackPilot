@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { AGENT_API_BODY_LIMIT_BYTES } from "@stackpilot/contracts";
 import type { IncomingMessage, RequestListener, ServerResponse } from "node:http";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,6 +19,7 @@ import { ScheduleService } from "./modules/schedules/scheduleService.js";
 import { TaskService } from "./modules/tasks/taskService.js";
 import { EnrollmentService } from "./modules/enrollments/enrollmentService.js";
 import { NodeService } from "./modules/nodes/nodeService.js";
+import { HostMonitoringService } from "./modules/hosts/hostMonitoringService.js";
 import { RemoteTaskService } from "./modules/remote-tasks/remoteTaskService.js";
 import { NativePlatformAdapter } from "./platform/nativeAdapter.js";
 import type { PlatformAdapter } from "./platform/types.js";
@@ -51,10 +53,11 @@ export type AppOptions = {
 export function createControllerServices(platform: PlatformAdapter, repoRoot: string, config: ControllerConfig, agentRepository?: AgentControlRepository): Services {
   const state = new MemoryTaskStateRepository();
   const exports = new FileExportRepository(repoRoot);
-  const overview = new OverviewService(platform, state);
   const repository = agentRepository ?? new FileAgentControlRepository(isAbsolute(config.agentStatePath) ? config.agentStatePath : resolve(repoRoot, config.agentStatePath));
+  const overview = new OverviewService(platform, state, repository);
   return {
     overview,
+    hosts: new HostMonitoringService(platform, repository),
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
     schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform),
@@ -109,7 +112,8 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
       if (surface === "management" && isAgentPath) throw new ServiceError(426, "BAD_REQUEST", "Agent API 仅在 TLS 监听器可用");
       principal = !isAgentPath && !isHealthPath && !isLoginPath && !isSessionStatusPath ? authenticateUser(request, identity) : isSessionStatusPath && identity ? (()=>{try{return authenticateUser(request,identity);}catch{return undefined;}})() : undefined;
       if (!isAgentPath && isWriteMethod(method) && !isLoginPath && principal && identity) requireCsrf(request, principal, identity, config.allowedOrigins);
-      const parsedBody = isWriteMethod(method) ? await readJsonRequest(request, config.jsonBodyLimitBytes) : { value: {}, raw: Buffer.alloc(0) };
+      const bodyLimit = url.pathname === "/api/agent/heartbeat" ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
+      const parsedBody = isWriteMethod(method) ? await readJsonRequest(request, bodyLimit) : { value: {}, raw: Buffer.alloc(0) };
       const parts = url.pathname.split("/").filter(Boolean);
       const authenticatedAgent = isAgentPath && url.pathname !== "/api/agent/enroll"
         ? await authenticateAgentRequest(request, `${url.pathname}${url.search}`, parsedBody.raw, services.nodes)

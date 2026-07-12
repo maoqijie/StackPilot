@@ -12,22 +12,32 @@ import { DetailDrawer } from "../components/ui/DetailDrawer";
 import { FieldSelect } from "../components/ui/FormControls";
 import { Bar, StatusLight } from "../components/ui/StatusVisuals";
 import { averageLatency, isCleanUpdate, percentValue } from "../features/hosts/model";
-import { healthProbeTone, reportApiError } from "../features/overview/model";
+import { useOptionalOverviewData } from "../features/overview/OverviewDataProvider";
+import { healthProbeTone, overviewNodeFieldAvailable, reportApiError } from "../features/overview/model";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import { NodeDetailContent } from "./OverviewPage";
 import type { Notify } from "../types/app";
 import { reauthenticate } from "../api/identityApi";
+import { formatBackendDateTime, overviewCollectedAt } from "../utils/time";
 
 function OverviewHealthPage({ notify }: { notify: Notify }) {
-  const [nodes, setNodes] = useState<OverviewNode[]>([]);
+  const shared = useOptionalOverviewData();
+  const usesSharedOverview = shared !== null;
+  const [localNodes, setLocalNodes] = useState<OverviewNode[]>([]);
   const [search, setSearch] = useState("");
   const [envFilter, setEnvFilter] = useState("全部");
   const [statusFilter, setStatusFilter] = useState("全部");
-  const [selected, setSelected] = useState<OverviewNode | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState("-");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [localLoading, setLocalLoading] = useState(true);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [localCollectedAt, setLocalCollectedAt] = useState<string | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
+  const nodes = shared?.overview?.nodes ?? localNodes;
+  const loading = shared ? shared.loading && !shared.overview : localLoading;
+  const error = shared?.error ?? localError;
+  const collectedAt = shared?.overview ? overviewCollectedAt(shared.overview) : localCollectedAt;
+  const lastRefresh = formatBackendDateTime(collectedAt, "等待采集");
+  const selected = nodes.find((node) => node.id === selectedId) ?? null;
   const filteredNodes = nodes.filter((node) => {
     const query = search.trim().toLowerCase();
     const matchSearch = !query
@@ -46,53 +56,55 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
     return matchSearch && matchEnv && matchStatus;
   });
   const warningCount = nodes.filter((node) => node.status !== "健康").length;
-  const updateCount = nodes.filter((node) => !isCleanUpdate(node.update)).length;
+  const updateCount = nodes.filter((node) => overviewNodeFieldAvailable(node, "update") && !isCleanUpdate(node.update)).length;
   const envOptions = ["全部", ...uniqueSorted(nodes.map((node) => node.env))];
   const statusOptions = ["全部", ...uniqueSorted(nodes.map((node) => node.status))];
   const syncHealth = useCallback((nextNodes: OverviewNode[]) => {
-    setNodes(nextNodes);
-    setSelected((current) => current ? nextNodes.find((node) => node.id === current.id) ?? null : null);
+    setLocalNodes(nextNodes);
   }, []);
 
-  const loadHealth = useCallback(async (request: (signal?: AbortSignal) => Promise<{ nodes: OverviewNode[]; lastRefresh: string }>, signal?: AbortSignal, silent = false) => {
-    if (!silent) setLoading(true);
+  const loadHealth = useCallback(async (request: (signal?: AbortSignal) => Promise<{ nodes: OverviewNode[]; collectedAt?: string; lastRefresh: string }>, signal?: AbortSignal, silent = false) => {
+    if (!silent) setLocalLoading(true);
     try {
       const payload = await request(signal);
       syncHealth(payload.nodes);
-      setLastRefresh(payload.lastRefresh || "刚刚");
-      setError(null);
+      setLocalCollectedAt(payload.collectedAt ?? payload.lastRefresh);
+      setLocalError(null);
     } catch (loadError) {
       if (signal?.aborted) return;
       if (!silent) {
         const message = loadError instanceof Error ? loadError.message : "集群状态后端加载失败";
-        setError(message);
+        setLocalError(message);
         reportApiError(loadError, notify, "集群状态后端加载失败");
       }
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      if (!signal?.aborted) setLocalLoading(false);
     }
   }, [notify, syncHealth]);
 
   useEffect(() => {
+    if (usesSharedOverview) return;
     const controller = new AbortController();
     fetchOverviewHealth(controller.signal)
       .then((payload) => {
         syncHealth(payload.nodes);
-        setLastRefresh(payload.lastRefresh || "刚刚");
-        setError(null);
-        setLoading(false);
+        setLocalCollectedAt(payload.collectedAt ?? payload.lastRefresh);
+        setLocalError(null);
+        setLocalLoading(false);
       })
       .catch((loadError: unknown) => {
         if (controller.signal.aborted) return;
         const message = loadError instanceof Error ? loadError.message : "集群状态后端加载失败";
-        setError(message);
-        setLoading(false);
+        setLocalError(message);
+        setLocalLoading(false);
         reportApiError(loadError, notify, "集群状态后端加载失败");
       });
     return () => controller.abort();
-  }, [notify, syncHealth]);
+  }, [notify, syncHealth, usesSharedOverview]);
 
-  useAutoRefresh((signal) => loadHealth(fetchOverviewHealth, signal, true), undefined, !loading);
+  useAutoRefresh((signal) => loadHealth(fetchOverviewHealth, signal, true), undefined, !usesSharedOverview && !loading);
+
+  const retry = () => usesSharedOverview ? shared.reload() : loadHealth(fetchOverviewHealth);
 
   return (
     <ModulePageShell
@@ -109,7 +121,7 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
         <div className="overview-error-state health-error-state">
           <Shield size={18} />
           <span>{error}</span>
-          <button type="button" onClick={() => void loadHealth(fetchOverviewHealth)}>重试</button>
+          <button type="button" onClick={() => void retry()}>重试</button>
         </div>
       )}
       <div className="health-workspace">
@@ -119,14 +131,14 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
             { key: "status", label: "状态", width: "82px", render: (row) => <NodeStatus status={row.status} /> },
             { key: "ip", label: "IP", width: "118px", render: (row) => row.ip },
             { key: "env", label: "环境", width: "78px", render: (row) => row.env },
-            { key: "latency", label: "延迟", width: "78px", sortValue: (row) => latencyValue(row.latency), render: (row) => <span><StatusLight tone={healthProbeTone(row.latencyStatus)} /> {row.latency}</span> },
-            { key: "cpu", label: "CPU", width: "110px", sortValue: (row) => percentValue(row.cpu), render: (row) => <Bar value={row.cpu} tone={row.status === "警告" ? "orange" : "green"} /> },
-            { key: "memory", label: "内存", width: "110px", sortValue: (row) => percentValue(row.memory), render: (row) => <Bar value={row.memory} tone={row.status === "警告" ? "red" : "green"} /> },
-            { key: "backup", label: "备份", width: "118px", render: (row) => <span><StatusLight tone={healthProbeTone(row.backupStatus)} /> {row.backup}</span> },
-            { key: "update", label: "更新", width: "110px", render: (row) => <span className={isCleanUpdate(row.update) ? "green-text" : "orange-text"}>{row.update}</span> },
+            { key: "latency", label: "延迟", width: "78px", sortValue: (row) => overviewNodeFieldAvailable(row, "latency") ? latencyValue(row.latency) : null, render: (row) => overviewNodeFieldAvailable(row, "latency") ? <span><StatusLight tone={healthProbeTone(row.latencyStatus)} /> {row.latency}</span> : <span>暂不可用</span> },
+            { key: "cpu", label: "CPU", width: "110px", sortValue: (row) => overviewNodeFieldAvailable(row, "cpu") ? percentValue(row.cpu) : null, render: (row) => overviewNodeFieldAvailable(row, "cpu") ? <Bar value={row.cpu} tone={resourceTone(row, "orange")} /> : <span>暂不可用</span> },
+            { key: "memory", label: "内存", width: "110px", sortValue: (row) => overviewNodeFieldAvailable(row, "memory") ? percentValue(row.memory) : null, render: (row) => overviewNodeFieldAvailable(row, "memory") ? <Bar value={row.memory} tone={resourceTone(row, "red")} /> : <span>暂不可用</span> },
+            { key: "backup", label: "备份", width: "118px", render: (row) => overviewNodeFieldAvailable(row, "backup") ? <span><StatusLight tone={healthProbeTone(row.backupStatus)} /> {row.backup}</span> : <span>暂不可用</span> },
+            { key: "update", label: "更新", width: "110px", render: (row) => overviewNodeFieldAvailable(row, "update") ? <span className={isCleanUpdate(row.update) ? "green-text" : "orange-text"}>{row.update}</span> : <span>暂不可用</span> },
             { key: "actions", label: "操作", width: "64px", render: (row) => (
               <div className="table-icon-actions health-node-actions">
-                <button type="button" aria-label={`查看 ${row.name} 节点详情`} title="查看详情" onClick={() => setSelected(row)}>
+                <button type="button" aria-label={`查看 ${row.name} 节点详情`} title="查看详情" onClick={() => setSelectedId(row.id)}>
                   <Eye size={15} />
                 </button>
               </div>
@@ -144,20 +156,20 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
               <div className="module-card-meta">
                 <span><b>IP</b><em>{row.ip}</em></span>
                 <span><b>环境</b><em>{row.env}</em></span>
-                <span><b>延迟</b><em><StatusLight tone={healthProbeTone(row.latencyStatus)} /> {row.latency}</em></span>
+                <span><b>延迟</b><em>{overviewNodeFieldAvailable(row, "latency") ? <><StatusLight tone={healthProbeTone(row.latencyStatus)} /> {row.latency}</> : "暂不可用"}</em></span>
                 <span><b>版本</b><em>{row.version}</em></span>
               </div>
-              <footer className="module-card-footer"><span>{row.owner}</span><button className="ghost small" type="button" onClick={() => setSelected(row)}><Eye size={13} /> 查看详情</button></footer>
+              <footer className="module-card-footer"><span>{row.owner}</span><button className="ghost small" type="button" onClick={() => setSelectedId(row.id)}><Eye size={13} /> 查看详情</button></footer>
             </>
           )}
         />
-        <HealthSummaryPanel nodes={filteredNodes} allNodes={nodes} onSelect={setSelected} />
+        <HealthSummaryPanel nodes={filteredNodes} allNodes={nodes} onSelect={(node) => setSelectedId(node.id)} />
       </div>
       {selected && (
         <DetailDrawer
           title={selected.name}
           subtitle={`${selected.ip} · ${selected.env}`}
-          onClose={() => setSelected(null)}
+          onClose={() => setSelectedId(null)}
           className="health-node-drawer"
           modal
         >
@@ -170,8 +182,17 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
 }
 
 function NodeStatus({ status }: { status: OverviewNode["status"] }) {
-  const tone = status === "健康" ? "green" : status === "警告" ? "orange" : "gray";
+  const tone = nodeTone(status);
   return <span className={`health-node-status ${tone}`}><StatusLight tone={tone} />{status}</span>;
+}
+
+function nodeTone(status: OverviewNode["status"]) {
+  return status === "健康" ? "green" : status === "警告" ? "orange" : status === "离线" ? "red" : "gray";
+}
+
+function resourceTone(node: OverviewNode, warning: "orange" | "red") {
+  if (node.freshness === "stale" || node.status === "离线") return "gray";
+  return node.status === "警告" ? warning : "green";
 }
 
 function AgentControlDrawer({ notify, onClose }: { notify: Notify; onClose: () => void }) {
@@ -225,7 +246,7 @@ function HealthSummaryPanel({
     return { env, count, value: allNodes.length > 0 ? `${Math.round((count / allNodes.length) * 100)}%` : "0%" };
   });
   const attentionNodes = nodes
-    .filter((node) => node.status !== "健康" || node.update !== "已是最新")
+    .filter((node) => node.status !== "健康" || (overviewNodeFieldAvailable(node, "update") && !isCleanUpdate(node.update)))
     .slice(0, 3);
   const healthyNodes = nodes.filter((node) => node.status === "健康").length;
   const serviceCount = nodes.reduce((total, node) => total + node.services.length, 0);
@@ -255,7 +276,7 @@ function HealthSummaryPanel({
         <div className="health-attention-list">
           {attentionNodes.length > 0 ? attentionNodes.map((node) => (
             <button key={node.id} type="button" onClick={() => onSelect(node)}>
-              <StatusLight tone={node.status === "警告" ? "orange" : node.status === "维护" ? "gray" : "green"} />
+              <StatusLight tone={nodeTone(node.status)} />
               <span title={node.name}><b>{node.name}</b><em>{node.status} · {node.update}</em></span>
             </button>
           )) : <p><StatusLight tone="green" /> 当前筛选内节点稳定</p>}

@@ -1,0 +1,27 @@
+{
+  "name": "@stackpilot/host-telemetry",
+  "private": true,
+  "version": "0.2.0-preview.5",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "prebuild": "npm run build --workspace @stackpilot/contracts",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
+    "typecheck": "npm run build --workspace @stackpilot/contracts && tsc --noEmit",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@stackpilot/contracts": "0.2.0-preview.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,131 +1,103 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchOverviewHealth } from "../api/overviewApi";
-import type { OverviewNode } from "../api/overviewApi";
+import { fetchHosts, type HostMonitoringRecord } from "../api/hostsApi";
 import { HostsPage } from "../pages/HostsPage";
 
-vi.mock("../api/overviewApi", () => ({
-  fetchOverviewHealth: vi.fn(),
-}));
+vi.mock("../api/hostsApi", () => ({ fetchHosts: vi.fn() }));
 
 const longHostname = "edge-production-observability-node-with-a-very-long-hostname-01.internal.example";
+const gib = 1024 ** 3;
 
-function host(overrides: Partial<OverviewNode> = {}): OverviewNode {
+function host(overrides: Partial<HostMonitoringRecord> = {}): HostMonitoringRecord {
   return {
-    id: "node-1",
-    name: longHostname,
-    ip: "198.18.0.1",
-    env: "生产",
-    status: "健康",
-    latency: "12ms",
-    latencyStatus: "健康",
-    cpu: "24%",
-    memory: "48%",
-    disk: "80%",
-    version: "v1.0.0",
-    uptime: "8 天",
-    backup: "2 小时前",
-    backupStatus: "健康",
-    update: "已同步",
-    owner: "平台团队",
-    services: [{ id: "service-1", name: "Controller", target: "local", status: "健康", detail: "运行中" }],
-    diskVolumes: [
-      { label: "C:", mount: "C:\\", totalBytes: 200 * 1024 ** 3, usedBytes: 120 * 1024 ** 3, percent: 60 },
-      { label: "D:", mount: "D:\\", totalBytes: 300 * 1024 ** 3, usedBytes: 280 * 1024 ** 3, percent: 93 },
-    ],
+    id: "node-1", source: "agent", name: longHostname, platform: "linux", address: "198.18.0.1",
+    environment: "生产", owner: "平台团队", connectionStatus: "online", healthStatus: "healthy",
+    telemetryFreshness: "current",
+    telemetryCollectedAt: "2026-07-12T04:30:00.000Z", lastSeenAt: "2026-07-12T04:30:01.000Z", cpuPercent: 24,
+    memory: { totalBytes: 100 * gib, usedBytes: 48 * gib, percent: 48 },
+    disk: { totalBytes: 500 * gib, usedBytes: 400 * gib, percent: 80, volumes: [
+      { label: "root", mountPath: "/", totalBytes: 200 * gib, usedBytes: 120 * gib, percent: 60 },
+      { label: "data", mountPath: "/data", totalBytes: 300 * gib, usedBytes: 280 * gib, percent: 93 },
+    ] },
+    uptimeSeconds: 8 * 86_400, backup: { status: "healthy", latestAt: "2026-07-12T02:30:00.000Z", detail: "备份正常" },
+    services: [{ name: "Controller", status: "running" }], version: "v1.0.0", latency: null, updateStatus: null,
     ...overrides,
   };
 }
 
 describe("hosts live monitoring page", () => {
   const notify = vi.fn();
-
-  beforeEach(() => {
-    notify.mockClear();
-    vi.mocked(fetchOverviewHealth).mockReset();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  beforeEach(() => { notify.mockClear(); vi.mocked(fetchHosts).mockReset(); });
+  afterEach(() => vi.useRealTimers());
 
   it("shows a retryable initial error without fixture hosts", async () => {
-    vi.mocked(fetchOverviewHealth).mockRejectedValue(new Error("Controller 暂不可用"));
+    vi.mocked(fetchHosts).mockRejectedValue(new Error("Controller 暂不可用"));
     render(<HostsPage page="hosts" notify={notify} />);
-
     expect(await screen.findByText("Controller 暂不可用")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
     expect(screen.getAllByText("实时采集失败，未显示示例主机")).toHaveLength(2);
-    expect(screen.queryByText("panel-se-01")).not.toBeInTheDocument();
     expect(notify).toHaveBeenCalledWith("Controller 暂不可用", "danger");
   });
 
-  it("polls silently every ten seconds and preserves the selected host by id", async () => {
+  it("polls silently, preserves selected ID, and retains data on a background failure", async () => {
     vi.useFakeTimers();
-    vi.mocked(fetchOverviewHealth)
-      .mockResolvedValueOnce({ lastRefresh: "12:30:00", nodes: [host()] })
-      .mockResolvedValueOnce({ lastRefresh: "12:30:10", nodes: [host({ cpu: "31%" })] })
-      .mockResolvedValueOnce({ lastRefresh: "12:30:20", nodes: [] });
-
+    vi.mocked(fetchHosts)
+      .mockResolvedValueOnce({ collectedAt: "2026-07-12T04:30:00.000Z", hosts: [host()] })
+      .mockResolvedValueOnce({ collectedAt: "2026-07-12T04:30:10.000Z", hosts: [host({ cpuPercent: 31 })] })
+      .mockRejectedValueOnce(new Error("瞬时失败"))
+      .mockResolvedValueOnce({ collectedAt: "2026-07-12T04:30:30.000Z", hosts: [] });
     render(<HostsPage page="hosts" notify={notify} />);
     await act(async () => undefined);
     fireEvent.click(screen.getAllByRole("button", { name: `查看主机 ${longHostname}` })[0]);
-    expect(screen.getByRole("dialog", { name: longHostname })).toBeInTheDocument();
-
-    await act(async () => {
-      vi.advanceTimersByTime(10_000);
-      await Promise.resolve();
-    });
-    expect(fetchOverviewHealth).toHaveBeenCalledTimes(2);
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(fetchHosts).toHaveBeenCalledTimes(2);
     expect(within(screen.getByRole("dialog", { name: longHostname })).getByText("31%")).toBeInTheDocument();
-    expect(screen.getByText(/更新于 12:30:10/)).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(screen.getByRole("dialog", { name: longHostname })).toBeInTheDocument();
     expect(notify).not.toHaveBeenCalled();
-
-    await act(async () => {
-      vi.advanceTimersByTime(10_000);
-      await Promise.resolve();
-    });
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
     expect(screen.queryByRole("dialog", { name: longHostname })).not.toBeInTheDocument();
   });
 
-  it("contains long hostnames and exposes every disk volume in the table tooltip and drawer", async () => {
+  it("shows every disk volume and per-host collection time", async () => {
     const user = userEvent.setup();
-    vi.mocked(fetchOverviewHealth).mockResolvedValue({ lastRefresh: "12:30:00", nodes: [host()] });
+    vi.mocked(fetchHosts).mockResolvedValue({ collectedAt: "2026-07-12T04:30:02.000Z", hosts: [host()] });
     render(<HostsPage page="hosts" notify={notify} />);
-
     await screen.findAllByTitle(longHostname);
-    const diskTooltips = screen.getAllByRole("tooltip");
-    expect(diskTooltips[0]).toHaveTextContent("C: (C:\\)");
-    expect(diskTooltips[0]).toHaveTextContent("60% · 已用 120.0 GB / 200.0 GB");
-    expect(diskTooltips[0]).toHaveTextContent("D: (D:\\)");
-    expect(diskTooltips[0]).toHaveTextContent("93% · 已用 280.0 GB / 300.0 GB");
-
+    const tooltip = screen.getAllByRole("tooltip")[0];
+    expect(tooltip).toHaveTextContent("root (/)");
+    expect(tooltip).toHaveTextContent("60% · 已用 120.0 GB / 200.0 GB");
+    expect(tooltip).toHaveTextContent("data (/data)");
+    expect(tooltip).toHaveTextContent("93% · 已用 280.0 GB / 300.0 GB");
     await user.click(screen.getAllByRole("button", { name: `查看主机 ${longHostname}` })[0]);
     const drawer = screen.getByRole("dialog", { name: longHostname });
     expect(drawer.parentElement).toBe(document.body);
-    expect(within(drawer).getByText("网络延迟")).toBeInTheDocument();
-    expect(within(drawer).getByText("负责人")).toBeInTheDocument();
+    expect(within(drawer).getByText("最近在线")).toBeInTheDocument();
     expect(within(drawer).getByText("Controller")).toBeInTheDocument();
-    expect(within(drawer).getByText("D:\\")).toBeInTheDocument();
+    expect(within(drawer).getByText("/data")).toBeInTheDocument();
+    expect(within(drawer).getByText(/采集于/)).toBeInTheDocument();
   });
 
-  it("keeps the production view scoped and shows all three resource measurements", async () => {
-    vi.mocked(fetchOverviewHealth).mockResolvedValue({
-      lastRefresh: "12:30:00",
-      nodes: [host(), host({ id: "node-dev", name: "dev-node", env: "开发", ip: "198.18.0.2" })],
-    });
+  it("labels old agents as awaiting telemetry without rendering fake zero bars", async () => {
+    vi.mocked(fetchHosts).mockResolvedValue({ collectedAt: "2026-07-12T04:30:02.000Z", hosts: [host({
+      connectionStatus: "online", healthStatus: "unknown", telemetryCollectedAt: null,
+      telemetryFreshness: "awaiting",
+      cpuPercent: null, memory: null, disk: null, uptimeSeconds: null, backup: null, services: [],
+    })] });
+    render(<HostsPage page="hosts" notify={notify} />);
+    expect((await screen.findAllByText("未知")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("等待采集").length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText("0%")).not.toBeInTheDocument();
+  });
 
+  it("keeps production filtering scoped to the production environment", async () => {
+    vi.mocked(fetchHosts).mockResolvedValue({ collectedAt: "2026-07-12T04:30:02.000Z", hosts: [host(), host({ id: "node-dev", name: "dev-node", environment: "开发", address: "198.18.0.2" })] });
     render(<HostsPage page="hosts-prod" notify={notify} />);
-
-    await screen.findByText(/更新于 12:30:00/);
+    await screen.findByText(/聚合于/);
     expect(screen.queryByText("dev-node")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: /环境/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: /资源使用/ })).toBeInTheDocument();
-    const resourceSummary = screen.getByLabelText("CPU 24%，内存 48%，磁盘 80%");
-    expect(within(resourceSummary).getByText("CPU")).toBeInTheDocument();
-    expect(within(resourceSummary).getByText("内存")).toBeInTheDocument();
-    expect(within(resourceSummary).getByText("磁盘")).toBeInTheDocument();
+    expect(screen.getByLabelText("CPU 24%，内存 48%，磁盘 80%")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /刷新|重新采集|重新扫描/ })).not.toBeInTheDocument();
   });
 });

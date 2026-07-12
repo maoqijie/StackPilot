@@ -46,14 +46,15 @@ export class NodeService {
     if (!isAgentProtocolCompatible(heartbeat.protocolVersion)) throw new ServiceError(409, "BAD_REQUEST", "Agent 协议版本不兼容");
     if (Math.abs(Date.now() - Date.parse(heartbeat.timestamp)) > AGENT_REQUEST_TIME_WINDOW_MS) throw new ServiceError(400, "BAD_REQUEST", "心跳时间超出允许窗口");
     const acceptedAt = new Date().toISOString();
-    await this.repository.update((state) => {
-      const node = state.nodes.find((item) => item.nodeId === nodeId);
-      if (!node || node.revokedAt) throw new ServiceError(401, "UNAUTHORIZED", "节点不存在或已撤销");
+    const updated = await this.repository.updateNodeWithAudit(nodeId, (node) => {
+      if (node.revokedAt) throw new ServiceError(401, "UNAUTHORIZED", "节点不存在或已撤销");
       const previous = node.status;
       node.status = "online"; node.lastSeenAt = acceptedAt; node.agentVersion = heartbeat.agentVersion;
       node.protocolVersion = heartbeat.protocolVersion; node.platform = heartbeat.platform; node.declaredCapabilities = heartbeat.capabilities;
-      state.audits.push(audit({ requester: `agent:${nodeId}`, nodeId, taskId: null, event: "node.heartbeat", taskType: null, parameters: { health: heartbeat.health.status, capabilities: heartbeat.capabilities }, fromStatus: previous, toStatus: "online", resultSummary: null, traceId }));
+      if (heartbeat.telemetry) node.telemetry = heartbeat.telemetry;
+      return audit({ requester: `agent:${nodeId}`, nodeId, taskId: null, event: "node.heartbeat", taskType: null, parameters: { health: heartbeat.health.status, capabilities: heartbeat.capabilities }, fromStatus: previous, toStatus: "online", resultSummary: null, traceId });
     });
+    if (!updated) throw new ServiceError(401, "UNAUTHORIZED", "节点不存在或已撤销");
     return { acceptedAt, nextHeartbeatSeconds: 15 };
   }
 

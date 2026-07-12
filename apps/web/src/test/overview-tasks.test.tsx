@@ -1,13 +1,12 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { exportOverviewTasks, fetchOverviewTasks, runOverviewTask } from "../api/overviewApi";
+import { exportOverviewTasks, fetchOverviewTasks } from "../api/overviewApi";
 import { OverviewTasksPage } from "../pages/OverviewTasksPage";
 
 vi.mock("../api/overviewApi", () => ({
   exportOverviewTasks: vi.fn(),
   fetchOverviewTasks: vi.fn(),
-  runOverviewTask: vi.fn(),
 }));
 
 const task = {
@@ -51,7 +50,6 @@ describe("overview tasks workbench", () => {
     setPage.mockClear();
     vi.mocked(fetchOverviewTasks).mockReset();
     vi.mocked(exportOverviewTasks).mockReset();
-    vi.mocked(runOverviewTask).mockReset();
   });
 
   afterEach(() => {
@@ -64,7 +62,7 @@ describe("overview tasks workbench", () => {
     render(<OverviewTasksPage notify={notify} setPage={setPage} />);
 
     expect(await screen.findByText("备份数据库")).toBeInTheDocument();
-    expect(screen.getByText("采集于 2026/7/12 12:30:10")).toBeInTheDocument();
+    expect(screen.getByText("采集于 2026/07/12 12:30:10")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /刷新|重新采集/ })).not.toBeInTheDocument();
     expect(screen.getByText("成功", { selector: ".task-row-result > strong" })).toBeInTheDocument();
   });

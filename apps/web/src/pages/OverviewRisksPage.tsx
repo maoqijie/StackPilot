@@ -7,19 +7,28 @@ import { ModulePageShell } from "../components/layout/ModulePageShell";
 import { MetricTile, ModuleSearch } from "../components/ui/Cards";
 import { DataTable } from "../components/ui/DataTable";
 import { FieldSelect } from "../components/ui/FormControls";
+import { useOptionalOverviewData } from "../features/overview/OverviewDataProvider";
 import { reportApiError } from "../features/overview/model";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import type { Notify, Tone } from "../types/app";
+import { formatBackendDateTime } from "../utils/time";
 
 function OverviewRisksPage({ notify }: { notify: Notify }) {
-  const [rows, setRows] = useState<OverviewRiskRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const shared = useOptionalOverviewData();
+  const usesSharedOverview = shared !== null;
+  const [localRows, setLocalRows] = useState<OverviewRiskRecord[]>([]);
+  const [localLoading, setLocalLoading] = useState(true);
+  const [localError, setLocalError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState("全部");
   const [stateFilter, setStateFilter] = useState("全部");
-  const [selected, setSelected] = useState<OverviewRiskRecord | null>(null);
-  const [scannedAt, setScannedAt] = useState("等待采集");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [localScannedAt, setLocalScannedAt] = useState<string | null>(null);
+  const rows = shared?.overview?.risks ?? localRows;
+  const loading = shared ? shared.loading && !shared.overview : localLoading;
+  const error = shared?.error ?? localError;
+  const scannedAt = formatBackendDateTime(shared?.overview?.collectedAt ?? localScannedAt, "等待采集");
+  const selected = rows.find((row) => row.id === selectedId) ?? null;
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
     const matchSearch = !query || row.title.toLowerCase().includes(query) || row.target.toLowerCase().includes(query) || row.owner.toLowerCase().includes(query) || row.traceId.toLowerCase().includes(query);
@@ -31,10 +40,9 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
   const highCount = rows.filter((row) => row.level === "高危" && row.status === "待处理").length;
 
   const syncRisks = useCallback((payload: Awaited<ReturnType<typeof fetchOverviewRisks>>) => {
-    setRows(payload.risks);
-    setScannedAt(payload.scannedAt || "等待采集");
-    setError(null);
-    setSelected((current) => current ? payload.risks.find((row) => row.id === current.id) ?? null : null);
+    setLocalRows(payload.risks);
+    setLocalScannedAt(payload.scannedAt ?? null);
+    setLocalError(null);
   }, []);
 
   const loadRisks = useCallback(async (signal?: AbortSignal, silent = false) => {
@@ -43,35 +51,38 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
     } catch (loadError) {
       if (signal?.aborted) return;
       if (!silent) {
-        setError(loadError instanceof Error ? loadError.message : "风险中心后端加载失败");
+        setLocalError(loadError instanceof Error ? loadError.message : "风险中心后端加载失败");
         reportApiError(loadError, notify, "风险中心后端加载失败");
       }
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      if (!signal?.aborted) setLocalLoading(false);
     }
   }, [notify, syncRisks]);
 
   useEffect(() => {
+    if (usesSharedOverview) return;
     const controller = new AbortController();
     fetchOverviewRisks(controller.signal)
       .then((payload) => {
         syncRisks(payload);
-        setLoading(false);
+        setLocalLoading(false);
       })
       .catch((loadError: unknown) => {
         if (controller.signal.aborted) return;
-        setError(loadError instanceof Error ? loadError.message : "风险中心后端加载失败");
-        setLoading(false);
+        setLocalError(loadError instanceof Error ? loadError.message : "风险中心后端加载失败");
+        setLocalLoading(false);
         reportApiError(loadError, notify, "风险中心后端加载失败");
       });
     return () => controller.abort();
-  }, [notify, syncRisks]);
+  }, [notify, syncRisks, usesSharedOverview]);
 
   const autoRefreshRisks = useCallback(async (signal: AbortSignal) => {
     await loadRisks(signal, true);
   }, [loadRisks]);
 
-  useAutoRefresh(autoRefreshRisks, undefined, !loading);
+  useAutoRefresh(autoRefreshRisks, undefined, !usesSharedOverview && !loading);
+
+  const retry = () => usesSharedOverview ? shared.reload() : loadRisks();
 
   const exportRisksFromApi = async () => {
     try {
@@ -97,11 +108,11 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
         <div className="overview-error-state risks-error-state">
           <ShieldAlert size={18} />
           <span>{error}</span>
-          <button type="button" onClick={() => { setLoading(true); void loadRisks(); }}>重试</button>
+          <button type="button" onClick={() => void retry()}>重试</button>
         </div>
       )}
       {selected && (
-        <OverviewRiskDetailModal risk={selected} onClose={() => setSelected(null)} />
+        <OverviewRiskDetailModal risk={selected} onClose={() => setSelectedId(null)} />
       )}
       <DataTable
         columns={[
@@ -114,7 +125,7 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
           { key: "impact", label: "影响", width: "208px", render: (row) => row.impact },
           { key: "actions", label: "操作", width: "92px", render: (row) => (
             <div className="table-actions">
-              <button type="button" onClick={() => setSelected(row)}><Eye size={13} /> 详情</button>
+              <button type="button" onClick={() => setSelectedId(row.id)}><Eye size={13} /> 详情</button>
             </div>
           ) },
         ]}
@@ -134,7 +145,7 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
               <span><b>发现时间</b><em>{row.detected}</em></span>
             </div>
             <p className="module-card-code">{row.impact}</p>
-            <footer className="module-card-footer"><span>风险处置</span><button className="ghost small" type="button" onClick={() => setSelected(row)}><Eye size={13} /> 查看详情</button></footer>
+            <footer className="module-card-footer"><span>风险处置</span><button className="ghost small" type="button" onClick={() => setSelectedId(row.id)}><Eye size={13} /> 查看详情</button></footer>
           </>
         )}
       />

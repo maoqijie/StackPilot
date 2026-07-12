@@ -14,6 +14,8 @@ COPY --from=build --chown=10002:10002 /src/package.json /src/package-lock.json .
 COPY --from=build --chown=10002:10002 /src/node_modules ./node_modules
 COPY --from=build --chown=10002:10002 /src/packages/contracts/package.json ./packages/contracts/package.json
 COPY --from=build --chown=10002:10002 /src/packages/contracts/dist ./packages/contracts/dist
+COPY --from=build --chown=10002:10002 /src/packages/host-telemetry/package.json ./packages/host-telemetry/package.json
+COPY --from=build --chown=10002:10002 /src/packages/host-telemetry/dist ./packages/host-telemetry/dist
 COPY --from=build --chown=10002:10002 /src/apps/agent/package.json ./apps/agent/package.json
 COPY --from=build --chown=10002:10002 /src/apps/agent/dist ./apps/agent/dist
 USER 10002:10002

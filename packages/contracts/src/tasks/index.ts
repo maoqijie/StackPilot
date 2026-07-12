@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ApiNoticeSchema } from "../common/index.js";
 
 export const OverviewMetricIconSchema = z.enum(["server", "globe", "database", "calendar", "shield", "bell"]);
-export const OverviewTaskStatusSchema = z.enum(["成功", "运行中", "等待", "失败"]);
+export const OverviewTaskStatusSchema = z.enum(["成功", "运行中", "等待", "失败", "取消", "过期"]);
 export const OverviewTaskPrioritySchema = z.enum(["高", "中", "低"]);
 
 export const OverviewTaskRecordSchema = z.object({

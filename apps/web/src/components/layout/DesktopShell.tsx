@@ -1,13 +1,12 @@
-import { fetchOverview } from "../../api/overviewApi";
-import type { OverviewSummaryPayload } from "../../api/overviewApi";
 import { Lock } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { desktopTopbarChrome, navPageFor } from "../../app/navigation";
 import { lockedRouteForPage } from "../../app/routing";
 import { DesktopFooter } from "./DesktopFooter";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { SettingsProxyPage } from "../../features/settings/SettingsProxyPage";
+import { OverviewDataProvider, useOverviewData } from "../../features/overview/OverviewDataProvider";
 import { AclPage } from "../../pages/AclPage";
 import { AuditPage } from "../../pages/AuditPage";
 import { DatabaseBackupsPage } from "../../pages/DatabaseBackupsPage";
@@ -28,7 +27,6 @@ import { SystemdPage } from "../../pages/SystemdPage";
 import { TerminalPage } from "../../pages/TerminalPage";
 import type { Notify, PageKey, SetPage } from "../../types/app";
 import { drawerFocusableElements } from "../../utils/focus";
-import { useAutoRefresh } from "../../hooks/useAutoRefresh";
 
 function SessionLockOverlay({ page, onRestore }: { page: PageKey; onRestore: () => void }) {
   const overlayRef = useRef<HTMLElement>(null);
@@ -91,7 +89,7 @@ function SessionLockOverlay({ page, onRestore }: { page: PageKey; onRestore: () 
   );
 }
 
-function DesktopShell({
+function DesktopShellContent({
   page,
   setPage,
   notify,
@@ -117,7 +115,7 @@ function DesktopShell({
     typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
   ));
   const [settingsReadOnly, setSettingsReadOnly] = useState(false);
-  const [topbarOverview, setTopbarOverview] = useState<OverviewSummaryPayload | null>(null);
+  const { overview } = useOverviewData();
   const sidebarRestoreFocusRef = useRef<HTMLElement | null>(null);
   const desktopContentRef = useRef<HTMLDivElement | null>(null);
   const sidebarOverlayOpen = isNarrowSidebar && !sidebarCollapsed;
@@ -134,13 +132,6 @@ function DesktopShell({
     mediaQuery.addEventListener("change", syncSidebar);
     return () => mediaQuery.removeEventListener("change", syncSidebar);
   }, []);
-
-  const refreshTopbarOverview = useCallback(async (signal: AbortSignal) => {
-    const payload = await fetchOverview(signal);
-    setTopbarOverview(payload);
-  }, []);
-
-  useAutoRefresh(refreshTopbarOverview);
 
   useEffect(() => {
     desktopContentRef.current?.scrollTo({ top: 0 });
@@ -189,14 +180,6 @@ function DesktopShell({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [sidebarOverlayOpen]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchOverview(controller.signal)
-      .then(setTopbarOverview)
-      .catch(() => setTopbarOverview(null));
-    return () => controller.abort();
-  }, []);
-
   const expandSidebar = () => {
     sidebarRestoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSidebarCollapsed(false);
@@ -227,7 +210,7 @@ function DesktopShell({
         }}
       />
       <div className="desktop-main" inert={sidebarOverlayOpen} aria-hidden={sidebarOverlayOpen ? "true" : undefined}>
-        <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={topbarOverview} interactionsDisabled={sessionLocked} onLogout={onLogout} />
+        <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={overview} interactionsDisabled={sessionLocked} onLogout={onLogout} />
         <div className="desktop-content" ref={desktopContentRef}>
           {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
           {page === "overview-health" && <OverviewHealthPage notify={notify} />}
@@ -260,6 +243,10 @@ function DesktopShell({
       </div>
     </section>
   );
+}
+
+function DesktopShell(props: Parameters<typeof DesktopShellContent>[0]) {
+  return <OverviewDataProvider><DesktopShellContent {...props} /></OverviewDataProvider>;
 }
 
 export { SessionLockOverlay, DesktopShell };

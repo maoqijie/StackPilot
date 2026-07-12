@@ -5,11 +5,11 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
-    "predev": "npm run build --workspace @stackpilot/contracts",
+    "predev": "npm run build --workspace @stackpilot/host-telemetry",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "typecheck": "npm run build --workspace @stackpilot/contracts && tsc --noEmit",
-    "build": "npm run build --workspace @stackpilot/contracts && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && node -e \"require('node:fs').cpSync('src/database/migrations','dist/database/migrations',{recursive:true})\"",
+    "typecheck": "npm run build --workspace @stackpilot/host-telemetry && tsc --noEmit",
+    "build": "npm run build --workspace @stackpilot/host-telemetry && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && node -e \"require('node:fs').cpSync('src/database/migrations','dist/database/migrations',{recursive:true})\"",
     "lint": "eslint src",
     "test": "npm run build && node --test ../../tests/controller/*.test.js",
     "db:init": "node dist/cli.js init",
@@ -24,6 +24,7 @@
     "@node-rs/argon2": "^2.0.2",
     "@stackpilot/config": "0.2.0-preview.5",
     "@stackpilot/contracts": "0.2.0-preview.5",
+    "@stackpilot/host-telemetry": "0.2.0-preview.5",
     "better-sqlite3": "^12.11.1",
     "zod": "^4.4.3"
   },

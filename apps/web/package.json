@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "pretest": "npm run build --workspace @stackpilot/contracts",
-    "test": "vitest run && node --test ../../tests/web/contracts.test.js ../../tests/web/architecture.test.js"
+    "test": "NODE_OPTIONS='--no-webstorage' vitest run && node --test ../../tests/web/contracts.test.js ../../tests/web/architecture.test.js"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.2.8",

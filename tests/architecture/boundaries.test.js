@@ -32,7 +32,7 @@ test("web never imports controller internals", async () => {
 });
 
 test("public packages do not depend on concrete applications", async () => {
-  for (const name of ["contracts", "config"]) {
+  for (const name of ["contracts", "config", "host-telemetry"]) {
     const packageRoot = join(repoRoot, "packages", name);
     const manifest = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8"));
     const dependencies = { ...manifest.dependencies, ...manifest.devDependencies, ...manifest.peerDependencies };

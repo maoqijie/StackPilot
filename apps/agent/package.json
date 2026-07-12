@@ -5,14 +5,14 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
-    "predev": "npm run build --workspace @stackpilot/contracts",
+    "predev": "npm run build --workspace @stackpilot/host-telemetry",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
-    "typecheck": "npm run build --workspace @stackpilot/contracts && tsc --noEmit",
-    "build": "npm run build --workspace @stackpilot/contracts && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
+    "typecheck": "npm run build --workspace @stackpilot/host-telemetry && tsc --noEmit",
+    "build": "npm run build --workspace @stackpilot/host-telemetry && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
     "lint": "eslint src",
     "test": "npm run build && node --test ../../tests/agent/*.test.js"
   },
-  "dependencies": { "@stackpilot/contracts": "0.2.0-preview.5", "zod": "^4.4.3" },
+  "dependencies": { "@stackpilot/contracts": "0.2.0-preview.5", "@stackpilot/host-telemetry": "0.2.0-preview.5", "zod": "^4.4.3" },
   "devDependencies": { "@types/node": "^25.9.3", "tsx": "^4.23.0", "typescript": "^5.9.3" }
 }

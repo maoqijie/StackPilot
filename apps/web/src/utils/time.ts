@@ -30,4 +30,13 @@ function secondsFromDuration(value: string) {
   return value.toLowerCase().includes("ms") ? amount / 1000 : amount;
 }
 
-export { currentClock, currentDateTime, createLocalId, secondsFromDuration };
+function formatBackendDateTime(value?: string | null, fallback = "等待采集") {
+  if (!value) return fallback;
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return value;
+  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(timestamp);
+}
+
+function overviewCollectedAt(value: { collectedAt?: string; lastRefresh: string }) { return value.collectedAt || value.lastRefresh; }
+
+export { currentClock, currentDateTime, createLocalId, formatBackendDateTime, overviewCollectedAt, secondsFromDuration };

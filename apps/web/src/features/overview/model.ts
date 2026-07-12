@@ -1,4 +1,4 @@
-import type { OverviewMetricIcon, OverviewService, OverviewSummaryPayload, OverviewTaskPageData, OverviewTaskRecord } from "../../api/overviewApi";
+import type { OverviewMetricIcon, OverviewNode, OverviewService, OverviewSummaryPayload, OverviewTaskPageData, OverviewTaskRecord } from "../../api/overviewApi";
 import { Bell, CalendarDays, Database, Globe2, Server, Shield } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Notify, Tone } from "../../types/app";
@@ -67,8 +67,13 @@ function emptyOverviewSummary(): OverviewSummaryPayload {
     audits: [],
     risks: [],
     resources: {},
+    collectedAt: new Date(0).toISOString(),
     lastRefresh: "",
   };
 }
 
-export { emptyOverviewSummary, emptyTaskPageData, healthProbeTone, overviewMetricIcons, reportApiError, serviceHealthLabel, serviceHealthTone, serviceTone, taskTone };
+const overviewNodeFreshness = (node: OverviewNode) => node.freshness;
+const overviewNodeCollectedAt = (node: OverviewNode) => node.collectedAt;
+const overviewNodeFieldAvailable = (node: OverviewNode, field: keyof OverviewNode["availability"]) => node.availability[field];
+
+export { emptyOverviewSummary, emptyTaskPageData, healthProbeTone, overviewMetricIcons, overviewNodeCollectedAt, overviewNodeFieldAvailable, overviewNodeFreshness, reportApiError, serviceHealthLabel, serviceHealthTone, serviceTone, taskTone };

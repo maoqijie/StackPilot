@@ -301,6 +301,8 @@
 .spark.orange { color: var(--warning); }
 .spark.red { color: var(--danger); }
 .spark.purple { color: var(--secondary); }
+.spark.gray { color: var(--muted); }
+.resource-unavailable { display: flex; min-height: 32px; align-items: center; color: var(--muted); font-size: 12px; }
 .spark-area { fill: currentColor; fill-opacity: 0.1; }
 .spark-bars rect { fill: currentColor; fill-opacity: 0.28; }
 .spark-line { fill: none; stroke: currentColor; stroke-width: 2; }

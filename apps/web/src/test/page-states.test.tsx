@@ -5,6 +5,7 @@ import { OverviewHealthPage } from "../pages/OverviewHealthPage";
 import { OverviewRisksPage } from "../pages/OverviewRisksPage";
 import { exportOverviewRisks, fetchOverviewHealth, fetchOverviewRisks } from "../api/overviewApi";
 import type { OverviewRiskRecord } from "../api/overviewApi";
+import { formatBackendDateTime } from "../utils/time";
 
 vi.mock("../api/overviewApi", () => ({
   fetchOverviewHealth: vi.fn(),
@@ -43,15 +44,15 @@ describe("overview health API states", () => {
   it("refreshes silently every ten seconds without a manual refresh action", async () => {
     vi.useFakeTimers();
     vi.mocked(fetchOverviewHealth)
-      .mockResolvedValueOnce({ lastRefresh: "12:30:00", nodes: [] })
-      .mockResolvedValueOnce({ lastRefresh: "12:30:10", nodes: [] });
+      .mockResolvedValueOnce({ collectedAt: "2026-07-12T12:30:00.000Z", lastRefresh: "12:30:00", nodes: [] })
+      .mockResolvedValueOnce({ collectedAt: "2026-07-12T12:30:10.000Z", lastRefresh: "12:30:10", nodes: [] });
 
     render(<OverviewHealthPage notify={notify} />);
     await act(async () => undefined);
 
     expect(fetchOverviewHealth).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "刷新状态" })).not.toBeInTheDocument();
-    expect(screen.getByText(/更新于 12:30:00/)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`更新于 ${formatBackendDateTime("2026-07-12T12:30:00.000Z")}`))).toBeInTheDocument();
 
     await act(async () => {
       vi.advanceTimersByTime(9_999);
@@ -63,7 +64,7 @@ describe("overview health API states", () => {
       await Promise.resolve();
     });
     expect(fetchOverviewHealth).toHaveBeenCalledTimes(2);
-    expect(screen.getByText(/更新于 12:30:10/)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`更新于 ${formatBackendDateTime("2026-07-12T12:30:10.000Z")}`))).toBeInTheDocument();
     expect(notify).not.toHaveBeenCalled();
   });
 
@@ -71,13 +72,17 @@ describe("overview health API states", () => {
     const user = userEvent.setup();
     const hostname = "edge-production-observability-node-with-a-very-long-hostname-01.internal.example";
     vi.mocked(fetchOverviewHealth).mockResolvedValue({
-      lastRefresh: "12:30:00",
+      collectedAt: "2026-07-12T12:30:00.000Z", lastRefresh: "12:30:00",
       nodes: [{
         id: "node-1",
         name: hostname,
         ip: "198.18.0.1",
         env: "本机",
         status: "健康",
+        source: "controller",
+        collectedAt: "2026-07-12T12:30:00.000Z",
+        freshness: "current",
+        availability: { cpu: true, memory: true, disk: true, latency: true, backup: true, update: true, services: true },
         latency: "12ms",
         latencyStatus: "健康",
         cpu: "24%",

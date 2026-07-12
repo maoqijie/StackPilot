@@ -3,16 +3,15 @@ import type {
   OverviewHealthPayload,
   OverviewRisksPayload,
   OverviewSummaryPayload,
-  OverviewTaskPageData,
-  OverviewTaskRecord,
   OverviewTasksPayload,
 } from "@stackpilot/contracts";
+import { OverviewHealthPayloadSchema, OverviewRisksPayloadSchema, OverviewSummaryPayloadSchema, OverviewTasksPayloadSchema } from "@stackpilot/contracts";
 import { requestJson } from "./client";
 
 export type * from "@stackpilot/contracts";
 
 export function fetchOverview(signal?: AbortSignal) {
-  return requestJson<OverviewSummaryPayload>("/overview", { signal });
+  return requestJson<OverviewSummaryPayload>("/overview", { signal }).then((payload) => OverviewSummaryPayloadSchema.parse(payload));
 }
 
 export function refreshOverview() {
@@ -24,7 +23,7 @@ export function checkOverviewUpdates() {
 }
 
 export function fetchOverviewHealth(signal?: AbortSignal) {
-  return requestJson<OverviewHealthPayload>("/overview/health", { signal });
+  return requestJson<OverviewHealthPayload>("/overview/health", { signal }).then((payload) => OverviewHealthPayloadSchema.parse(payload));
 }
 
 export function refreshOverviewHealth() {
@@ -32,18 +31,11 @@ export function refreshOverviewHealth() {
 }
 
 export function fetchOverviewTasks(signal?: AbortSignal) {
-  return requestJson<OverviewTasksPayload>("/overview/tasks", { signal });
+  return requestJson<OverviewTasksPayload>("/overview/tasks", { signal }).then((payload) => OverviewTasksPayloadSchema.parse(payload));
 }
 
 export function refreshOverviewTasks() {
   return requestJson<OverviewTasksPayload & ApiNotice>("/overview/tasks", { method: "POST" });
-}
-
-export function runOverviewTask(id: string) {
-  return requestJson<{ task: OverviewTaskRecord; tasks: OverviewTaskRecord[]; page: OverviewTaskPageData } & ApiNotice>(`/overview/tasks/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ action: "run" }),
-  });
 }
 
 export function exportOverviewTasks() {
@@ -51,7 +43,7 @@ export function exportOverviewTasks() {
 }
 
 export function fetchOverviewRisks(signal?: AbortSignal) {
-  return requestJson<OverviewRisksPayload>("/overview/risks", { signal });
+  return requestJson<OverviewRisksPayload>("/overview/risks", { signal }).then((payload) => OverviewRisksPayloadSchema.parse(payload));
 }
 
 export function scanOverviewRisks() {

@@ -15,9 +15,8 @@ export type PlatformSnapshot = {
   version: string;
   cpuCorePercents: number[];
   loadAverages: number[];
-  totalMemoryGb: number;
-  freeMemoryGb: number;
-  diskFreeGb: number;
+  totalMemoryBytes: number;
+  availableMemoryBytes: number;
   disks: DiskVolume[];
   platformLabel: string;
   auditRows: Array<[string, string, string, string, string, "成功" | "失败", string]>;

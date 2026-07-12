@@ -13,7 +13,7 @@ StackPilot 是面向自托管服务器运维的控制台。本文档记录当前
 
 ## 集群状态
 
-集群状态页通过 `/api/overview/health` 读取本机采集结果和已注册 Agent 的最小生命周期状态，展示节点名称、环境、版本、最后在线时间与状态。远程资源详情只能通过结构化只读任务采集。
+集群状态页通过 `/api/overview/health` 聚合 Controller 本机和当前用户节点范围内的 Agent。新版 Agent 会随心跳上报 CPU、内存、负载、全部磁盘卷、主 IP 与运行时间；未采集的备份、服务和更新状态显示为“暂不可用”，旧版 Agent 在升级前显示为“等待遥测”。
 
 如果页面出现请求失败，先确认后端正在监听：
 
@@ -21,6 +21,7 @@ StackPilot 是面向自托管服务器运维的控制台。本文档记录当前
 lsof -nP -iTCP:8787 -sTCP:LISTEN
 curl -i "http://127.0.0.1:8787/healthz"
 curl -i "http://127.0.0.1:5173/api/overview/health"
+curl -i "http://127.0.0.1:5173/api/hosts"
 ```
 
 Agent 排障先确认 Controller显式配置了 TLS 证书和私钥，Agent URL 使用 `https://`，且 Agent显式信任正确 CA/开发证书。不要通过关闭 TLS 验证解决证书错误。注册 Token 一次使用后失效；节点撤销后必须由管理员创建新的 enrollment，不能复用旧身份。

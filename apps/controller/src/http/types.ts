@@ -7,12 +7,13 @@ import type { ScheduleService } from "../modules/schedules/scheduleService.js";
 import type { TaskService } from "../modules/tasks/taskService.js";
 import type { EnrollmentService } from "../modules/enrollments/enrollmentService.js";
 import type { NodeService } from "../modules/nodes/nodeService.js";
+import type { HostMonitoringService } from "../modules/hosts/hostMonitoringService.js";
 import type { RemoteTaskService } from "../modules/remote-tasks/remoteTaskService.js";
 import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
 
-export type Services = { overview: OverviewService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService };
+export type Services = { overview: OverviewService; hosts: HostMonitoringService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService };
 export type RequestContext = {
   request: IncomingMessage;
   response: ServerResponse;

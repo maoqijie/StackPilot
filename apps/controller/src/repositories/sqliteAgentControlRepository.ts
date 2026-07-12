@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
-import type { AgentControlRepository, AgentControlState } from "./agentControlRepository.js";
+import type { AgentControlRepository, AgentControlState, AgentNodeState, AuditEvent } from "./agentControlRepository.js";
 import type { AuditRepository } from "../audit/auditRepository.js";
+import { AgentNodeRecordSchema, AgentTelemetrySnapshotSchema } from "@stackpilot/contracts";
 
 const empty = (): AgentControlState => ({ enrollments: [], credentials: [], nodes: [], nonces: [], tasks: [], audits: [] });
 export class SqliteAgentControlRepository implements AgentControlRepository {
@@ -26,6 +27,27 @@ export class SqliteAgentControlRepository implements AgentControlRepository {
       for(const x of state.nonces)this.database.prepare("INSERT INTO agent_nonces VALUES(?,?,?)").run(x.credentialId,x.nonce,x.expiresAt);
       for(const x of state.tasks)this.database.prepare("INSERT INTO remote_tasks(task_id,node_id,payload,status,updated_at)VALUES(?,?,?,?,?)").run(x.taskId,x.targetNodeId,JSON.stringify(x),x.status,x.updatedAt);
       for(const x of state.audits)this.database.prepare("INSERT INTO agent_protocol_audits VALUES(?,?,?)").run(x.eventId,JSON.stringify(x),x.timestamp);
-    })();for(const event of state.audits.filter(x=>!previousAudits.has(x.eventId)))this.audit?.append({actorType:event.requester.startsWith("agent:")?"agent":"user",actorId:event.requester,source:"controller-agent",targetType:event.taskId?"remote-task":"node",targetId:event.taskId??event.nodeId,action:event.event,parameters:event.parameters,outcome:event.toStatus??"recorded",authorization:"controller-agent-policy",requestId:event.traceId,traceId:event.traceId});return structuredClone(state);});this.queue=operation.then(()=>undefined,()=>undefined);return operation;
+    })();for(const event of state.audits.filter(x=>!previousAudits.has(x.eventId)))this.appendAudit(event);return structuredClone(state);});this.queue=operation.then(()=>undefined,()=>undefined);return operation;
+  }
+
+  async updateNodeWithAudit(nodeId:string,mutate:(node:AgentNodeState)=>AuditEvent):Promise<AgentNodeState|null>{
+    const operation=this.queue.catch(()=>undefined).then(async()=>{
+      const row=this.database.prepare("SELECT payload FROM agent_nodes WHERE node_id=?").get(nodeId) as {payload:string}|undefined;
+      if(!row)return null;
+      const node=AgentNodeRecordSchema.extend({telemetry:AgentTelemetrySnapshotSchema.optional()}).parse(JSON.parse(row.payload)) as AgentNodeState;
+      const event=mutate(node);
+      this.database.transaction(()=>{
+        this.database.prepare("UPDATE agent_nodes SET payload=?,revoked_at=?,updated_at=? WHERE node_id=?").run(JSON.stringify(node),node.revokedAt,node.lastSeenAt??node.enrolledAt,nodeId);
+        this.database.prepare("INSERT INTO agent_protocol_audits VALUES(?,?,?)").run(event.eventId,JSON.stringify(event),event.timestamp);
+      })();
+      this.appendAudit(event);
+      return structuredClone(node);
+    });
+    this.queue=operation.then(()=>undefined,()=>undefined);
+    return operation;
+  }
+
+  private appendAudit(event:AuditEvent){
+    this.audit?.append({actorType:event.requester.startsWith("agent:")?"agent":"user",actorId:event.requester,source:"controller-agent",targetType:event.taskId?"remote-task":"node",targetId:event.taskId??event.nodeId,action:event.event,parameters:event.parameters,outcome:event.toStatus??"recorded",authorization:"controller-agent-policy",requestId:event.traceId,traceId:event.traceId});
   }
 }

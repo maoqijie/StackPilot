@@ -1,4 +1,4 @@
-import { exportOverviewTasks, fetchOverviewTasks, runOverviewTask } from "../api/overviewApi";
+import { exportOverviewTasks, fetchOverviewTasks } from "../api/overviewApi";
 import type { OverviewMetricIcon, OverviewTaskPageData, OverviewTaskRecord, OverviewTaskStatus } from "../api/overviewApi";
 import {
   CalendarDays,
@@ -6,7 +6,6 @@ import {
   CircleX,
   Clock3,
   Download,
-  ListRestart,
   LoaderCircle,
   Plus,
   RefreshCw,
@@ -18,27 +17,37 @@ import { setQuickRoute } from "../app/routing";
 import { ModulePageShell } from "../components/layout/ModulePageShell";
 import { MetricTile, ModuleSearch } from "../components/ui/Cards";
 import { DetailDrawer } from "../components/ui/DetailDrawer";
+import { useOptionalOverviewData } from "../features/overview/OverviewDataProvider";
 import { overviewMetricIcons, reportApiError, taskTone } from "../features/overview/model";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import type { Notify, SetPage } from "../types/app";
+import { formatBackendDateTime } from "../utils/time";
 
 const taskStatusIcons: Record<OverviewTaskStatus, LucideIcon> = {
   成功: CheckCircle2,
   运行中: LoaderCircle,
   等待: Clock3,
   失败: CircleX,
+  取消: CircleX,
+  过期: Clock3,
 };
 
 function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPage }) {
-  const [rows, setRows] = useState<OverviewTaskRecord[]>([]);
-  const [pageData, setPageData] = useState<OverviewTaskPageData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const shared = useOptionalOverviewData();
+  const usesSharedOverview = shared !== null;
+  const [localRows, setLocalRows] = useState<OverviewTaskRecord[]>([]);
+  const [localPageData, setLocalPageData] = useState<OverviewTaskPageData | null>(null);
+  const [localLoading, setLocalLoading] = useState(true);
+  const [localError, setLocalError] = useState<string | null>(null);
   const [tab, setTab] = useState("all");
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<OverviewTaskRecord | null>(null);
-  const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const rows = shared?.overview?.tasks ?? localRows;
+  const pageData = shared?.overview?.taskPage ?? localPageData;
+  const loading = shared ? shared.loading && !shared.overview : localLoading;
+  const loadError = shared?.error ?? localError;
   const activeFilter = pageData?.filters.find((filter) => filter.id === tab) ?? pageData?.filters[0];
+  const selected = rows.find((row) => row.id === selectedId) ?? null;
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
     const searchText = [row.type, row.title, row.target, row.status, row.priority, row.operator, row.source, row.duration, ...row.logs].join(" ").toLowerCase();
@@ -49,53 +58,52 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
   const overviewMetricIconForTask = (icon: OverviewMetricIcon) => overviewMetricIcons[icon] ?? CalendarDays;
 
   const syncTasks = useCallback((payload: Awaited<ReturnType<typeof fetchOverviewTasks>>) => {
-    setRows(payload.tasks);
-    setPageData(payload.page);
-    setTab((current) => payload.page.filters.some((filter) => filter.id === current) ? current : payload.page.filters[0]?.id ?? "all");
-    setSelected((current) => current ? payload.tasks.find((row) => row.id === current.id) ?? null : null);
+    setLocalRows(payload.tasks);
+    setLocalPageData(payload.page);
   }, []);
 
   const loadTasks = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true);
-    setLoadError(null);
+    setLocalLoading(true);
+    setLocalError(null);
     try {
       const payload = await fetchOverviewTasks(signal);
       syncTasks(payload);
     } catch (error) {
       if (signal?.aborted) return;
       const message = error instanceof Error ? error.message : "任务流后端加载失败";
-      setLoadError(message);
+      setLocalError(message);
       reportApiError(error, notify, "任务流后端加载失败");
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      if (!signal?.aborted) setLocalLoading(false);
     }
   }, [notify, syncTasks]);
 
   useEffect(() => {
+    if (usesSharedOverview) return;
     const controller = new AbortController();
     fetchOverviewTasks(controller.signal)
       .then((payload) => {
         syncTasks(payload);
-        setLoadError(null);
+        setLocalError(null);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         const message = error instanceof Error ? error.message : "任务流后端加载失败";
-        setLoadError(message);
+        setLocalError(message);
         reportApiError(error, notify, "任务流后端加载失败");
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) setLocalLoading(false);
       });
     return () => controller.abort();
-  }, [notify, syncTasks]);
+  }, [notify, syncTasks, usesSharedOverview]);
 
   const autoRefreshTasks = useCallback(async (signal: AbortSignal) => {
     const payload = await fetchOverviewTasks(signal);
     syncTasks(payload);
   }, [syncTasks]);
 
-  useAutoRefresh(autoRefreshTasks, undefined, !loading && !loadError);
+  useAutoRefresh(autoRefreshTasks, undefined, !usesSharedOverview && !loading && !loadError);
 
   const exportTasksFromApi = async () => {
     try {
@@ -106,26 +114,13 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
     }
   };
 
-  const runTaskFromApi = async (id: string) => {
-    if (runningTaskId) return;
-    setRunningTaskId(id);
-    try {
-      const payload = await runOverviewTask(id);
-      syncTasks(payload);
-      notify(payload.message, payload.tone ?? "success");
-    } catch (error) {
-      reportApiError(error, notify, "运行真实任务失败");
-    } finally {
-      setRunningTaskId(null);
-    }
-  };
-
   const openScheduleCreate = () => {
     setPage("schedule-enabled", { message: "已打开真实定时任务创建", tone: "info" });
     window.requestAnimationFrame(() => setQuickRoute("schedule-enabled", "create-schedule"));
   };
 
-  const freshness = pageData?.collectedAt;
+  const freshness = pageData?.collectedAt ?? shared?.overview?.collectedAt;
+  const retry = () => usesSharedOverview ? shared.reload() : loadTasks();
 
   return (
     <ModulePageShell
@@ -135,7 +130,7 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
       viewContext={pageData?.context ?? false}
       actions={(
         <>
-          <span className="task-page-freshness" role="status"><Clock3 size={14} aria-hidden="true" />{freshness ? `采集于 ${freshness}` : "等待采集"}</span>
+          <span className="task-page-freshness" role="status"><Clock3 size={14} aria-hidden="true" />{freshness ? `采集于 ${formatBackendDateTime(freshness)}` : "等待采集"}</span>
           <button className="ghost" type="button" onClick={exportTasksFromApi}><Download size={14} /> 导出</button>
           <button className="ghost" type="button" onClick={openScheduleCreate}><Plus size={14} /> 新建计划任务</button>
         </>
@@ -144,7 +139,7 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
         <>
           <div className="deploy-tabs" aria-label="任务状态筛选">
             {(pageData?.filters ?? []).map((item) => (
-              <button key={item.id} className={tab === item.id ? "active" : ""} type="button" aria-pressed={tab === item.id} onClick={() => setTab(item.id)}>{item.label}</button>
+              <button key={item.id} className={activeFilter?.id === item.id ? "active" : ""} type="button" aria-pressed={activeFilter?.id === item.id} onClick={() => setTab(item.id)}>{item.label}</button>
             ))}
           </div>
           <ModuleSearch value={search} placeholder={pageData?.searchPlaceholder ?? "搜索后端返回的任务"} onChange={setSearch} />
@@ -153,7 +148,7 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
       metrics={<>{(pageData?.metrics ?? []).map((metric) => <MetricTile key={metric.label} icon={overviewMetricIconForTask(metric.icon)} label={metric.label} value={metric.value} tone={metric.tone} />)}</>}
     >
       {selected && (
-        <DetailDrawer title={selected.title} subtitle={`${selected.type} · ${selected.target}`} onClose={() => setSelected(null)} className="task-log-modal" modal>
+        <DetailDrawer title={selected.title} subtitle={`${selected.type} · ${selected.target}`} onClose={() => setSelectedId(null)} className="task-log-modal" modal>
           <div className="detail-kv task-detail-kv">
             <p><span>状态</span><b className={`task-inline-status ${taskTone(selected.status)}`}>{renderTaskStatusIcon(selected.status, 15)} {selected.status}</b></p>
             <p><span>优先级</span><b>{selected.priority}</b></p>
@@ -161,7 +156,7 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
             <p><span>排队时间</span><b>{selected.queuedAt}</b></p>
             <p><span>耗时</span><b>{selected.duration}</b></p>
             <p><span>来源</span><b>{selected.source}</b></p>
-            <p><span>采集时间</span><b>{selected.collectedAt}</b></p>
+            <p><span>采集时间</span><b>{formatBackendDateTime(selected.collectedAt)}</b></p>
           </div>
           <div className="overview-event-log">
             <strong>执行日志</strong>
@@ -186,7 +181,7 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
           <div className="task-page-state error" role="alert">
             <CircleX size={20} />
             <span><strong>任务数据暂不可用</strong><small>{loadError}</small></span>
-            <button className="ghost small" type="button" onClick={() => void loadTasks()}><RefreshCw size={14} /> 重试</button>
+            <button className="ghost small" type="button" onClick={() => void retry()}><RefreshCw size={14} /> 重试</button>
           </div>
         )}
         {!loading && !loadError && filteredRows.length === 0 && (
@@ -196,10 +191,7 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
           <TaskWorkflowRow
             key={row.id}
             task={row}
-            running={runningTaskId === row.id}
-            actionsDisabled={runningTaskId !== null}
-            onOpen={() => setSelected(row)}
-            onRun={() => void runTaskFromApi(row.id)}
+            onOpen={() => setSelectedId(row.id)}
           />
         ))}
       </section>
@@ -209,16 +201,10 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
 
 function TaskWorkflowRow({
   task,
-  running,
-  actionsDisabled,
   onOpen,
-  onRun,
 }: {
   task: OverviewTaskRecord;
-  running: boolean;
-  actionsDisabled: boolean;
   onOpen: () => void;
-  onRun: () => void;
 }) {
   const StatusIcon = taskStatusIcons[task.status];
   const tone = taskTone(task.status);
@@ -233,7 +219,7 @@ function TaskWorkflowRow({
       <div className="task-row-time">
         <span>排队时间</span>
         <strong>{task.queuedAt}</strong>
-        <small>采集 {task.collectedAt}</small>
+        <small>采集 {formatBackendDateTime(task.collectedAt)}</small>
       </div>
       <div className="task-row-result">
         <strong className={tone}>{task.status}</strong>
@@ -241,10 +227,6 @@ function TaskWorkflowRow({
       </div>
       <div className="task-row-actions">
         <button type="button" onClick={onOpen}><TerminalSquare size={14} /> 日志</button>
-        <button type="button" disabled={actionsDisabled} onClick={onRun}>
-          {running ? <LoaderCircle className="is-spinning" size={14} /> : <ListRestart size={14} />}
-          {running ? "运行中" : task.actionLabel}
-        </button>
       </div>
     </article>
   );

@@ -3,6 +3,8 @@ const collectedAt = "2026/07/11 10:00:00";
 function fakeNode() {
   return {
     id: "node-local", name: "fake-host", ip: "127.0.0.1", env: "测试", status: "健康",
+    source: "controller", collectedAt: new Date().toISOString(), freshness: "current",
+    availability: { cpu: true, memory: true, disk: true, latency: true, backup: true, update: true, services: true },
     latency: "1ms", latencyStatus: "健康", cpu: "12%", memory: "34%", disk: "80%",
     version: "v0.1.0", uptime: "1 小时", backup: "测试备份正常", backupStatus: "健康",
     update: "已同步", owner: "test",
@@ -23,8 +25,8 @@ export class FakePlatformAdapter {
     return {
       node: fakeNode(), cpuPercent: 12, memoryPercent: 34, diskPercent: 80, loadPercent: 10,
       changedFiles: [], branch: "main", commit: "abc1234", behind: 0, version: "0.1.0",
-      cpuCorePercents: [10, 14], loadAverages: [0.1, 0.2, 0.3], totalMemoryGb: 16, freeMemoryGb: 10,
-      diskFreeGb: 100,
+      cpuCorePercents: [10, 14], loadAverages: [0.1, 0.2, 0.3],
+      totalMemoryBytes: 16 * 1024 ** 3, availableMemoryBytes: 10 * 1024 ** 3,
       disks: [
         { label: "C:", mount: "C:\\", totalBytes: 200 * 1024 ** 3, freeBytes: 80 * 1024 ** 3, usedBytes: 120 * 1024 ** 3, percent: 60 },
         { label: "D:", mount: "D:\\", totalBytes: 300 * 1024 ** 3, freeBytes: 20 * 1024 ** 3, usedBytes: 280 * 1024 ** 3, percent: 93 },

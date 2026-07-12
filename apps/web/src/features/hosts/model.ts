@@ -1,5 +1,5 @@
-import type { OverviewNode } from "../../api/overviewApi";
 import { latencyValue, uniqueSorted } from "../../utils/data";
+import type { HostView } from "./viewModel";
 import type { HostPageMode, HostPagePreset } from "./types";
 import type { PageKey, Tone, ViewContext } from "../../types/app";
 
@@ -31,77 +31,79 @@ function hostPagePreset(page: PageKey) {
   } satisfies HostPagePreset;
 }
 
-function hostStatusTone(status: OverviewNode["status"]): Tone {
+function hostStatusTone(status: HostView["status"]): Tone {
   if (status === "健康") return "green";
   if (status === "警告") return "orange";
   return "gray";
 }
 
-function hostResourceTone(value: string): Tone {
-  const percent = percentValue(value);
+function hostResourceTone(value: number | null): Tone {
+  if (value === null) return "gray";
+  const percent = value;
   if (percent >= 80) return "red";
   if (percent >= 60) return "orange";
   return "green";
 }
 
-function hostHighestResource(row: OverviewNode) {
-  const resources = [
+function hostHighestResource(row: HostView) {
+  const resources: Array<[string, number | null]> = [
     ["CPU", row.cpu],
     ["内存", row.memory],
     ["磁盘", row.disk],
-  ] as const;
-  const [label, value] = [...resources].sort((left, right) => percentValue(right[1]) - percentValue(left[1]))[0];
-  return `${label} ${value}`;
+  ];
+  const available = resources.filter((item): item is [string, number] => item[1] !== null);
+  if (available.length === 0) return "等待采集";
+  const [label, value] = available.sort((left, right) => right[1] - left[1])[0];
+  return `${label} ${Math.round(value)}%`;
 }
 
-function hostPressureScore(row: OverviewNode) {
-  return Math.max(percentValue(row.cpu), percentValue(row.memory), percentValue(row.disk));
+function hostPressureScore(row: HostView) {
+  return Math.max(row.cpu ?? 0, row.memory ?? 0, row.disk ?? 0);
 }
 
-function hostNeedsAttention(row: OverviewNode) {
-  return row.status !== "健康" || hostHasHighResource(row) || hostHasStaleBackup(row) || !isCleanUpdate(row.update);
+function hostNeedsAttention(row: HostView) {
+  return ["警告", "离线"].includes(row.status) || hostHasHighResource(row) || hostHasStaleBackup(row);
 }
 
-function hostHasHighResource(row: OverviewNode) {
+function hostHasHighResource(row: HostView) {
   return hostPressureScore(row) >= 70;
 }
 
-function hostHasStaleBackup(row: OverviewNode) {
-  return row.backupStatus !== "健康";
+function hostHasStaleBackup(row: HostView) {
+  return row.backupStatus === "警告";
 }
 
-function hostRiskReasons(row: OverviewNode) {
+function hostRiskReasons(row: HostView) {
   const reasons: string[] = [];
-  if (row.status === "维护") reasons.push("节点维护中");
+  if (row.status === "待连接") reasons.push("等待首次连接");
+  if (row.status === "离线") reasons.push("节点离线");
+  if (row.status === "未知") reasons.push("等待遥测");
   if (row.status === "警告") reasons.push("健康告警");
   if (hostHasHighResource(row)) reasons.push(`资源高压 ${hostHighestResource(row)}`);
   if (hostHasStaleBackup(row)) reasons.push(`备份滞后 ${row.backup}`);
-  if (!isCleanUpdate(row.update)) reasons.push(row.update);
   return reasons.length > 0 ? reasons : ["监控正常"];
 }
 
-function hostServiceSummary(row: OverviewNode) {
+function hostServiceSummary(row: HostView) {
   return `${row.services.length} 个服务`;
 }
 
-function percentValue(value: string) {
-  return Number(value.replace("%", "")) || 0;
+function percentValue(value: string | number | null) {
+  if (typeof value === "number") return value;
+  return value ? Number(value.replace("%", "")) || 0 : 0;
 }
 
 function isCleanUpdate(value: string) {
   return ["已是最新", "已同步"].includes(value);
 }
 
-function averageLatency(nodes: OverviewNode[]) {
-  const values = nodes
-    .map((node) => latencyValue(node.latency))
-    .filter((value): value is number => value !== null);
+function averageLatency(nodes: Array<{ latency: string }>) {
+  const values = nodes.map((node) => latencyValue(node.latency)).filter((value): value is number => value !== null);
   if (values.length === 0) return "-";
-  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
-  return `${Math.round(average)}ms`;
+  return `${Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)}ms`;
 }
 
-function hostViewContext(mode: HostPageMode, rows: OverviewNode[], filteredRows: OverviewNode[]): ViewContext {
+function hostViewContext(mode: HostPageMode, rows: HostView[], filteredRows: HostView[]): ViewContext {
   const productionRows = rows.filter((row) => row.env === "生产");
   const alertRows = rows.filter(hostNeedsAttention);
   if (mode === "production") {
@@ -115,7 +117,7 @@ function hostViewContext(mode: HostPageMode, rows: OverviewNode[], filteredRows:
     return {
       eyebrow: "主机 / 健康告警",
       title: "告警处置队列",
-      chips: [`待处理 ${alertRows.length} 台`, `警告 ${rows.filter((row) => row.status === "警告").length} 台`, `当前 ${filteredRows.length} 台`],
+      chips: [`待处理 ${alertRows.length} 台`, `离线 ${rows.filter((row) => row.status === "离线").length} 台`, `当前 ${filteredRows.length} 台`],
     };
   }
   return {
@@ -125,15 +127,15 @@ function hostViewContext(mode: HostPageMode, rows: OverviewNode[], filteredRows:
   };
 }
 
-function hostMatchesHealth(row: OverviewNode, healthFilter: string) {
+function hostMatchesHealth(row: HostView, healthFilter: string) {
   if (healthFilter === "全部") return true;
   if (healthFilter === "需关注") return hostNeedsAttention(row);
   return row.status === healthFilter;
 }
 
 function hostHealthOptions(mode: HostPageMode) {
-  if (mode === "alerts") return ["需关注", "警告", "维护", "全部", "健康"];
-  return ["全部", "健康", "警告", "维护"];
+  if (mode === "alerts") return ["需关注", "离线", "警告", "全部", "健康", "未知", "待连接"];
+  return ["全部", "健康", "警告", "未知", "待连接", "离线"];
 }
 
 export { hostPagePreset, hostStatusTone, hostResourceTone, hostHighestResource, hostPressureScore, hostNeedsAttention, hostHasHighResource, hostHasStaleBackup, hostRiskReasons, hostServiceSummary, percentValue, isCleanUpdate, averageLatency, hostViewContext, hostMatchesHealth, hostHealthOptions };

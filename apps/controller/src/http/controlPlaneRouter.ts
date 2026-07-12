@@ -8,6 +8,11 @@ import { sendJson } from "./response/json.js";
 import { parseSchema } from "./validation.js";
 
 const id = (context: RequestContext, index: number) => parseSchema(PathIdSchema, context.parts[index] ?? "", "路径参数");
+const publicNode = (value: Awaited<ReturnType<RequestContext["services"]["nodes"]["list"]>>[number]) => ({
+  nodeId: value.nodeId, nodeName: value.nodeName, status: value.status, agentVersion: value.agentVersion,
+  protocolVersion: value.protocolVersion, platform: value.platform, declaredCapabilities: value.declaredCapabilities,
+  allowedCapabilities: value.allowedCapabilities, enrolledAt: value.enrolledAt, lastSeenAt: value.lastSeenAt, revokedAt: value.revokedAt,
+});
 
 export async function routeControlPlaneRequest(context: RequestContext) {
   const method = context.request.method ?? "GET";
@@ -23,7 +28,8 @@ export async function routeControlPlaneRequest(context: RequestContext) {
     sendJson(context.response, 200, { message: "注册凭据已撤销", tone: "warning" }, ApiNoticeSchema); return;
   }
   if (context.parts[1] === "nodes" && context.parts.length === 2 && method === "GET") {
-    identity?.require(principal,"nodes:read");const nodes=await context.services.nodes.list();sendJson(context.response, 200, { nodes: principal?.nodeScope==="all"?nodes:nodes.filter(node=>principal?.nodeScope.includes(node.nodeId)) }, AgentNodeListResponseSchema); return;
+    identity?.require(principal,"nodes:read");const nodes=await context.services.nodes.list();const scoped=principal?.nodeScope==="all"?nodes:nodes.filter(node=>principal?.nodeScope.includes(node.nodeId));
+    sendJson(context.response, 200, { nodes: scoped.map(publicNode) }, AgentNodeListResponseSchema); return;
   }
   if (context.parts[1] === "nodes" && context.parts.length === 3 && method === "DELETE") {
     const nodeId=id(context,2);identity?.require(principal,"nodes:manage",nodeId);identity?.consumeReauth(principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);await context.services.nodes.revoke(nodeId, `user:${principal?.userId}`, context.requestId);

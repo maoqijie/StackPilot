@@ -60,7 +60,7 @@ const webRoot = join(root, "apps", "web", "dist");
 const proxy = createHttpsServer({ cert: certificate.cert, key: certificate.private, minVersion: "TLSv1.2" }, (request, response) => {
   response.setHeader("Strict-Transport-Security", "max-age=31536000");
   response.setHeader("X-Content-Type-Options", "nosniff");
-  response.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'");
+  response.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-/IiHTQllMEt1knsqzjwvVGxsMxXaQ7ZdISgkRO6D6NI='; connect-src 'self'; frame-ancestors 'none'");
   if (request.url?.startsWith("/api/") || request.url === "/healthz" || request.url === "/readyz") {
     const upstream = httpRequest({ host: "127.0.0.1", port: 18787, path: request.url, method: request.method, headers: { ...request.headers, host: "127.0.0.1:18787", forwarded: `for=${request.socket.remoteAddress};proto=https;host=127.0.0.1:18443`, "x-forwarded-for": request.socket.remoteAddress ?? "", "x-forwarded-proto": "https" } }, (upstreamResponse) => {
       response.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers);

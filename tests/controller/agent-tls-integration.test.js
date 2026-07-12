@@ -51,6 +51,15 @@ test("TLS Agent API supports two independent identities and rejects replay, revo
     const heartbeat = (agent) => ({ nodeId: agent.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read", "service.status.read"], health: { status: "healthy", uptimeSeconds: 5 } });
     assert.equal((await httpsJson(tlsUrl, "/api/agent/heartbeat", heartbeat(agents[0]), cert.cert, agents[0])).status, 200);
     assert.equal((await httpsJson(tlsUrl, "/api/agent/heartbeat", heartbeat(agents[1]), cert.cert, agents[1])).status, 200);
+    const largeTelemetry = {
+      collectedAt: new Date().toISOString(), hostname: "large-agent", primaryIp: "192.0.2.10",
+      cpu: { usagePercent: 20, coreUsagePercents: Array(512).fill(20) }, memory: { totalBytes: 1024, availableBytes: 512 },
+      loadAverage: [1, 2, 3], uptimeSeconds: 5,
+      disks: Array.from({ length: 256 }, (_, index) => ({ label: `disk-${index}`, mount: `/${"m".repeat(480)}-${index}`, totalBytes: 1024, usedBytes: 512 })),
+    };
+    const largeHeartbeat = { ...heartbeat(agents[0]), telemetry: largeTelemetry };
+    assert.ok(Buffer.byteLength(JSON.stringify(largeHeartbeat)) > 64 * 1024);
+    assert.equal((await httpsJson(tlsUrl, "/api/agent/heartbeat", largeHeartbeat, cert.cert, agents[0])).status, 200);
 
     const nonce = randomBytes(18).toString("base64url"); const replayBody = heartbeat(agents[0]);
     assert.equal((await httpsJson(tlsUrl, "/api/agent/heartbeat", replayBody, cert.cert, agents[0], { nonce })).status, 200);
