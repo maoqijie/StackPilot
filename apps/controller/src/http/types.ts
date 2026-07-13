@@ -9,6 +9,7 @@ import type { EnrollmentService } from "../modules/enrollments/enrollmentService
 import type { NodeService } from "../modules/nodes/nodeService.js";
 import type { HostMonitoringService } from "../modules/hosts/hostMonitoringService.js";
 import type { SiteMonitoringService } from "../modules/sites/siteMonitoringService.js";
+import type { CertificateRenewalService } from "../modules/sites/certificateRenewalService.js";
 import type { DatabaseMonitoringService } from "../modules/databases/databaseMonitoringService.js";
 import type { DatabaseBackupService } from "../modules/databases/databaseBackupService.js";
 import type { RemoteTaskService } from "../modules/remote-tasks/remoteTaskService.js";
@@ -20,7 +21,7 @@ import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
 
-export type Services = { overview: OverviewService; hosts: HostMonitoringService; databaseInstances: DatabaseMonitoringService; databaseSlowQueries: DatabaseSlowQueryService; sites: SiteMonitoringService; databaseBackups: DatabaseBackupService; fileManager: FileService; fileUploads?: FileUploadService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService; terminalSnippets: TerminalSnippetService };
+export type Services = { overview: OverviewService; hosts: HostMonitoringService; databaseInstances: DatabaseMonitoringService; databaseSlowQueries: DatabaseSlowQueryService; sites: SiteMonitoringService; certificateRenewals: CertificateRenewalService; databaseBackups: DatabaseBackupService; fileManager: FileService; fileUploads?: FileUploadService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService; terminalSnippets: TerminalSnippetService };
 export type RequestContext = {
   request: IncomingMessage;
   response: ServerResponse;

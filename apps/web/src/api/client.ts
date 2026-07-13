@@ -1,23 +1,28 @@
 import { API_CLIENT_PREFIX } from "@stackpilot/contracts";
-import type { ApiErrorResponse, ApiNotice } from "@stackpilot/contracts";
+import type { ApiErrorCode, ApiErrorResponse, ApiNotice } from "@stackpilot/contracts";
 
 let csrfToken = "";
 export const setCsrfToken = (value: string) => { csrfToken = value; };
 export const getCsrfToken = () => csrfToken;
 
-export async function responseError(response: Response): Promise<Error> {
+export async function responseError(response: Response, suppressedSessionExpiredCodes: readonly ApiErrorCode[] = []): Promise<Error> {
   let message = `请求失败 (${response.status})`;
+  let code: ApiErrorCode | undefined;
   try {
     const payload = await response.json() as Partial<ApiErrorResponse & ApiNotice>;
     message = payload.error ?? payload.message ?? message;
+    code = payload.code;
   } catch {
     // Keep the HTTP status fallback when the response is not JSON.
   }
-  if (response.status === 401 && typeof window !== "undefined") window.dispatchEvent(new Event("stackpilot:session-expired"));
+  if (response.status === 401 && !suppressedSessionExpiredCodes.includes(code!) && typeof window !== "undefined") window.dispatchEvent(new Event("stackpilot:session-expired"));
   return new Error(message);
 }
 
-export async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+type RequestJsonInit = RequestInit & { suppressSessionExpiredCodes?: readonly ApiErrorCode[] };
+
+export async function requestJson<T>(path: string, options: RequestJsonInit = {}): Promise<T> {
+  const { suppressSessionExpiredCodes = [], ...init } = options;
   const hasJsonBody = typeof init.body === "string";
   const response = await fetch(`${API_CLIENT_PREFIX}${path}`, {
     ...init,
@@ -30,7 +35,7 @@ export async function requestJson<T>(path: string, init: RequestInit = {}): Prom
   });
 
   if (!response.ok) {
-    throw await responseError(response);
+    throw await responseError(response, suppressSessionExpiredCodes);
   }
 
   return response.json() as Promise<T>;

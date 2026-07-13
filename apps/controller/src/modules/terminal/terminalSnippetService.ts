@@ -34,13 +34,13 @@ export class TerminalSnippetService {
     return this.record(userId, snippet);
   }
 
-  async execute(userId: string, snippetId: string, input: ExecuteTerminalSnippetRequest, traceId: string) {
+  async execute(userId: string, snippetId: string, input: ExecuteTerminalSnippetRequest, traceId: string, authorize: () => void) {
     const snippet = this.catalogSnippet(snippetId);
     if (!snippet.executable || !snippet.task) throw new ServiceError(409, "BAD_REQUEST", "该命令片段没有可执行的受控 Agent 能力");
     if (snippet.version !== input.snippetVersion) throw new ServiceError(409, "BAD_REQUEST", "命令片段版本已变化，请刷新后重试");
     const operationKey = createHash("sha256").update(`${userId}\0${snippetId}\0${input.idempotencyKey}`).digest("hex");
     const taskRequest = CreateRemoteTaskRequestSchema.parse({ ...snippet.task, idempotencyKey: `terminal:${operationKey}` });
-    const task = await this.tasks.create(input.nodeId, taskRequest, `user:${userId}`, traceId);
+    const task = await this.tasks.create(input.nodeId, taskRequest, `user:${userId}`, traceId, authorize);
     const now = new Date().toISOString();
     this.repository.markUsed(userId, snippetId, now);
     return { snippet: this.record(userId, snippet), task };

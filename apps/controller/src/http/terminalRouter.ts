@@ -47,8 +47,8 @@ export async function routeTerminalRequest(context: RequestContext) {
   if (context.parts.length === 5 && context.parts[2] === "snippets" && context.parts[4] === "executions" && method === "POST") {
     const input = parseSchema(ExecuteTerminalSnippetRequestSchema, context.body, "命令片段执行请求");
     identity?.require(principal, "terminal:execute", input.nodeId);
-    identity?.consumeReauth(principal!, typeof context.request.headers["x-reauth-proof"] === "string" ? context.request.headers["x-reauth-proof"] : undefined);
-    sendJson(context.response, 201, await context.services.terminalSnippets.execute(userId, snippetId(context), input, context.requestId), ExecuteTerminalSnippetResponseSchema); return;
+    const authorize = () => identity?.consumeReauth(principal!, typeof context.request.headers["x-reauth-proof"] === "string" ? context.request.headers["x-reauth-proof"] : undefined);
+    sendJson(context.response, 201, await context.services.terminalSnippets.execute(userId, snippetId(context), input, context.requestId, authorize), ExecuteTerminalSnippetResponseSchema); return;
   }
   throw notFound("终端接口不存在");
 }

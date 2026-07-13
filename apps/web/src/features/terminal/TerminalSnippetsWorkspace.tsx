@@ -126,6 +126,7 @@ function TerminalSnippetsWorkspace({ notify, permissions }: { notify: Notify; pe
     const currentPassword = passwordRef.current?.value ?? password;
     if (!pending || !pendingExecution || !effectiveNode) return;
     if (!currentPassword) { notify("请输入当前账号密码", "danger"); passwordRef.current?.focus(); return; }
+    if (!availableFor(effectiveNode, pending)) { notify("目标 Agent 能力已变更，请重新选择命令", "danger"); return; }
     setExecuting(true);
     try {
       const proof = await reauthenticate(currentPassword);

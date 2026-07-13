@@ -1,0 +1,14 @@
+[Unit]
+Description=StackPilot certificate helper socket
+
+[Socket]
+ListenStream=/run/stackpilot-cert-helper/helper.sock
+SocketUser=root
+SocketGroup=stackpilot-cert
+SocketMode=0660
+DirectoryMode=0750
+Accept=yes
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

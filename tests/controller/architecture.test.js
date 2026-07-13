@@ -44,8 +44,9 @@ test("legacy JavaScript Controller implementation has been removed", async () =>
 
 test("site TLS probes do not reuse sessions that omit peer certificate metadata", async () => {
   const source = await readFile(join(sourceRoot, "platform", "siteCollector.ts"), "utf8");
-  assert.match(source, /new HttpsAgent\(\{ keepAlive: false, maxCachedSessions: 0 \}\)/);
-  assert.match(source, /agent: siteProbeHttpsAgent/);
+  assert.match(source, /agent: false/);
+  assert.match(source, /rejectUnauthorized: true/);
+  assert.doesNotMatch(source, /rejectUnauthorized: false/);
 });
 
 test("production server injects SQLite into terminal snippet services", async () => {
