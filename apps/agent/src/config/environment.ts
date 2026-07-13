@@ -44,7 +44,7 @@ export function loadAgentConfig(env: NodeJS.ProcessEnv | Record<string, string |
     heartbeatSeconds: value.STACKPILOT_AGENT_HEARTBEAT_SECONDS,
     allowRoot: value.STACKPILOT_AGENT_ALLOW_ROOT === "1",
     rotateCredential: value.STACKPILOT_AGENT_ROTATE_CREDENTIAL === "1",
-    agentVersion: "0.2.0-preview.5",
+    agentVersion: "0.2.0-preview.6",
     platform: currentPlatform as AgentConfig["platform"],
   };
 }

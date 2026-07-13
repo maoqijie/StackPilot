@@ -1,20 +1,19 @@
-import { Activity, CheckCircle2, Clock3, Database, Download, Lock, MoreVertical, Plus, RefreshCw, Shield } from "lucide-react";
+import { Activity, CheckCircle2, CircleAlert, CircleCheck, CircleX, Copy, Database, DatabaseBackup, Download, Eye, Lock, MoreVertical, Plus, Shield } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { databasePagePreset } from "../app/pagePresets";
 import { resolvePageMeta } from "../app/navigation";
-import { consumePendingDatabaseFocus, readDatabaseFocusParam, setAuditSourceRoute, useQuickIntent } from "../app/routing";
+import { consumePendingDatabaseFocus, readDatabaseFocusParam, useQuickIntent } from "../app/routing";
 import { ModulePageShell } from "../components/layout/ModulePageShell";
 import { MetricTile, ModuleSearch, PanelCard } from "../components/ui/Cards";
 import { DataTable } from "../components/ui/DataTable";
 import { DetailDrawer } from "../components/ui/DetailDrawer";
 import { FieldSelect, FormLine, FormSelectLine, ToggleLine } from "../components/ui/FormControls";
-import { StatusLight } from "../components/ui/StatusVisuals";
 import type { DatabaseInstance } from "../features/databases/types";
 import { databaseBackupTone, databaseHealthTone } from "../features/databases/model";
-import { DonutCard, HealthMini, MiniAuditList, SlowSqlList } from "../features/databases/OverviewWidgets";
+import { AccessSummary, BackupSummary, HealthMini, SlowInstanceList } from "../features/databases/OverviewWidgets";
 import { dbRows } from "../mocks/demoData";
 import type { Notify, PageKey, SetPage } from "../types/app";
-import { createLocalId, currentClock, currentDateTime } from "../utils/time";
+import { createLocalId, currentDateTime } from "../utils/time";
 
 function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; notify: Notify }) {
   const databasePreset = databasePagePreset(page);
@@ -25,7 +24,6 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
   const [statusFilter, setStatusFilter] = useState(databasePreset.status);
   const [hostFilter, setHostFilter] = useState(databasePreset.host);
   const [rows, setRows] = useState(dbRows);
-  const [lastSync, setLastSync] = useState(currentClock());
   const [drawer, setDrawer] = useState<{ type: "create" } | { type: "detail"; id: string; focus?: "actions" } | null>(() => (
     initialFocusInstance ? { type: "detail", id: initialFocusInstance.id, focus: "actions" } : null
   ));
@@ -81,14 +79,15 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
   const alertCount = rows.filter((row) => row.connectionHealth.startsWith("延迟") || row.backupStatus === "失败").length;
   const backupSuccessRate = totalCount ? Math.round((rows.filter((row) => row.backupStatus === "成功").length / totalCount) * 100) : 0;
   const slowQueryCount = rows.reduce((sum, row) => sum + row.slowQueries, 0);
+  const healthFocus = [...filteredRows].sort((left, right) => databaseLatency(right) - databaseLatency(left))[0] ?? null;
   const updateInstance = (id: string, patch: Partial<DatabaseInstance>) => {
     setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   };
   const openDetail = (instance: DatabaseInstance, focus?: "actions") => {
     setDrawer({ type: "detail", id: instance.id, focus });
   };
-  const openNamedDatabaseDetail = (name: string) => {
-    const target = rows.find((row) => row.name === name) ?? filteredRows[0] ?? rows[0];
+  const openDatabaseDetailById = (id: string) => {
+    const target = rows.find((row) => row.id === id);
     if (!target) {
       notify("没有可查看的数据库实例", "warning");
       return;
@@ -167,8 +166,9 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
-      subtitle={`${databasePreset.subtitle} · 最近同步 ${lastSync}`}
+      subtitle={`${databasePreset.subtitle} · 采集时间不可用，当前显示本地会话数据`}
       page={page}
+      className="module-page-databases"
       viewContext={{
         eyebrow: "数据库 / 实例列表",
         title: "数据库实例",
@@ -176,16 +176,6 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
       }}
       actions={<>
         <button className="ghost" type="button" onClick={() => notify(`已导出 ${filteredRows.length} 条数据库记录`, "info")}><Download size={15} /> 导出</button>
-        <button
-          className="ghost"
-          type="button"
-          onClick={() => {
-            setLastSync(currentClock());
-            notify("数据库状态已刷新");
-          }}
-        >
-          <RefreshCw size={15} /> 刷新
-        </button>
         <button className="primary" type="button" onClick={() => setDrawer({ type: "create" })}><Plus size={15} /> 创建数据库</button>
       </>}
       filters={<>
@@ -199,19 +189,20 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
         <MetricTile icon={Database} label="MySQL" value={`${mysqlCount}`} tone="blue" />
         <MetricTile icon={Activity} label="运行中" value={`${healthyCount}`} tone="green" />
         <MetricTile icon={Shield} label="告警" value={`${alertCount}`} tone={alertCount ? "orange" : "green"} />
-        <MetricTile icon={CheckCircle2} label="备份成功率" value={`${backupSuccessRate}%`} tone="green" />
-        <MetricTile icon={Clock3} label="今日慢查询" value={`${slowQueryCount}`} tone={slowQueryCount ? "orange" : "green"} />
+        <BackupRateMetric value={backupSuccessRate} />
+        <MetricTile icon={CircleAlert} label="慢查询" value={`${slowQueryCount}`} tone={slowQueryCount ? "orange" : "green"} />
       </>}
       side={drawer?.type === "create" ? (
         <CreateDatabaseDrawer notify={notify} onClose={() => setDrawer(null)} onCreate={createInstance} />
       ) : selectedInstance ? (
         <DetailDrawer
+          className="database-instance-drawer"
           title="数据库详情"
           subtitle={selectedInstance.name}
           onClose={() => setDrawer(null)}
           actions={<>
-            <button className="ghost" type="button" onClick={() => void copyConnection(selectedInstance)}>复制连接</button>
-            <button className="primary" type="button" onClick={() => runBackup(selectedInstance)}>立即备份</button>
+            <button className="ghost" type="button" onClick={() => void copyConnection(selectedInstance)}><Copy size={15} /> 复制连接</button>
+            <button className="primary" type="button" onClick={() => runBackup(selectedInstance)}><DatabaseBackup size={15} /> 立即备份</button>
           </>}
         >
           <DatabaseInstanceDetail
@@ -228,34 +219,41 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
       <div className="database-instance-content">
         <DataTable
           columns={[
-            { key: "name", label: "名称", width: "180px", render: (row) => <button className="module-row-link" type="button" aria-label={`查看数据库 ${row.name}`} onClick={() => openDetail(row)}><StatusLight tone={databaseHealthTone(row)} /><b>{row.name}</b></button> },
-            { key: "engine", label: "类型", width: "150px", render: (row) => <span className="database-engine"><Database size={15} /> {row.engine}</span> },
-            { key: "host", label: "主机", width: "126px", render: (row) => <code>{row.host}</code> },
-            { key: "port", label: "端口", width: "70px", render: (row) => row.port },
-            { key: "health", label: "连接健康", width: "110px", render: (row) => <span><StatusLight tone={databaseHealthTone(row)} /> {row.connectionHealth}</span> },
-            { key: "backup", label: "备份", width: "96px", render: (row) => <span><StatusLight tone={databaseBackupTone(row.backupStatus)} /> {row.backupStatus}</span> },
-            { key: "slow", label: "慢查询", width: "78px", render: (row) => <b className={row.slowQueries > 0 ? "red-text" : "green-text"}>{row.slowQueries}</b> },
-            { key: "lastBackup", label: "最近备份", width: "142px", render: (row) => row.lastBackup },
-            { key: "access", label: "权限", width: "134px", render: (row) => <span className="database-pill-group"><span className={`pill ${row.access === "读写" ? "blue" : row.access === "只读" ? "gray" : "orange"}`}>{row.access}</span><span className="pill green">{row.owner}</span></span> },
-            { key: "ops", label: "操作", width: "250px", render: (row) => <span className="table-actions"><button type="button" aria-label={`查看 ${row.name} 详情`} onClick={() => openDetail(row)}>查看详情</button><button type="button" aria-label={`立即备份 ${row.name}`} onClick={() => runBackup(row)}>立即备份</button><button type="button" aria-label={`打开 ${row.name} 更多操作`} onClick={() => openDetail(row, "actions")}>更多操作 <MoreVertical size={15} /></button></span> },
+            { key: "name", label: "名称", width: "172px", sortValue: (row) => row.name, render: (row) => <button className="module-row-link database-instance-name" type="button" title={row.name} aria-label={`查看数据库 ${row.name}`} onClick={() => openDetail(row)}><Database size={15} aria-hidden="true" /><b>{row.name}</b></button> },
+            { key: "engine", label: "类型", width: "126px", sortValue: (row) => row.engine, render: (row) => <span className="database-engine"><Database size={15} aria-hidden="true" /> {row.engine}</span> },
+            { key: "endpoint", label: "主机 / 端口", width: "140px", sortValue: (row) => `${row.host}:${row.port}`, render: (row) => <code className="database-endpoint" title={`${row.host}:${row.port}`}>{row.host}:{row.port}</code> },
+            { key: "health", label: "连接健康", width: "114px", sortValue: (row) => databaseLatency(row), render: (row) => <ConnectionStatus instance={row} /> },
+            { key: "backup", label: "备份", width: "92px", sortValue: (row) => row.backupStatus, render: (row) => <BackupStatus status={row.backupStatus} /> },
+            { key: "slow", label: "慢查询", width: "68px", sortValue: (row) => row.slowQueries, render: (row) => <b className={row.slowQueries > 0 ? "orange-text" : "green-text"}>{row.slowQueries}</b> },
+            { key: "lastBackup", label: "最近备份", width: "130px", sortValue: (row) => row.lastBackup, render: (row) => row.lastBackup },
+            { key: "access", label: "权限", width: "116px", render: (row) => <span className="database-pill-group"><span className={`pill ${row.access === "读写" ? "blue" : row.access === "只读" ? "gray" : "orange"}`}>{row.access}</span><span className="pill green">{row.owner}</span></span> },
+            { key: "ops", label: "操作", width: "122px", render: (row) => <span className="table-icon-actions database-table-actions"><button type="button" title="查看详情" aria-label={`查看 ${row.name} 详情`} onClick={() => openDetail(row)}><Eye size={15} /></button><button type="button" title="立即备份" aria-label={`立即备份 ${row.name}`} onClick={() => runBackup(row)}><DatabaseBackup size={15} /></button><button type="button" title="更多操作" aria-label={`打开 ${row.name} 更多操作`} onClick={() => openDetail(row, "actions")}><MoreVertical size={15} /></button></span> },
           ]}
           rows={filteredRows}
           emptyText="没有匹配的数据库实例"
           getRowKey={(row) => row.id}
+          mobileCard={(row) => (
+            <DatabaseMobileCard
+              instance={row}
+              onOpen={() => openDetail(row)}
+              onBackup={() => runBackup(row)}
+              onMore={() => openDetail(row, "actions")}
+            />
+          )}
         />
         {filteredRows.length ? (
           <section className="database-instance-lower">
-            <PanelCard title="备份状态（最近 7 天）" action="查看备份计划" onAction={() => setPage("databases-backups", { message: "已打开数据库 / 备份计划", tone: "info" })}>
-              <DonutCard />
+            <PanelCard title="当前备份状态" action="查看备份计划" onAction={() => setPage("databases-backups", { message: "已打开数据库 / 备份计划", tone: "info" })}>
+              <BackupSummary rows={filteredRows} />
             </PanelCard>
-            <PanelCard title="连接健康（prod-postgres-01）" action="查看监控详情" onAction={() => openNamedDatabaseDetail("prod-postgres-01")}>
-              <HealthMini />
+            <PanelCard title={`连接健康（${healthFocus?.name ?? "不可用"}）`} action={healthFocus ? "查看监控详情" : undefined} onAction={healthFocus ? () => openDatabaseDetailById(healthFocus.id) : undefined}>
+              <HealthMini instance={healthFocus} />
             </PanelCard>
-            <PanelCard title="慢查询 TOP 5（analytics-mysql-01）">
-              <SlowSqlList />
+            <PanelCard title="慢查询实例" action="查看慢查询" onAction={() => setPage("databases-slow", { message: "已打开数据库 / 慢查询", tone: "info" })}>
+              <SlowInstanceList rows={filteredRows} onOpen={openDatabaseDetailById} />
             </PanelCard>
-            <PanelCard title="审计日志（最近操作）" action="查看全部" onAction={() => setAuditSourceRoute("database")}>
-              <MiniAuditList />
+            <PanelCard title="权限分布">
+              <AccessSummary rows={filteredRows} />
             </PanelCard>
           </section>
         ) : (
@@ -263,6 +261,96 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
         )}
       </div>
     </ModulePageShell>
+  );
+}
+
+function databaseLatency(instance: DatabaseInstance) {
+  const value = Number.parseInt(instance.latency, 10);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function ConnectionStatus({ instance }: { instance: DatabaseInstance }) {
+  const delayed = instance.connectionHealth.startsWith("延迟");
+  const Icon = delayed ? CircleAlert : CircleCheck;
+  return (
+    <span className={`database-semantic-status ${databaseHealthTone(instance)}`}>
+      <Icon size={15} aria-hidden="true" />
+      <span>{instance.connectionHealth}</span>
+    </span>
+  );
+}
+
+function BackupStatus({ status }: { status: DatabaseInstance["backupStatus"] }) {
+  const Icon = status === "成功" ? CircleCheck : status === "失败" ? CircleX : status === "运行中" ? Activity : CircleAlert;
+  return (
+    <span className={`database-semantic-status ${databaseBackupTone(status)}`}>
+      <Icon size={15} aria-hidden="true" />
+      <span>{status}</span>
+    </span>
+  );
+}
+
+function BackupRateMetric({ value }: { value: number }) {
+  const radius = 18;
+  const circumference = 2 * Math.PI * radius;
+  const tone = value >= 95 ? "green" : "orange";
+  return (
+    <article className="database-rate-metric">
+      <span className={`database-rate-ring ${tone}`} aria-label={`备份成功率 ${value}%`}>
+        <svg viewBox="0 0 44 44" aria-hidden="true">
+          <circle className="database-rate-track" cx="22" cy="22" r={radius} />
+          <circle
+            className="database-rate-value"
+            cx="22"
+            cy="22"
+            r={radius}
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference * (1 - value / 100)}
+          />
+        </svg>
+        <DatabaseBackup size={16} aria-hidden="true" />
+      </span>
+      <span>备份成功率</span>
+      <strong>{value}%</strong>
+    </article>
+  );
+}
+
+function DatabaseMobileCard({
+  instance,
+  onOpen,
+  onBackup,
+  onMore,
+}: {
+  instance: DatabaseInstance;
+  onOpen: () => void;
+  onBackup: () => void;
+  onMore: () => void;
+}) {
+  return (
+    <>
+      <div className="module-card-head database-mobile-head">
+        <button className="module-row-link database-mobile-name" type="button" title={instance.name} aria-label={`查看数据库 ${instance.name}`} onClick={onOpen}>
+          <Database size={16} aria-hidden="true" />
+          <b>{instance.name}</b>
+        </button>
+        <ConnectionStatus instance={instance} />
+      </div>
+      <code className="module-card-code">{instance.host}:{instance.port}</code>
+      <div className="module-card-meta">
+        <span><b>引擎</b><em>{instance.engine}</em></span>
+        <span><b>备份</b><em><BackupStatus status={instance.backupStatus} /></em></span>
+        <span><b>慢查询</b><em className={instance.slowQueries ? "orange-text" : "green-text"}>{instance.slowQueries} 条</em></span>
+        <span><b>最近备份</b><em>{instance.lastBackup}</em></span>
+        <span><b>权限</b><em>{instance.access} · {instance.owner}</em></span>
+        <span><b>存储 / 连接</b><em>{instance.storage} · {instance.connections}</em></span>
+      </div>
+      <div className="module-card-footer database-mobile-actions">
+        <button className="ghost small" type="button" aria-label={`查看 ${instance.name} 详情`} onClick={onOpen}><Eye size={14} /> 详情</button>
+        <button className="ghost small" type="button" aria-label={`立即备份 ${instance.name}`} onClick={onBackup}><DatabaseBackup size={14} /> 备份</button>
+        <button className="ghost small" type="button" aria-label={`打开 ${instance.name} 更多操作`} onClick={onMore}><MoreVertical size={14} /> 更多</button>
+      </div>
+    </>
   );
 }
 
@@ -287,19 +375,20 @@ function DatabaseInstanceDetail({
         <p><span>引擎</span><b>{instance.engine}</b></p>
         <p><span>用户名</span><b>{instance.username ?? "默认管理员"}</b></p>
         <p><span>主机 / 端口</span><b>{instance.host}:{instance.port}</b></p>
-        <p><span>连接健康</span><b><StatusLight tone={databaseHealthTone(instance)} /> {instance.connectionHealth}</b></p>
-        <p><span>备份状态</span><b><StatusLight tone={databaseBackupTone(instance.backupStatus)} /> {instance.backupStatus}</b></p>
+        <p><span>连接健康</span><b><ConnectionStatus instance={instance} /></b></p>
+        <p><span>备份状态</span><b><BackupStatus status={instance.backupStatus} /></b></p>
         <p><span>最近备份</span><b>{instance.lastBackup}</b></p>
-        <p><span>慢查询</span><b className={instance.slowQueries ? "red-text" : "green-text"}>{instance.slowQueries} 条</b></p>
+        <p><span>慢查询</span><b className={instance.slowQueries ? "orange-text" : "green-text"}>{instance.slowQueries} 条</b></p>
         <p><span>权限范围</span><b>{instance.access} · {instance.owner}</b></p>
         <p><span>存储 / 连接</span><b>{instance.storage} · {instance.connections}</b></p>
         <p><span>区域</span><b>{instance.region}</b></p>
         <p><span>延迟</span><b>{instance.latency}</b></p>
         <p><span>自动备份</span><b>{instance.autoBackup ? "已启用" : "未启用"}</b></p>
         <p><span>远程连接</span><b>{instance.remoteAccess ? "允许白名单" : "未开放"}</b></p>
+        <p><span>采集时间</span><b>不可用 · 本地会话数据</b></p>
       </div>
       <div className="database-detail-actions" data-focused={actionFocus === "actions" ? "true" : undefined}>
-        <button type="button" onClick={onBackup}><RefreshCw size={14} /> 立即备份</button>
+        <button type="button" onClick={onBackup}><DatabaseBackup size={14} /> 立即备份</button>
         <button
           type="button"
           disabled={instance.access === "仅备份"}
@@ -309,7 +398,7 @@ function DatabaseInstanceDetail({
           <Lock size={14} /> {instance.access === "仅备份" ? "权限锁定" : instance.access === "只读" ? "恢复读写" : "设为只读"}
         </button>
         <button type="button" onClick={onClearSlowQueries}><CheckCircle2 size={14} /> 清空慢查询</button>
-        <button type="button" onClick={onCopy}><Download size={14} /> 复制连接</button>
+        <button type="button" onClick={onCopy}><Copy size={14} /> 复制连接</button>
       </div>
       <div className={instance.backupStatus === "失败" ? "drawer-warning" : "drawer-tip"}>
         {instance.backupStatus === "失败"
@@ -382,6 +471,7 @@ function CreateDatabaseDrawer({
 
   return (
     <DetailDrawer
+      className="database-instance-drawer"
       title="创建数据库"
       subtitle="配置实例参数和初始化权限"
       onClose={onClose}

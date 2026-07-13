@@ -9,3 +9,11 @@
 @import "./hosts-detail.css";
 @import "./sites.css";
 @import "./sites-runtime.css";
+@import "./database-slow.css";
+@import "./database-instances.css";
+@import "./files-main.css";
+@import "./files-upload.css";
+@import "./files-trash.css";
+@import "./terminal-core.css";
+@import "./terminal-history.css";
+@import "./terminal-snippets.css";

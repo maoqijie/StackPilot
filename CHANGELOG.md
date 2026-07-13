@@ -2,6 +2,14 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.2.0-preview.6 - 2026-07-13
+
+### Changed
+
+- Refined database instance, backup and slow-query workflows with stable operational summaries, focused details and responsive action layouts.
+- Added clearer file upload, recycle-bin and terminal-session interactions, including keyboard-accessible confirmation dialogs and complete terminal session drawers.
+- Split database, file and terminal visual treatments into focused CloudPulse styles and expanded corresponding page-level UI tests.
+
 ## 0.2.0-preview.5 - 2026-07-12
 
 ### Changed

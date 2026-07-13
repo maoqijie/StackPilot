@@ -1,0 +1,153 @@
+.desktop-frame:has(.module-page-terminal-snippets) :is(.cloud-header, .cloud-footer),
+.desktop-frame:has(.module-page-terminal-snippets) :is(.cloud-header, .cloud-footer):is(:hover, :focus, :focus-visible, :focus-within, :active) {
+  border: 0;
+}
+
+.module-page-terminal-snippets .page-head .ghost,
+.module-page-terminal-snippets .page-head .primary {
+  min-height: var(--control-md);
+  padding: 10px 20px;
+  border: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.module-page-terminal-snippets .module-view-context,
+.module-page-terminal-snippets .module-view-context:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.module-page-terminal-snippets .module-view-context em,
+.module-page-terminal-snippets .module-filter-line,
+.module-page-terminal-snippets .module-filter-line:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.module-page-terminal-snippets .module-metrics article,
+.module-page-terminal-snippets .module-metrics article:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.terminal-page.module-page-terminal-snippets .terminal-console-card,
+.terminal-page.module-page-terminal-snippets .terminal-console-card:is(:hover, :focus, :focus-visible, :focus-within, :active) {
+  border: 0;
+}
+.module-page-terminal-snippets .module-view-context { background: var(--primary-soft); }
+.module-page-terminal-snippets .module-view-context em { background: var(--surface); }
+.module-page-terminal-snippets .module-filter-line { padding: 0; background: transparent; box-shadow: none; }
+.module-page-terminal-snippets .popover-panel,
+.module-page-terminal-snippets .popover-panel:is(:hover, :focus, :focus-visible, :focus-within, :active) { border: 0; }
+.module-page-terminal-snippets .module-metrics article { box-shadow: var(--shadow-subtle); }
+.terminal-page.module-page-terminal-snippets .terminal-console-card { box-shadow: var(--shadow-medium); }
+.terminal-page.module-page-terminal-snippets .terminal-snippets-view { grid-template-columns: minmax(0, 3fr) minmax(360px, 2fr); }
+.module-page-terminal-snippets .terminal-side-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+.module-page-terminal-snippets .terminal-snippet-library { padding: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.module-page-terminal-snippets .terminal-snippet-library article {
+  min-height: 240px;
+  padding: 20px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  display: grid;
+  grid-template-rows: auto auto minmax(48px, 1fr) auto;
+  gap: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-subtle);
+  transition: border-color var(--ease), box-shadow var(--ease), transform var(--ease);
+}
+.module-page-terminal-snippets .terminal-snippet-library article:is(:hover, :focus, :focus-visible, :focus-within, :active) { border: 0; }
+.module-page-terminal-snippets .terminal-snippet-library article:hover { box-shadow: var(--shadow-medium); transform: translateY(-1px); }
+.module-page-terminal-snippets .terminal-snippet-library article:focus-within { box-shadow: var(--shadow-medium); }
+.module-page-terminal-snippets .terminal-snippet-library article.favorite { background: var(--primary-soft); }
+.module-page-terminal-snippets .terminal-snippet-library article header { min-width: 0; flex-wrap: nowrap; align-items: flex-start; }
+.terminal-snippet-title { min-width: 0; padding: 0; display: flex; align-items: center; gap: 8px; color: var(--text); background: transparent; text-align: left; }
+.terminal-snippet-title strong { min-width: 0; font: 650 16px/1.4 var(--font-display); }
+.terminal-snippet-title svg { flex: 0 0 auto; color: var(--muted); }
+.terminal-snippet-title:hover svg { color: var(--primary-hover); }
+.terminal-snippet-risk { flex: 0 0 auto; gap: 4px; }
+.terminal-snippet-command { width: 100%; min-width: 0; padding: 12px; border-radius: var(--radius-md); color: var(--text-soft); background: var(--surface-soft); text-align: left; }
+.terminal-snippet-command:hover { color: var(--primary-hover); background: var(--surface-hover); }
+.terminal-snippet-command code { margin: 0; padding: 0; color: inherit; background: transparent; font: 400 14px/1.5 var(--font-mono); }
+.module-page-terminal-snippets .terminal-snippet-library article > p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.module-page-terminal-snippets .terminal-snippet-library article footer { min-width: 0; align-items: flex-end; flex-wrap: nowrap; }
+.module-page-terminal-snippets .terminal-snippet-library article footer > span { min-width: 0; display: grid; gap: 4px; }
+.module-page-terminal-snippets .terminal-snippet-library article footer > span b { color: var(--text-soft); font-size: 12px; }
+.module-page-terminal-snippets .terminal-snippet-library article footer time { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.module-page-terminal-snippets .terminal-snippet-library article footer > div { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.module-page-terminal-snippets .terminal-snippet-library :is(.icon-action, .primary),
+.module-page-terminal-snippets .terminal-snippet-library :is(.icon-action, .primary):is(:hover, :focus, :focus-visible, :active) { border: 0; }
+.module-page-terminal-snippets .terminal-snippet-library .icon-action { background: transparent; }
+.module-page-terminal-snippets .terminal-snippet-library .icon-action:hover { background: var(--surface-hover); }
+.module-page-terminal-snippets .terminal-snippet-library .icon-action.active { color: var(--primary-hover); background: var(--primary-soft); }
+
+.terminal-snippet-drawer {
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: min(560px, calc(100vw - 24px));
+  height: auto;
+  border: 0;
+  border-radius: var(--radius-lg);
+  outline: 0;
+  box-shadow: var(--shadow-overlay);
+  overflow: hidden;
+}
+.terminal-snippet-drawer:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.terminal-snippet-drawer .drawer-head,
+.terminal-snippet-drawer .drawer-actions,
+.terminal-snippet-drawer .drawer-close-button,
+.terminal-snippet-drawer .drawer-actions button { border: 0; }
+.terminal-snippet-drawer-scrim { backdrop-filter: none; }
+.terminal-snippet-drawer .drawer-head { min-height: 80px; padding: 16px 24px; box-shadow: none; }
+.terminal-snippet-drawer .drawer-body { padding: 24px; }
+.terminal-snippet-drawer .drawer-actions { padding: 16px 24px; box-shadow: none; }
+.terminal-snippet-drawer .drawer-actions :is(.ghost, .primary) { min-height: var(--control-md); padding: 10px 20px; font-size: 15px; font-weight: 600; }
+.terminal-snippet-drawer .drawer-actions .ghost { background: transparent; }
+.terminal-snippet-drawer .drawer-actions .ghost:hover { color: var(--text); background: var(--surface-hover); }
+.terminal-snippet-detail { min-width: 0; display: grid; align-content: start; gap: 24px; }
+.terminal-snippet-notice { min-width: 0; padding: 16px; border-radius: var(--radius-md); display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 12px; color: var(--text-soft); background: var(--surface-soft); }
+.terminal-snippet-notice.safe { color: #16a34a; background: var(--success-soft); }
+.terminal-snippet-notice.warning { color: #ca8a04; background: var(--warning-soft); }
+.terminal-snippet-notice.danger { color: #dc2626; background: var(--danger-soft); }
+.terminal-snippet-notice > svg { margin-top: 4px; }
+.terminal-snippet-notice span { min-width: 0; display: grid; gap: 4px; }
+.terminal-snippet-notice strong { color: currentColor; font-size: 14px; }
+.terminal-snippet-notice p { margin: 0; color: var(--text-soft); font-size: 14px; line-height: 1.5; }
+.terminal-snippet-detail section { min-width: 0; display: grid; gap: 8px; }
+.terminal-snippet-detail h2 { margin: 0; font: 600 16px/1.3 var(--font-display); }
+.terminal-snippet-detail section code { min-width: 0; padding: 16px; border-radius: var(--radius-md); color: var(--text-soft); background: var(--surface-soft); font: 400 14px/1.5 var(--font-mono); overflow-wrap: anywhere; }
+.terminal-snippet-detail dl { min-width: 0; margin: 0; display: grid; gap: 8px; }
+.terminal-snippet-detail dl div { min-width: 0; min-height: 48px; padding: 8px 12px; border-radius: var(--radius-md); display: grid; grid-template-columns: minmax(96px, 0.32fr) minmax(0, 1fr); align-items: center; gap: 12px; background: var(--surface-soft); }
+.terminal-snippet-detail dt,
+.terminal-snippet-detail dd { min-width: 0; margin: 0; }
+.terminal-snippet-detail dt { color: var(--muted); font-size: 14px; }
+.terminal-snippet-detail dd { color: var(--text); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+
+.terminal-snippet-confirm,
+.terminal-snippet-confirm:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.terminal-snippet-confirm > header .icon-action,
+.terminal-snippet-confirm .confirm-dialog-icon,
+.terminal-snippet-confirm > footer :is(.ghost, .primary),
+.terminal-snippet-confirm > footer :is(.ghost, .primary):is(:hover, :focus, :focus-visible, :active) { border: 0; }
+.terminal-snippet-confirm { border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); }
+.terminal-snippet-confirm-scrim { backdrop-filter: none; }
+.terminal-snippet-confirm .confirm-dialog-icon.warning { color: #ca8a04; background: var(--warning-soft); }
+.terminal-snippet-confirm > footer .primary { min-height: var(--control-md); padding: 10px 20px; font-size: 15px; font-weight: 600; }
+
+@media (max-width: 1180px) {
+  .terminal-page.module-page-terminal-snippets .terminal-snippets-view { grid-template-columns: minmax(0, 1fr); }
+  .module-page-terminal-snippets .terminal-console-card { min-height: 480px; }
+}
+
+@media (max-width: 773px) {
+  .module-page-terminal-snippets .terminal-snippet-library { grid-template-columns: minmax(0, 1fr); }
+  .module-page-terminal-snippets .terminal-side-panel { max-height: none; }
+  .module-page-terminal-snippets .terminal-snippet-library article { min-height: 0; padding: 16px; }
+  .terminal-snippet-drawer { inset: 0; width: 100vw; height: 100dvh; border-radius: 0; }
+  .terminal-snippet-drawer .drawer-head,
+  .terminal-snippet-drawer .drawer-body,
+  .terminal-snippet-drawer .drawer-actions { padding: 16px; }
+}
+
+@media (max-width: 480px) {
+  .module-page-terminal-snippets .terminal-snippet-library article footer { align-items: flex-start; flex-direction: column; }
+  .module-page-terminal-snippets .terminal-snippet-library article footer > div { width: 100%; justify-content: flex-end; }
+  .terminal-snippet-detail dl div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .terminal-snippet-drawer .drawer-actions > button { flex: 1 1 auto; }
+}

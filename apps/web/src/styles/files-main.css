@@ -1,0 +1,269 @@
+:is(.module-page-files, .module-page-files-www) .page-head h1 {
+  font: 700 40px/1.2 var(--font-display);
+  letter-spacing: 0;
+}
+
+:is(.module-page-files, .module-page-files-www) .page-subtitle {
+  font: 400 16px/1.6 var(--font-body);
+  letter-spacing: 0;
+}
+
+:is(.module-page-files, .module-page-files-www) .page-head :is(.primary, .ghost) {
+  min-height: var(--control-md);
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+:is(.module-page-files, .module-page-files-www) .module-table { min-width: 900px; }
+
+/* Keep the Files route visually continuous through the shared desktop shell. */
+.desktop-main:has(:is(.module-page-files, .module-page-files-www, .module-page-files-upload, .module-page-files-trash)) > :is(.cloud-header, .cloud-footer) {
+  border: 0;
+}
+
+/* The file workbench uses fill, whitespace, and elevation instead of decorative lines. */
+:is(.module-page-files, .module-page-files-www) :is(
+  .module-view-context,
+  .module-view-context em,
+  .module-filter-line,
+  .module-table-wrap,
+  .module-table th,
+  .module-table td,
+  .module-card-sort,
+  .module-card-row,
+  .module-card-empty,
+  .file-row-actions button,
+  .module-card-footer .table-actions button,
+  .page-head .ghost,
+  .page-head .primary,
+  .pill.blue
+),
+:is(.module-page-files, .module-page-files-www) :is(
+  .module-view-context,
+  .module-view-context em,
+  .module-filter-line,
+  .module-table-wrap,
+  .module-table th,
+  .module-table td,
+  .module-card-sort,
+  .module-card-row,
+  .module-card-empty,
+  .file-row-actions button,
+  .module-card-footer .table-actions button,
+  .page-head .ghost,
+  .page-head .primary,
+  .pill.blue
+):is(:hover, :focus, :focus-visible, :focus-within, :active) {
+  border: 0;
+  outline: 0;
+}
+
+:is(.module-page-files, .module-page-files-www) .module-view-context {
+  background: var(--primary-soft);
+  box-shadow: none;
+}
+
+:is(.module-page-files, .module-page-files-www) .module-view-context em { background: var(--surface); }
+
+:is(.module-page-files, .module-page-files-www) .module-filter-line {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:is(.module-page-files, .module-page-files-www) .module-table-wrap {
+  background: var(--surface);
+  box-shadow: none;
+}
+
+:is(.module-page-files, .module-page-files-www) .module-table tbody tr:hover { background: var(--surface-hover); }
+
+:is(.module-page-files, .module-page-files-www) :is(.page-head .ghost, .file-row-actions button, .module-card-footer .table-actions button) {
+  background: transparent;
+  box-shadow: none;
+}
+
+:is(.module-page-files, .module-page-files-www) :is(.page-head .ghost, .file-row-actions button, .module-card-footer .table-actions button):is(:hover, :focus-visible, :active) {
+  color: var(--primary-hover);
+  background: var(--primary-soft);
+  box-shadow: none;
+}
+
+.file-breadcrumbs {
+  min-height: var(--control-md);
+  gap: 4px;
+  color: var(--muted);
+}
+
+.file-breadcrumbs > span,
+.file-breadcrumb-item {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.file-breadcrumbs svg { flex: 0 0 auto; color: var(--subtle); }
+
+.file-breadcrumbs button {
+  min-width: 0;
+  min-height: var(--control-sm);
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  background: transparent;
+  font-size: 14px;
+}
+
+.file-breadcrumbs button:hover { color: var(--text); background: var(--surface-hover); }
+.file-breadcrumbs button.active { color: var(--primary-hover); background: var(--primary-soft); font-weight: 600; }
+.file-breadcrumbs button:disabled { background: transparent; }
+
+.file-name,
+:is(.module-page-files, .module-page-files-www) .module-row-link {
+  width: 100%;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-name svg,
+:is(.module-page-files, .module-page-files-www) .module-row-link svg { flex: 0 0 auto; color: var(--primary); }
+
+.file-name b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-row-actions { flex-wrap: nowrap; }
+.file-row-actions button { gap: 4px; }
+
+.file-editor-drawer,
+.file-delete-dialog,
+.file-editor-drawer :is(.drawer-head, .drawer-actions),
+.file-delete-dialog :is(.drawer-head, .drawer-actions),
+.file-editor-drawer .drawer-close-button,
+.file-delete-dialog .drawer-close-button,
+.file-editor-drawer .drawer-actions button,
+.file-delete-dialog .drawer-actions button,
+.file-editor-drawer .drawer-close-button:is(:hover, :focus, :focus-visible, :active),
+.file-delete-dialog .drawer-close-button:is(:hover, :focus, :focus-visible, :active),
+.file-editor-drawer .drawer-actions button:is(:hover, :focus, :focus-visible, :active),
+.file-delete-dialog .drawer-actions button:is(:hover, :focus, :focus-visible, :active) {
+  border: 0;
+  outline: 0;
+}
+
+.file-editor-drawer { width: min(480px, 100vw); }
+.file-editor-drawer .drawer-head,
+.file-editor-drawer .drawer-actions { padding: 16px 24px; }
+.file-editor-drawer .drawer-actions { box-shadow: none; }
+.file-editor-drawer .drawer-body { padding: 24px; }
+.file-editor-drawer .form-line { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.file-editor-drawer .form-line > label { padding-top: 0; }
+
+.file-delete-dialog {
+  inset: 50% auto auto 50%;
+  width: min(440px, calc(100vw - 32px));
+  height: auto;
+  max-height: calc(100dvh - 32px);
+  border-radius: var(--radius-lg);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  transform: translate(-50%, -50%);
+  overflow: auto;
+}
+
+.file-delete-dialog .drawer-head { padding: 24px 24px 0; }
+.file-delete-dialog .drawer-body { padding: 24px; }
+.file-delete-dialog .drawer-actions { padding: 0 24px 24px; }
+.file-editor-drawer .drawer-close-button,
+.file-delete-dialog .drawer-close-button { box-shadow: none; }
+.file-editor-drawer .drawer-close-button:is(:hover, :focus-visible),
+.file-delete-dialog .drawer-close-button:is(:hover, :focus-visible) { background: var(--surface-hover); }
+
+.file-delete-summary {
+  min-width: 0;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 12px;
+  color: var(--text-soft);
+  background: var(--warning-soft);
+}
+
+.file-delete-summary > svg {
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  color: #ca8a04;
+  background: var(--surface);
+}
+
+.file-delete-summary strong { font-size: 15px; }
+.file-delete-summary p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+
+.file-delete-facts { padding: 16px; margin: 16px 0 0; border-radius: var(--radius-md); display: grid; gap: 12px; background: var(--surface-soft); }
+.file-delete-facts > div { min-width: 0; display: grid; gap: 4px; }
+.file-delete-facts :is(dt, dd) { min-width: 0; margin: 0; }
+.file-delete-facts dt { color: var(--muted); font-size: 12px; }
+.file-delete-facts dd { color: var(--text); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+
+.files-destructive {
+  min-height: var(--control-md);
+  padding: 10px 20px;
+  border: 0;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #fff;
+  background: var(--danger);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.files-destructive:hover { background: #dc2626; }
+.files-destructive:active { background: #dc2626; transform: scale(0.98); }
+
+@media (max-width: 773px) {
+  :is(.module-page-files, .module-page-files-www) .module-table-wrap {
+    background: transparent;
+    box-shadow: none;
+  }
+  :is(.module-page-files, .module-page-files-www) .module-card-list { padding: 0; gap: 8px; }
+  :is(.module-page-files, .module-page-files-www) .module-card-row {
+    padding: 16px;
+    background: var(--surface);
+    box-shadow: none;
+  }
+  :is(.module-page-files, .module-page-files-www) .module-card-row:is(:hover, :focus-within) {
+    background: var(--surface-hover);
+    box-shadow: none;
+    transform: none;
+  }
+  :is(.module-page-files, .module-page-files-www) .module-card-head { align-items: flex-start; flex-wrap: nowrap; }
+  :is(.module-page-files, .module-page-files-www) :is(.module-row-link, .module-card-title) { align-items: flex-start; }
+  :is(.module-page-files, .module-page-files-www) :is(.module-row-link, .module-card-title) b { white-space: normal; overflow-wrap: anywhere; }
+  :is(.module-page-files, .module-page-files-www) .module-card-footer .table-actions { width: 100%; }
+  :is(.module-page-files, .module-page-files-www) .module-card-footer .table-actions button { flex: 1 1 0; }
+  .file-editor-drawer { width: 100vw; }
+}
+
+@media (max-width: 480px) {
+  .file-breadcrumbs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .file-breadcrumbs::-webkit-scrollbar { display: none; }
+  .file-breadcrumbs button { white-space: nowrap; }
+  .file-delete-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  .file-delete-dialog .drawer-head { padding: 16px 16px 0; }
+  .file-delete-dialog .drawer-body { padding: 16px; }
+  .file-delete-dialog .drawer-actions { padding: 0 16px 16px; }
+  .file-delete-dialog .drawer-actions button { flex: 1 1 0; }
+}

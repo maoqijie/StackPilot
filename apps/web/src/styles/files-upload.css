@@ -1,0 +1,304 @@
+.upload-detail-drawer,
+.upload-detail-drawer :is(.drawer-head, .drawer-actions, .detail-kv p),
+.upload-create-modal,
+.upload-create-modal :is(.drawer-head, .drawer-actions) {
+  border: 0;
+  outline: 0;
+}
+
+.module-page-files-upload .module-view-context,
+.module-page-files-upload .module-view-context em,
+.module-page-files-upload .module-metrics article,
+.module-page-files-upload .module-table-wrap,
+.module-page-files-upload .module-table :is(th, td),
+.module-page-files-upload .upload-lane-list article,
+.module-page-files-upload .module-card-sort,
+.module-page-files-upload .module-card-sort button,
+.module-page-files-upload .module-card-row,
+.module-page-files-upload .page-head :is(.primary, .ghost),
+.module-page-files-upload .table-actions button,
+.upload-detail-drawer .drawer-actions :is(.primary, .ghost),
+.upload-create-modal .drawer-actions :is(.primary, .ghost) {
+  border: 0;
+}
+
+.module-page-files-upload .module-view-context:is(:hover, :focus-within),
+.module-page-files-upload .module-metrics article:is(:hover, :focus-within),
+.module-page-files-upload .module-table-wrap:is(:hover, :focus-within),
+.module-page-files-upload .upload-lane-list article:is(:hover, :focus-within),
+.module-page-files-upload .module-card-row:is(:hover, :focus-within),
+.module-page-files-upload .page-head :is(.primary, .ghost):is(:hover, :focus, :focus-visible, :active),
+.module-page-files-upload .table-actions button:is(:hover, :focus, :focus-visible, :active),
+.upload-detail-drawer .drawer-actions :is(.primary, .ghost):is(:hover, :focus, :focus-visible, :active),
+.upload-create-modal .drawer-actions :is(.primary, .ghost):is(:hover, :focus, :focus-visible, :active) {
+  border: 0;
+}
+
+.module-page-files-upload .page-head :is(.primary, .ghost) {
+  min-height: var(--control-md);
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.module-page-files-upload .module-view-context {
+  background: var(--primary-soft);
+  box-shadow: none;
+}
+
+.module-page-files-upload .module-view-context em { background: var(--surface); }
+
+.module-page-files-upload .module-filter-line {
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.module-page-files-upload .module-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.module-page-files-upload .module-metrics article {
+  min-height: 112px;
+  box-shadow: none;
+}
+
+.module-page-files-upload .module-metrics article:has(> svg.orange) { box-shadow: var(--glow-primary); }
+
+.module-page-files-upload .module-table-wrap { background: var(--surface); box-shadow: none; }
+
+.module-page-files-upload .module-table { min-width: 1180px; }
+
+.module-page-files-upload .module-table tbody tr:hover { background: var(--surface-hover); }
+
+.module-page-files-upload .module-table td code {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.module-page-files-upload .module-row-link {
+  width: 100%;
+  min-width: 0;
+}
+
+.module-page-files-upload .module-row-link b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.module-page-files-upload .table-actions { flex-wrap: nowrap; }
+
+.upload-progress-inline {
+  position: relative;
+  width: 100%;
+  min-width: 104px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  overflow: hidden;
+  color: var(--text-soft);
+  background: var(--surface-hover);
+}
+
+.upload-progress-inline i { position: absolute; inset: 0; display: block; overflow: hidden; }
+.upload-progress-inline i > span { display: block; height: 100%; background: var(--tertiary); }
+
+.upload-progress-inline b {
+  position: relative;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.upload-lane-list {
+  padding: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.module-page-files-upload .upload-lane-list article {
+  min-height: 96px;
+  padding: 20px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: center;
+  gap: 4px 12px;
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.module-page-files-upload .upload-lane-list article:hover { border: 0; }
+
+.upload-lane-list article > span { color: var(--text-soft); font-size: 14px; }
+.upload-lane-list article > strong { grid-row: 1 / 3; grid-column: 2; align-self: center; font: 700 24px/1.2 var(--font-display); }
+.upload-lane-list article > em { color: var(--muted); font-size: 12px; font-style: normal; }
+
+.upload-detail-drawer {
+  width: min(480px, 100vw);
+  box-shadow: var(--shadow-overlay);
+}
+
+.upload-detail-drawer .drawer-head,
+.upload-create-modal .drawer-head { padding: 16px 24px; }
+
+.upload-detail-drawer .drawer-close-button,
+.upload-create-modal .drawer-close-button {
+  border: 0;
+  background: transparent;
+}
+
+.upload-detail-drawer .drawer-actions,
+.upload-create-modal .drawer-actions {
+  padding: 16px 24px;
+  box-shadow: none;
+}
+
+.upload-detail-drawer-scrim,
+.upload-create-modal-scrim { backdrop-filter: none; }
+
+.upload-detail {
+  align-content: start;
+  gap: 8px;
+}
+
+.upload-detail-drawer .detail-kv p {
+  padding: 12px 16px;
+  background: var(--surface-soft);
+}
+
+.upload-detail b { min-width: 0; overflow-wrap: anywhere; }
+
+.file-upload-status {
+  gap: 4px;
+}
+.file-upload-status svg { flex: 0 0 auto; }
+
+.upload-detail-drawer .upload-progress-card { position: relative; width: 96px; height: 96px; margin: 16px auto 0; display: grid; place-items: center; color: var(--tertiary); }
+.upload-progress-card svg { position: absolute; width: 96px; height: 96px; transform: rotate(-90deg); }
+.upload-progress-card circle { fill: none; stroke-width: 6; }
+.upload-progress-track { stroke: var(--surface-hover); }
+.upload-progress-value { stroke: currentColor; stroke-linecap: round; }
+.upload-progress-card > span { position: relative; display: flex; align-items: baseline; color: var(--text); }
+.upload-progress-card strong { font: 700 22px/1 var(--font-display); }
+.upload-progress-card em { font-size: 12px; font-style: normal; }
+
+.upload-create-modal {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  z-index: 210;
+  width: min(560px, calc(100vw - 32px));
+  height: auto;
+  max-height: calc(100dvh - 32px);
+  border-radius: var(--radius-lg);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  box-shadow: var(--shadow-overlay);
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+}
+
+.upload-create-modal .drawer-body { padding: 24px; }
+
+.upload-create-form { display: grid; gap: 24px; }
+
+.upload-create-form label {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  color: var(--text-soft);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.upload-create-form input {
+  width: 100%;
+  height: var(--control-md);
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  outline: 0;
+  color: var(--text);
+  background: var(--surface);
+  font-size: 15px;
+}
+
+.upload-create-form input[type="file"] { height: var(--control-lg); padding: 8px; }
+
+.upload-create-form input[type="file"]::file-selector-button {
+  height: 32px;
+  padding: 0 12px;
+  margin-right: 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--primary-hover);
+  background: var(--primary-soft);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.upload-create-form input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgb(14 165 233 / 12%);
+}
+
+.upload-create-form .has-error input { border-color: var(--danger); }
+.upload-create-form small { color: var(--muted); font-size: 13px; font-weight: 400; overflow-wrap: anywhere; }
+.upload-create-error { margin: -8px 0 0; color: var(--danger); font-size: 13px; }
+
+@media (max-width: 960px) {
+  .module-page-files-upload .module-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 773px) {
+  .module-page-files-upload .module-card-sort { padding: 8px 12px; background: var(--surface-soft); }
+
+  .module-page-files-upload .module-card-sort button { background: transparent; }
+  .module-page-files-upload .module-card-sort button[aria-pressed="true"] { border: 0; }
+
+  .module-page-files-upload .module-card-list {
+    padding: 0;
+    gap: 8px;
+  }
+
+  .module-page-files-upload .module-card-row {
+    padding: 16px;
+    border: 0;
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: none;
+  }
+
+  .upload-mobile-head { align-items: flex-start; flex-wrap: nowrap; }
+  .upload-mobile-head .module-row-link { align-items: flex-start; }
+  .upload-mobile-head .module-row-link b { white-space: normal; overflow-wrap: anywhere; }
+  .upload-mobile-footer { align-items: stretch; }
+  .upload-mobile-footer .upload-progress-inline { flex: 1 1 120px; }
+  .upload-mobile-footer .table-actions { flex: 1 1 auto; justify-content: flex-end; }
+
+  .upload-lane-list { grid-template-columns: minmax(0, 1fr); }
+  .upload-detail-drawer { width: 100vw; }
+}
+
+@media (max-width: 480px) {
+  .module-page-files-upload .module-metrics { grid-template-columns: minmax(0, 1fr); }
+
+  .upload-create-modal {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+
+  .upload-create-modal .drawer-head,
+  .upload-create-modal .drawer-body,
+  .upload-create-modal .drawer-actions { padding: 16px; }
+
+  .upload-mobile-footer { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .upload-mobile-footer .table-actions { justify-content: flex-start; }
+  .upload-detail-drawer .detail-kv p { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}
