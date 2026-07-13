@@ -129,6 +129,8 @@ jobs:
           sudo systemd-sysusers "$PWD/deploy/systemd/stackpilot-agent.sysusers"
           sudo ln -sf "$(command -v node)" /usr/bin/node
           systemd-analyze verify deploy/systemd/*.service
+          sudo deploy/scripts/verify-systemd-telemetry.sh
+          sudo env "PATH=$PATH" CI=true GITHUB_ACTIONS=true STACKPILOT_DISPOSABLE_SYSTEMD_TEST=1 deploy/scripts/verify-systemd-installer.sh
       - name: Build pinned production images
         run: |
           docker build -f deploy/docker/Dockerfile.web -t stackpilot-web:ci .

@@ -8,11 +8,28 @@ case "$component" in controller|agent) ;; *) echo "Usage: install-systemd.sh con
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 version=$(node -p "require('$root/package.json').version")
 case "$component" in
-  controller) prefix=/opt/stackpilot; unit=stackpilot-controller ;;
-  agent) prefix=/opt/stackpilot-agent; unit=stackpilot-agent ;;
+  controller) prefix=/opt/stackpilot; unit=stackpilot-controller; entry=apps/controller/dist/server.js ;;
+  agent) prefix=/opt/stackpilot-agent; unit=stackpilot-agent; entry=apps/agent/dist/main.js ;;
 esac
 release="$prefix/releases/$version"
-[ ! -e "$release" ] || { echo "Release already installed: $release" >&2; exit 1; }
+unit_source="$root/deploy/systemd/$unit.service"
+unit_target="/etc/systemd/system/$unit.service"
+
+install_unit() {
+  if [ ! -f "$unit_target" ] || ! cmp -s "$unit_source" "$unit_target"; then
+    install -m 0644 "$unit_source" "$unit_target"
+  fi
+  systemctl daemon-reload
+}
+
+if [ -e "$release" ]; then
+  [ -d "$release" ] && [ ! -L "$release" ] || { echo "Existing release is not a regular directory: $release" >&2; exit 1; }
+  [ -f "$release/package.json" ] && [ -f "$release/$entry" ] || { echo "Existing release is incomplete: $release" >&2; exit 1; }
+  [ -L "$prefix/current" ] && [ "$(readlink -f "$prefix/current")" = "$(readlink -f "$release")" ] || { echo "Existing release is not the current release: $release" >&2; exit 1; }
+  install_unit
+  echo "Release already installed: $release; systemd unit synchronized without changing the release, current link or service state. Restart $unit.service explicitly to apply unit changes."
+  exit 0
+fi
 
 systemd-sysusers "$root/deploy/systemd/$unit.sysusers"
 install -d -m 0755 "$prefix/releases" "$release"
@@ -21,6 +38,5 @@ cp -a "$root/." "$release/"
 chown -R root:root "$release"
 chmod -R go-w "$release"
 ln -sfn "$release" "$prefix/current"
-install -m 0644 "$root/deploy/systemd/$unit.service" "/etc/systemd/system/$unit.service"
-systemctl daemon-reload
+install_unit
 echo "Installed $component $version. Configure /etc before running: systemctl enable --now $unit.service"
