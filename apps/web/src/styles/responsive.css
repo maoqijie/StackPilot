@@ -95,7 +95,7 @@
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    transition: opacity 160ms ease, visibility 0s linear 360ms;
+    transition: none;
   }
   .cloud-sidebar.is-collapsed .cloud-sidebar-collapse {
     position: fixed;
