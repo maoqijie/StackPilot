@@ -20,8 +20,6 @@ const agentPort = Number(process.env.STACKPILOT_E2E_AGENT_PORT ?? 19443);
 const runtime = process.env.STACKPILOT_E2E_RUNTIME ? resolve(process.env.STACKPILOT_E2E_RUNTIME) : join(root, "output", "e2e", "runtime");
 rmSync(runtime, { recursive: true, force: true });
 mkdirSync(runtime, { recursive: true });
-const fileRoot = join(runtime, "files");
-mkdirSync(fileRoot, { recursive: true });
 
 const certificate = await selfsigned.generate([{ name: "commonName", value: "127.0.0.1" }], {
   keySize: 2048,
@@ -43,7 +41,8 @@ const config = loadControllerConfig({
   STACKPILOT_ALLOWED_ORIGINS: `https://127.0.0.1:${webPort}`, STACKPILOT_AGENT_HOST: "127.0.0.1", STACKPILOT_AGENT_PORT: String(agentPort),
   STACKPILOT_AGENT_TLS_CERT_PATH: certPath, STACKPILOT_AGENT_TLS_KEY_PATH: keyPath,
   STACKPILOT_AGENT_STATE_PATH: join(runtime, "legacy.json"), STACKPILOT_TRUSTED_PROXIES: "127.0.0.1/32",
-  STACKPILOT_FILE_ROOTS: fileRoot,
+  STACKPILOT_FILE_ROOT: join(runtime, "files"), STACKPILOT_FILE_TRASH_DIR: join(runtime, "file-trash"),
+  STACKPILOT_FILE_UPLOAD_LIMIT_BYTES: String(128 * 1024 * 1024), STACKPILOT_UPLOAD_ROOT: join(runtime, "resumable-uploads"),
 });
 const database = openDatabase(config.databasePath);
 const identity = new IdentityService(database, Buffer.alloc(32, 8));

@@ -13,4 +13,4 @@ node deploy/scripts/verify-backup.mjs /backup/stackpilot-YYYY-MM-DD.sqlite3
 
 Quarterly, restore into an isolated Controller: verify checksum, stop that test Controller, set its database path and matching master key, run `db:restore`, start it without Agent/public network access, run `PRAGMA integrity_check` through the preflight command and `audit:verify`, then confirm users/nodes/tasks are present. Do not test restoration against the production path.
 
-For production restore, stop Controller first. `db:restore` accepts supported schema 1 through 6 backups, validates SQLite integrity, installs atomically and retains the displaced database as `.before-restore`. A restored database must be paired with a compatible application version or migrated again after investigation.
+For production restore, stop Controller first. `db:restore` accepts supported schema 1, 2, 3 or 4 backups, validates SQLite integrity, installs atomically and retains the displaced database as `.before-restore`. A restored database must be paired with a compatible application version or migrated again after investigation.

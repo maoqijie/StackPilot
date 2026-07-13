@@ -18,8 +18,6 @@ export function openDatabase(path: string): Database.Database {
       { version: 2, name: "release-metadata", sql: readFileSync(resolve(migrationDirectory,"002_release_metadata.sql"), "utf8") },
       { version: 3, name: "file-uploads", sql: readFileSync(resolve(migrationDirectory,"003_file_uploads.sql"), "utf8") },
       { version: 4, name: "terminal-snippets", sql: readFileSync(resolve(migrationDirectory,"004_terminal_snippets.sql"), "utf8") },
-      { version: 5, name: "file-trash", sql: readFileSync(resolve(migrationDirectory,"005_file_trash.sql"), "utf8") },
-      { version: 6, name: "schema-convergence", sql: readFileSync(resolve(migrationDirectory,"006_schema_convergence.sql"), "utf8") },
     ]);
   } catch (error) {
     database.close();

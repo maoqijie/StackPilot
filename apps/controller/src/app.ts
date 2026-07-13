@@ -43,8 +43,6 @@ import { loadOrCreateAuditKey } from "./security/secretStore.js";
 import { openDatabase } from "./database/database.js";
 import { SqliteAgentControlRepository } from "./repositories/sqliteAgentControlRepository.js";
 import { requestSource } from "./http/trustedProxy.js";
-import { FileTrashService } from "./modules/files/fileTrashService.js";
-import { MemoryFileTrashRepository, SqliteFileTrashRepository } from "./modules/files/fileTrashRepository.js";
 import { FileService } from "./modules/files/fileService.js";
 import { FileUploadRepository } from "./repositories/fileUploadRepository.js";
 import { FileUploadService } from "./modules/files/fileUploadService.js";
@@ -79,18 +77,15 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
   const remoteTasks = new RemoteTaskService(repository);
   const terminalRepository = database ? new SqliteTerminalSnippetRepository(database) : new MemoryTerminalSnippetRepository();
   const fileUploads = database ? createFileUploadService(database, repoRoot, config) : undefined;
-  const trashRepository = database ? new SqliteFileTrashRepository(database) : new MemoryFileTrashRepository();
-  const fileManager = new FileService(config.fileRoots, trashRepository);
   return {
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
     databaseSlowQueries: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
     databaseInstances: new DatabaseMonitoringService(repository),
-    fileManager,
     sites,
     certificateRenewals,
+    files: new FileService(config.fileRoot, config.fileTrashDir, config.fileUploadLimitBytes, repoRoot),
     databaseBackups: new DatabaseBackupService(database, isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath), config, repoRoot),
-    fileTrash: new FileTrashService(trashRepository, fileManager),
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
     schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform),
@@ -143,16 +138,17 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
       const isHealthPath = url.pathname === "/healthz" || url.pathname === "/readyz";
       const isLoginPath = url.pathname === "/api/auth/login";
       const isSessionStatusPath = url.pathname === "/api/auth/session";
-      const isFileChunkPath = /^\/api\/file-uploads\/[0-9a-f-]+\/chunks$/i.test(url.pathname) && method === "POST";
+      const isFileChunkPath = /^\/api\/resumable-file-uploads\/[0-9a-f-]+\/chunks$/i.test(url.pathname) && method === "POST";
       if (surface === "agent" && !isAgentPath && !isHealthPath) throw new ServiceError(404, "NOT_FOUND", "接口不存在");
       if (isAgentPath && (!("encrypted" in request.socket) || request.socket.encrypted !== true)) throw new ServiceError(426, "BAD_REQUEST", "Agent API 要求 TLS");
       if (surface === "management" && isAgentPath) throw new ServiceError(426, "BAD_REQUEST", "Agent API 仅在 TLS 监听器可用");
       principal = !isAgentPath && !isHealthPath && !isLoginPath && !isSessionStatusPath ? authenticateUser(request, identity) : isSessionStatusPath && identity ? (()=>{try{return authenticateUser(request,identity);}catch{return undefined;}})() : undefined;
       if (!isAgentPath && isWriteMethod(method) && !isLoginPath && principal && identity) requireCsrf(request, principal, identity, config.allowedOrigins);
-      const isFileUpload = url.pathname === "/api/files/upload" && method === "POST";
-      if (isFileUpload) identity?.require(principal, "files:manage");
-      const bodyLimit = isFileUpload ? config.fileUploadLimitBytes : url.pathname === "/api/agent/heartbeat" ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
-      const parsedBody = isWriteMethod(method) && !isFileChunkPath ? await readJsonRequest(request, bodyLimit, isFileUpload) : { value: {}, raw: Buffer.alloc(0) };
+      const isFileUpload = url.pathname === "/api/file-uploads" && method === "POST";
+      if (isFileUpload) identity?.require(principal, "files:write");
+      const bodyLimit = url.pathname === "/api/agent/heartbeat" ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
+      const parsedBody = isFileUpload ? { value: {}, raw: Buffer.alloc(0) }
+        : isWriteMethod(method) && !isFileChunkPath ? await readJsonRequest(request, bodyLimit) : { value: {}, raw: Buffer.alloc(0) };
       const parts = url.pathname.split("/").filter(Boolean);
       const authenticatedAgent = isAgentPath && url.pathname !== "/api/agent/enroll"
         ? await authenticateAgentRequest(request, `${url.pathname}${url.search}`, parsedBody.raw, services.nodes)

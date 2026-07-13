@@ -90,38 +90,6 @@ test("Agent control-plane reads require an authorized API token", async () => {
   });
 });
 
-test("file trash APIs persist reads and require session reauthentication for permanent deletion", async () => {
-  await withServer({}, async (baseUrl, { apiToken, database }) => {
-    const restoredId = "11111111-1111-4111-8111-111111111111";
-    const purgedId = "22222222-2222-4222-8222-222222222222";
-    const insert = database.prepare("INSERT INTO file_trash_entries(entry_id,name,kind,original_path,size_bytes,deleted_at,expires_at,owner,reason) VALUES(?,?,?,?,?,?,?,?,?)");
-    insert.run(restoredId, "old.log", "file", "/tmp/old.log", 1024, "2026-07-14T00:00:00.000Z", "2026-07-21T00:00:00.000Z", "root", "日志轮转");
-    insert.run(purgedId, "old-cache", "directory", "/tmp/old-cache", null, "2026-07-13T00:00:00.000Z", "2026-07-20T00:00:00.000Z", "root", "缓存过期");
-    assert.equal((await fetch(`${baseUrl}/api/files/trash`)).status, 401);
-    const listed = await jsonResponse(await fetch(`${baseUrl}/api/files/trash`, { headers: authHeaders(apiToken) }));
-    assert.equal(listed.status, 200);
-    assert.deepEqual(listed.body.entries.map((entry) => entry.name), ["old.log", "old-cache"]);
-    assert.equal((await fetch(`${baseUrl}/api/files/trash?unexpected=1`, { headers: authHeaders(apiToken) })).status, 400);
-    const tokenReauth = await jsonResponse(await fetch(`${baseUrl}/api/auth/reauthenticate`, { method: "POST", headers: authHeaders(apiToken), body: JSON.stringify({ password: "correct horse battery staple" }) }));
-    assert.equal(tokenReauth.status, 403);
-    assert.equal(tokenReauth.body.code, "FORBIDDEN");
-    const restored = await jsonResponse(await fetch(`${baseUrl}/api/files/trash/${restoredId}/restore`, { method: "POST", headers: authHeaders(apiToken), body: "{}" }));
-    assert.equal(restored.status, 200);
-    assert.equal(restored.body.trash.entries.length, 1);
-    assert.equal(restored.body.trash.recentlyRestored[0].name, "old.log");
-    assert.equal((await fetch(`${baseUrl}/api/files/trash/${purgedId}`, { method: "DELETE", headers: authHeaders(apiToken), body: "{}" })).status, 403);
-
-    const loginResponse = await fetch(`${baseUrl}/api/auth/login`, { method: "POST", headers: { Origin: allowedOrigin, "Content-Type": "application/json" }, body: JSON.stringify({ username: "admin", password: "correct horse battery staple" }) });
-    const loginBody = await loginResponse.json();
-    const cookie = loginResponse.headers.get("set-cookie").split(";")[0];
-    const reauthResponse = await fetch(`${baseUrl}/api/auth/reauthenticate`, { method: "POST", headers: { Origin: allowedOrigin, Cookie: cookie, "X-CSRF-Token": loginBody.csrfToken, "Content-Type": "application/json" }, body: JSON.stringify({ password: "correct horse battery staple" }) });
-    const reauth = await reauthResponse.json();
-    const purged = await jsonResponse(await fetch(`${baseUrl}/api/files/trash/${purgedId}`, { method: "DELETE", headers: { Origin: allowedOrigin, Cookie: cookie, "X-CSRF-Token": loginBody.csrfToken, "X-Reauth-Proof": reauth.proof, "Content-Type": "application/json" }, body: "{}" }));
-    assert.equal(purged.status, 200);
-    assert.equal(purged.body.trash.entries.length, 0);
-  });
-});
-
 test("administrator control-plane APIs manage enrollment, nodes and task status without exposing credentials", async () => {
   const repository = new (await import("../../apps/controller/dist/repositories/agentControlRepository.js")).MemoryAgentControlRepository();
   const platform = new FakePlatformAdapter();
