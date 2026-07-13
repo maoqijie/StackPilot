@@ -15,7 +15,7 @@ import {
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import type { FileEntry, FileListPayload } from "@stackpilot/contracts";
 import { ServiceError } from "../serviceError.js";
-
+import { atomicFileRename } from "./atomicFileRename.js";
 type RootMatch = { configuredRoot: string; realRoot: string; absolutePath: string };
 type StableDirectory = RootMatch & { operationPath: string };
 export type QuarantinedFile = {
@@ -28,7 +28,6 @@ function isInside(root: string, candidate: string): boolean {
   const value = relative(root, candidate);
   return value === "" || (value !== ".." && !value.startsWith(`..${sep}`));
 }
-
 function validName(value: string): string {
   const name = value.trim();
   const control = [...name].some((character) => character.charCodeAt(0) < 32);
@@ -37,11 +36,9 @@ function validName(value: string): string {
   }
   return name;
 }
-
 export class FileService {
   private owners: Map<number, string> | null = null;
   private mutation = Promise.resolve();
-
   constructor(private readonly roots: readonly string[]) {
     if (!roots.length || roots.some((root) => !isAbsolute(root))) throw new Error("文件根目录必须是绝对路径");
   }
@@ -53,14 +50,12 @@ export class FileService {
     try { return await operation(); }
     finally { release(); }
   }
-
   private normalized(value: string): string {
     if (!isAbsolute(value) || value.includes("\0")) throw new ServiceError(400, "BAD_REQUEST", "文件路径无效");
     const path = normalize(value);
     if (path.split(sep).includes(".stackpilot-trash")) throw new ServiceError(403, "FORBIDDEN", "文件回收目录不可直接访问");
     return path;
   }
-
   private async rootFor(path: string): Promise<{ configuredRoot: string; realRoot: string }> {
     const matches = await Promise.all(this.roots.map(async (item) => {
       const configuredRoot = resolve(item);
@@ -75,7 +70,6 @@ export class FileService {
     if (!root) throw new ServiceError(403, "FORBIDDEN", "文件路径超出允许范围");
     return root;
   }
-
   private async existing(value: string): Promise<RootMatch> {
     const absolutePath = this.normalized(value);
     const { configuredRoot, realRoot } = await this.rootFor(absolutePath);
@@ -92,28 +86,30 @@ export class FileService {
     }
     return { configuredRoot, realRoot, absolutePath: realTarget };
   }
-
   private async withOpenedDirectory<T>(match: RootMatch, openPath: string, operation: (directory: StableDirectory) => Promise<T>): Promise<T> {
     const handle = await open(openPath, constants.O_RDONLY | constants.O_DIRECTORY | (constants.O_NOFOLLOW ?? 0));
     try {
       const stats = await handle.stat();
       if (!stats.isDirectory()) throw new ServiceError(400, "BAD_REQUEST", "请求路径不是目录");
       const operationPath = process.platform === "linux" ? `/proc/self/fd/${handle.fd}` : match.absolutePath;
-      if (process.platform === "linux") {
-        const openedPath = await realpath(operationPath);
-        if (openedPath !== match.absolutePath || !isInside(match.realRoot, openedPath)) {
-          throw new ServiceError(409, "BAD_REQUEST", "目录在操作前发生变化，请重试");
-        }
-      }
-      return await operation({ ...match, operationPath });
+      const directory = { ...match, operationPath };
+      await this.assertStableDirectory(directory);
+      return await operation(directory);
     } finally { await handle.close(); }
   }
-
+  private async assertStableDirectory(directory: StableDirectory): Promise<void> {
+    if (process.platform !== "linux") return;
+    let openedPath: string;
+    try { openedPath = await realpath(directory.operationPath); }
+    catch { throw new ServiceError(409, "BAD_REQUEST", "目录在操作前发生变化，请重试"); }
+    if (openedPath !== directory.absolutePath || !isInside(directory.realRoot, openedPath)) {
+      throw new ServiceError(409, "BAD_REQUEST", "目录在操作前发生变化，请重试");
+    }
+  }
   private async withStableDirectory<T>(value: string, operation: (directory: StableDirectory) => Promise<T>): Promise<T> {
     const match = await this.existing(value);
     return this.withOpenedDirectory(match, match.absolutePath, operation);
   }
-
   private async stableChild(parent: StableDirectory, name: string): Promise<RootMatch> {
     const publicPath = join(parent.absolutePath, name);
     let realTarget: string;
@@ -127,7 +123,6 @@ export class FileService {
     }
     return { configuredRoot: parent.configuredRoot, realRoot: parent.realRoot, absolutePath: publicPath };
   }
-
   private async owner(uid: number): Promise<string> {
     if (!this.owners) {
       this.owners = new Map();
@@ -141,7 +136,6 @@ export class FileService {
     }
     return this.owners.get(uid) ?? `UID ${uid}`;
   }
-
   private async entry(operationPath: string, publicPath: string, parentPath = dirname(publicPath)): Promise<FileEntry> {
     const stats = await lstat(operationPath);
     const kind = stats.isDirectory() ? "directory" : stats.isSymbolicLink() ? "symlink" : "file";
@@ -156,9 +150,9 @@ export class FileService {
       owner: await this.owner(stats.uid),
     };
   }
-
   async list(value: string): Promise<FileListPayload> {
     return this.withStableDirectory(value, async (directory) => {
+      await this.assertStableDirectory(directory);
       const names = (await readdir(directory.operationPath)).filter((name) => name !== ".stackpilot-trash");
       if (names.length > 5000) throw new ServiceError(413, "PAYLOAD_TOO_LARGE", "目录项目超过 5000 个");
       const entries = await Promise.all(names.map((name) => this.entry(
@@ -166,6 +160,7 @@ export class FileService {
         join(directory.absolutePath, name),
         directory.absolutePath,
       )));
+      await this.assertStableDirectory(directory);
       entries.sort((a, b) => a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "directory" ? -1 : 1);
       return {
         rootPath: directory.configuredRoot,
@@ -177,12 +172,12 @@ export class FileService {
       };
     });
   }
-
   async createDirectory(path: string, name: string): Promise<FileEntry> {
     return this.mutate(() => this.withStableDirectory(path, async (parent) => {
       const childName = validName(name);
       const operationPath = join(parent.operationPath, childName);
       const publicPath = join(parent.absolutePath, childName);
+      await this.assertStableDirectory(parent);
       try { await mkdir(operationPath, { mode: 0o775 }); }
       catch (error) {
         if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new ServiceError(409, "BAD_REQUEST", "同名项目已存在");
@@ -191,16 +186,18 @@ export class FileService {
       const handle = await open(operationPath, constants.O_RDONLY | constants.O_DIRECTORY | (constants.O_NOFOLLOW ?? 0));
       try { await handle.chmod(0o775); }
       finally { await handle.close(); }
+      try { await this.assertStableDirectory(parent); }
+      catch (error) { await rm(operationPath).catch(() => undefined); throw error; }
       return this.entry(operationPath, publicPath, parent.absolutePath);
     }));
   }
-
   async upload(path: string, name: string, content: Buffer): Promise<FileEntry> {
     return this.mutate(() => this.withStableDirectory(path, async (parent) => {
       const childName = validName(name);
       const operationPath = join(parent.operationPath, childName);
       const publicPath = join(parent.absolutePath, childName);
       let handle;
+      await this.assertStableDirectory(parent);
       try {
         handle = await open(
           operationPath,
@@ -215,38 +212,43 @@ export class FileService {
         await handle.writeFile(content);
         await handle.chmod(0o664);
       } finally { await handle.close(); }
+      try { await this.assertStableDirectory(parent); }
+      catch (error) { await rm(operationPath, { force: true }).catch(() => undefined); throw error; }
       return this.entry(operationPath, publicPath, parent.absolutePath);
     }));
   }
-
   async rename(path: string, newName: string): Promise<FileEntry> {
     return this.mutate(() => this.withStableDirectory(dirname(this.normalized(path)), async (parent) => {
       const sourceName = basename(path);
       const source = await this.stableChild(parent, sourceName);
       if (source.absolutePath === source.realRoot) throw new ServiceError(403, "FORBIDDEN", "不能重命名文件根目录");
+      const sourceOperationPath = join(parent.operationPath, sourceName);
+      const sourceStats = await lstat(sourceOperationPath);
+      if (!sourceStats.isFile()) throw new ServiceError(409, "BAD_REQUEST", "当前版本仅支持重命名普通文件");
       const targetName = validName(newName);
       const targetOperationPath = join(parent.operationPath, targetName);
-      try { await lstat(targetOperationPath); throw new ServiceError(409, "BAD_REQUEST", "同名项目已存在"); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-      await rename(join(parent.operationPath, sourceName), targetOperationPath);
+      await atomicFileRename(sourceOperationPath, targetOperationPath, () => this.assertStableDirectory(parent));
       return this.entry(targetOperationPath, join(parent.absolutePath, targetName), parent.absolutePath);
     }));
   }
-
   async quarantine(path: string, id: string, beforeMove?: (file: QuarantinedFile) => void): Promise<QuarantinedFile> {
     return this.mutate(() => this.withStableDirectory(dirname(this.normalized(path)), async (parent) => {
       const sourceName = basename(path), source = await this.stableChild(parent, sourceName);
       if (source.absolutePath === source.realRoot) throw new ServiceError(403, "FORBIDDEN", "不能删除文件根目录");
       const info = await lstat(join(parent.operationPath, sourceName));
       if (info.isSymbolicLink() || (!info.isFile() && !info.isDirectory())) throw new ServiceError(403, "FORBIDDEN", "只能删除真实文件或目录");
+      await this.assertStableDirectory(parent);
       return this.withStableDirectory(source.realRoot, async (root) => {
         const trashPath = join(root.absolutePath, ".stackpilot-trash"), trashOperationPath = join(root.operationPath, ".stackpilot-trash");
+        await this.assertStableDirectory(root);
         try { const stats = await lstat(trashOperationPath); if (!stats.isDirectory() || stats.isSymbolicLink()) throw new ServiceError(403, "FORBIDDEN", "文件回收目录不安全"); }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; await mkdir(trashOperationPath, { mode: 0o700 }); }
         const trashMatch = { configuredRoot: root.configuredRoot, realRoot: root.realRoot, absolutePath: trashPath };
         return this.withOpenedDirectory(trashMatch, trashOperationPath, async (trash) => {
           const bucketPath = join(trash.absolutePath, id), bucketOperationPath = join(trash.operationPath, id);
           const file: QuarantinedFile = { id, name: sourceName, kind: info.isDirectory() ? "directory" : "file", rootPath: root.absolutePath, originalPath: source.absolutePath, quarantinePath: join(bucketPath, sourceName), sizeBytes: info.isFile() ? info.size : null };
+          await this.assertStableDirectory(parent);
+          await this.assertStableDirectory(trash);
           beforeMove?.(file);
           await mkdir(bucketOperationPath, { mode: 0o700 });
           const bucketMatch = { configuredRoot: root.configuredRoot, realRoot: root.realRoot, absolutePath: bucketPath };
@@ -255,6 +257,8 @@ export class FileService {
             return await this.withOpenedDirectory(bucketMatch, bucketOperationPath, async (bucket) => {
               await rename(join(parent.operationPath, sourceName), join(bucket.operationPath, sourceName));
               moved = true;
+              await this.assertStableDirectory(parent);
+              await this.assertStableDirectory(trash);
               return file;
             });
           } catch (error) {
@@ -266,7 +270,6 @@ export class FileService {
       });
     }));
   }
-
   async restoreQuarantined(file: QuarantinedFile): Promise<void> {
     return this.mutate(() => this.withTrashItem(file, async (bucket, trash) => this.withStableDirectory(dirname(file.originalPath), async (parent) => {
       if (parent.realRoot !== file.rootPath) throw new ServiceError(403, "FORBIDDEN", "回收站原路径不再受信任");
@@ -277,7 +280,6 @@ export class FileService {
       await rmdir(join(trash.operationPath, file.id));
     })));
   }
-
   async purgeQuarantined(file: QuarantinedFile): Promise<void> {
     return this.mutate(() => this.withTrashItem(file, async (_bucket, trash) => {
       const tombstone = `.purging-${file.id}`;
@@ -285,7 +287,6 @@ export class FileService {
       await rm(join(trash.operationPath, tombstone), { recursive: true, force: true });
     }));
   }
-
   async reconcileMoving(file: QuarantinedFile): Promise<MovingRecovery> {
     return this.mutate(() => this.withOptionalTrash(file, async (_root, trash) => {
       const original = await this.expectedOriginalExists(file);
@@ -298,7 +299,6 @@ export class FileService {
       return original ? "aborted" : "purged";
     }));
   }
-
   async reconcileRestoring(file: QuarantinedFile): Promise<RestoreRecovery> {
     return this.mutate(() => this.withOptionalTrash(file, async (_root, trash) => {
       const original = await this.expectedOriginalExists(file);

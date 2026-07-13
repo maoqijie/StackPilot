@@ -66,4 +66,16 @@ describe("files browser page", () => {
     expect(await screen.findByRole("button",{name:"重命名 current"})).toBeDisabled();
     expect(screen.getByRole("button",{name:"删除 current 到回收站"})).toBeDisabled();
   });
+
+  it("does not offer directory rename without atomic no-replace support", async () => {
+    vi.stubGlobal("fetch",vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ...listPayload,
+      entries:[{...listPayload.entries[0],id:"entry-dir",name:"site",kind:"directory",path:"/var/www/site",sizeBytes:null}],
+    }),{status:200,headers:{"Content-Type":"application/json"}})));
+
+    render(<FilesPageHarness />);
+
+    expect(await screen.findByRole("button",{name:"重命名 site"})).toBeDisabled();
+    expect(screen.getByRole("button",{name:"删除 site 到回收站"})).toBeEnabled();
+  });
 });

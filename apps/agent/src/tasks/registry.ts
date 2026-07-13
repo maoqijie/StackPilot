@@ -9,5 +9,5 @@ const allPlatforms: readonly AgentPlatform[] = ["linux", "darwin", "win32"];
 export const taskRegistry: Readonly<Record<RemoteTaskEnvelope["type"], TaskDefinition>> = Object.freeze({
   "system.summary.read": { capability: "system.summary.read", platforms: allPlatforms, timeoutMs: 6_000, maxOutputBytes: 16_384, cancellable: true, retryable: true, validate: (value) => SystemSummaryTaskParametersSchema.parse(value), run: (value) => systemSummaryHandler(value) },
   "service.status.read": { capability: "service.status.read", platforms: allPlatforms, timeoutMs: 6_000, maxOutputBytes: 16_384, cancellable: true, retryable: true, validate: (value) => ServiceStatusTaskParametersSchema.parse(value), run: serviceStatusHandler },
-  "sites.certificates.renew": { capability: "sites.certificates.renew", platforms: ["linux"], timeoutMs: 600_000, maxOutputBytes: 16_384, cancellable: true, retryable: false, validate: (value) => CertificateRenewalTaskParametersSchema.parse(value), run: certificateRenewalHandler },
+  "sites.certificates.renew": { capability: "sites.certificates.renew", platforms: ["linux"], timeoutMs: 600_000, maxOutputBytes: 16_384, cancellable: false, retryable: false, validate: (value) => CertificateRenewalTaskParametersSchema.parse(value), run: certificateRenewalHandler },
 });
