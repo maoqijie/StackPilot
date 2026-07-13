@@ -48,6 +48,7 @@ import { FileUploadRepository } from "./repositories/fileUploadRepository.js";
 import { FileUploadService } from "./modules/files/fileUploadService.js";
 import { DatabaseSlowQueryService } from "./modules/databases/databaseSlowQueryService.js";
 import { PostgresSlowQueryCollector } from "./platform/postgresSlowQueryCollector.js";
+import { SystemdDatabaseCollector } from "@stackpilot/host-telemetry";
 
 export type AppOptions = {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -81,7 +82,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
     databaseSlowQueries: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
-    databaseInstances: new DatabaseMonitoringService(repository),
+    databaseInstances: new DatabaseMonitoringService(repository, new SystemdDatabaseCollector()),
     sites,
     certificateRenewals,
     fileManager: new FileService(config.fileRoots),

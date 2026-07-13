@@ -12,12 +12,18 @@ test("database inventory parses fixed PostgreSQL, MySQL and MariaDB systemd serv
   ].join("\n");
   const instances = parseSystemdDatabaseUnits(output, "db-node-01");
   assert.deepEqual(instances.map(({ name, engine, status }) => ({ name, engine, status })), [
-    { name: "postgresql", engine: "postgresql", status: "running" },
     { name: "postgresql-16-main", engine: "postgresql", status: "running" },
     { name: "mysql", engine: "mysql", status: "degraded" },
     { name: "mariadb", engine: "mariadb", status: "stopped" },
   ]);
   assert.ok(instances.every((instance) => instance.port === null && instance.storageBytes === null && instance.backupStatus === "unavailable"));
+});
+
+test("database inventory keeps the PostgreSQL umbrella unit when no cluster unit exists", () => {
+  const instances = parseSystemdDatabaseUnits("postgresql.service loaded active exited PostgreSQL", "db-node-01");
+  assert.equal(instances.length, 1);
+  assert.equal(instances[0].name, "postgresql");
+  assert.equal(instances[0].status, "unknown");
 });
 
 test("database inventory reports unsupported and failed collection without fixtures", async () => {
