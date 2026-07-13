@@ -21,6 +21,7 @@ import { EnrollmentService } from "./modules/enrollments/enrollmentService.js";
 import { NodeService } from "./modules/nodes/nodeService.js";
 import { HostMonitoringService } from "./modules/hosts/hostMonitoringService.js";
 import { SiteMonitoringService } from "./modules/sites/siteMonitoringService.js";
+import { DatabaseBackupService } from "./modules/databases/databaseBackupService.js";
 import { NginxSiteCollector } from "./platform/siteCollector.js";
 import { RemoteTaskService } from "./modules/remote-tasks/remoteTaskService.js";
 import { NativePlatformAdapter } from "./platform/nativeAdapter.js";
@@ -59,7 +60,7 @@ function createFileUploadService(database: Database.Database, repoRoot: string, 
   return new FileUploadService(new FileUploadRepository(database), uploadRoot, config.uploadMaxBytes, config.uploadChunkMaxBytes);
 }
 
-export function createControllerServices(platform: PlatformAdapter, repoRoot: string, config: ControllerConfig, agentRepository?: AgentControlRepository, database?: Database.Database): Services {
+export function createControllerServices(platform: PlatformAdapter, repoRoot: string, config: ControllerConfig, agentRepository?: AgentControlRepository, database: Database.Database | null = null): Services {
   const state = new MemoryTaskStateRepository();
   const exports = new FileExportRepository(repoRoot);
   const repository = agentRepository ?? new FileAgentControlRepository(isAbsolute(config.agentStatePath) ? config.agentStatePath : resolve(repoRoot, config.agentStatePath));
@@ -69,6 +70,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
     sites: new SiteMonitoringService(new NginxSiteCollector(config.nginxConfigDirs)),
+    databaseBackups: new DatabaseBackupService(database, isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath), config, repoRoot),
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
     schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform),
@@ -94,7 +96,7 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
   const database = options.database ?? (config.masterKey ? openDatabase(isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath)) : null);
   const identity = options.identity === undefined ? (database && config.masterKey ? new IdentityService(database, loadOrCreateAuditKey(database,parseMasterKey(config.masterKey)), config.sessionSeconds) : null) : options.identity;
   const agentRepository = options.agentRepository ?? (database ? new SqliteAgentControlRepository(database,identity?.audit) : undefined);
-  const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, database ?? undefined);
+  const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, database);
   if (!services.files && database) services.files = createFileUploadService(database, repoRoot, config);
   const logger = options.logger ?? consoleLogger;
   const surface = options.surface ?? "all";
