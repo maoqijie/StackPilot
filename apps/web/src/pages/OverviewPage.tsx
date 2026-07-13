@@ -85,10 +85,7 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
 
   return (
     <div className="overview-page">
-      <header className="overview-page-head">
-        <h1 className="sr-only">工作台</h1>
-        <span className="overview-freshness"><StatusLight tone={error ? "red" : loading ? "blue" : healthTone} />{loading ? "正在采集" : error ? "采集异常" : `更新于 ${formatBackendDateTime(overviewCollectedAt(overview), "刚刚")}`}</span>
-      </header>
+      <h1 className="sr-only">工作台</h1>
       <section className="workbench-hero" aria-label="实时工作台状态">
         <div className="workbench-identity">
           <span className="workbench-eyebrow">实时工作台</span>

@@ -15,7 +15,6 @@
   line-height: 1.6;
 }
 
-.overview-page-head,
 :is(.module-page-overview-health, .module-page-overview-tasks, .module-page-overview-risks) > .page-head {
   min-height: 0;
   margin-bottom: 32px;
@@ -25,28 +24,10 @@
   gap: 24px;
 }
 
-.overview-page > .overview-page-head {
-  margin-bottom: 24px;
-  justify-content: flex-end;
-}
-
-.overview-page-head > div,
 :is(.module-page-overview-health, .module-page-overview-tasks, .module-page-overview-risks) > .page-head > div:first-child {
   min-width: 0;
 }
 
-.overview-page-head > div > span {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--primary-hover);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.overview-page-head h1,
 :is(.module-page-overview-health, .module-page-overview-tasks, .module-page-overview-risks) > .page-head h1 {
   margin: 0;
   color: var(--text);
@@ -54,29 +35,12 @@
   letter-spacing: 0;
 }
 
-.overview-page-head p,
 :is(.module-page-overview-health, .module-page-overview-tasks, .module-page-overview-risks) .page-subtitle {
   max-width: 720px;
   margin: 8px 0 0;
   color: var(--muted);
   font-size: 16px;
   line-height: 1.6;
-}
-
-.overview-freshness {
-  min-height: 40px;
-  padding: 8px 12px;
-  border-radius: var(--radius-md);
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  background: var(--surface);
-  box-shadow: var(--shadow-subtle);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.4;
-  white-space: nowrap;
 }
 
 :is(.overview-page, .module-page-overview-health, .module-page-overview-tasks, .module-page-overview-risks) :is(.primary, .ghost, .warning, .table-actions button) {
@@ -1806,11 +1770,8 @@
   .module-page-overview-health,
   .module-page-overview-tasks,
   .module-page-overview-risks { padding: 32px 16px; }
-  .overview-page-head,
   :is(.module-page-overview-health, .module-page-overview-tasks, .module-page-overview-risks) > .page-head { margin-bottom: 24px; flex-wrap: wrap; }
-  .overview-page-head h1,
   :is(.module-page-overview-health, .module-page-overview-tasks, .module-page-overview-risks) > .page-head h1 { font-size: 40px; }
-  .overview-page-head > div,
   :is(.module-page-overview-health, .module-page-overview-tasks, .module-page-overview-risks) > .page-head > div:first-child { width: 100%; }
   :is(.module-page-overview-health, .module-page-overview-tasks, .module-page-overview-risks) > .page-head > div:last-child { width: 100%; justify-content: flex-start; }
   .workbench-hero { padding: 24px; }
