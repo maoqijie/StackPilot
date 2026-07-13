@@ -41,6 +41,8 @@ const config = loadControllerConfig({
   STACKPILOT_ALLOWED_ORIGINS: `https://127.0.0.1:${webPort}`, STACKPILOT_AGENT_HOST: "127.0.0.1", STACKPILOT_AGENT_PORT: String(agentPort),
   STACKPILOT_AGENT_TLS_CERT_PATH: certPath, STACKPILOT_AGENT_TLS_KEY_PATH: keyPath,
   STACKPILOT_AGENT_STATE_PATH: join(runtime, "legacy.json"), STACKPILOT_TRUSTED_PROXIES: "127.0.0.1/32",
+  STACKPILOT_FILE_ROOT: join(runtime, "files"), STACKPILOT_FILE_TRASH_DIR: join(runtime, "file-trash"),
+  STACKPILOT_FILE_UPLOAD_LIMIT_BYTES: String(128 * 1024 * 1024), STACKPILOT_UPLOAD_ROOT: join(runtime, "resumable-uploads"),
 });
 const database = openDatabase(config.databasePath);
 const identity = new IdentityService(database, Buffer.alloc(32, 8));

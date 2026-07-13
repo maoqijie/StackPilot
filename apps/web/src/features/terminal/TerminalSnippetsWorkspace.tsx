@@ -96,13 +96,15 @@ function TerminalSnippetsWorkspace({ notify, permissions }: { notify: Notify; pe
   const [category, setCategory] = useState("全部");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [targetNodeId, setTargetNodeId] = useState("");
-  const [pendingExecution, setPendingExecution] = useState<{ snippetId: string; idempotencyKey: string } | null>(null);
+  const [pendingExecution, setPendingExecution] = useState<{ snippetId: string; nodeId: string; idempotencyKey: string } | null>(null);
   const [password, setPassword] = useState("");
   const passwordRef = useRef<HTMLInputElement>(null);
   const [executing, setExecuting] = useState(false);
   const [executionTaskId, setExecutionTaskId] = useState<string | null>(null);
   const selected = selectedId ? snippets.find((snippet) => snippet.id === selectedId) ?? null : null;
   const pending = pendingExecution ? snippets.find((snippet) => snippet.id === pendingExecution.snippetId) ?? null : null;
+  const pendingNode = pendingExecution ? nodes.find((node) => node.nodeId === pendingExecution.nodeId) ?? null : null;
+  const pendingAvailable = pending && pendingNode ? availableFor(pendingNode, pending) : false;
   const categories = ["全部", ...new Set(snippets.map((snippet) => snippet.category))];
   const filtered = snippets.filter((snippet) => {
     const query = search.trim().toLowerCase();
@@ -120,19 +122,20 @@ function TerminalSnippetsWorkspace({ notify, permissions }: { notify: Notify; pe
     if (!canExecute) { notify("当前账号没有常用命令执行权限", "danger"); return; }
     if (!effectiveNode) { notify("当前授权范围内没有 Agent 节点", "danger"); return; }
     if (!availableFor(effectiveNode, snippet)) { notify("目标 Agent 离线或未授权该受控能力", "danger"); return; }
-    setSelectedId(null); setPendingExecution({ snippetId: snippet.id, idempotencyKey: createLocalId(`terminal-${snippet.id}`) }); setPassword("");
+    setSelectedId(null); setTargetNodeId(effectiveNode.nodeId);
+    setPendingExecution({ snippetId: snippet.id, nodeId: effectiveNode.nodeId, idempotencyKey: createLocalId(`terminal-${snippet.id}`) }); setPassword("");
   };
   const confirmExecution = async () => {
     const currentPassword = passwordRef.current?.value ?? password;
-    if (!pending || !pendingExecution || !effectiveNode) return;
+    if (!pending || !pendingExecution) return;
+    if (!pendingNode || !availableFor(pendingNode, pending)) { notify("目标 Agent 能力已变更，请重新选择命令", "danger"); return; }
     if (!currentPassword) { notify("请输入当前账号密码", "danger"); passwordRef.current?.focus(); return; }
-    if (!availableFor(effectiveNode, pending)) { notify("目标 Agent 能力已变更，请重新选择命令", "danger"); return; }
     setExecuting(true);
     try {
       const proof = await reauthenticate(currentPassword);
-      const result = await executeTerminalSnippet(pending.id, { nodeId: effectiveNode.nodeId, snippetVersion: pending.version, idempotencyKey: pendingExecution.idempotencyKey }, proof.proof);
+      const result = await executeTerminalSnippet(pending.id, { nodeId: pendingNode.nodeId, snippetVersion: pending.version, idempotencyKey: pendingExecution.idempotencyKey }, proof.proof);
       acceptExecution(result.snippet, result.task); setExecutionTaskId(result.task.taskId); setPendingExecution(null); setPassword("");
-      notify(`${pending.title} 已提交给 ${effectiveNode.nodeName}`, "success");
+      notify(`${pending.title} 已提交给 ${pendingNode.nodeName}`, "success");
     } catch (reason) { notify(reason instanceof Error ? reason.message : "受控命令提交失败", "danger"); }
     finally { setExecuting(false); }
   };
@@ -151,7 +154,7 @@ function TerminalSnippetsWorkspace({ notify, permissions }: { notify: Notify; pe
       </section><aside className="terminal-live-task-panel" aria-live="polite"><header><Clock3 size={18} /><span><strong>最近任务</strong><small>{latestTask ? formatBackendDateTime(latestTask.updatedAt) : "等待首次执行"}</small></span></header>{latestTask ? <div className={`terminal-live-task-result ${taskTone(latestTask.status)}`}>{taskIcon(latestTask.status)}<span><strong>{taskStatusLabel[latestTask.status]}</strong><small>{effectiveNode?.nodeName ?? latestTask.targetNodeId}</small></span><code>{latestTask.taskId}</code><p>{latestTask.result?.message ?? latestTask.errorCode ?? "任务已保存，等待 Agent 返回结果"}</p>{latestTask.result?.data && <pre>{JSON.stringify(latestTask.result.data, null, 2)}</pre>}</div> : <p className="module-empty-card">选择在线 Agent 后执行受控片段，真实任务状态将在此处自动更新。</p>}</aside></div>
     </ModulePageShell>
     {selected && <DetailDrawer title={selected.title} subtitle={`${selected.category} · ${riskLabel[selected.risk]}`} className="terminal-snippet-drawer" modal onClose={() => setSelectedId(null)} actions={<><button className="ghost" type="button" onClick={() => copy(selected.command)}><Copy size={15} />复制命令</button><button className="primary" type="button" disabled={!canExecute || !effectiveNode || !selected.executable || !availableFor(effectiveNode, selected)} onClick={() => run(selected)}><Play size={15} />{selected.executable ? "执行受控任务" : "尚未接入"}</button></>}><div className="terminal-snippet-detail"><div className={`terminal-snippet-notice ${selected.risk === "danger" ? "danger" : selected.risk === "change" ? "warning" : "safe"}`}>{selected.risk === "read" ? <Shield size={20} /> : <AlertTriangle size={20} />}<span><strong>{selected.executable ? "受控 Agent 任务" : "仅供检查，禁止执行"}</strong><p>{selected.executable ? "Controller 将按片段 ID 映射结构化能力，浏览器不会提交任意 Shell。" : selected.description}</p></span></div><section><h2>命令展示</h2><code>{selected.command}</code></section><dl><div><dt>说明</dt><dd>{selected.description}</dd></div><div><dt>片段版本</dt><dd>{selected.version}</dd></div><div><dt>所需能力</dt><dd>{selected.requiredCapability ?? "未开放"}</dd></div><div><dt>目标 Agent</dt><dd>{effectiveNode?.nodeName ?? "暂无"}</dd></div><div><dt>最近使用</dt><dd>{formatBackendDateTime(selected.lastUsedAt, "尚未执行")}</dd></div></dl></div></DetailDrawer>}
-    {pending && effectiveNode && <ConfirmDialog title="确认执行受控命令" message={`将在 ${effectiveNode.nodeName}（${effectiveNode.nodeId.slice(0, 8)}）上执行 ${pending.title}。请输入当前账号密码完成一次性重新认证。`} detail={pending.command} confirmLabel={executing ? "提交中" : "确认执行"} tone="warning" className="terminal-snippet-confirm" confirmDisabled={executing} onClose={closeExecutionDialog} onConfirm={() => void confirmExecution()}><label className="terminal-snippet-password"><span>当前账号密码</span><input ref={passwordRef} data-confirm-initial autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label></ConfirmDialog>}
+    {pending && pendingExecution && <ConfirmDialog title="确认执行受控命令" message={pendingAvailable && pendingNode ? `将在 ${pendingNode.nodeName}（${pendingNode.nodeId.slice(0, 8)}）上执行 ${pending.title}。请输入当前账号密码完成一次性重新认证。` : `原目标 Agent（${pendingExecution.nodeId.slice(0, 8)}）已离线、不可用或能力已变更，无法执行 ${pending.title}。`} detail={pending.command} confirmLabel={executing ? "提交中" : "确认执行"} tone="warning" className="terminal-snippet-confirm" confirmDisabled={executing} onClose={closeExecutionDialog} onConfirm={() => void confirmExecution()}><label className="terminal-snippet-password"><span>当前账号密码</span><input ref={passwordRef} data-confirm-initial autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label></ConfirmDialog>}
   </>;
 }
 

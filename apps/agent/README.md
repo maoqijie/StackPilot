@@ -10,4 +10,4 @@ Protocol `1.1` publishes database inventory and complete SQL uploads on separate
 
 On Linux, a non-overlapping collector scans `/etc/nginx/conf.d` and `/etc/nginx/sites-enabled` at most once every 60 seconds. It reads only Nginx configuration and the public file named by `ssl_certificate`; `ssl_certificate_key` is never opened or reported. Other platforms report site inventory as unavailable.
 
-Renewal uses only `/run/stackpilot-cert-helper/helper.sock`. The Agent sends a fixed JSON request containing an opaque certificate ID; it cannot supply a path, executable, arguments, or shell text. Docker Agents remain inventory-only because they do not manage host Nginx or Certbot state.
+Renewal uses only `/run/stackpilot-cert-helper/helper.sock`. The Agent sends a fixed JSON request containing an opaque certificate ID; it cannot supply a path, executable, arguments, or shell text. After execution begins, renewal is non-cancellable. Timeouts and restarts are reported as unknown results and are never replayed automatically. Docker Agents remain inventory-only because they do not manage host Nginx or Certbot state.

@@ -12,9 +12,10 @@ function database(overrides: Partial<DatabaseInstanceRecord> = {}): DatabaseInst
   return {
     id: `database-${"a".repeat(32)}`, nodeId: "11111111-1111-4111-8111-111111111111", nodeName: "db-node-01",
     name: "postgresql-16-main", engine: "postgresql", version: null, host: "db-node-01", address: "10.0.0.8", port: null,
-    status: "running", source: "systemd:postgresql@16-main.service", latencyMs: null, storageBytes: null,
+    status: "running", source: "systemd:postgresql@16-main.service", managed: false, historicalSlowQueriesAvailable: false,
+    latencyMs: null, storageBytes: null,
     activeConnections: null, maxConnections: null, slowQueryCount: null, backupStatus: "unavailable", lastBackupAt: null,
-    accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null,
+    accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null, volumes: [],
     collectedAt, freshness: "current", ...overrides,
   };
 }

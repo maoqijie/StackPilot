@@ -49,7 +49,7 @@ function DatabaseSlowQueriesPage({ page, notify, initialPayload = null }: { page
     <div className="database-slow-content"><DataTable columns={[
       { key: "fingerprint", label: "SQL 指纹", width: "190px", render: (query) => <button className="module-row-link slow-fingerprint" type="button" aria-label={`查看慢查询 ${query.fingerprint}`} title={query.fingerprint} onClick={() => setDrawerId(query.id)}><FileSearch size={16} /><b>{query.fingerprint}</b></button> },
       { key: "database", label: "数据库", width: "152px", render: (query) => <span className="slow-database-name" title={query.database}>{query.database}</span> },
-      { key: "sql", label: "SQL 摘要", render: (query) => <code className="slow-sql-summary" title={query.sql}>{query.sql}</code> },
+      { key: "sql", label: "SQL 摘要", render: (query) => <code className="slow-sql-summary" title={query.sql ?? undefined}>{query.sql ?? "无权查看完整 SQL"}</code> },
       { key: "duration", label: "当前耗时", width: "104px", sortValue: (query) => query.durationMs, render: (query) => <b>{duration(query.durationMs)}</b> },
       { key: "owner", label: "用户", width: "100px", render: (query) => query.owner ?? "暂不可用" },
       { key: "startedAt", label: "开始时间", width: "144px", render: (query) => formatBackendDateTime(query.startedAt) },

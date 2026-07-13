@@ -46,5 +46,6 @@ export const AgentDatabaseUploadResponseSchema = z.object({ acceptedAt: z.string
 export type AgentDatabaseQueryUpload = z.infer<typeof AgentDatabaseQueryUploadSchema>;
 export type DatabaseSession = z.infer<typeof DatabaseSessionSchema>;
 export type DatabaseSlowQueryRecord = z.infer<typeof DatabaseSlowQueryRecordSchema>;
+export type DatabaseSlowQueryInstance = z.infer<typeof DatabaseSlowQueryInstanceSchema>;
 export type DatabaseInstanceDetail = z.infer<typeof DatabaseInstanceDetailSchema>;
 export type DatabaseSlowQueriesPayload = z.infer<typeof DatabaseSlowQueriesPayloadSchema>;

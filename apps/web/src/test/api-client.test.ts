@@ -74,7 +74,7 @@ describe("requestJson", () => {
 
   it("does not force a JSON content type for binary request bodies", async () => {
     const fetchMock=vi.fn().mockResolvedValue(new Response(JSON.stringify({ok:true}),{status:200,headers:{"Content-Type":"application/json"}}));vi.stubGlobal("fetch",fetchMock);
-    const file=new File(["content"],"index.html",{type:"text/html"});await requestJson("/files/upload",{method:"POST",body:file,headers:{"Content-Type":"application/octet-stream"}});
-    expect(fetchMock).toHaveBeenCalledWith("/api/files/upload",expect.objectContaining({headers:expect.objectContaining({"Content-Type":"application/octet-stream"})}));
+    const file=new File(["content"],"index.html",{type:"text/html"});await requestJson("/file-uploads",{method:"POST",body:file,headers:{"Content-Type":"application/octet-stream"}});
+    expect(fetchMock).toHaveBeenCalledWith("/api/file-uploads",expect.objectContaining({headers:expect.objectContaining({"Content-Type":"application/octet-stream"})}));
   });
 });

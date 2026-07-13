@@ -95,11 +95,11 @@ function DesktopShellContent({
   page,
   setPage,
   notify,
+  user,
   topbarUnreadCount,
   setTopbarUnreadCount,
   sessionLocked,
   onLogout,
-  user,
 }: {
   page: PageKey;
   setPage: SetPage;
@@ -212,9 +212,10 @@ function DesktopShellContent({
         onNavigate={() => {
           if (isNarrowSidebar) setSidebarCollapsed(true);
         }}
+        permissions={user.permissions}
       />
       <div className="desktop-main" inert={sidebarOverlayOpen} aria-hidden={sidebarOverlayOpen ? "true" : undefined}>
-        <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={overview} interactionsDisabled={sessionLocked} onLogout={onLogout} />
+        <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={overview} interactionsDisabled={sessionLocked} onLogout={onLogout} permissions={user.permissions} />
         <div className="desktop-content" ref={desktopContentRef}>
           {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
           {page === "overview-health" && <OverviewHealthPage notify={notify} />}

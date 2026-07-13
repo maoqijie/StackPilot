@@ -35,7 +35,7 @@ export type Services = {
   sites: SiteMonitoringService;
   certificateRenewals: CertificateRenewalService;
   databaseBackups: DatabaseBackupService;
-  fileManager: FileService;
+  files: FileService;
   fileUploads?: FileUploadService;
   risks: RiskService;
   schedules: ScheduleService;
