@@ -33,7 +33,11 @@ function sameTaskOperation(task: RemoteTaskRecord, input: CreateRemoteTaskReques
 function expireTask(task: RemoteTaskRecord, now: string): RemoteTaskStatus | null {
   if (terminal.includes(task.status) || Date.parse(task.expiresAt) > Date.parse(now)) return null;
   const previous = task.status;
-  task.status = "expired"; task.updatedAt = now; task.errorCode = "TASK_EXPIRED";
+  if (task.type === "sites.certificates.renew" && task.attempt > 0) {
+    task.status = "failed"; task.errorCode = "RESULT_UNKNOWN";
+    task.result = { message: "Certificate renewal result is unknown after task expiry; it will not be replayed", truncated: false };
+  } else { task.status = "expired"; task.errorCode = "TASK_EXPIRED"; }
+  task.updatedAt = now;
   return previous;
 }
 
@@ -49,7 +53,7 @@ export class RemoteTaskService {
     for (const task of state.tasks) {
       const previous = expireTask(task, now);
       if (previous) {
-        state.audits.push(audit({ requester: "controller", nodeId: task.targetNodeId, taskId: task.taskId, event: "task.expired", taskType: task.type, parameters: null, fromStatus: previous, toStatus: "expired", resultSummary: null, traceId })); continue;
+        state.audits.push(audit({ requester: "controller", nodeId: task.targetNodeId, taskId: task.taskId, event: task.errorCode === "RESULT_UNKNOWN" ? "task.result-unknown" : "task.expired", taskType: task.type, parameters: null, fromStatus: previous, toStatus: task.status, resultSummary: task.result?.message ?? null, traceId })); continue;
       }
       if (task.status === "dispatched" && Date.parse(now) - Date.parse(task.updatedAt) > 30_000 && task.attempt < task.maxAttempts) {
         task.status = "queued"; task.updatedAt = now; task.errorCode = "DISPATCH_LEASE_EXPIRED";
@@ -140,10 +144,26 @@ export class RemoteTaskService {
       const task = state.tasks.find((item) => item.taskId === input.taskId && item.targetNodeId === nodeId);
       if (!task) throw new ServiceError(404, "NOT_FOUND", "任务不存在");
       if (input.attempt !== task.attempt) throw new ServiceError(409, "BAD_REQUEST", "任务投递 attempt 不匹配");
-      if (terminal.includes(task.status)) { updated = task; return; }
+      if (terminal.includes(task.status)) {
+        if (task.errorCode === "RESULT_UNKNOWN" && (input.status === "succeeded" || input.status === "failed")) {
+          const previous = task.status;
+          task.status = input.status; task.updatedAt = input.timestamp; task.result = input.result ?? null; task.errorCode = input.errorCode ?? null;
+          state.audits.push(audit({ requester: `agent:${nodeId}`, nodeId, taskId: task.taskId, event: "task.result-reconciled", taskType: task.type, parameters: null, fromStatus: previous, toStatus: task.status, resultSummary: input.result?.message ?? null, traceId }));
+          updated = task;
+        } else { updated = task; }
+        return;
+      }
       if (task.status === input.status) { updated = task; return; }
       const previous = task.status; transitionTask(task, input.status, input.timestamp);
       task.result = input.result ?? null; task.errorCode = input.errorCode ?? null; task.nextAttemptAt = null;
+      const unknownRenewal = task.type === "sites.certificates.renew" && task.attempt > 0
+        && (input.status === "cancelled" || (input.status === "failed"
+          && ["AGENT_RESTARTED_DURING_TASK", "TASK_CANCELLED_OR_TIMEOUT", "CERT_HELPER_TIMEOUT", "CERT_HELPER_CANCELLED", "RESULT_UNKNOWN"].includes(input.errorCode ?? "")));
+      if (unknownRenewal) {
+        task.status = "failed";
+        task.errorCode = "RESULT_UNKNOWN";
+        task.result = { message: "Certificate renewal result is unknown; it will not be replayed", truncated: false };
+      }
       if (input.status === "failed" && task.retryable && task.attempt < task.maxAttempts && Date.parse(task.expiresAt) > Date.now()) {
         transitionTask(task, "queued"); task.nextAttemptAt = new Date(Date.now() + 1000 * (2 ** Math.max(task.attempt - 1, 0))).toISOString();
       }
@@ -160,6 +180,9 @@ export class RemoteTaskService {
       const task = state.tasks.find((item) => item.taskId === taskId);
       if (!task) throw new ServiceError(404, "NOT_FOUND", "任务不存在");
       if (terminal.includes(task.status)) { updated = task; return; }
+      if (task.type === "sites.certificates.renew" && (task.status === "dispatched" || task.status === "running" || task.attempt > 0)) {
+        throw new ServiceError(409, "BAD_REQUEST", "证书续期开始执行后不能取消；结果未知时不会自动重放");
+      }
       const previous = task.status; transitionTask(task, "cancelled"); task.errorCode = "CANCELLED_BY_REQUESTER";
       state.audits.push(audit({ requester, nodeId: task.targetNodeId, taskId, event: "task.cancelled", taskType: task.type, parameters: { reason }, fromStatus: previous, toStatus: "cancelled", resultSummary: null, traceId }));
       updated = task;

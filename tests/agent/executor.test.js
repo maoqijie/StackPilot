@@ -16,7 +16,7 @@ test("task registry exposes only structured handlers and keeps renewal non-retry
   assert.ok(Object.values(taskRegistry).every((definition) => definition.maxOutputBytes <= 16_384));
   assert.ok(Object.keys(taskRegistry).every((name) => !/shell|exec|command/i.test(name)));
   assert.equal(taskRegistry["system.summary.read"].timeoutMs, 6_000);
-  assert.equal(taskRegistry["sites.certificates.renew"].retryable, false); assert.deepEqual(taskRegistry["sites.certificates.renew"].platforms, ["linux"]); assert.equal(taskRegistry["sites.certificates.renew"].timeoutMs, 600_000);
+  assert.equal(taskRegistry["sites.certificates.renew"].retryable, false); assert.equal(taskRegistry["sites.certificates.renew"].cancellable, false); assert.deepEqual(taskRegistry["sites.certificates.renew"].platforms, ["linux"]); assert.equal(taskRegistry["sites.certificates.renew"].timeoutMs, 600_000);
 });
 
 test("high-risk renewal capability is declared only on Linux with a reachable helper", () => {
@@ -94,5 +94,27 @@ test("executor reports cancellation when a handler returns after its abort signa
     const result = await executor.execute(task());
     assert.equal(result.status, "cancelled");
     assert.equal(result.errorCode, "TASK_CANCELLED_OR_TIMEOUT");
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("non-cancellable renewal timeout is reported as an unknown result", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "stackpilot-agent-test-"));
+  const renewalRegistry = {
+    ...taskRegistry,
+    "sites.certificates.renew": {
+      ...taskRegistry["sites.certificates.renew"], timeoutMs: 5,
+      run: (_parameters, signal) => new Promise((resolve, reject) => {
+        const timer = setTimeout(() => resolve({ message: "late", truncated: false }), 5_000);
+        signal.addEventListener("abort", () => { clearTimeout(timer); reject(new Error("aborted")); }, { once: true });
+      }),
+    },
+  };
+  const renewal = task({ type: "sites.certificates.renew", requiredCapability: "sites.certificates.renew", maxAttempts: 1, idempotencyKey: "renew-timeout-123", parameters: { batchId: "44444444-4444-4444-8444-444444444444", certificates: [{ certificateId: "cert_test_1", siteIds: ["site-test-1"] }] } });
+  try {
+    const executor = new TaskExecutor(join(directory, "renewal.json"), nodeId, "linux", ["sites.certificates.renew"], renewalRegistry); await executor.load();
+    const execution = executor.execute(renewal); setTimeout(() => executor.cancel(renewal.taskId), 1);
+    const result = await execution;
+    assert.equal(result.status, "failed");
+    assert.equal(result.errorCode, "RESULT_UNKNOWN");
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

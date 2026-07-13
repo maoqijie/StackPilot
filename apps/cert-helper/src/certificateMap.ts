@@ -1,6 +1,6 @@
 import { X509Certificate, createHash } from "node:crypto";
-import { readFile, readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { lstat, readFile, readdir, realpath, stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 const MAX_FILES = 500;
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -44,9 +44,32 @@ async function discoverCertificates(roots: string[], liveRoot: string) {
   return certificates;
 }
 
+async function readPublicCertificate(path: string, name: string | null, liveRoot: string) {
+  const metadata = await lstat(path);
+  let readablePath = path;
+  if (metadata.isSymbolicLink()) {
+    if (!name) throw new Error("Manual public certificate symlinks are not accepted");
+    readablePath = await realpath(path);
+    const archivePrefix = `${await realpath(join(dirname(liveRoot), "archive", name))}/`;
+    const archiveFile = readablePath.startsWith(archivePrefix) ? readablePath.slice(archivePrefix.length) : "";
+    if (!/^(?:cert|chain|fullchain)\d+\.pem$/.test(archiveFile)) throw new Error("Certbot public certificate link target is invalid");
+  } else if (!metadata.isFile()) throw new Error("Public certificate path is not a regular file");
+  if (!(await stat(readablePath)).isFile()) throw new Error("Public certificate target is not a regular file");
+  const contents = await readFile(readablePath);
+  if (/-----BEGIN (?:[A-Z0-9]+ )?PRIVATE KEY-----/.test(contents.toString("ascii"))) throw new Error("Mixed private key material is not accepted");
+  return contents;
+}
+
 export async function buildCertificateMap(roots = ["/etc/nginx/conf.d", "/etc/nginx/sites-enabled"], liveRoot = "/etc/letsencrypt/live") {
-  return new Map([...(await discoverCertificates(roots, liveRoot))]
-    .flatMap(([, certificate]): Array<[string, string]> => certificate.name ? [[certificateIdForName(certificate.name), certificate.name]] : []));
+  const mapping = new Map<string, string>();
+  for (const certificate of (await discoverCertificates(roots, liveRoot)).values()) {
+    if (!certificate.name) continue;
+    try {
+      new X509Certificate(await readPublicCertificate(certificate.path, certificate.name, liveRoot));
+      mapping.set(certificateIdForName(certificate.name), certificate.name);
+    } catch { /* Invalid public certificate paths are not eligible for renewal. */ }
+  }
+  return mapping;
 }
 
 function certificateStatus(expiresAt: string) {
@@ -61,7 +84,7 @@ export async function buildCertificateInventory(roots = ["/etc/nginx/conf.d", "/
   const inventory = [];
   for (const [sourceId, entry] of [...await discoverCertificates(roots, liveRoot)].slice(0, MAX_CERTIFICATES)) {
     try {
-      const certificate = new X509Certificate(await readFile(entry.path));
+      const certificate = new X509Certificate(await readPublicCertificate(entry.path, entry.name, liveRoot));
       const starts = new Date(certificate.validFrom); const expires = new Date(certificate.validTo);
       if (Number.isNaN(starts.getTime()) || Number.isNaN(expires.getTime())) continue;
       const expiresAt = expires.toISOString();
