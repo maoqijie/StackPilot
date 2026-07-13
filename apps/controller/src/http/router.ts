@@ -3,8 +3,9 @@ import {
   OverviewCheckUpdatesResponseSchema, OverviewHealthRefreshResponseSchema, OverviewNodeMutationResponseSchema,
   OverviewRisksPayloadSchema, OverviewRisksScanResponseSchema, OverviewSummaryPayloadSchema,
   OverviewTasksPayloadSchema, OverviewTasksRefreshResponseSchema, PathIdSchema,
+  CreateCertificateRenewalRequestSchema, CertificateRenewalBatchSchema, SiteRuntimePayloadSchema,
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, HostMonitoringPayloadSchema, ReadinessResponseSchema,
-  RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema, SiteRuntimePayloadSchema,
+  RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
@@ -14,6 +15,7 @@ import { sendJson } from "./response/json.js";
 import { parseSchema } from "./validation.js";
 import { routeControlPlaneRequest } from "./controlPlaneRouter.js";
 import { routeIdentityRequest } from "./identityRouter.js";
+import { routeTerminalRequest } from "./terminalRouter.js";
 import type { OverviewAccess } from "../modules/overview/overviewService.js";
 import { routeDatabaseBackupRequest } from "./databaseBackupRouter.js";
 import { routeFileRequest, routeFileUploadRequest } from "./fileRouter.js";
@@ -48,6 +50,7 @@ export async function routeRequest(context: RequestContext): Promise<void> {
   if (parts[0] === "api" && ["enrollments", "nodes", "remote-tasks"].includes(parts[1] ?? "")) {
     await routeControlPlaneRequest(context); return;
   }
+  if (parts[0] === "api" && parts[1] === "terminal") { await routeTerminalRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "database-backups") { await routeDatabaseBackupRequest(context); return; }
   if (parts[0] === "api" && ["files", "file-trash", "file-uploads"].includes(parts[1] ?? "")) { await routeFileRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "resumable-file-uploads") { await routeFileUploadRequest(context); return; }
@@ -56,6 +59,16 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     const nodeScope = context.principal?.nodeScope ?? [];
     const canReadNodes = Boolean(context.principal?.permissions.has("nodes:read"));
     sendJson(response,200,await services.hosts.getHosts(canReadNodes&&(nodeScope==="all"||nodeScope.length>0),nodeScope),HostMonitoringPayloadSchema);return;
+  }
+  if (context.url.pathname === "/api/sites/certificate-renewals" && method === "POST") {
+    context.identity?.require(context.principal,"sites:renew");
+    context.identity?.consumeReauth(context.principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);
+    const input=parseSchema(CreateCertificateRenewalRequestSchema,context.body,"证书续期");
+    sendJson(response,202,await services.certificateRenewals.create(input,{nodeScope:context.principal?.nodeScope??[]},`user:${context.principal?.userId}`,context.requestId),CertificateRenewalBatchSchema);return;
+  }
+  if (parts[0] === "api" && parts[1] === "sites" && parts[2] === "certificate-renewals" && parts.length === 4 && method === "GET") {
+    context.identity?.require(context.principal,"sites:read");
+    sendJson(response,200,await services.certificateRenewals.get(idAt(context,3),{nodeScope:context.principal?.nodeScope??[]}),CertificateRenewalBatchSchema);return;
   }
   if (context.url.pathname === "/api/databases" && method === "GET") {
     context.identity?.require(context.principal, "databases:read");
@@ -68,8 +81,8 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     return;
   }
   if (context.url.pathname === "/api/sites" && method === "GET") {
-    context.identity?.require(context.principal, "overview:read");
-    sendJson(response, 200, await services.sites.getSites(), SiteRuntimePayloadSchema);
+    context.identity?.require(context.principal, "sites:read");
+    sendJson(response, 200, await services.sites.getSites({ nodeScope: context.principal?.nodeScope ?? [] }), SiteRuntimePayloadSchema);
     return;
   }
   if (parts[0] !== "api" || parts[1] !== "overview") throw notFound();

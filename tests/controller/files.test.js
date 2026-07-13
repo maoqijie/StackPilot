@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
@@ -29,6 +29,19 @@ test("file mutations serialize concurrent targets and metadata updates", async (
     const remaining = (await service.list("/")).entries.filter((entry) => entry.name !== "target.txt"); assert.equal(remaining.length, 1);
     await writeFile(join(root, "trash-a.txt"), "trash A"); await writeFile(join(root, "trash-b.txt"), "trash B"); await Promise.all([service.trash("/trash-a.txt"), service.trash("/trash-b.txt")]); assert.equal((await service.listTrash()).entries.length, 2);
     const uploads = await Promise.allSettled([service.upload("/", "same.bin", (async function* () { yield "first"; })(), "one"), service.upload("/", "same.bin", (async function* () { yield "second"; })(), "two")]); assert.equal(uploads.filter((result) => result.status === "fulfilled").length, 1); assert.equal(uploads.filter((result) => result.status === "rejected").length, 1); const history = (await service.listUploads()).uploads; assert.equal(history.filter((row) => row.status === "completed").length, 1); assert.equal(history.filter((row) => row.status === "failed").length, 1); assert.equal((await readdir(root)).some((name) => name.startsWith(".stackpilot-upload-")), false);
+  } finally { await rm(work, { recursive: true, force: true }); }
+});
+
+test("file mutations stay anchored when a validated parent path is replaced", { skip: process.platform !== "linux" }, async () => {
+  const work = await mkdtemp(join(tmpdir(), "stackpilot-files-anchor-")); const root = join(work, "root"); const trash = join(work, "trash"); const outside = join(work, "outside"); const site = join(root, "site"); const moved = join(root, "site-moved");
+  await mkdir(root); await mkdir(outside); await mkdir(site); const service = new FileService(root, trash, 1024, work); const stable = service.safety.withStableDirectory.bind(service.safety); let replaced = false;
+  service.safety.withStableDirectory = (value, operation) => stable(value, async (directory) => {
+    if (!replaced && value === "/site") { replaced = true; await rename(site, moved); await symlink(outside, site); }
+    return operation(directory);
+  });
+  try {
+    await service.upload("/site", "index.html", (async function* () { yield "anchored"; })(), "tester");
+    assert.equal(await readFile(join(moved, "index.html"), "utf8"), "anchored"); await assert.rejects(access(join(outside, "index.html")));
   } finally { await rm(work, { recursive: true, force: true }); }
 });
 

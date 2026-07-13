@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import {
   AGENT_PROTOCOL_VERSION, RemoteTaskEnvelopeSchema, RemoteTaskRecordSchema,
   type AgentCapability, type CreateRemoteTaskRequest, type RemoteTaskRecord, type RemoteTaskStatus, type RemoteTaskStatusUpdate,
@@ -11,13 +12,22 @@ const transitions: Record<RemoteTaskStatus, readonly RemoteTaskStatus[]> = {
   queued: ["dispatched", "cancelled", "expired"], dispatched: ["running", "queued", "succeeded", "failed", "cancelled", "expired"],
   running: ["succeeded", "failed", "cancelled", "expired"], succeeded: [], failed: ["queued"], cancelled: [], expired: [],
 };
-const requiredCapability: Record<CreateRemoteTaskRequest["type"], AgentCapability> = { "system.summary.read": "system.summary.read", "service.status.read": "service.status.read" };
+const requiredCapability: Record<CreateRemoteTaskRequest["type"], AgentCapability> = {
+  "system.summary.read": "system.summary.read",
+  "service.status.read": "service.status.read",
+  "sites.certificates.renew": "sites.certificates.renew",
+};
 const audit = (event: Omit<AuditEvent, "eventId" | "timestamp">): AuditEvent => ({ eventId: randomUUID(), timestamp: new Date().toISOString(), ...event });
 const sensitiveResultKey = /authorization|cookie|token|secret|password|private|environment|stdout|stderr/i;
 function containsSensitiveKey(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(containsSensitiveKey);
   if (value && typeof value === "object") return Object.entries(value).some(([key, nested]) => sensitiveResultKey.test(key) || containsSensitiveKey(nested));
   return false;
+}
+
+function sameTaskOperation(task: RemoteTaskRecord, input: CreateRemoteTaskRequest, requester: string) {
+  return task.requester === requester && task.type === input.type
+    && isDeepStrictEqual(task.parameters, input.parameters);
 }
 
 function expireTask(task: RemoteTaskRecord, now: string): RemoteTaskStatus | null {
@@ -49,8 +59,8 @@ export class RemoteTaskService {
     }
   }
 
-  async create(nodeId: string, input: CreateRemoteTaskRequest, requester: string, traceId: string) {
-    let created: RemoteTaskRecord | null = null;
+  async create(nodeId: string, input: CreateRemoteTaskRequest, requester: string, traceId: string, authorize: () => void = () => undefined) {
+    let created: RemoteTaskRecord | undefined;
     await this.repository.update((state) => {
       this.reconcile(state, traceId);
       const node = state.nodes.find((item) => item.nodeId === nodeId);
@@ -58,20 +68,28 @@ export class RemoteTaskService {
       const capability = requiredCapability[input.type];
       if (!node.allowedCapabilities.includes(capability) || !node.declaredCapabilities.includes(capability)) throw new ServiceError(403, "FORBIDDEN", "Controller 未授权节点执行该能力或 Agent 未声明该能力");
       const duplicate = state.tasks.find((item) => item.targetNodeId === nodeId && item.idempotencyKey === input.idempotencyKey);
+      if (duplicate) {
+        if (!sameTaskOperation(duplicate, input, requester)) throw new ServiceError(409, "BAD_REQUEST", "幂等键已用于其他远程任务");
+      }
+      if (!duplicate && state.tasks.filter((item) => item.targetNodeId === nodeId && !terminal.includes(item.status)).length >= this.queueLimit) throw new ServiceError(409, "BAD_REQUEST", "节点任务队列已满");
+      authorize();
       if (duplicate) { created = duplicate; return; }
-      if (state.tasks.filter((item) => item.targetNodeId === nodeId && !terminal.includes(item.status)).length >= this.queueLimit) throw new ServiceError(409, "BAD_REQUEST", "节点任务队列已满");
       const now = new Date().toISOString();
       created = RemoteTaskRecordSchema.parse({
         protocolVersion: AGENT_PROTOCOL_VERSION, taskId: randomUUID(), type: input.type, targetNodeId: nodeId,
         parameters: input.parameters, createdAt: now, expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
-        idempotencyKey: input.idempotencyKey, requester, traceId, requiredCapability: capability, attempt: 0, maxAttempts: 3,
-        status: "queued", updatedAt: now, result: null, errorCode: null, retryable: true, nextAttemptAt: null,
+        idempotencyKey: input.idempotencyKey, requester, traceId, requiredCapability: capability, attempt: 0,
+        maxAttempts: input.type.startsWith("sites.") ? 1 : 3,
+        status: "queued", updatedAt: now, result: null, errorCode: null,
+        retryable: !input.type.startsWith("sites."), nextAttemptAt: null,
       });
       state.tasks.push(created);
-      state.audits.push(audit({ requester, nodeId, taskId: created.taskId, event: "task.created", taskType: input.type, parameters: input.parameters, fromStatus: null, toStatus: "queued", resultSummary: null, traceId }));
+      const parameters = input.parameters as Record<string, unknown>;
+      const identifiers = Object.fromEntries(["operationId", "planId", "siteId", "batchId"].flatMap((key) => typeof parameters[key] === "string" ? [[key, parameters[key]]] : []));
+      state.audits.push(audit({ requester, nodeId, taskId: created.taskId, event: "task.created", taskType: input.type, parameters: identifiers, fromStatus: null, toStatus: "queued", resultSummary: null, traceId }));
     });
     if (!created) throw new ServiceError(500, "INTERNAL_ERROR", "任务状态未保存");
-    return created;
+    return created as RemoteTaskRecord;
   }
 
   async list(nodeId?: string) {
@@ -91,10 +109,14 @@ export class RemoteTaskService {
     await this.repository.update((state) => {
       this.reconcile(state, traceId); const node = state.nodes.find((item) => item.nodeId === nodeId);
       if (!node || node.revokedAt) throw new ServiceError(401, "UNAUTHORIZED", "节点不存在或已撤销");
-      for (const task of state.tasks.filter((item) => item.targetNodeId === nodeId && item.status === "queued" && (!item.nextAttemptAt || Date.parse(item.nextAttemptAt) <= Date.now())).slice(0, 10)) {
+      let renewalActive = state.tasks.some((item) => item.targetNodeId === nodeId && item.type === "sites.certificates.renew" && ["dispatched", "running"].includes(item.status));
+      for (const task of state.tasks.filter((item) => item.targetNodeId === nodeId && item.status === "queued" && (!item.nextAttemptAt || Date.parse(item.nextAttemptAt) <= Date.now()))) {
+        if (dispatched.length >= 10) break;
+        if (task.type === "sites.certificates.renew" && renewalActive) continue;
         if (!node.allowedCapabilities.includes(task.requiredCapability) || !node.declaredCapabilities.includes(task.requiredCapability)) { task.status = "cancelled"; task.errorCode = "CAPABILITY_REVOKED"; continue; }
         transitionTask(task, "dispatched"); task.attempt += 1; dispatched.push(structuredClone(task));
-        state.audits.push(audit({ requester: `agent:${nodeId}`, nodeId, taskId: task.taskId, event: "task.dispatched", taskType: task.type, parameters: task.parameters, fromStatus: "queued", toStatus: "dispatched", resultSummary: null, traceId }));
+        if (task.type === "sites.certificates.renew") renewalActive = true;
+        state.audits.push(audit({ requester: `agent:${nodeId}`, nodeId, taskId: task.taskId, event: "task.dispatched", taskType: task.type, parameters: null, fromStatus: "queued", toStatus: "dispatched", resultSummary: null, traceId }));
       }
     });
     return dispatched.map((task) => RemoteTaskEnvelopeSchema.parse({

@@ -35,6 +35,18 @@ describe("database instances live page", () => {
     expect(screen.getByLabelText("备份成功率 待采集")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /创建数据库|立即备份|设为只读|清空慢查询|刷新/ })).not.toBeInTheDocument();
     expect(screen.queryByText("prod-postgres-01")).not.toBeInTheDocument();
+    expect(screen.getByText("等待采集")).toBeInTheDocument();
+    expect(screen.queryByText("连接正常")).not.toBeInTheDocument();
+  });
+
+  it("treats stale running snapshots as expired alerts", async () => {
+    vi.mocked(fetchDatabases).mockResolvedValue(payload([database({ freshness: "stale" })], { collectionStatus: "partial" }));
+    render(<DatabasesPage page="databases" setPage={setPage} notify={notify} />);
+    expect((await screen.findAllByText("数据已过期")).length).toBeGreaterThan(0);
+    expect(screen.getByText("告警 1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: "状态 全部" }));
+    fireEvent.click(screen.getByRole("option", { name: "正常" }));
+    expect(screen.getAllByText("没有匹配的真实数据库实例，系统将继续自动采集")).toHaveLength(2);
   });
 
   it("shows initial errors and retries without falling back to fixtures", async () => {
@@ -57,7 +69,8 @@ describe("database instances live page", () => {
     const search = screen.getByPlaceholderText("搜索数据库、主机、节点或权限");
     fireEvent.change(search, { target: { value: "postgresql" } });
     fireEvent.click(screen.getAllByRole("button", { name: "查看 postgresql-16-main 详情" })[0]!);
-    const drawer = screen.getByRole("region", { name: "数据库详情" });
+    const drawer = screen.getByRole("dialog", { name: "数据库详情" });
+    expect(document.querySelector(".module-main")).toHaveAttribute("inert");
     await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
     expect(fetchDatabases).toHaveBeenCalledTimes(2); expect(search).toHaveValue("postgresql");
     expect(within(drawer).getByText("systemd:refreshed.service")).toBeInTheDocument();
@@ -71,7 +84,22 @@ describe("database instances live page", () => {
     render(<DatabasesPage page="databases" setPage={setPage} notify={notify} />); await act(async () => undefined);
     fireEvent.click(screen.getAllByRole("button", { name: "查看 postgresql-16-main 详情" })[0]!);
     await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
-    expect(screen.queryByRole("region", { name: "数据库详情" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "数据库详情" })).not.toBeInTheDocument();
     expect(screen.getAllByText("没有匹配的真实数据库实例，系统将继续自动采集")).toHaveLength(2);
+  });
+
+  it("paginates large inventories without rendering every row twice", async () => {
+    const instances = Array.from({ length: 101 }, (_, index) => database({
+      id: `database-${index.toString(16).padStart(32, "0")}`,
+      name: `database-${index}`,
+    }));
+    vi.mocked(fetchDatabases).mockResolvedValue(payload(instances));
+    render(<DatabasesPage page="databases" setPage={setPage} notify={notify} />);
+    expect((await screen.findAllByTitle("database-0"))).toHaveLength(2);
+    expect(screen.queryByTitle("database-100")).not.toBeInTheDocument();
+    expect(screen.getByText("第 1 / 2 页 · 共 101 条")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+    expect(screen.getAllByTitle("database-100")).toHaveLength(2);
+    expect(screen.queryByTitle("database-0")).not.toBeInTheDocument();
   });
 });
