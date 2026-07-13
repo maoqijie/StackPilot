@@ -15,8 +15,8 @@ import { FakePlatformAdapter } from "../../controller/support/fakePlatform.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const managementPort = Number(process.env.STACKPILOT_E2E_MANAGEMENT_PORT ?? 18787);
-const agentPort = Number(process.env.STACKPILOT_E2E_AGENT_PORT ?? 19443);
 const webPort = Number(process.env.STACKPILOT_E2E_WEB_PORT ?? 18443);
+const agentPort = Number(process.env.STACKPILOT_E2E_AGENT_PORT ?? 19443);
 const runtime = process.env.STACKPILOT_E2E_RUNTIME ? resolve(process.env.STACKPILOT_E2E_RUNTIME) : join(root, "output", "e2e", "runtime");
 rmSync(runtime, { recursive: true, force: true });
 mkdirSync(runtime, { recursive: true });
@@ -81,7 +81,7 @@ const proxy = createHttpsServer({ cert: certificate.cert, key: certificate.priva
   response.setHeader("Content-Type", mime[extname(path)] ?? "application/octet-stream");
   createReadStream(path).pipe(response);
 });
-proxy.listen(webPort, "127.0.0.1", () => process.stdout.write("StackPilot E2E production fixture ready\n"));
+proxy.listen(webPort, "127.0.0.1", () => process.stdout.write(`StackPilot E2E production fixture ready on ${webPort}\n`));
 
 const close = () => { proxy.close(); agent.close(); management.close(() => database.close()); };
 process.once("SIGTERM", close);
