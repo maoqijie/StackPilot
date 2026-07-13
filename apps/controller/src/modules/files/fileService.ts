@@ -8,6 +8,7 @@ import {
 } from "@stackpilot/contracts";
 import { z } from "zod";
 import { ServiceError } from "../serviceError.js";
+import { atomicFileRename } from "./atomicFileRename.js";
 import { FileStorageSafety, isWithin, type StableDirectory } from "./fileStorageSafety.js";
 import { cleanupRestoreMarker, finalizeRestore, isCleanRestoreConflict, restoreWithoutOverwrite } from "./fileRestore.js";
 
@@ -133,17 +134,7 @@ export class FileService {
         const targetName = cleanName(name); const target = join(parent.operationPath, targetName); const absolute = join(parent.absolutePath, targetName);
         await this.assertMissing(target); const info = await lstat(source.operationPath);
         if (!info.isFile()) throw new ServiceError(409, "BAD_REQUEST", "当前版本仅支持重命名普通文件");
-        await this.safety.assertStableDirectory(parent);
-        if (info.isFile()) {
-          try { await link(source.operationPath, target); }
-          catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new ServiceError(409, "BAD_REQUEST", "同名项目已存在"); throw error; }
-          try { await this.safety.assertStableDirectory(parent); await rm(source.operationPath); await this.safety.assertStableDirectory(parent); }
-          catch (error) {
-            try { await link(target, source.operationPath).catch((reason) => { if ((reason as NodeJS.ErrnoException).code !== "EEXIST") throw reason; }); await rm(target); }
-            catch { /* Preserve both names rather than risk data loss. */ }
-            throw error;
-          }
-        }
+        await atomicFileRename(source.operationPath, target, () => this.safety.assertStableDirectory(parent));
         return this.toEntry(target, absolute);
       });
     });

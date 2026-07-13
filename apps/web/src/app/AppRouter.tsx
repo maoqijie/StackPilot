@@ -2,6 +2,7 @@ import type { PublicUser } from "@stackpilot/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cleanCurrentRouteForPage, collectUrlParams, deleteContextRouteParams, expireTransientRoutes, hasExpiredInteractionParams, hasHashRouteQuery, isStaleTransientRoute, lockedRouteForPage, readPageFromHash, writeRouteState } from "./routing";
 import { DesktopShell, SessionLockOverlay } from "../components/layout/DesktopShell";
+import { commitPageUpdate } from "./pageTransition";
 import type { Notify, PageKey, SetPage, ToastState } from "../types/app";
 import { AuthGate } from "../features/auth/AuthGate";
 import { logout } from "../api/authApi";
@@ -13,6 +14,14 @@ function AuthenticatedApp({ user }: { user: PublicUser }) {
   const [sessionLocked, setSessionLocked] = useState(false);
   const pageRef = useRef(page);
   const sessionLockedRef = useRef(sessionLocked);
+
+  const commitPage = useCallback((next: PageKey) => {
+    if (pageRef.current === next) return;
+    pageRef.current = next;
+    commitPageUpdate(() => {
+      if (pageRef.current === next) setPageState(next);
+    });
+  }, []);
 
   useEffect(() => {
     pageRef.current = page;
@@ -37,7 +46,7 @@ function AuthenticatedApp({ user }: { user: PublicUser }) {
       if (hasHashRouteQuery() || hasExpiredInteractionParams(collectUrlParams())) {
         window.history.replaceState(null, "", cleanCurrentRouteForPage());
       }
-      setPageState(readPageFromHash());
+      commitPage(readPageFromHash());
     };
     syncRouteFromLocation();
     window.addEventListener("hashchange", syncRouteFromLocation);
@@ -48,7 +57,7 @@ function AuthenticatedApp({ user }: { user: PublicUser }) {
       window.removeEventListener("popstate", syncRouteFromLocation);
       window.removeEventListener("pageshow", syncRouteFromLocation);
     };
-  }, []);
+  }, [commitPage]);
 
   useEffect(() => {
     if (!toast) return;
@@ -72,8 +81,7 @@ function AuthenticatedApp({ user }: { user: PublicUser }) {
 
   const setPage = useCallback<SetPage>((next, nextToast) => {
     if (sessionLocked) return;
-    setPageState(next);
-    pageRef.current = next;
+    commitPage(next);
     if (nextToast) {
       setToast(nextToast);
     }
@@ -85,7 +93,7 @@ function AuthenticatedApp({ user }: { user: PublicUser }) {
       writeRouteState("push", nextUrl, params);
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     }
-  }, [sessionLocked]);
+  }, [commitPage, sessionLocked]);
 
   return (
     <main className="shot-canvas">
