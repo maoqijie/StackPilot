@@ -32,15 +32,17 @@ function ModulePageShell({
   const isModalSide = Boolean(side) && isNarrowViewport;
   return (
     <div className={`module-page ${page ? `module-page-${page}` : ""}`}>
-      <div className={`page-head module-head ${hideHeading ? "module-head-actions-only" : ""}`} inert={isModalSide} aria-hidden={isModalSide ? "true" : undefined}>
-        {hideHeading ? <h1 className="sr-only">{title}</h1> : (
-          <div>
-            <h1>{title}</h1>
-            {subtitle && <p className="page-subtitle">{subtitle}</p>}
-          </div>
-        )}
-        {actions && <div>{actions}</div>}
-      </div>
+      {hideHeading && !actions ? <h1 className="sr-only">{title}</h1> : (
+        <div className={`page-head module-head ${hideHeading ? "module-head-actions-only" : ""}`} inert={isModalSide} aria-hidden={isModalSide ? "true" : undefined}>
+          {hideHeading ? <h1 className="sr-only">{title}</h1> : (
+            <div>
+              <h1>{title}</h1>
+              {subtitle && <p className="page-subtitle">{subtitle}</p>}
+            </div>
+          )}
+          {actions && <div>{actions}</div>}
+        </div>
+      )}
       <div className={`module-layout ${side ? "has-side" : ""}`}>
         <section className="module-main" inert={isModalSide} aria-hidden={isModalSide ? "true" : undefined}>
           {effectiveViewContext && <ModuleViewContext context={effectiveViewContext} />}

@@ -110,8 +110,14 @@ describe("hosts live monitoring page", () => {
 
   it("keeps production filtering scoped to the production environment", async () => {
     vi.mocked(fetchHosts).mockResolvedValue({ collectedAt: "2026-07-12T04:30:02.000Z", hosts: [host(), host({ id: "node-dev", name: "dev-node", environment: "开发", address: "198.18.0.2" })] });
-    render(<HostsPage page="hosts-prod" notify={notify} />);
-    await screen.findByText(/聚合于/);
+    const { container } = render(<HostsPage page="hosts-prod" notify={notify} />);
+    await screen.findAllByText(longHostname);
+    expect(container.querySelector(".page-head")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "生产环境", level: 1 })).toBeInTheDocument();
+    expect(screen.queryByText("生产运行视图")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("搜索主机名、IP、服务或版本")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /健康/ })).not.toBeInTheDocument();
+    expect(screen.getByText("生产主机")).toBeInTheDocument();
     expect(screen.queryByText("dev-node")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: /环境/ })).not.toBeInTheDocument();
     expect(screen.getByLabelText("CPU 24%，内存 48%，磁盘 80%")).toBeInTheDocument();
