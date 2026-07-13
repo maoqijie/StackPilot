@@ -160,8 +160,10 @@ jobs:
             sleep 2
           done
           test "$healthy" = "1"
-          test "$(docker compose -f deploy/docker/compose.yaml exec -T controller id -u)" = "10001"
-          test "$(docker compose -f deploy/docker/compose.yaml exec -T web id -u)" = "101"
+          controller_pid="$(docker inspect --format '{{.State.Pid}}' "$(docker compose -f deploy/docker/compose.yaml ps -q controller)")"
+          web_pid="$(docker inspect --format '{{.State.Pid}}' "$(docker compose -f deploy/docker/compose.yaml ps -q web)")"
+          test "$(awk '/^Uid:/{print $2}' "/proc/${controller_pid}/status")" = "10001"
+          test "$(awk '/^Uid:/{print $2}' "/proc/${web_pid}/status")" = "101"
           test "$(docker compose -f deploy/docker/compose.yaml port controller 8787)" = ""
       - name: Stop clean Compose installation
         if: always()
