@@ -29,19 +29,23 @@ test("Nginx site collector discovers, merges and probes real virtual hosts witho
       server { listen 80; server_name app.example.com; proxy_pass http://127.0.0.1:3000/private?token=hidden; }
       server { listen 443 ssl; server_name app.example.com docs.example.com; root /srv/www; }
       server { listen 80; server_name dynamic.example.com; proxy_pass http://$backend/private; }
+      server { listen 80; server_name dashboard.example.com; root /var/www/acme; }
+      server { listen 443 ssl; server_name dashboard.example.com; proxy_pass http://127.0.0.1:9191; }
       server { listen 80; server_name _ $host ~^regex; }
     `);
     await writeFile(join(root, "stale.conf.bak"), "server { listen 80; server_name stale.example.com; }");
     const payload = await new NginxSiteCollector([root], probe, "controller-1").collectSites();
     assert.equal(payload.collectionStatus, "complete");
-    assert.deepEqual(payload.sites.map((site) => site.domain), ["app.example.com", "docs.example.com", "dynamic.example.com"]);
+    assert.deepEqual(payload.sites.map((site) => site.domain), ["app.example.com", "dashboard.example.com", "docs.example.com", "dynamic.example.com"]);
     assert.equal(payload.sites[0].status, "running");
     assert.equal(payload.sites[0].upstream, "http://127.0.0.1:3000/private");
     assert.equal(payload.sites[0].certificateIssuer, "Test CA");
-    assert.equal(payload.sites[1].runtime, "Nginx 静态");
-    assert.equal(payload.sites[1].host, "controller-1");
-    assert.equal(payload.sites[1].trafficBytes, null);
-    assert.equal(payload.sites[2].upstream, "动态上游");
+    assert.equal(payload.sites[1].runtime, "反向代理");
+    assert.equal(payload.sites[1].upstream, "http://127.0.0.1:9191");
+    assert.equal(payload.sites[2].runtime, "Nginx 静态");
+    assert.equal(payload.sites[2].host, "controller-1");
+    assert.equal(payload.sites[2].trafficBytes, null);
+    assert.equal(payload.sites[3].upstream, "动态上游");
     assert.equal(payload.sites.some((site) => site.domain === "stale.example.com"), false);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

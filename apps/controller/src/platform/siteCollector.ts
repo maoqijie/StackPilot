@@ -104,6 +104,13 @@ function candidateFrom(block: string, source: string): SiteCandidate[] {
   return domainsFrom(block).map((domain) => ({ domain, listeners, runtime, upstream, source }));
 }
 
+function runtimePriority(runtime: string) {
+  if (runtime === "PHP-FPM") return 3;
+  if (runtime === "反向代理") return 2;
+  if (runtime === "Nginx 静态") return 1;
+  return 0;
+}
+
 function mergeCandidates(candidates: SiteCandidate[]) {
   const sites = new Map<string, SiteCandidate>();
   for (const candidate of candidates) {
@@ -111,11 +118,12 @@ function mergeCandidates(candidates: SiteCandidate[]) {
     const current = sites.get(key);
     if (!current) { sites.set(key, candidate); continue; }
     const listeners = [...current.listeners, ...candidate.listeners].filter((listener, index, all) => all.findIndex((item) => item.port === listener.port && item.secure === listener.secure) === index);
+    const preferred = runtimePriority(candidate.runtime) > runtimePriority(current.runtime) ? candidate : current;
     sites.set(key, {
       ...current,
       listeners,
-      runtime: current.runtime === "Nginx" ? candidate.runtime : current.runtime,
-      upstream: current.upstream ?? candidate.upstream,
+      runtime: preferred.runtime,
+      upstream: preferred.upstream,
       source: current.source === candidate.source ? current.source : "多个 Nginx 配置",
     });
   }
