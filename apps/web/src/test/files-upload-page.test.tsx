@@ -13,4 +13,10 @@ describe("files upload page", () => {
     await user.click(screen.getByRole("button", { name: "添加上传" })); const dialog = screen.getByRole("dialog", { name: "添加上传" }); const input = within(dialog).getByText("本地文件").closest("label")?.querySelector("input"); expect(input).toBeInstanceOf(HTMLInputElement); await user.upload(input as HTMLInputElement, new File(["release"], "release.zip")); await user.click(within(dialog).getByRole("button", { name: "开始上传" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/file-uploads", expect.objectContaining({ method: "POST", body: expect.any(File) })));
   });
+  it("clears a cancelled file selection before reopening the dialog", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(empty), { status: 200 })));
+    const user = userEvent.setup(); render(<FileUploadQueuePage page="files-upload" notify={vi.fn()} canWrite />); await screen.findAllByText("还没有真实上传记录");
+    await user.click(screen.getByRole("button", { name: "添加上传" })); let dialog = screen.getByRole("dialog", { name: "添加上传" }); const input = within(dialog).getByText("本地文件").closest("label")?.querySelector("input"); expect(input).toBeInstanceOf(HTMLInputElement); await user.upload(input as HTMLInputElement, new File(["release"], "release.zip")); await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    await user.click(screen.getByRole("button", { name: "添加上传" })); dialog = screen.getByRole("dialog", { name: "添加上传" }); expect(within(dialog).getByText("尚未选择文件")).toBeInTheDocument(); await user.click(within(dialog).getByRole("button", { name: "开始上传" })); expect(within(dialog).getByRole("alert")).toHaveTextContent("请选择需要上传的文件");
+  });
 });

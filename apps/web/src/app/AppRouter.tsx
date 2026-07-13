@@ -1,3 +1,4 @@
+import type { PublicUser } from "@stackpilot/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cleanCurrentRouteForPage, collectUrlParams, deleteContextRouteParams, expireTransientRoutes, hasExpiredInteractionParams, hasHashRouteQuery, isStaleTransientRoute, lockedRouteForPage, readPageFromHash, writeRouteState } from "./routing";
 import { DesktopShell, SessionLockOverlay } from "../components/layout/DesktopShell";
@@ -5,7 +6,7 @@ import type { Notify, PageKey, SetPage, ToastState } from "../types/app";
 import { AuthGate } from "../features/auth/AuthGate";
 import { logout } from "../api/authApi";
 
-function AuthenticatedApp({ user }: { user: import("@stackpilot/contracts").PublicUser }) {
+function AuthenticatedApp({ user }: { user: PublicUser }) {
   const [page, setPageState] = useState<PageKey>(readPageFromHash);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [topbarUnreadCount, setTopbarUnreadCount] = useState(0);
@@ -89,7 +90,7 @@ function AuthenticatedApp({ user }: { user: import("@stackpilot/contracts").Publ
   return (
     <main className="shot-canvas">
       <div className="app-interaction-layer" inert={sessionLocked} aria-hidden={sessionLocked ? "true" : undefined}>
-        <DesktopShell page={page} setPage={setPage} notify={notify} user={user} topbarUnreadCount={topbarUnreadCount} setTopbarUnreadCount={setTopbarUnreadCount} sessionLocked={sessionLocked} onLogout={lockSession} />
+        <DesktopShell page={page} setPage={setPage} notify={notify} topbarUnreadCount={topbarUnreadCount} setTopbarUnreadCount={setTopbarUnreadCount} sessionLocked={sessionLocked} onLogout={lockSession} user={user} />
       </div>
       {sessionLocked && (
         <SessionLockOverlay

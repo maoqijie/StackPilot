@@ -14,10 +14,10 @@ import { SqliteAgentControlRepository } from "../../../apps/controller/dist/repo
 import { FakePlatformAdapter } from "../../controller/support/fakePlatform.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const runtime = join(root, "output", "e2e", "runtime");
 const managementPort = Number(process.env.STACKPILOT_E2E_MANAGEMENT_PORT ?? 18787);
-const agentPort = Number(process.env.STACKPILOT_E2E_AGENT_PORT ?? 19443);
 const webPort = Number(process.env.STACKPILOT_E2E_WEB_PORT ?? 18443);
+const agentPort = Number(process.env.STACKPILOT_E2E_AGENT_PORT ?? 19443);
+const runtime = process.env.STACKPILOT_E2E_RUNTIME ? resolve(process.env.STACKPILOT_E2E_RUNTIME) : join(root, "output", "e2e", "runtime");
 rmSync(runtime, { recursive: true, force: true });
 mkdirSync(runtime, { recursive: true });
 
@@ -41,7 +41,6 @@ const config = loadControllerConfig({
   STACKPILOT_ALLOWED_ORIGINS: `https://127.0.0.1:${webPort}`, STACKPILOT_AGENT_HOST: "127.0.0.1", STACKPILOT_AGENT_PORT: String(agentPort),
   STACKPILOT_AGENT_TLS_CERT_PATH: certPath, STACKPILOT_AGENT_TLS_KEY_PATH: keyPath,
   STACKPILOT_AGENT_STATE_PATH: join(runtime, "legacy.json"), STACKPILOT_TRUSTED_PROXIES: "127.0.0.1/32",
-  STACKPILOT_FILE_ROOT: join(runtime, "files"), STACKPILOT_FILE_TRASH_DIR: join(runtime, "file-trash"),
 });
 const database = openDatabase(config.databasePath);
 const identity = new IdentityService(database, Buffer.alloc(32, 8));
@@ -54,7 +53,7 @@ const repository = new SqliteAgentControlRepository(database, identity.audit);
 const platform = new FakePlatformAdapter();
 const collectFixtureSnapshot = platform.collectSnapshot.bind(platform);
 platform.collectSnapshot = async () => ({ ...await collectFixtureSnapshot(), platformLabel: "win32 10.0" });
-const services = createControllerServices(platform, root, config, repository);
+const services = createControllerServices(platform, root, config, repository, database);
 const options = { config, database, identity, agentRepository: repository, platform, services, repoRoot: root };
 const management = createStackPilotServer(options);
 const agent = createStackPilotAgentServer({ cert: certificate.cert, key: certificate.private }, options);
@@ -82,7 +81,7 @@ const proxy = createHttpsServer({ cert: certificate.cert, key: certificate.priva
   response.setHeader("Content-Type", mime[extname(path)] ?? "application/octet-stream");
   createReadStream(path).pipe(response);
 });
-proxy.listen(webPort, "127.0.0.1", () => process.stdout.write("StackPilot E2E production fixture ready\n"));
+proxy.listen(webPort, "127.0.0.1", () => process.stdout.write(`StackPilot E2E production fixture ready on ${webPort}\n`));
 
 const close = () => { proxy.close(); agent.close(); management.close(() => database.close()); };
 process.once("SIGTERM", close);

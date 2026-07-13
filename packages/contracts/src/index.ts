@@ -7,4 +7,5 @@ export * from "./agent/index.js";
 export * from "./versioning/index.js";
 export * from "./identity/index.js";
 export * from "./sites/index.js";
+export * from "./databases/index.js";
 export * from "./files/index.js";

@@ -3,8 +3,8 @@ import {
   OverviewCheckUpdatesResponseSchema, OverviewHealthRefreshResponseSchema, OverviewNodeMutationResponseSchema,
   OverviewRisksPayloadSchema, OverviewRisksScanResponseSchema, OverviewSummaryPayloadSchema,
   OverviewTasksPayloadSchema, OverviewTasksRefreshResponseSchema, PathIdSchema,
-  HostMonitoringPayloadSchema, ReadinessResponseSchema, RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
-  SiteRuntimePayloadSchema,
+  DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, HostMonitoringPayloadSchema, ReadinessResponseSchema,
+  RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema, SiteRuntimePayloadSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
@@ -15,7 +15,8 @@ import { parseSchema } from "./validation.js";
 import { routeControlPlaneRequest } from "./controlPlaneRouter.js";
 import { routeIdentityRequest } from "./identityRouter.js";
 import type { OverviewAccess } from "../modules/overview/overviewService.js";
-import { routeFileRequest } from "./fileRouter.js";
+import { routeDatabaseBackupRequest } from "./databaseBackupRouter.js";
+import { routeFileRequest, routeFileUploadRequest } from "./fileRouter.js";
 
 function idAt(context: RequestContext, index: number) {
   try {
@@ -47,12 +48,24 @@ export async function routeRequest(context: RequestContext): Promise<void> {
   if (parts[0] === "api" && ["enrollments", "nodes", "remote-tasks"].includes(parts[1] ?? "")) {
     await routeControlPlaneRequest(context); return;
   }
+  if (parts[0] === "api" && parts[1] === "database-backups") { await routeDatabaseBackupRequest(context); return; }
   if (parts[0] === "api" && ["files", "file-trash", "file-uploads"].includes(parts[1] ?? "")) { await routeFileRequest(context); return; }
+  if (parts[0] === "api" && parts[1] === "resumable-file-uploads") { await routeFileUploadRequest(context); return; }
   if (context.url.pathname === "/api/hosts" && method === "GET") {
     context.identity?.require(context.principal, "overview:read");
     const nodeScope = context.principal?.nodeScope ?? [];
     const canReadNodes = Boolean(context.principal?.permissions.has("nodes:read"));
     sendJson(response,200,await services.hosts.getHosts(canReadNodes&&(nodeScope==="all"||nodeScope.length>0),nodeScope),HostMonitoringPayloadSchema);return;
+  }
+  if (context.url.pathname === "/api/databases" && method === "GET") {
+    context.identity?.require(context.principal, "databases:read");
+    sendJson(response, 200, await services.databaseInstances.getInstances({ nodeScope: context.principal?.nodeScope ?? [] }), DatabaseInstancesPayloadSchema);
+    return;
+  }
+  if (context.url.pathname === "/api/databases/slow-queries" && method === "GET") {
+    context.identity?.require(context.principal, "databases:read");
+    sendJson(response, 200, await services.databaseSlowQueries.getSlowQueries(), DatabaseSlowQueriesPayloadSchema);
+    return;
   }
   if (context.url.pathname === "/api/sites" && method === "GET") {
     context.identity?.require(context.principal, "overview:read");

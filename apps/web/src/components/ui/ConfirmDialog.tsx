@@ -29,17 +29,20 @@ function ConfirmDialog({
   children?: React.ReactNode;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
   const titleId = useId();
   const descriptionId = useId();
-  const onCloseRef = useRef(onClose);
-  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusFrame = window.requestAnimationFrame(() => {
-      dialog.querySelector<HTMLElement>("[data-confirm-cancel]")?.focus({ preventScroll: true });
+      dialog.querySelector<HTMLElement>("[data-confirm-initial], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [data-confirm-cancel]")?.focus({ preventScroll: true });
     });
 
     const handleKeyDown = (event: KeyboardEvent) => {
