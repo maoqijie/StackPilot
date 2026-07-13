@@ -6,7 +6,9 @@ import {
   AGENT_PROTOCOL_VERSION, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, CreateRemoteTaskRequestSchema, isAgentProtocolCompatible,
   SiteRuntimePayloadSchema,
   CreateFileUploadRequestSchema, FileUploadRecordSchema,
-  DatabaseSlowQueriesPayloadSchema,
+  AgentDatabaseOperationUpdateSchema, AgentDatabaseQueryUploadSchema, AgentDatabaseSnapshotSchema,
+  BusinessDatabaseBackupsPayloadSchema, CreateDatabaseOperationPlanRequestSchema, DatabaseOperationPlanSchema,
+  DatabaseSlowQueriesPayloadSchema, ExecuteDatabaseOperationPlanRequestSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   CreateDirectoryRequestSchema, FileNameSchema, FilePathSchema,
 } from "@stackpilot/contracts";
@@ -66,6 +68,24 @@ test("database slow-query contract preserves nullable historical statistics", ()
   assert.equal(DatabaseSlowQueriesPayloadSchema.safeParse({ ...payload, queries: [{ ...payload.queries[0], sql: "x".repeat(2_001) }] }).success, false);
 });
 
+test("database contracts strictly validate inventory, SQL uploads, backups and two-phase operations", () => {
+  const collectedAt = new Date().toISOString();
+  const instance = { id:"postgres-main",name:"main",engine:"postgresql",version:"16.9",host:"db-1",port:5432,status:"running",source:"postgresql",managed:false,historicalSlowQueriesAvailable:false,latencyMs:3,storageBytes:1024,activeConnections:2,maxConnections:100,slowQueryCount:1,backupStatus:"unavailable",lastBackupAt:null,accessMode:"read-write",owner:null,region:null,autoBackup:false,remoteAccess:true,volumes:[] };
+  assert.equal(AgentDatabaseSnapshotSchema.safeParse({collectedAt,collectionStatus:"complete",warnings:[],instances:[instance]}).success,true);
+  assert.equal(AgentDatabaseSnapshotSchema.safeParse({collectedAt,collectionStatus:"complete",warnings:[],instances:[instance],password:"forbidden"}).success,false);
+  const query={id:"q-1",instanceLocalId:"postgres-main",database:"app",fingerprint:"fp-1",sql:"SELECT * FROM t",durationMs:2000,calls:null,p95Ms:null,rowsExamined:null,risk:"low",state:"active",owner:"app",startedAt:collectedAt,lastSeenAt:collectedAt,sessionId:"12",waitEvent:null,historical:false};
+  assert.equal(AgentDatabaseQueryUploadSchema.safeParse({collectedAt,collectionStatus:"complete",warnings:[],sessions:[],queries:[query]}).success,true);
+  assert.equal(AgentDatabaseQueryUploadSchema.safeParse({collectedAt,collectionStatus:"complete",warnings:[],sessions:[],queries:[{...query,sql:"x".repeat(2001)}]}).success,false);
+  assert.equal(BusinessDatabaseBackupsPayloadSchema.safeParse({collectedAt,collectionStatus:"complete",warnings:[],plans:[],jobs:[],restorePoints:[]}).success,true);
+  const nodeId=crypto.randomUUID();
+  assert.equal(CreateDatabaseOperationPlanRequestSchema.safeParse({kind:"install",nodeId,engine:"postgresql",name:"app",port:null,initialDatabase:"app",credentialPublicKey:"x".repeat(64)}).success,true);
+  assert.equal(CreateDatabaseOperationPlanRequestSchema.safeParse({kind:"create-index",instanceId:"database-"+"a".repeat(32),queryId:"q",table:"users;drop",columns:["email"]}).success,false);
+  const plan={id:crypto.randomUUID(),kind:"install",nodeId,instanceId:null,target:"postgresql / app",impact:["public listener"],version:1,expiresAt:new Date(Date.now()+60_000).toISOString(),createdAt:collectedAt,executedAt:null};
+  assert.equal(DatabaseOperationPlanSchema.safeParse(plan).success,true);
+  assert.equal(ExecuteDatabaseOperationPlanRequestSchema.safeParse({planId:plan.id,version:1,idempotencyKey:"execute-001"}).success,true);
+  assert.equal(AgentDatabaseOperationUpdateSchema.safeParse({operationId:crypto.randomUUID(),version:1,status:"failed",errorCode:null,errorMessage:"failed",credentialEnvelope:null,updatedAt:collectedAt}).success,false);
+});
+
 test("identity schemas reject privilege fields and invalid node scopes", () => {
   assert.equal(LoginRequestSchema.safeParse({ username: "admin", password: "password", role: "administrator" }).success, false);
   assert.equal(CreateApiTokenRequestSchema.safeParse({ name: "reader", permissions: ["overview:read"], nodeScope: "all", expiresAt: null }).success, true);
@@ -85,7 +105,8 @@ test("file upload contracts reject paths and inconsistent progress", () => {
 });
 
 test("agent protocol schemas reject incompatible and generic command tasks", () => {
-  assert.equal(AGENT_PROTOCOL_VERSION, "1.0");
+  assert.equal(AGENT_PROTOCOL_VERSION, "1.1");
+  assert.equal(isAgentProtocolCompatible("1.0"), true);
   assert.equal(isAgentProtocolCompatible("1.9"), true);
   assert.equal(isAgentProtocolCompatible("2.0"), false);
   assert.equal(CreateRemoteTaskRequestSchema.safeParse({ type: "run-shell", parameters: { command: "id" }, expiresInSeconds: 60, idempotencyKey: "generic-command" }).success, false);

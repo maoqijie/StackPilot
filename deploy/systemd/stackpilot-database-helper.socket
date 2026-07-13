@@ -1,0 +1,13 @@
+[Unit]
+Description=StackPilot database-helper local socket
+
+[Socket]
+ListenStream=/run/stackpilot/database-helper.sock
+SocketUser=root
+SocketGroup=stackpilot-agent
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

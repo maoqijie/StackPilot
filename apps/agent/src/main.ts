@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import {
@@ -13,6 +13,10 @@ import { agentLogger } from "./logging/logger.js";
 import { collectAgentTelemetry } from "./telemetry/collector.js";
 import { TaskExecutor } from "./tasks/executor.js";
 import { ControllerClient } from "./transport/controllerClient.js";
+import { DatabaseHelperClient } from "./databases/helperClient.js";
+import { DatabaseAgentRuntime } from "./databases/runtime.js";
+import { assertAgentPrivilegeBoundary } from "./security/privilege.js";
+import { FileDatabaseOperationOutbox } from "./databases/operationOutbox.js";
 
 const sleep = (ms: number) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 const backoff = (attempt: number) => Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5)) + Math.floor(Math.random() * 500);
@@ -38,11 +42,13 @@ export async function rotateIdentity(store: IdentityStore, client: ControllerCli
 export async function runAgent(env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env, signal?: AbortSignal) {
   const config = loadAgentConfig(env);
   if (env === process.env) delete process.env.STACKPILOT_AGENT_ENROLLMENT_TOKEN;
-  if (typeof process.getuid === "function" && process.getuid() === 0 && !config.allowRoot) throw new Error("StackPilot Agent refuses to run as root; use a dedicated unprivileged user");
+  assertAgentPrivilegeBoundary(config.allowRoot);
   const store = new IdentityStore(config.stateDir); const client = new ControllerClient(config.controllerUrl, config.caPath);
   let identity = await ensureIdentity(store, client, config);
   if (config.rotateCredential) { identity = await rotateIdentity(store, client, identity); if (env === process.env) delete process.env.STACKPILOT_AGENT_ROTATE_CREDENTIAL; }
   const executor = new TaskExecutor(store.receiptPath, identity.nodeId, config.platform, AGENT_CAPABILITIES); await executor.load();
+  const databaseRuntime = new DatabaseAgentRuntime(new DatabaseHelperClient(config.databaseHelperSocket), client, identity, config.databaseCollectionSeconds * 1000, new FileDatabaseOperationOutbox(join(config.stateDir, "database-operation-outbox.json")));
+  const databaseLoop = config.platform === "linux" ? databaseRuntime.run(signal) : Promise.resolve();
   let failures = 0;
   while (!signal?.aborted) {
     try {
@@ -65,6 +71,7 @@ export async function runAgent(env: NodeJS.ProcessEnv | Record<string, string | 
       await sleep(backoff(failures));
     }
   }
+  await databaseLoop;
 }
 
 const isMainModule = process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);

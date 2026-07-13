@@ -1,0 +1,24 @@
+{
+  "name": "@stackpilot/database-helper",
+  "private": true,
+  "version": "0.3.0-preview.1",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
+    "lint": "eslint src",
+    "test": "npm run build && node --test ../../tests/database-helper/*.test.js"
+  },
+  "dependencies": {
+    "@stackpilot/contracts": "0.3.0-preview.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "tsx": "^4.23.0",
+    "typescript": "^5.9.3"
+  }
+}

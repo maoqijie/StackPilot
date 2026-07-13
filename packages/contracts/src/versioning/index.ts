@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const AGENT_PROTOCOL_VERSION = "1.0" as const;
+export const AGENT_PROTOCOL_VERSION = "1.1" as const;
 export const SUPPORTED_AGENT_PROTOCOL_MAJOR = 1;
 export const ProtocolVersionSchema = z.string().regex(/^\d+\.\d+$/);
 

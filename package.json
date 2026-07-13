@@ -1,7 +1,7 @@
 {
   "name": "stackpilot",
   "private": true,
-  "version": "0.2.0-preview.6",
+  "version": "0.3.0-preview.1",
   "license": "AGPL-3.0-only",
   "workspaces": [
     "packages/*",
@@ -22,16 +22,16 @@
     "typecheck": "npm run typecheck --workspace @stackpilot/contracts && npm run typecheck --workspace @stackpilot/host-telemetry && npm run typecheck --workspace @stackpilot/controller && npm run typecheck --workspace @stackpilot/agent",
     "lint": "npm run lint --workspaces --if-present && eslint tests scripts deploy/scripts eslint.config.js",
     "test": "npm run test --workspace @stackpilot/contracts && npm run test --workspace @stackpilot/config && npm run test --workspace @stackpilot/controller && npm run test --workspace @stackpilot/web && npm run test --workspace @stackpilot/agent && node --test tests/architecture/boundaries.test.js",
-    "build": "npm run build --workspace @stackpilot/config && npm run build --workspace @stackpilot/contracts && npm run build --workspace @stackpilot/host-telemetry && npm run build --workspace @stackpilot/agent && npm run build --workspace @stackpilot/controller && npm run build --workspace @stackpilot/web"
-    ,"test:deploy": "node --test tests/deploy/*.test.js"
-    ,"pretest:e2e": "npm run build"
-    ,"test:e2e": "playwright test"
-    ,"release:preflight": "npm run build --workspace @stackpilot/controller && node deploy/scripts/preflight.mjs"
-    ,"release:upgrade": "npm run build --workspace @stackpilot/controller && node deploy/scripts/upgrade.mjs"
-    ,"release:build": "node deploy/scripts/generate-release.mjs"
-    ,"release:verify": "node deploy/scripts/verify-release.mjs"
-    ,"release:scan": "node deploy/scripts/scan-artifacts.mjs"
-    ,"release:drill": "npm run build --workspace @stackpilot/controller && node deploy/scripts/upgrade-drill.mjs"
+    "build": "npm run build --workspace @stackpilot/config && npm run build --workspace @stackpilot/contracts && npm run build --workspace @stackpilot/host-telemetry && npm run build --workspace @stackpilot/agent && npm run build --workspace @stackpilot/controller && npm run build --workspace @stackpilot/web",
+    "test:deploy": "node --test tests/deploy/*.test.js",
+    "pretest:e2e": "npm run build",
+    "test:e2e": "playwright test",
+    "release:preflight": "npm run build --workspace @stackpilot/controller && node deploy/scripts/preflight.mjs",
+    "release:upgrade": "npm run build --workspace @stackpilot/controller && node deploy/scripts/upgrade.mjs",
+    "release:build": "node deploy/scripts/generate-release.mjs",
+    "release:verify": "node deploy/scripts/verify-release.mjs",
+    "release:scan": "node deploy/scripts/scan-artifacts.mjs",
+    "release:drill": "npm run build --workspace @stackpilot/controller && node deploy/scripts/upgrade-drill.mjs"
   },
   "devDependencies": {
     "@cyclonedx/cyclonedx-npm": "^6.0.0",
