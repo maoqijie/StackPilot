@@ -29,7 +29,7 @@ const pageMeta: Record<string, PageMeta> = {
   "overview-tasks": { title: "任务流", breadcrumb: "工作台", search: "搜索设备任务、服务、计划任务..." },
   "overview-risks": { title: "风险中心", breadcrumb: "工作台", search: "搜索风险、主机、对象..." },
   hosts: { title: "主机", breadcrumb: "资源管理", search: "搜索主机名、IP、环境..." },
-  sites: { title: "网站", breadcrumb: "应用管理", search: "搜索域名、运行时、证书..." },
+  sites: { title: "网站", breadcrumb: "应用管理", search: "搜索域名、服务、证书..." },
   databases: { title: "数据库管理", breadcrumb: "资源管理", search: "搜索数据库名称" },
   files: { title: "文件", breadcrumb: "资源管理", search: "搜索文件名、路径、类型..." },
   terminal: { title: "终端", breadcrumb: "运维工具", search: "搜索会话主机或命令..." },
@@ -76,7 +76,7 @@ const navItems: NavItem[] = [
     children: [
       { id: "sites-running", label: "运行中站点", meta: "站点列表" },
       { id: "sites-cert", label: "证书续期", meta: "续期检查" },
-      { id: "sites-runtime", label: "运行时分组", meta: "Node / PHP" },
+      { id: "sites-runtime", label: "服务分组", meta: "Node / PHP" },
     ],
   },
   {
@@ -218,7 +218,7 @@ function activeNavEntryForPage(page: PageKey) {
 function desktopTopbarChrome(page: PageKey): TopbarChrome {
   return {
     white: true,
-    showBreadcrumb: page !== "overview",
+    showBreadcrumb: page !== "overview" && page !== "sites-runtime",
     showCompactSearch: true,
     showStatus: true,
     showActivity: true,
@@ -264,7 +264,7 @@ function viewContextForPage(page: PageKey): ViewContext | null {
       return null;
     case "sites": {
       const preset = sitesPagePreset(page);
-      const chips = [`状态 ${preset.status}`, `运行时 ${preset.runtime}`];
+      const chips = [`状态 ${preset.status}`, `服务 ${preset.runtime}`];
       if (page === "sites-cert") chips.push("证书 < 14 天");
       return { eyebrow, title, chips };
     }

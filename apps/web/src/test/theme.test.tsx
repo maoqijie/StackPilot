@@ -57,13 +57,32 @@ describe("theme provider", () => {
     expect(screen.getByRole("button", { name: "切换到浅色主题" })).toBeInTheDocument();
   });
 
-  it("removes the overview location context without affecting other pages", () => {
+  it("removes location context from compact pages without affecting other pages", () => {
     const { rerender } = render(
       <ThemeProvider>
         <TopBar
           page="overview"
           setPage={vi.fn()}
           chrome={desktopTopbarChrome("overview")}
+          notify={vi.fn()}
+          unreadCount={0}
+          setUnreadCount={vi.fn()}
+          overview={null}
+          interactionsDisabled={false}
+          onLogout={vi.fn()}
+        />
+      </ThemeProvider>,
+    );
+
+    expect(screen.queryByLabelText("当前位置")).not.toBeInTheDocument();
+    expect(document.querySelector(".cloud-header")).toHaveClass("without-context");
+
+    rerender(
+      <ThemeProvider>
+        <TopBar
+          page="sites-runtime"
+          setPage={vi.fn()}
+          chrome={desktopTopbarChrome("sites-runtime")}
           notify={vi.fn()}
           unreadCount={0}
           setUnreadCount={vi.fn()}

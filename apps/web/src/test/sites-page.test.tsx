@@ -109,7 +109,11 @@ describe("sites live monitoring page", () => {
 
     render(<SitesPage page="sites-runtime" notify={notify} />);
     await act(async () => undefined);
-    fireEvent.click(screen.getByRole("button", { name: "查看 反向代理 运行时详情" }));
+    expect(document.querySelector(".page-head")).not.toBeInTheDocument();
+    expect(document.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(screen.queryByText("服务容量视图")).not.toBeInTheDocument();
+    expect(screen.queryByText(/数据来源：/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "查看 反向代理 服务详情" }));
     const drawer = screen.getByRole("region", { name: "反向代理" });
     expect(drawer.parentElement).toBe(document.body);
     expect(within(drawer).getAllByText(/38ms/).length).toBeGreaterThan(0);

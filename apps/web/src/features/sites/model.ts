@@ -5,7 +5,7 @@ import type { PageKey, Tone } from "../../types/app";
 
 function sitesPagePreset(page: PageKey) {
   if (page === "sites-cert") return { status: "全部", runtime: "全部", search: "", subtitle: "证书续期视图，优先展示即将过期的站点。" };
-  if (page === "sites-runtime") return { status: "全部", runtime: "全部", search: "", subtitle: "运行时分组视图，按 Node、PHP、静态站点聚合容量与风险。" };
+  if (page === "sites-runtime") return { status: "全部", runtime: "全部", search: "", subtitle: "服务分组视图，按 Node、PHP、静态站点聚合容量与风险。" };
   if (page === "sites-running") return { status: "活跃", runtime: "全部", search: "", subtitle: "监控正在运行或处于告警状态的站点、上游延迟和错误率。" };
   return { status: "全部", runtime: "全部", search: "", subtitle: "自动发现 Controller 本机的 Nginx 虚拟主机与证书状态。" };
 }
