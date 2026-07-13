@@ -6,7 +6,7 @@ server {
   ssl_certificate /etc/letsencrypt/live/stackpilot.example.invalid/fullchain.pem;
   ssl_certificate_key /etc/letsencrypt/live/stackpilot.example.invalid/privkey.pem;
   ssl_protocols TLSv1.2 TLSv1.3;
-  client_max_body_size 64k;
+  client_max_body_size 64m;
   add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
   add_header X-Content-Type-Options nosniff always;
   add_header Referrer-Policy no-referrer always;

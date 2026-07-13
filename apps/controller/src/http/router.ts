@@ -15,6 +15,7 @@ import { parseSchema } from "./validation.js";
 import { routeControlPlaneRequest } from "./controlPlaneRouter.js";
 import { routeIdentityRequest } from "./identityRouter.js";
 import type { OverviewAccess } from "../modules/overview/overviewService.js";
+import { routeFileRequest } from "./fileRouter.js";
 
 function idAt(context: RequestContext, index: number) {
   try {
@@ -31,6 +32,7 @@ function overviewAccess(context:RequestContext):OverviewAccess{return{nodeScope:
 export async function routeRequest(context: RequestContext): Promise<void> {
   const { request, response, parts, services } = context;
   const method = request.method ?? "GET";
+  if (parts[0] === "api" && parts[1] === "files") { await routeFileRequest(context); return; }
   if (context.url.searchParams.size > 0) throw new ApiError(400, "BAD_REQUEST", "查询参数无效：当前接口不接受查询参数");
 
   if (context.url.pathname === "/healthz" && method === "GET") {
