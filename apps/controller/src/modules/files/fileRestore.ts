@@ -45,12 +45,12 @@ async function copyTree(source: string, target: string, marker: string): Promise
   if ((await readdir(target)).some((name) => !allowed.has(name))) throw conflict("恢复目标已被其他进程修改");
 }
 
-async function restoreDirectory(source: string, target: string, id: string) {
+async function restoreDirectory(source: string, target: string, id: string, recovering: boolean) {
   const marker = markerName(id); const markerPath = join(target, marker);
   try { await mkdir(target, { mode: 0o750 }); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    try { if (!(await lstat(markerPath)).isFile()) throw error; }
+    try { if (!recovering || !(await lstat(markerPath)).isFile()) throw error; }
     catch { throw conflict("恢复目标已存在"); }
   }
   try { await link(source, markerPath); }
@@ -65,12 +65,12 @@ async function restoreDirectory(source: string, target: string, id: string) {
   await rm(markerPath, { force: true });
 }
 
-export async function restoreWithoutOverwrite(source: string, target: string, row: Pick<TrashFileEntry, "id" | "kind">) {
+export async function restoreWithoutOverwrite(source: string, target: string, row: Pick<TrashFileEntry, "id" | "kind">, recovering = false) {
   if (row.kind === "file") {
     try { await link(source, target); }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-        if (await sameFile(source, target)) { await rm(source); return; }
+        if (recovering && await sameFile(source, target)) { await rm(source); return; }
         throw conflict("恢复目标已存在");
       }
       throw error;
@@ -78,5 +78,5 @@ export async function restoreWithoutOverwrite(source: string, target: string, ro
     await rm(source);
     return;
   }
-  await restoreDirectory(source, target, row.id);
+  await restoreDirectory(source, target, row.id, recovering);
 }

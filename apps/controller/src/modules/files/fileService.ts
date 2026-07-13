@@ -204,7 +204,7 @@ export class FileService {
     const rows = await this.trashMetadata(); const stored = this.storedPath(row); const target = this.safety.requestedPath(row.originalPath);
     const [hasStored, hasTarget] = await Promise.all([this.exists(stored), this.exists(target)]); const recorded = rows.some((item) => item.id === row.id);
     if (!hasStored && hasTarget) { if (row.kind === "directory") await rm(restoreMarker(target, row.id), { force: true }); if (recorded) await this.saveTrash(rows.filter((item) => item.id !== row.id)); return; }
-    if (hasStored && recorded) { await restoreWithoutOverwrite(stored, target, row); await this.saveTrash(rows.filter((item) => item.id !== row.id)); return; }
+    if (hasStored && recorded) { await restoreWithoutOverwrite(stored, target, row, true); await this.saveTrash(rows.filter((item) => item.id !== row.id)); return; }
     throw metadataError("回收站恢复");
   }
 
