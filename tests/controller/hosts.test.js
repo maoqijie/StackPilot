@@ -48,6 +48,16 @@ test("host monitoring aggregates local and scoped remote hosts without fixtures"
   assert.equal(pending.cpuPercent, null);
 });
 
+test("runtime mode classifies the controller host environment", async () => {
+  const platform = new FakePlatformAdapter();
+  const repository = new MemoryAgentControlRepository();
+  const development = createControllerServices(platform, process.cwd(), loadControllerConfig({}), repository);
+  const productionConfig = loadControllerConfig({ STACKPILOT_PRODUCTION: "1", STACKPILOT_COOKIE_SECURE: "1" });
+  const production = createControllerServices(platform, process.cwd(), productionConfig, repository);
+  assert.equal((await development.hosts.getHosts(false, "all")).hosts[0].environment, "本机");
+  assert.equal((await production.hosts.getHosts(false, "all")).hosts[0].environment, "生产");
+});
+
 test("host monitoring derives degraded health from unavailable metrics", async () => {
   const repository = new MemoryAgentControlRepository();
   await repository.update((state) => state.nodes.push({

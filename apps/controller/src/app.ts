@@ -57,7 +57,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
   const overview = new OverviewService(platform, state, repository);
   return {
     overview,
-    hosts: new HostMonitoringService(platform, repository),
+    hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
     schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform),

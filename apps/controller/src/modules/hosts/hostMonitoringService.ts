@@ -7,6 +7,7 @@ import type { NodeScope } from "@stackpilot/contracts";
 import { hasResourceWarning } from "../../platform/resourceHealth.js";
 
 const LOCAL_ENVIRONMENT = "本机";
+const PRODUCTION_ENVIRONMENT = "生产";
 const LOCAL_OWNER = "Controller";
 
 function percentage(used: number, total: number) {
@@ -28,7 +29,7 @@ function controllerPlatform(): AgentPlatform {
   return current === "win32" || current === "darwin" ? current : "linux";
 }
 
-function localRecord(snapshot: PlatformSnapshot): HostMonitoringRecord {
+function localRecord(snapshot: PlatformSnapshot, production: boolean): HostMonitoringRecord {
   const totalMemoryBytes = snapshot.totalMemoryBytes;
   const availableMemoryBytes = snapshot.availableMemoryBytes;
   const totalDiskBytes = safeByteSum(snapshot.disks.map((volume) => volume.totalBytes));
@@ -41,7 +42,7 @@ function localRecord(snapshot: PlatformSnapshot): HostMonitoringRecord {
     name: snapshot.node.name,
     platform: controllerPlatform(),
     address: nullableAddress(snapshot.node.ip),
-    environment: snapshot.node.env || LOCAL_ENVIRONMENT,
+    environment: production ? PRODUCTION_ENVIRONMENT : LOCAL_ENVIRONMENT,
     owner: snapshot.node.owner || LOCAL_OWNER,
     connectionStatus: "local",
     healthStatus: snapshot.node.status === "健康" && snapshot.node.availability.cpu && snapshot.node.availability.memory && diskAvailable ? "healthy" : "degraded",
@@ -120,11 +121,16 @@ function remoteRecord(node: AgentNodeState, now: number, offlineAfterMs: number)
 }
 
 export class HostMonitoringService {
-  constructor(private readonly platform: PlatformAdapter, private readonly repository: AgentControlRepository, private readonly offlineAfterMs = 45_000) {}
+  constructor(
+    private readonly platform: PlatformAdapter,
+    private readonly repository: AgentControlRepository,
+    private readonly offlineAfterMs = 45_000,
+    private readonly production = false,
+  ) {}
 
   async getHosts(includeAgents: boolean, nodeScope: NodeScope): Promise<HostMonitoringPayload> {
     const snapshot = await this.platform.collectSnapshot();
-    const hosts = [localRecord(snapshot)];
+    const hosts = [localRecord(snapshot, this.production)];
     if (includeAgents) {
       const state = await this.repository.read();
       const allowed = nodeScope === "all" ? state.nodes : state.nodes.filter((node) => nodeScope.includes(node.nodeId));
