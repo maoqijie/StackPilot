@@ -156,11 +156,11 @@ describe("overview risks API states", () => {
 
     await user.click(screen.getByRole("button", { name: "重试" }));
 
-    expect(await screen.findByText(/最近扫描于 12:30:00/)).toBeInTheDocument();
+    expect(await screen.findByText("12:30:00")).toBeInTheDocument();
     expect(screen.queryByText("风险采集暂不可用")).not.toBeInTheDocument();
   });
 
-  it("polls silently after ten seconds and preserves search and detail by stable id", async () => {
+  it("removes the heading and filters while polling silently and preserving detail by stable id", async () => {
     vi.useFakeTimers();
     vi.mocked(fetchOverviewRisks)
       .mockResolvedValueOnce({ risks: [riskFixture], scannedAt: "12:30:00" })
@@ -170,8 +170,9 @@ describe("overview risks API states", () => {
     await act(async () => undefined);
 
     expect(screen.queryByRole("button", { name: "重新扫描" })).not.toBeInTheDocument();
-    const search = screen.getByPlaceholderText("搜索风险、目标或 trace id");
-    fireEvent.change(search, { target: { value: "production" } });
+    expect(screen.getByRole("heading", { name: "风险中心" })).toHaveClass("sr-only");
+    expect(screen.queryByPlaceholderText("搜索风险、目标或 trace id")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("combobox")).toHaveLength(0);
     fireEvent.click(screen.getAllByRole("button", { name: /详情/ })[0]);
 
     const dialog = screen.getByRole("dialog", { name: riskFixture.title });
@@ -184,9 +185,8 @@ describe("overview risks API states", () => {
     });
 
     expect(fetchOverviewRisks).toHaveBeenCalledTimes(2);
-    expect(search).toHaveValue("production");
     expect(within(screen.getByRole("dialog", { name: riskFixture.title })).getByText("更新后的入口影响")).toBeInTheDocument();
-    expect(screen.getByText(/最近扫描于 12:30:10/)).toBeInTheDocument();
+    expect(screen.getByText("12:30:10")).toBeInTheDocument();
     expect(notify).not.toHaveBeenCalled();
   });
 });

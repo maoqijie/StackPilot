@@ -4,9 +4,8 @@ import { OverviewRiskDetailModal } from "../components/ui/OverviewRiskDetailModa
 import { AlertTriangle, Clock3, Download, Eye, KeyRound, Shield, ShieldAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ModulePageShell } from "../components/layout/ModulePageShell";
-import { MetricTile, ModuleSearch } from "../components/ui/Cards";
+import { MetricTile } from "../components/ui/Cards";
 import { DataTable } from "../components/ui/DataTable";
-import { FieldSelect } from "../components/ui/FormControls";
 import { useOptionalOverviewData } from "../features/overview/OverviewDataProvider";
 import { reportApiError } from "../features/overview/model";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
@@ -19,9 +18,6 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
   const [localRows, setLocalRows] = useState<OverviewRiskRecord[]>([]);
   const [localLoading, setLocalLoading] = useState(true);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [levelFilter, setLevelFilter] = useState("全部");
-  const [stateFilter, setStateFilter] = useState("全部");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [localScannedAt, setLocalScannedAt] = useState<string | null>(null);
   const rows = shared?.overview?.risks ?? localRows;
@@ -29,13 +25,6 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
   const error = shared?.error ?? localError;
   const scannedAt = formatBackendDateTime(shared?.overview?.collectedAt ?? localScannedAt, "等待采集");
   const selected = rows.find((row) => row.id === selectedId) ?? null;
-  const filteredRows = rows.filter((row) => {
-    const query = search.trim().toLowerCase();
-    const matchSearch = !query || row.title.toLowerCase().includes(query) || row.target.toLowerCase().includes(query) || row.owner.toLowerCase().includes(query) || row.traceId.toLowerCase().includes(query);
-    const matchLevel = levelFilter === "全部" || row.level === levelFilter;
-    const matchState = stateFilter === "全部" || row.status === stateFilter;
-    return matchSearch && matchLevel && matchState;
-  });
   const openCount = rows.filter((row) => row.status === "待处理").length;
   const highCount = rows.filter((row) => row.level === "高危" && row.status === "待处理").length;
 
@@ -96,11 +85,10 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
   return (
     <ModulePageShell
       title="风险中心"
-      subtitle={loading ? "正在加载安全、证书与服务健康风险" : error ? "风险采集暂时不可用，请重试" : `集中处理待办风险，最近扫描于 ${scannedAt}`}
+      hideHeading
       page="overview-risks"
       viewContext={false}
       actions={<button className="ghost" type="button" onClick={exportRisksFromApi}><Download size={14} /> 导出报告</button>}
-      filters={<><ModuleSearch value={search} placeholder="搜索风险、目标或 trace id" onChange={setSearch} /><FieldSelect label="等级" value={levelFilter} options={["全部", "高危", "中危", "低危"]} onChange={setLevelFilter} /><FieldSelect label="状态" value={stateFilter} options={["全部", "待处理"]} onChange={setStateFilter} /></>}
       metrics={<><MetricTile icon={Shield} label="待处理风险" value={`${openCount}`} tone={openCount ? "orange" : "green"} /><MetricTile icon={KeyRound} label="高危风险" value={`${highCount}`} tone={highCount ? "red" : "green"} /><MetricTile icon={Clock3} label="实时扫描" value={scannedAt || "-"} tone="blue" /></>}
     >
       {loading && <span className="sr-only" role="status" aria-live="polite">正在从 /api/overview/risks 采集风险</span>}
@@ -129,8 +117,8 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
             </div>
           ) },
         ]}
-        rows={filteredRows}
-        emptyText={error ? "风险采集失败，未显示示例数据" : loading ? "正在采集风险" : "没有匹配的风险"}
+        rows={rows}
+        emptyText={error ? "风险采集失败，未显示示例数据" : loading ? "正在采集风险" : "暂无风险"}
         getRowKey={(row) => row.id}
         mobileCard={(row) => (
           <>
