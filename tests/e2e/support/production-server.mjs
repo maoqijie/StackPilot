@@ -48,6 +48,8 @@ if (!identity.hasAdministrator()) {
 }
 const repository = new SqliteAgentControlRepository(database, identity.audit);
 const platform = new FakePlatformAdapter();
+const collectFixtureSnapshot = platform.collectSnapshot.bind(platform);
+platform.collectSnapshot = async () => ({ ...await collectFixtureSnapshot(), platformLabel: "win32 10.0" });
 const services = createControllerServices(platform, root, config, repository);
 const options = { config, database, identity, agentRepository: repository, platform, services, repoRoot: root };
 const management = createStackPilotServer(options);

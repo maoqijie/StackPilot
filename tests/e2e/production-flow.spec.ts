@@ -42,6 +42,7 @@ test("production HTTPS flow covers identity, Agent lifecycle, task, audit and se
   page.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()}`));
   await login(page, "e2e-admin", adminPassword);
   expect(await page.evaluate(() => location.protocol)).toBe("https:");
+  await expect(page.getByText(/Windows 等效/).first()).toBeVisible();
 
   const proof = await reauthenticate(page);
   const enrollment = await api<{ token: string }>(page, "/api/enrollments", "POST", { nodeName: `e2e-node-${testInfo.project.name}`, expiresInSeconds: 300 }, { "X-Reauth-Proof": proof });
