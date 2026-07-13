@@ -14,6 +14,7 @@ Environment=PORT=8787
 Environment=STACKPILOT_PRODUCTION=1
 Environment=STACKPILOT_COOKIE_SECURE=1
 Environment=STACKPILOT_DATABASE_PATH=/var/lib/stackpilot-controller/stackpilot.sqlite3
+Environment=STACKPILOT_UPLOAD_ROOT=/var/lib/stackpilot-controller/uploads
 Environment=STACKPILOT_MASTER_KEY_FILE=%d/master-key
 Environment=STACKPILOT_AGENT_TLS_CERT_PATH=%d/agent-tls.crt
 Environment=STACKPILOT_AGENT_TLS_KEY_PATH=%d/agent-tls.key

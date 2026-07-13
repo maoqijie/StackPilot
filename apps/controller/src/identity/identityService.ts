@@ -12,11 +12,12 @@ export const PERMISSIONS: ReadonlyArray<[Permission, "low" | "medium" | "high", 
   ["overview:read","low","读取本机总览"],["overview:operate","medium","执行本机操作"],["schedules:read","low","读取定时任务"],["schedules:write","high","修改定时任务"],
   ["nodes:read","low","读取授权节点"],["nodes:manage","high","注册、轮换或撤销节点"],["tasks:read","low","读取远程任务"],["tasks:create","high","创建远程任务"],["tasks:cancel","medium","取消远程任务"],
   ["databases:read","low","读取授权节点的数据库实例"],
+  ["files:read","low","读取上传任务"],["files:write","high","创建和管理文件上传"],
   ["audit:read","low","读取审计日志"],["users:read","low","读取用户"],["users:manage","high","管理用户"],["roles:read","low","读取角色"],["roles:manage","high","管理角色"],["tokens:manage","high","管理 API Token"],["system:backup","high","备份与恢复数据库"],
 ];
 const roleDefinitions = [
   ["administrator","管理员",PERMISSIONS.map(([key]) => key)],
-  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","databases:read","tasks:read","tasks:create","tasks:cancel"]],
+  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","databases:read","files:read","files:write","tasks:read","tasks:create","tasks:cancel"]],
   ["audit-reader","只读审计员",["overview:read","nodes:read","databases:read","tasks:read","audit:read"]],
 ] as const;
 

@@ -5,6 +5,12 @@ import type { AgentControlRepository, AgentNodeState } from "../../repositories/
 
 export type DatabaseAccess = { nodeScope: "all" | string[] };
 const STALE_AFTER_MS = 150_000;
+const MAX_DATABASE_INSTANCES = 10_000;
+
+function isStale(collectedAt: string, now = Date.now()) {
+  const age = now - Date.parse(collectedAt);
+  return age < 0 || age > STALE_AFTER_MS;
+}
 
 export function publicDatabaseId(nodeId: string, instanceId: string) {
   return `database-${createHash("sha256").update(`${nodeId}\0${instanceId}`).digest("hex").slice(0, 32)}`;
@@ -15,7 +21,7 @@ function runtimeRecord(node: AgentNodeState, instance: AgentDatabaseInstance): D
   return {
     ...instance, id: publicDatabaseId(node.nodeId, instance.id), nodeId: node.nodeId, nodeName: node.nodeName,
     address: node.telemetry?.primaryIp ?? null, collectedAt,
-    freshness: Date.now() - Date.parse(collectedAt) <= STALE_AFTER_MS ? "current" : "stale",
+    freshness: isStale(collectedAt) ? "stale" : "current",
   };
 }
 
@@ -23,17 +29,23 @@ export class DatabaseMonitoringService {
   constructor(private readonly repository: AgentControlRepository) {}
   async getInstances(access: DatabaseAccess): Promise<DatabaseInstancesPayload> {
     const state = await this.repository.read();
-    const nodes = state.nodes.filter((node) => !node.revokedAt && node.databaseSnapshot && (access.nodeScope === "all" || access.nodeScope.includes(node.nodeId)));
+    const authorizedNodes = state.nodes.filter((node) => !node.revokedAt && (access.nodeScope === "all" || access.nodeScope.includes(node.nodeId)));
+    const nodes = authorizedNodes.filter((node) => node.databaseSnapshot);
+    const pendingNodes = authorizedNodes.filter((node) => !node.databaseSnapshot);
     const snapshots = nodes.map((node) => node.databaseSnapshot!);
-    const staleNodes = nodes.filter((node) => Date.now() - Date.parse(node.databaseSnapshot!.collectedAt) > STALE_AFTER_MS);
+    const staleNodes = nodes.filter((node) => isStale(node.databaseSnapshot!.collectedAt));
     const statuses = snapshots.map((snapshot) => snapshot.collectionStatus);
-    const collectionStatus = !snapshots.length || statuses.every((status) => status === "unavailable") ? "unavailable"
-      : !staleNodes.length && statuses.every((status) => status === "complete") ? "complete" : "partial";
+    let collectionStatus = !snapshots.length || statuses.every((status) => status === "unavailable") ? "unavailable"
+      : !pendingNodes.length && !staleNodes.length && statuses.every((status) => status === "complete") ? "complete" : "partial";
     const collectedAt = snapshots.map((snapshot) => snapshot.collectedAt).sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? new Date().toISOString();
+    const allInstances = nodes.flatMap((node) => node.databaseSnapshot!.instances.map((instance) => runtimeRecord(node, instance)));
+    const truncated = allInstances.length > MAX_DATABASE_INSTANCES;
+    if (truncated) collectionStatus = "partial";
+    const truncationWarning = truncated ? [`数据库实例超过 ${MAX_DATABASE_INSTANCES} 条，响应已截断`] : [];
     return DatabaseInstancesPayloadSchema.parse({
       collectedAt, collectionStatus,
-      warnings: [...snapshots.flatMap((snapshot) => snapshot.warnings), ...staleNodes.map((node) => `节点 ${node.nodeName} 的数据库清单已过期`), ...(!snapshots.length ? ["授权节点尚未上报数据库服务清单"] : [])].slice(0, 20),
-      instances: nodes.flatMap((node) => node.databaseSnapshot!.instances.map((instance) => runtimeRecord(node, instance))),
+      warnings: [...truncationWarning, ...snapshots.flatMap((snapshot) => snapshot.warnings), ...pendingNodes.map((node) => `节点 ${node.nodeName} 尚未上报数据库服务清单`), ...staleNodes.map((node) => `节点 ${node.nodeName} 的数据库清单已过期`), ...(!authorizedNodes.length ? ["授权节点尚未上报数据库服务清单"] : [])].slice(0, 20),
+      instances: allInstances.slice(0, MAX_DATABASE_INSTANCES),
     });
   }
 }

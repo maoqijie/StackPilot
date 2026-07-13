@@ -39,6 +39,32 @@ test("database monitoring labels stale data and an empty authorized scope honest
   assert.equal(empty.collectionStatus, "unavailable"); assert.deepEqual(empty.instances, []); assert.match(empty.warnings[0], /尚未上报/);
 });
 
+test("database monitoring reports legacy agents, future timestamps and bounded large inventories", async () => {
+  const repository = new MemoryAgentControlRepository();
+  const currentNode = node("11111111-1111-4111-8111-111111111111", "db-current");
+  const legacyNode = { ...node("22222222-2222-4222-8222-222222222222", "db-legacy"), databaseSnapshot: undefined };
+  const futureNode = node("33333333-3333-4333-8333-333333333333", "db-future", new Date(Date.now() + 60_000).toISOString());
+  const instance = currentNode.databaseSnapshot.instances[0];
+  currentNode.databaseSnapshot.instances = Array.from({ length: 256 }, (_, index) => ({ ...instance, id: `postgresql-${index}.service`, name: `postgresql-${index}` }));
+  await repository.update((state) => state.nodes.push(currentNode, legacyNode, futureNode));
+  const payload = await new DatabaseMonitoringService(repository).getInstances({ nodeScope: "all" });
+  assert.equal(payload.collectionStatus, "partial");
+  assert.match(payload.warnings.join(" "), /尚未上报/);
+  assert.equal(payload.instances.find((record) => record.nodeName === "db-future").freshness, "stale");
+  assert.equal(payload.instances.length, 257);
+
+  await repository.update((state) => {
+    state.nodes = Array.from({ length: 40 }, (_, nodeIndex) => {
+      const next = node(`${String(nodeIndex + 1).padStart(8, "0")}-1111-4111-8111-111111111111`, `db-${nodeIndex}`);
+      next.databaseSnapshot.instances = Array.from({ length: 256 }, (_, instanceIndex) => ({ ...instance, id: `postgresql-${instanceIndex}.service`, name: `postgresql-${instanceIndex}` }));
+      return next;
+    });
+  });
+  const bounded = await new DatabaseMonitoringService(repository).getInstances({ nodeScope: "all" });
+  assert.equal(bounded.instances.length, 10_000);
+  assert.equal(bounded.collectionStatus, "partial"); assert.match(bounded.warnings[0], /响应已截断/);
+});
+
 test("GET /api/databases enforces read permission and principal node scope", async () => {
   const databaseStore = openDatabase(":memory:"); const identity = new IdentityService(databaseStore, Buffer.alloc(32, 9));
   await identity.createInitialAdministrator("admin", "Administrator", "correct horse battery staple");

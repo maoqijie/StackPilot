@@ -70,7 +70,7 @@ export class DatabaseSnapshotCache {
     this.lastStarted = now;
     this.active = this.collector.collect().then((snapshot) => {
       this.snapshot = snapshot.collectionStatus === "unavailable" && this.snapshot?.instances.length
-        ? { ...snapshot, collectionStatus: "partial", instances: this.snapshot.instances, warnings: [...snapshot.warnings, "已保留上次成功采集的数据库实例"].slice(0, 20) }
+        ? { ...snapshot, collectedAt: this.snapshot.collectedAt, collectionStatus: "partial", instances: this.snapshot.instances, warnings: [...snapshot.warnings, "已保留上次成功采集的数据库实例"].slice(0, 20) }
         : snapshot;
     }).finally(() => { this.active = undefined; });
     await this.active;

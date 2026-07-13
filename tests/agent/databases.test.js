@@ -46,5 +46,6 @@ test("database inventory cache retains the last successful instances after a tra
   const cache = new DatabaseSnapshotCache(collector, 60_000);
   await cache.refreshIfDue(100_000); await cache.refreshIfDue(160_000);
   assert.equal(cache.current.collectionStatus, "partial"); assert.equal(cache.current.instances.length, 1);
+  assert.equal(cache.current.collectedAt, "2026-07-14T00:00:00.000Z");
   assert.match(cache.current.warnings.join(" "), /保留上次成功/);
 });
