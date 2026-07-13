@@ -60,7 +60,7 @@ const terminalTask: RemoteTaskRecord = {
   maxAttempts: 3,
   status: "succeeded",
   updatedAt: "2026-07-13T12:30:03.000Z",
-  result: { message: "System summary collected", truncated: false, data: { hostname: terminalNode.nodeName, primaryIp: "198.18.0.10", disks: [] } },
+  result: { message: "System summary collected", truncated: false, data: { hostname: terminalNode.nodeName, primaryIp: "198.18.0.10", uptimeSeconds: 90_060, disks: [{ label: "/dev/vda1", mount: "/", totalBytes: 64_424_509_440, usedBytes: 21_474_836_480 }] } },
   errorCode: null,
   retryable: true,
   nextAttemptAt: null,

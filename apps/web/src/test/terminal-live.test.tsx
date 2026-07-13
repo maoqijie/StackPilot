@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTerminalTask, fetchTerminalHosts, fetchTerminalTasks } from "../api/terminalApi";
+import { reauthenticate } from "../api/identityApi";
 import { TerminalPage } from "../pages/TerminalPage";
 import { resetTerminalApiMocks, terminalNode as node, terminalTask as task } from "./terminalTestFixtures";
 
@@ -9,7 +10,7 @@ vi.mock("../api/terminalApi", () => ({ createTerminalTask: vi.fn(), fetchTermina
 
 describe("terminal real backend integration", () => {
   beforeEach(resetTerminalApiMocks);
-  it("renders real Agent identity, address and output", async () => { render(<TerminalPage page="terminal" notify={vi.fn()} />); expect(await screen.findByText("real-agent-01")).toBeInTheDocument(); expect(screen.getByText("198.18.0.10")).toBeInTheDocument(); expect(screen.getByText("hostname: real-agent-01")).toBeInTheDocument(); expect(screen.queryByText("panel-se-01")).not.toBeInTheDocument(); });
+  it("renders real Agent identity, address and output", async () => { render(<TerminalPage page="terminal" notify={vi.fn()} />); expect(await screen.findByText("real-agent-01")).toBeInTheDocument(); expect(screen.getByText("198.18.0.10")).toBeInTheDocument(); expect(screen.getByText("hostname: real-agent-01")).toBeInTheDocument(); expect(screen.getByText("uptime: 1天 1小时 1分钟")).toBeInTheDocument(); expect(screen.getByText("/ 20.0 GB / 60.0 GB · 33%")).toBeInTheDocument(); expect(screen.queryByText("panel-se-01")).not.toBeInTheDocument(); });
   it("reauthenticates before submitting a structured task", async () => { render(<TerminalPage page="terminal" notify={vi.fn()} />); const input = await screen.findByLabelText("命令输入"); fireEvent.change(input, { target: { value: "systemctl status nginx --no-pager" } }); fireEvent.click(screen.getByRole("button", { name: "运行" })); const dialog = screen.getByRole("alertdialog", { name: "确认执行受控命令" }); fireEvent.change(within(dialog).getByLabelText("当前密码"), { target: { value: "current-password" } }); fireEvent.click(within(dialog).getByRole("button", { name: "确认执行" })); await vi.waitFor(() => expect(createTerminalTask).toHaveBeenCalledWith(node.nodeId, expect.objectContaining({ type: "service.status.read", parameters: { serviceName: "nginx" } }), "proof-value-with-more-than-thirty-two-characters")); });
   it("rejects arbitrary shell input", async () => { const notify = vi.fn(); render(<TerminalPage page="terminal" notify={notify} />); const input = await screen.findByLabelText("命令输入"); fireEvent.change(input, { target: { value: "rm -rf /" } }); fireEvent.click(screen.getByRole("button", { name: "运行" })); expect(createTerminalTask).not.toHaveBeenCalled(); expect(notify).toHaveBeenCalledWith(expect.stringContaining("仅支持"), "danger"); });
   it("marks an unavailable service probe as failed", async () => {
@@ -28,6 +29,19 @@ describe("terminal real backend integration", () => {
     expect(await screen.findByText("real-agent-01")).toBeInTheDocument();
     expect(screen.getByText("等待 Agent 上报")).toBeInTheDocument();
     expect(fetchTerminalHosts).not.toHaveBeenCalled();
+  });
+  it("does not consume reauthentication when the selected Agent lacks a command capability", async () => {
+    const limited = { ...node, declaredCapabilities: ["system.summary.read" as const], allowedCapabilities: ["system.summary.read" as const] };
+    const { fetchTerminalNodes } = await import("../api/terminalApi");
+    vi.mocked(fetchTerminalNodes).mockResolvedValue({ nodes: [limited] });
+    const notify = vi.fn();
+    render(<TerminalPage page="terminal" notify={notify} />);
+    const input = await screen.findByLabelText("命令输入");
+    fireEvent.change(input, { target: { value: "systemctl status nginx --no-pager" } });
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    expect(notify).not.toHaveBeenCalled();
+    expect(reauthenticate).not.toHaveBeenCalled();
+    expect(createTerminalTask).not.toHaveBeenCalled();
   });
   it("reuses the task idempotency key when a submission response is lost", async () => {
     vi.mocked(createTerminalTask).mockRejectedValueOnce(new Error("响应连接中断"));

@@ -5,7 +5,7 @@ let csrfToken = "";
 export const setCsrfToken = (value: string) => { csrfToken = value; };
 export const getCsrfToken = () => csrfToken;
 
-export async function responseError(response: Response): Promise<Error> {
+export async function responseError(response: Response, dispatchSessionExpired = true): Promise<Error> {
   let message = `请求失败 (${response.status})`;
   try {
     const payload = await response.json() as Partial<ApiErrorResponse & ApiNotice>;
@@ -13,11 +13,14 @@ export async function responseError(response: Response): Promise<Error> {
   } catch {
     // Keep the HTTP status fallback when the response is not JSON.
   }
-  if (response.status === 401 && typeof window !== "undefined") window.dispatchEvent(new Event("stackpilot:session-expired"));
+  if (dispatchSessionExpired && response.status === 401 && typeof window !== "undefined") window.dispatchEvent(new Event("stackpilot:session-expired"));
   return new Error(message);
 }
 
-export async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+type RequestJsonInit = RequestInit & { dispatchSessionExpired?: boolean };
+
+export async function requestJson<T>(path: string, options: RequestJsonInit = {}): Promise<T> {
+  const { dispatchSessionExpired = true, ...init } = options;
   const hasJsonBody = typeof init.body === "string";
   const response = await fetch(`${API_CLIENT_PREFIX}${path}`, {
     ...init,
@@ -30,7 +33,7 @@ export async function requestJson<T>(path: string, init: RequestInit = {}): Prom
   });
 
   if (!response.ok) {
-    throw await responseError(response);
+    throw await responseError(response, dispatchSessionExpired);
   }
 
   return response.json() as Promise<T>;
