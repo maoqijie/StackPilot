@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 
 const password = "e2e administrator password";
 const agentPort = Number(process.env.STACKPILOT_E2E_AGENT_PORT ?? 19443);
-const runtime = process.env.STACKPILOT_E2E_RUNTIME ?? "runtime";
+const runtime = process.env.STACKPILOT_E2E_RUNTIME ? resolve(process.env.STACKPILOT_E2E_RUNTIME) : resolve("output", "e2e", "runtime");
 let agent: ChildProcess | undefined;
 
 async function api<T>(page: Page, path: string, method = "GET", body?: unknown, headers: Record<string, string> = {}) {
@@ -33,9 +33,9 @@ test("terminal history renders persisted Agent tasks and polls silently", async 
   const nodeName = `history-node-${testInfo.project.name}`;
   const enrollment = await api<{ token: string }>(page, "/api/enrollments", "POST", { nodeName, expiresInSeconds: 300 }, { "X-Reauth-Proof": proof });
   expect(enrollment.status).toBe(201);
-  const state = resolve("output", "e2e", runtime, `history-agent-${testInfo.project.name}`);
+  const state = resolve(runtime, `history-agent-${testInfo.project.name}`);
   rmSync(state, { recursive: true, force: true }); mkdirSync(state, { recursive: true });
-  agent = spawn(process.execPath, ["apps/agent/dist/main.js"], { cwd: process.cwd(), env: { ...process.env, STACKPILOT_CONTROLLER_URL: `https://127.0.0.1:${agentPort}`, STACKPILOT_AGENT_CA_PATH: resolve("output", "e2e", runtime, "controller-ca.crt"), STACKPILOT_AGENT_STATE_DIR: state, STACKPILOT_AGENT_NAME: nodeName, STACKPILOT_AGENT_ENROLLMENT_TOKEN: enrollment.body.token, STACKPILOT_AGENT_HEARTBEAT_SECONDS: "5" }, stdio: ["ignore", "pipe", "pipe"] });
+  agent = spawn(process.execPath, ["apps/agent/dist/main.js"], { cwd: process.cwd(), env: { ...process.env, STACKPILOT_CONTROLLER_URL: `https://127.0.0.1:${agentPort}`, STACKPILOT_AGENT_CA_PATH: resolve(runtime, "controller-ca.crt"), STACKPILOT_AGENT_STATE_DIR: state, STACKPILOT_AGENT_NAME: nodeName, STACKPILOT_AGENT_ENROLLMENT_TOKEN: enrollment.body.token, STACKPILOT_AGENT_HEARTBEAT_SECONDS: "5" }, stdio: ["ignore", "pipe", "pipe"] });
   let agentOutput = "";
   agent.stdout?.on("data", (chunk) => { agentOutput += chunk.toString(); });
   agent.stderr?.on("data", (chunk) => { agentOutput += chunk.toString(); });
