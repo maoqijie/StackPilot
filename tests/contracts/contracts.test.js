@@ -5,6 +5,7 @@ import {
   OverviewSummaryPayloadSchema, PathIdSchema, WRITE_METHODS,
   AGENT_PROTOCOL_VERSION, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, CreateRemoteTaskRequestSchema, isAgentProtocolCompatible,
   SiteRuntimePayloadSchema,
+  AgentSiteSnapshotSchema, CertificateRenewalTaskParametersSchema, CreateCertificateRenewalRequestSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
 } from "@stackpilot/contracts";
 
@@ -44,13 +45,30 @@ test("host monitoring contract preserves raw nullable metrics", () => {
 
 test("site runtime contract keeps collection provenance and nullable measurements explicit", () => {
   const payload = { collectedAt: new Date().toISOString(), collectionStatus: "partial", warnings: ["one unreadable config"], sites: [{
-    id: "nginx-site", domain: "app.example.com", status: "running", runtime: "反向代理", host: "controller-1",
+    id: "nginx-site", nodeId: "node-local", domain: "app.example.com", status: "running", runtime: "反向代理", host: "controller-1",
     upstream: "http://127.0.0.1:3000", source: "Nginx · app.conf", latencyMs: 12,
-    certificateExpiresAt: null, certificateIssuer: null, trafficBytes: null,
+    trafficBytes: null, collectedAt: new Date().toISOString(), freshness: "current",
+    certificate: { status: "unavailable", notBefore: null, expiresAt: null, issuer: null, subjectAlternativeNames: [], fingerprintSha256: null, renewalMode: "unsupported", renewable: false, unavailableReason: "未配置 TLS", certificateId: null },
+    renewal: { batchId: null, taskId: null, status: "idle", message: null, updatedAt: null },
   }] };
   assert.equal(SiteRuntimePayloadSchema.safeParse(payload).success, true);
   assert.equal(SiteRuntimePayloadSchema.safeParse({ ...payload, clientCollectedAt: payload.collectedAt }).success, false);
   assert.equal(SiteRuntimePayloadSchema.safeParse({ ...payload, sites: [{ ...payload.sites[0], latencyMs: -1 }] }).success, false);
+});
+
+test("certificate renewal contracts reject generic commands, paths and duplicate ids", () => {
+  const snapshot = { collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], sites: [{
+    id: "site-opaque-1", domain: "app.example.com", status: "running", runtime: "Nginx", host: "node-1", upstream: null,
+    source: "Nginx", latencyMs: 3, trafficBytes: null,
+    certificate: { status: "critical", notBefore: new Date().toISOString(), expiresAt: new Date(Date.now() + 86400000).toISOString(), issuer: "Test CA", subjectAlternativeNames: ["app.example.com"], fingerprintSha256: "A".repeat(64), renewalMode: "automatic", renewable: true, unavailableReason: null, certificateId: "certificate-opaque-1" },
+  }] };
+  assert.equal(AgentSiteSnapshotSchema.safeParse(snapshot).success, true);
+  assert.equal(AgentSiteSnapshotSchema.safeParse({ ...snapshot, sites: [...snapshot.sites, snapshot.sites[0]] }).success, false);
+  assert.equal(CreateCertificateRenewalRequestSchema.safeParse({ siteIds: ["site-opaque-1", "site-opaque-1"], idempotencyKey: "renewal-123" }).success, false);
+  const parameters = { batchId: crypto.randomUUID(), certificates: [{ certificateId: "certificate-opaque-1", siteIds: ["site-opaque-1"] }] };
+  assert.equal(CertificateRenewalTaskParametersSchema.safeParse(parameters).success, true);
+  assert.equal(CertificateRenewalTaskParametersSchema.safeParse({ ...parameters, command: "certbot renew" }).success, false);
+  assert.equal(CertificateRenewalTaskParametersSchema.safeParse({ ...parameters, certificates: [{ certificateId: "/etc/letsencrypt/live/app", siteIds: ["site-opaque-1"] }] }).success, false);
 });
 
 test("identity schemas reject privilege fields and invalid node scopes", () => {

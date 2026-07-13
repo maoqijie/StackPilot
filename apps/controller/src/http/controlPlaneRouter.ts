@@ -1,6 +1,7 @@
 import {
   AgentNodeListResponseSchema, CancelRemoteTaskRequestSchema, CreateEnrollmentRequestSchema,
   CreateRemoteTaskRequestSchema, EnrollmentCredentialSchema, PathIdSchema, RemoteTaskListResponseSchema, RemoteTaskRecordSchema, ApiNoticeSchema,
+  AgentNodeRecordSchema, UpdateNodeCapabilitiesRequestSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
 import { notFound } from "./errors/ApiError.js";
@@ -35,9 +36,15 @@ export async function routeControlPlaneRequest(context: RequestContext) {
     const nodeId=id(context,2);identity?.require(principal,"nodes:manage",nodeId);identity?.consumeReauth(principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);await context.services.nodes.revoke(nodeId, `user:${principal?.userId}`, context.requestId);
     sendJson(context.response, 200, { message: "节点及其凭据已撤销", tone: "warning" }, ApiNoticeSchema); return;
   }
+  if (context.parts[1] === "nodes" && context.parts[3] === "capabilities" && context.parts.length === 4 && method === "PATCH") {
+    const nodeId=id(context,2);identity?.require(principal,"nodes:manage",nodeId);identity?.consumeReauth(principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);
+    const input=parseSchema(UpdateNodeCapabilitiesRequestSchema,context.body,"节点能力");
+    sendJson(context.response,200,publicNode(await context.services.nodes.updateCapabilities(nodeId,input.allowedCapabilities,`user:${principal?.userId}`,context.requestId)),AgentNodeRecordSchema);return;
+  }
   if (context.parts[1] === "nodes" && context.parts[3] === "tasks" && context.parts.length === 4 && method === "POST") {
     const nodeId=id(context,2);identity?.require(principal,"tasks:create",nodeId);identity?.consumeReauth(principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);
     const input = parseSchema(CreateRemoteTaskRequestSchema, context.body, "远程任务");
+    if (input.type === "sites.certificates.renew") throw notFound("证书续期任务只能通过证书续期接口创建");
     sendJson(context.response, 201, await context.services.remoteTasks.create(nodeId, input, `user:${principal?.userId}`, context.requestId), RemoteTaskRecordSchema); return;
   }
   if (context.parts[1] === "remote-tasks" && context.parts.length === 2 && method === "GET") {

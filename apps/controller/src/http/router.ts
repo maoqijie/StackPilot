@@ -4,7 +4,7 @@ import {
   OverviewRisksPayloadSchema, OverviewRisksScanResponseSchema, OverviewSummaryPayloadSchema,
   OverviewTasksPayloadSchema, OverviewTasksRefreshResponseSchema, PathIdSchema,
   HostMonitoringPayloadSchema, ReadinessResponseSchema, RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
-  SiteRuntimePayloadSchema,
+  CreateCertificateRenewalRequestSchema, CertificateRenewalBatchSchema, SiteRuntimePayloadSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
@@ -52,9 +52,19 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     const canReadNodes = Boolean(context.principal?.permissions.has("nodes:read"));
     sendJson(response,200,await services.hosts.getHosts(canReadNodes&&(nodeScope==="all"||nodeScope.length>0),nodeScope),HostMonitoringPayloadSchema);return;
   }
+  if (context.url.pathname === "/api/sites/certificate-renewals" && method === "POST") {
+    context.identity?.require(context.principal,"sites:renew");
+    context.identity?.consumeReauth(context.principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);
+    const input=parseSchema(CreateCertificateRenewalRequestSchema,context.body,"证书续期");
+    sendJson(response,202,await services.certificateRenewals.create(input,{nodeScope:context.principal?.nodeScope??[]},`user:${context.principal?.userId}`,context.requestId),CertificateRenewalBatchSchema);return;
+  }
+  if (parts[0] === "api" && parts[1] === "sites" && parts[2] === "certificate-renewals" && parts.length === 4 && method === "GET") {
+    context.identity?.require(context.principal,"sites:read");
+    sendJson(response,200,await services.certificateRenewals.get(idAt(context,3),{nodeScope:context.principal?.nodeScope??[]}),CertificateRenewalBatchSchema);return;
+  }
   if (context.url.pathname === "/api/sites" && method === "GET") {
-    context.identity?.require(context.principal, "overview:read");
-    sendJson(response, 200, await services.sites.getSites(), SiteRuntimePayloadSchema);
+    context.identity?.require(context.principal, "sites:read");
+    sendJson(response, 200, await services.sites.getSites({ nodeScope: context.principal?.nodeScope ?? [] }), SiteRuntimePayloadSchema);
     return;
   }
   if (parts[0] !== "api" || parts[1] !== "overview") throw notFound();

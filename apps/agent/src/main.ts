@@ -5,23 +5,25 @@ import {
   AGENT_PROTOCOL_VERSION, AgentEnrollmentResponseSchema, AgentHeartbeatResponseSchema, RemoteTaskPollResponseSchema, RotateCredentialResponseSchema,
   type AgentEnrollmentRequest,
 } from "@stackpilot/contracts";
-import { AGENT_CAPABILITIES } from "./capabilities/index.js";
+import { activeAgentCapabilities } from "./capabilities/index.js";
 import { loadAgentConfig } from "./config/environment.js";
 import { createHeartbeat } from "./heartbeat/heartbeat.js";
 import { IdentityStore, type AgentIdentity } from "./identity/identityStore.js";
 import { agentLogger } from "./logging/logger.js";
 import { collectAgentTelemetry } from "./telemetry/collector.js";
+import { NginxSiteCollector, SiteSnapshotCache } from "./sites/nginxCollector.js";
+import { certHelperAvailable } from "./sites/helperClient.js";
 import { TaskExecutor } from "./tasks/executor.js";
 import { ControllerClient } from "./transport/controllerClient.js";
 
 const sleep = (ms: number) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 const backoff = (attempt: number) => Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5)) + Math.floor(Math.random() * 500);
 
-async function ensureIdentity(store: IdentityStore, client: ControllerClient, config: ReturnType<typeof loadAgentConfig>): Promise<AgentIdentity> {
+async function ensureIdentity(store: IdentityStore, client: ControllerClient, config: ReturnType<typeof loadAgentConfig>, capabilities: AgentEnrollmentRequest["capabilities"]): Promise<AgentIdentity> {
   const existing = await store.read(); if (existing) return existing;
   if (!config.enrollmentToken) throw new Error("Agent identity is missing and no enrollment token was provided");
   const pair = store.createKeyPair();
-  const request: AgentEnrollmentRequest = { enrollmentToken: config.enrollmentToken, nodeName: config.nodeName, publicKey: pair.publicKey, agentVersion: config.agentVersion, protocolVersion: AGENT_PROTOCOL_VERSION, platform: config.platform, capabilities: [...AGENT_CAPABILITIES] };
+  const request: AgentEnrollmentRequest = { enrollmentToken: config.enrollmentToken, nodeName: config.nodeName, publicKey: pair.publicKey, agentVersion: config.agentVersion, protocolVersion: AGENT_PROTOCOL_VERSION, platform: config.platform, capabilities };
   const enrolled = AgentEnrollmentResponseSchema.parse(await client.enroll(request));
   const identity = { nodeId: enrolled.nodeId, credentialId: enrolled.credentialId, privateKey: pair.privateKey, publicKey: pair.publicKey, protocolVersion: enrolled.protocolVersion, createdAt: new Date().toISOString() };
   await store.write(identity); return identity;
@@ -40,15 +42,20 @@ export async function runAgent(env: NodeJS.ProcessEnv | Record<string, string | 
   if (env === process.env) delete process.env.STACKPILOT_AGENT_ENROLLMENT_TOKEN;
   if (typeof process.getuid === "function" && process.getuid() === 0 && !config.allowRoot) throw new Error("StackPilot Agent refuses to run as root; use a dedicated unprivileged user");
   const store = new IdentityStore(config.stateDir); const client = new ControllerClient(config.controllerUrl, config.caPath);
-  let identity = await ensureIdentity(store, client, config);
+  let capabilities = activeAgentCapabilities(config.platform, config.platform === "linux" && await certHelperAvailable());
+  let identity = await ensureIdentity(store, client, config, capabilities);
   if (config.rotateCredential) { identity = await rotateIdentity(store, client, identity); if (env === process.env) delete process.env.STACKPILOT_AGENT_ROTATE_CREDENTIAL; }
-  const executor = new TaskExecutor(store.receiptPath, identity.nodeId, config.platform, AGENT_CAPABILITIES); await executor.load();
+  const executor = new TaskExecutor(store.receiptPath, identity.nodeId, config.platform, capabilities); await executor.load();
+  const siteSnapshots = new SiteSnapshotCache(new NginxSiteCollector(identity.nodeId), config.platform);
   let failures = 0;
   while (!signal?.aborted) {
     try {
+      capabilities = activeAgentCapabilities(config.platform, config.platform === "linux" && await certHelperAvailable());
+      executor.setCapabilities(capabilities);
       let telemetryCollectionFailed = false;
       const telemetry = await collectAgentTelemetry(config.platform).catch(() => { telemetryCollectionFailed = true; return undefined; });
-      AgentHeartbeatResponseSchema.parse(await client.json("/api/agent/heartbeat", createHeartbeat(config, identity.nodeId, [...AGENT_CAPABILITIES], telemetry, telemetryCollectionFailed), identity));
+      void siteSnapshots.refreshIfDue().catch((error) => agentLogger.log({ level: "warn", time: new Date().toISOString(), message: "Site inventory collection failed", errorName: error instanceof Error ? error.name : "UnknownError" }));
+      AgentHeartbeatResponseSchema.parse(await client.json("/api/agent/heartbeat", createHeartbeat(config, identity.nodeId, capabilities, telemetry, telemetryCollectionFailed, siteSnapshots.current), identity));
       for (const pending of executor.pendingUpdates()) { await client.json("/api/agent/tasks/status", pending, identity); await executor.markReported(pending.taskId); }
       const poll = RemoteTaskPollResponseSchema.parse(await client.json("/api/agent/tasks/poll", {}, identity));
       for (const taskId of poll.cancelledTaskIds) executor.cancel(taskId);

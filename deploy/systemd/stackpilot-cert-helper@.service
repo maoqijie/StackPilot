@@ -1,0 +1,38 @@
+[Unit]
+Description=StackPilot certificate helper connection
+Requires=stackpilot-cert-helper.socket
+After=stackpilot-cert-helper.socket
+
+[Service]
+Type=exec
+User=root
+Group=root
+WorkingDirectory=/opt/stackpilot-cert-helper/current
+ExecStart=/usr/bin/node /opt/stackpilot-cert-helper/current/apps/cert-helper/dist/certificateMain.js
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+TimeoutStartSec=600s
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+ProtectProc=invisible
+RemoveIPC=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/etc/nginx /etc/letsencrypt /var/lib/letsencrypt /var/log/letsencrypt -/var/www/certbot

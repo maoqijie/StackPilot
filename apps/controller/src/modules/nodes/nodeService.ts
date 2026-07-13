@@ -4,6 +4,7 @@ import {
   isAgentProtocolCompatible, type AgentHeartbeat,
 } from "@stackpilot/contracts";
 import type { AgentControlRepository, AgentCredentialState, AuditEvent } from "../../repositories/agentControlRepository.js";
+import { CONTROLLER_SUPPORTED_AGENT_CAPABILITIES } from "../../repositories/agentControlRepository.js";
 import { ServiceError } from "../serviceError.js";
 
 const audit = (event: Omit<AuditEvent, "eventId" | "timestamp">): AuditEvent => ({ eventId: randomUUID(), timestamp: new Date().toISOString(), ...event });
@@ -54,6 +55,7 @@ export class NodeService {
       node.protocolVersion = heartbeat.protocolVersion; node.platform = heartbeat.platform; node.declaredCapabilities = heartbeat.capabilities;
       node.heartbeatHealthStatus = heartbeat.health.status;
       if (heartbeat.telemetry) node.telemetry = heartbeat.telemetry;
+      if (heartbeat.siteSnapshot) node.siteSnapshot = heartbeat.siteSnapshot;
       return audit({ requester: `agent:${nodeId}`, nodeId, taskId: null, event: "node.heartbeat", taskType: null, parameters: { health: heartbeat.health.status, capabilities: heartbeat.capabilities }, fromStatus: previous, toStatus: "online", resultSummary: null, traceId });
     });
     if (!updated) throw new ServiceError(401, "UNAUTHORIZED", "节点不存在或已撤销");
@@ -81,6 +83,25 @@ export class NodeService {
       }
       state.audits.push(audit({ requester, nodeId, taskId: null, event: "node.revoked", taskType: null, parameters: null, fromStatus: previous, toStatus: "revoked", resultSummary: null, traceId }));
     });
+  }
+
+  async updateCapabilities(nodeId: string, allowedCapabilities: AgentHeartbeat["capabilities"], requester: string, traceId: string) {
+    const updated = await this.repository.updateNodeWithAudit(nodeId, (node) => {
+      if (node.revokedAt) throw new ServiceError(404, "NOT_FOUND", "节点不存在或已撤销");
+      for (const capability of allowedCapabilities) {
+        if (!CONTROLLER_SUPPORTED_AGENT_CAPABILITIES.includes(capability) || !node.declaredCapabilities.includes(capability)) {
+          throw new ServiceError(400, "BAD_REQUEST", "只能授权 Controller 支持且 Agent 已声明的能力");
+        }
+      }
+      const previous = node.allowedCapabilities;
+      node.allowedCapabilities = [...allowedCapabilities];
+      return audit({
+        requester, nodeId, taskId: null, event: "node.capabilities-updated", taskType: null,
+        parameters: { allowedCapabilities }, fromStatus: previous.join(","), toStatus: allowedCapabilities.join(","), resultSummary: null, traceId,
+      });
+    });
+    if (!updated) throw new ServiceError(404, "NOT_FOUND", "节点不存在");
+    return updated;
   }
 
   async rotate(nodeId: string, credentialId: string, rotationId: string, publicKey: string, traceId: string) {

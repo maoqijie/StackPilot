@@ -14,13 +14,15 @@ test("web API clients consume the public contracts package", async () => {
 });
 
 test("Web authentication uses Cookie credentials and memory-only CSRF/reauth values", async () => {
-  const [agentSource, clientSource] = await Promise.all([
+  const [agentSource, clientSource, sitesSource] = await Promise.all([
     readFile(new URL("../../apps/web/src/api/agentApi.ts", import.meta.url), "utf8"),
     readFile(new URL("../../apps/web/src/api/client.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../apps/web/src/api/sitesApi.ts", import.meta.url), "utf8"),
   ]);
   assert.match(clientSource, /credentials: "include"/);
   assert.match(agentSource, /"X-Reauth-Proof":reauthProof/);
-  assert.doesNotMatch(`${agentSource}\n${clientSource}`, /localStorage|sessionStorage|document\.cookie|VITE_|Authorization/);
+  assert.match(sitesSource, /"X-Reauth-Proof": reauthProof/);
+  assert.doesNotMatch(`${agentSource}\n${clientSource}\n${sitesSource}`, /localStorage|sessionStorage|document\.cookie|VITE_|Authorization/);
 });
 
 test("Vite proxies API and health routes to the Controller", async () => {
