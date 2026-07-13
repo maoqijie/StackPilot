@@ -18,7 +18,7 @@ export const PERMISSIONS: ReadonlyArray<[Permission, "low" | "medium" | "high", 
 ];
 const roleDefinitions = [
   ["administrator","管理员",PERMISSIONS.map(([key]) => key)],
-  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","sites:read","sites:renew","databases:read","files:read","files:write","files:delete","tasks:read","tasks:create","tasks:cancel","terminal:read","terminal:execute"]],
+  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","sites:read","sites:renew","databases:read","files:read","files:write","tasks:read","tasks:create","tasks:cancel","terminal:read","terminal:execute"]],
   ["audit-reader","只读审计员",["overview:read","nodes:read","sites:read","databases:read","files:read","tasks:read","audit:read"]],
 ] as const;
 
@@ -31,6 +31,12 @@ export class IdentityService {
     this.database.transaction(() => {
       const permission = this.database.prepare("INSERT OR IGNORE INTO permissions(key,risk,description) VALUES(?,?,?)");
       for (const entry of PERMISSIONS) permission.run(...entry);
+      this.database.prepare("INSERT OR IGNORE INTO role_permissions(role_id,permission_key) SELECT role_id,'files:write' FROM role_permissions WHERE permission_key='files:manage'").run();
+      this.database.prepare("INSERT OR IGNORE INTO api_token_permissions(token_id,permission_key) SELECT token_id,'files:write' FROM api_token_permissions WHERE permission_key='files:manage'").run();
+      this.database.prepare("DELETE FROM role_permissions WHERE permission_key='files:manage'").run();
+      this.database.prepare("DELETE FROM api_token_permissions WHERE permission_key='files:manage'").run();
+      this.database.prepare("DELETE FROM permissions WHERE key='files:manage'").run();
+      this.database.prepare("DELETE FROM role_permissions WHERE role_id='operator' AND permission_key='files:delete'").run();
       const role = this.database.prepare("INSERT OR IGNORE INTO roles(id,name,description,builtin,created_at) VALUES(?,?,?,?,?)");
       const mapping = this.database.prepare("INSERT OR IGNORE INTO role_permissions(role_id,permission_key) VALUES(?,?)");
       for (const [id, name, permissions] of roleDefinitions) { role.run(id, name, `${name}内置角色`, 1, new Date().toISOString()); for (const key of permissions) mapping.run(id, key); }

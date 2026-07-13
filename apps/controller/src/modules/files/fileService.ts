@@ -9,7 +9,7 @@ import {
 import { z } from "zod";
 import { ServiceError } from "../serviceError.js";
 import { FileStorageSafety, isWithin, type StableDirectory } from "./fileStorageSafety.js";
-import { isCleanRestoreConflict, restoreMarker, restoreWithoutOverwrite } from "./fileRestore.js";
+import { cleanupRestoreMarker, finalizeRestore, isCleanRestoreConflict, restoreWithoutOverwrite } from "./fileRestore.js";
 
 const TRASH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const TRASH_MAINTENANCE_MS = 60 * 60 * 1000;
@@ -175,6 +175,7 @@ export class FileService {
   private async clearTransaction() { await rm(this.transactionPath(), { force: true }); await this.syncDirectory(this.trashRoot); }
   private async syncDirectory(path: string) { const handle = await open(path, "r"); try { await handle.sync(); } finally { await handle.close(); } }
   private async exists(path: string) { try { await lstat(path); return true; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; } }
+  private async sameFile(left: string, right: string) { const [a, b] = await Promise.all([lstat(left), lstat(right)]); return a.dev === b.dev && a.ino === b.ino; }
   private storedPath(row: TrashMeta) {
     const target = join(this.trashRoot, `${row.id}.data`);
     if (row.storedName !== `${row.id}.data` || !isWithin(this.trashRoot, target)) throw metadataError("回收站");
@@ -201,21 +202,34 @@ export class FileService {
   }
 
   private async recoverRestore(row: TrashMeta) {
-    const rows = await this.trashMetadata(); const stored = this.storedPath(row); const target = this.safety.requestedPath(row.originalPath);
-    const [hasStored, hasTarget] = await Promise.all([this.exists(stored), this.exists(target)]); const recorded = rows.some((item) => item.id === row.id);
-    if (!hasStored && hasTarget) { if (row.kind === "directory") await rm(restoreMarker(target, row.id), { force: true }); if (recorded) await this.saveTrash(rows.filter((item) => item.id !== row.id)); return; }
-    if (hasStored && recorded) { await restoreWithoutOverwrite(stored, target, row); await this.saveTrash(rows.filter((item) => item.id !== row.id)); return; }
-    throw metadataError("回收站恢复");
+    const rows = await this.trashMetadata(); const stored = this.storedPath(row); const absoluteTarget = this.safety.requestedPath(row.originalPath); const recorded = rows.some((item) => item.id === row.id);
+    return this.safety.withStableParent(row.originalPath, async (parent, target) => {
+      const [hasStored, hasTarget] = await Promise.all([this.exists(stored), this.exists(target.operationPath)]);
+      const boundary = { absoluteTarget, realRoot: parent.realRoot };
+      if (hasStored && recorded) {
+        try { await restoreWithoutOverwrite(stored, target.operationPath, row, boundary, true); }
+        catch (error) { if (isCleanRestoreConflict(error)) return; throw error; }
+        await this.safety.assertStableDirectory(parent); await this.saveTrash(rows.filter((item) => item.id !== row.id));
+        await finalizeRestore(stored, target.operationPath, row, boundary); return;
+      }
+      if (hasStored && !recorded) { await finalizeRestore(stored, target.operationPath, row, boundary); return; }
+      if (!hasStored && !recorded) { if (hasTarget) await cleanupRestoreMarker(target.operationPath, row, boundary); return; }
+      throw metadataError("回收站恢复");
+    });
   }
 
   private async recoverUpload(transaction: Extract<FileTransaction, { operation: "upload" }>) {
-    const target = this.safety.requestedPath(transaction.targetPath); const temporary = join(this.trashRoot, transaction.temporaryName);
-    const [hasTarget, hasTemporary] = await Promise.all([this.exists(target), this.exists(temporary)]);
-    if (!hasTarget && hasTemporary) await link(temporary, target);
-    else if (!hasTarget) throw metadataError("上传事务");
-    const history = await this.uploadHistory();
-    if (!history.some((item) => item.id === transaction.upload.id)) await this.saveUploadHistory([transaction.upload, ...history]);
-    await rm(temporary, { force: true });
+    const temporary = join(this.trashRoot, transaction.temporaryName);
+    return this.safety.withStableParent(transaction.targetPath, async (parent, target) => {
+      const [hasTarget, hasTemporary] = await Promise.all([this.exists(target.operationPath), this.exists(temporary)]);
+      if (!hasTarget && hasTemporary) await link(temporary, target.operationPath);
+      else if (!hasTarget) throw metadataError("上传事务");
+      if (hasTemporary && !await this.sameFile(temporary, target.operationPath)) throw metadataError("上传事务");
+      await this.safety.assertStableDirectory(parent); const history = await this.uploadHistory(); const recorded = history.some((item) => item.id === transaction.upload.id);
+      if (!hasTemporary && !recorded) throw metadataError("上传事务");
+      if (!recorded) await this.saveUploadHistory([transaction.upload, ...history]);
+      if (hasTemporary) await rm(temporary);
+    });
   }
 
   private async reconcileTrashStorage() {
@@ -279,9 +293,10 @@ export class FileService {
       if (!row) throw new ServiceError(404, "NOT_FOUND", "回收站项目不存在");
       return this.safety.withStableParent(row.originalPath, async (parent, target) => {
         const stored = this.storedPath(row); await this.saveTransaction({ operation: "restore", row });
-        try { await restoreWithoutOverwrite(stored, target.operationPath, row); }
+        try { await restoreWithoutOverwrite(stored, target.operationPath, row, { absoluteTarget: target.absolutePath, realRoot: parent.realRoot }); }
         catch (error) { if (isCleanRestoreConflict(error) && await this.exists(stored)) await this.clearTransaction(); throw error; }
-        await Promise.all([this.syncDirectory(this.trashRoot), this.syncDirectory(parent.operationPath)]); await this.safety.assertStableDirectory(parent); await this.saveTrash(rows.filter((item) => item.id !== id)); await this.clearTransaction();
+        await Promise.all([this.syncDirectory(this.trashRoot), this.syncDirectory(parent.operationPath)]); await this.safety.assertStableDirectory(parent); await this.saveTrash(rows.filter((item) => item.id !== id));
+        await finalizeRestore(stored, target.operationPath, row, { absoluteTarget: target.absolutePath, realRoot: parent.realRoot }); await this.clearTransaction();
         return this.toEntry(target.operationPath, target.absolutePath);
       });
     });

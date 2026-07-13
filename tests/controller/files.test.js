@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, mkdir, readFile, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { access, link, lstat, mkdtemp, mkdir, readFile, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
@@ -75,12 +75,19 @@ test("independent file services cannot overwrite the same restore target", async
   } finally { await rm(work, { recursive: true, force: true }); }
 });
 
-test("directory restore preserves bytes without overwriting a competing directory", async () => {
+test("directory restore preserves bytes without overwriting a competing directory", { skip: process.platform !== "linux" }, async () => {
   const work = await mkdtemp(join(tmpdir(), "stackpilot-files-restore-directory-")); const root = join(work, "root"); const trash = join(work, "trash"); await mkdir(join(root, "site"), { recursive: true }); await writeFile(join(root, "site", "index.html"), "release"); const service = new FileService(root, trash, 1024, work);
   try {
     const row = await service.trash("/site"); await mkdir(join(root, "site")); await writeFile(join(root, "site", "external.txt"), "external"); await assert.rejects(service.restore(row.id), /恢复目标已存在/); assert.equal(await readFile(join(root, "site", "external.txt"), "utf8"), "external"); await rm(join(root, "site"), { recursive: true });
     await service.restore(row.id); assert.equal(await readFile(join(root, "site", "index.html"), "utf8"), "release"); assert.equal((await service.listTrash()).entries.length, 0);
   } finally { await rm(work, { recursive: true, force: true }); }
+});
+
+test("directory restore refuses a target replaced by an external symlink", { skip: process.platform !== "linux" }, async () => {
+  const work = await mkdtemp(join(tmpdir(), "stackpilot-files-restore-symlink-")); const root = join(work, "root"); const trash = join(work, "trash"); const outside = join(work, "outside"); const detached = join(root, "site-detached"); await mkdir(join(root, "site"), { recursive: true }); await mkdir(outside); await writeFile(join(outside, "keep.txt"), "external"); for (let index = 0; index < 2_000; index += 1) await writeFile(join(root, "site", `${index}.txt`), "release"); const service = new FileService(root, trash, 1024, work); const row = await service.trash("/site");
+  const original = service.safety.withStableParent.bind(service.safety); service.safety.withStableParent = (path, operation) => original(path, async (parent, target) => { const pending = operation(parent, target); for (let attempt = 0; attempt < 100; attempt += 1) { if (await access(target.absolutePath).then(() => true, () => false)) break; await new Promise((resolve) => setTimeout(resolve, 2)); } await rename(target.absolutePath, detached); await symlink(outside, target.absolutePath); return pending; });
+  try { await assert.rejects(service.restore(row.id), /恢复目录|变化|符号链接/); assert.equal((await lstat(join(root, "site"))).isSymbolicLink(), true); assert.equal(await readFile(join(outside, "keep.txt"), "utf8"), "external"); }
+  finally { await rm(work, { recursive: true, force: true }); }
 });
 
 test("file storage rejects overlapping roots and untrusted trash metadata", async () => {
@@ -98,12 +105,22 @@ test("file storage recovers interrupted trash, restore, purge and upload transac
   try {
     await writeFile(join(root, row.name), "recover"); await writeFile(join(trash, ".stackpilot-file-transaction.json"), JSON.stringify({ operation: "trash", row })); await rename(join(root, row.name), join(trash, row.storedName));
     let service = new FileService(root, trash, 1024, work); assert.equal((await service.listTrash()).entries[0].id, row.id);
-    await writeFile(join(trash, ".stackpilot-file-transaction.json"), JSON.stringify({ operation: "restore", row })); await rename(join(trash, row.storedName), join(root, row.name));
+    await writeFile(join(trash, ".stackpilot-file-transaction.json"), JSON.stringify({ operation: "restore", row })); await link(join(trash, row.storedName), join(root, row.name));
     service = new FileService(root, trash, 1024, work); assert.equal((await service.listTrash()).entries.length, 0); assert.equal(await readFile(join(root, row.name), "utf8"), "recover");
     const trashed = await service.trash("/recover.txt"); const stored = join(trash, `${trashed.id}.data`); const quarantine = join(trash, `.purge-${trashed.id}`); const metadata = JSON.parse(await readFile(join(trash, ".stackpilot-trash.json"), "utf8")); await writeFile(join(trash, ".stackpilot-file-transaction.json"), JSON.stringify({ operation: "purge", rows: metadata })); await rename(stored, quarantine);
     service = new FileService(root, trash, 1024, work); assert.equal((await service.listTrash()).entries.length, 0); assert.equal((await readdir(trash)).some((name) => name.startsWith(".purge-")), false);
     const upload = { id: "22222222-2222-4222-8222-222222222222", name: "uploaded.bin", targetPath: "/", sizeBytes: 4, status: "completed", owner: "tester", startedAt: now.toISOString(), completedAt: now.toISOString(), error: null }; const temporaryName = ".upload-22222222-2222-4222-8222-222222222222.tmp"; await writeFile(join(trash, temporaryName), "data"); await writeFile(join(trash, ".stackpilot-file-transaction.json"), JSON.stringify({ operation: "upload", targetPath: "/uploaded.bin", temporaryName, upload }));
     service = new FileService(root, trash, 1024, work); await service.list("/"); assert.equal(await readFile(join(root, "uploaded.bin"), "utf8"), "data"); assert.equal((await service.listUploads()).uploads[0].id, upload.id);
+  } finally { await rm(work, { recursive: true, force: true }); }
+});
+
+test("startup recovery never follows a restored target symlink or discards a competing upload", async () => {
+  const work = await mkdtemp(join(tmpdir(), "stackpilot-files-recover-conflict-")); const root = join(work, "root"); const trash = join(work, "trash"); const outside = join(work, "outside"); await mkdir(root); await mkdir(trash); await mkdir(outside); const now = new Date();
+  const row = { id: "44444444-4444-4444-8444-444444444444", name: "site", originalPath: "/site", kind: "directory", sizeBytes: null, deletedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 60_000).toISOString(), owner: "uid:1", storedName: "44444444-4444-4444-8444-444444444444.data" }; const marker = `.stackpilot-restore-${row.id}`;
+  try {
+    await writeFile(join(outside, marker), row.id); await symlink(outside, join(root, "site")); await writeFile(join(trash, ".stackpilot-file-transaction.json"), JSON.stringify({ operation: "restore", row })); const restore = new FileService(root, trash, 1024, work); await restore.list("/"); assert.equal(await readFile(join(outside, marker), "utf8"), row.id);
+    await rm(join(root, "site")); await writeFile(join(root, "uploaded.bin"), "external"); const upload = { id: "55555555-5555-4555-8555-555555555555", name: "uploaded.bin", targetPath: "/uploaded.bin", sizeBytes: 11, status: "completed", owner: "tester", startedAt: now.toISOString(), completedAt: now.toISOString(), error: null }; const temporaryName = ".upload-55555555-5555-4555-8555-555555555555.tmp"; await writeFile(join(trash, temporaryName), "real-upload"); await writeFile(join(trash, ".stackpilot-file-transaction.json"), JSON.stringify({ operation: "upload", targetPath: "/uploaded.bin", temporaryName, upload }));
+    const competing = new FileService(root, trash, 1024, work); await assert.rejects(competing.list("/"), /上传事务元数据损坏/); assert.equal(await readFile(join(root, "uploaded.bin"), "utf8"), "external"); assert.equal(await readFile(join(trash, temporaryName), "utf8"), "real-upload"); assert.equal(await access(join(trash, ".stackpilot-uploads.json")).then(() => true, () => false), false);
   } finally { await rm(work, { recursive: true, force: true }); }
 });
 
