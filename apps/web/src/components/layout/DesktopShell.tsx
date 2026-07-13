@@ -231,7 +231,7 @@ function DesktopShellContent({
           )}
           {activeModule === "files" && <FilesModule page={page} notify={notify} permissions={user.permissions} />}
           {page === "terminal-history" && <TerminalHistoryPage notify={notify} />}
-          {activeModule === "terminal" && page !== "terminal-history" && <TerminalPage page={page} notify={notify} />}
+          {activeModule === "terminal" && page !== "terminal-history" && <TerminalPage page={page} notify={notify} permissions={user.permissions} />}
           {activeModule === "systemd" && <SystemdPage page={page} notify={notify} />}
           {activeModule === "firewall" && <FirewallPage page={page} notify={notify} />}
           {activeModule === "deploy" && <DeployPage page={page} notify={notify} />}

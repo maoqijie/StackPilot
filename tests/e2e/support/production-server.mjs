@@ -17,7 +17,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const managementPort = Number(process.env.STACKPILOT_E2E_MANAGEMENT_PORT ?? 18787);
 const webPort = Number(process.env.STACKPILOT_E2E_WEB_PORT ?? 18443);
 const agentPort = Number(process.env.STACKPILOT_E2E_AGENT_PORT ?? 19443);
-const runtime = join(root, "output", "e2e", process.env.STACKPILOT_E2E_RUNTIME ?? "runtime");
+const runtime = process.env.STACKPILOT_E2E_RUNTIME ? resolve(process.env.STACKPILOT_E2E_RUNTIME) : join(root, "output", "e2e", "runtime");
 rmSync(runtime, { recursive: true, force: true });
 mkdirSync(runtime, { recursive: true });
 
