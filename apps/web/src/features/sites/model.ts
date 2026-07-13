@@ -11,7 +11,11 @@ function sitesPagePreset(page: PageKey) {
 }
 
 function isSiteCertDue(site: SiteRuntimeView) {
-  return site.certDays !== null && site.certDays < 14;
+  return ["expired", "critical", "expiring"].includes(site.certificate.status);
+}
+
+function canRenewSiteCertificate(site: SiteRuntimeView) {
+  return site.certificate.renewable && !["queued", "running"].includes(site.renewal.status);
 }
 
 function siteStatusTone(status: SiteRuntimeView["status"]): Tone {
@@ -45,16 +49,18 @@ function formatTrafficGb(value: number) {
 
 function runtimeSiteFromApi(site: SiteRuntimeRecord, collectedAt: string): SiteRuntimeView {
   const status = site.status === "running" ? "运行中" : site.status === "warning" ? "告警" : site.status === "stopped" ? "已停止" : "待采集";
-  const certDays = site.certificateExpiresAt === null
+  const certDays = site.certificate.expiresAt === null
     ? null
-    : Math.max(0, Math.ceil((Date.parse(site.certificateExpiresAt) - Date.parse(collectedAt)) / 86_400_000));
+    : Math.ceil((Date.parse(site.certificate.expiresAt) - Date.parse(collectedAt)) / 86_400_000);
   return {
     id: site.id, domain: site.domain, status, runtime: site.runtime, host: site.host,
     upstream: site.upstream ?? "未配置上游", source: site.source, certDays,
-    certificateIssuer: site.certificateIssuer ?? "暂不可用",
+    certificateIssuer: site.certificate.issuer ?? "暂不可用",
     trafficBytes: site.trafficBytes,
     traffic: site.trafficBytes === null ? "暂不可用" : formatTrafficGb(site.trafficBytes / 1024 ** 3),
     latencyMs: site.latencyMs, latency: site.latencyMs === null ? "暂不可用" : `${site.latencyMs}ms`,
+    nodeId: site.nodeId, collectedAt: site.collectedAt, freshness: site.freshness,
+    certificate: site.certificate, renewal: site.renewal,
   };
 }
 
@@ -80,4 +86,4 @@ function runtimeGroupsFromSites(sites: SiteRuntimeView[]): SiteRuntimeGroup[] {
   }).sort((left, right) => right.sites.length - left.sites.length || left.runtime.localeCompare(right.runtime, "zh-Hans-CN"));
 }
 
-export { sitesPagePreset, isSiteCertDue, siteStatusTone, runtimeSiteStatusTone, runtimeGroupHealth, siteTrafficGb, formatTrafficGb, runtimeSiteFromApi, runtimeGroupsFromSites };
+export { sitesPagePreset, isSiteCertDue, canRenewSiteCertificate, siteStatusTone, runtimeSiteStatusTone, runtimeGroupHealth, siteTrafficGb, formatTrafficGb, runtimeSiteFromApi, runtimeGroupsFromSites };
