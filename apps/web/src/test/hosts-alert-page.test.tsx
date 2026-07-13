@@ -23,8 +23,14 @@ describe("hosts alert page", () => {
   beforeEach(() => { vi.mocked(fetchHosts).mockReset(); vi.mocked(fetchHosts).mockResolvedValue({ hosts: [alertNode], collectedAt: "2026-07-12T04:30:02.000Z" }); });
 
   it("uses backend freshness and exposes offline state without manual collection actions", async () => {
-    render(<HostsPage page="hosts-alert" notify={vi.fn()} />);
+    const { container } = render(<HostsPage page="hosts-alert" notify={vi.fn()} />);
     expect(await screen.findByText(`采集于 ${formatTimestamp("2026-07-12T04:30:02.000Z")}`)).toBeInTheDocument();
+    expect(container.querySelector(".page-head")).not.toBeInTheDocument();
+    expect(screen.queryByText("告警处置队列")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("搜索主机名、IP、服务或版本")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /环境|健康/ })).not.toBeInTheDocument();
+    expect(screen.getByText("待处理")).toBeInTheDocument();
+    expect(screen.getByText("状态摘要")).toBeInTheDocument();
     expect(screen.getAllByText("离线").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /新增主机|刷新|重新采集|重新扫描/ })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "主机告警队列" })).toBeInTheDocument();
