@@ -48,9 +48,9 @@ test("database monitoring includes cached Controller-local systemd inventory ind
   assert.equal(calls, 1);
   assert.equal(first.collectionStatus, "complete");
   assert.equal(first.instances.length, 1);
-  assert.equal(first.instances[0].nodeId, "node-local");
+  assert.equal(first.instances[0].nodeId, "00000000-0000-0000-0000-000000000000");
   assert.equal(first.instances[0].nodeName, "controller-db");
-  assert.equal(first.instances[0].id, publicDatabaseId("node-local", "postgresql.service"));
+  assert.equal(first.instances[0].id, publicDatabaseId("00000000-0000-0000-0000-000000000000", "postgresql.service"));
   assert.deepEqual(second, first);
 
   const scoped = await service.getInstances({ nodeScope: [] });
@@ -91,7 +91,7 @@ test("database monitoring prefers Controller-local inventory when the local Agen
 
   const payload = await new DatabaseMonitoringService(repository, { collect: async () => localSnapshot }).getInstances({ nodeScope: "all" });
   assert.equal(payload.instances.length, 1);
-  assert.equal(payload.instances[0].nodeId, "node-local");
+  assert.equal(payload.instances[0].nodeId, "00000000-0000-0000-0000-000000000000");
   assert.equal(payload.instances[0].name, "postgresql-16-main");
 });
 
