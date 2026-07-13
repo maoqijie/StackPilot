@@ -41,6 +41,8 @@ import { SqliteAgentControlRepository } from "./repositories/sqliteAgentControlR
 import { requestSource } from "./http/trustedProxy.js";
 import { FileUploadRepository } from "./repositories/fileUploadRepository.js";
 import { FileUploadService } from "./modules/files/fileUploadService.js";
+import { DatabaseSlowQueryService } from "./modules/databases/databaseSlowQueryService.js";
+import { PostgresSlowQueryCollector } from "./platform/postgresSlowQueryCollector.js";
 
 export type AppOptions = {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -69,6 +71,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
   return {
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
+    databases: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
     sites: new SiteMonitoringService(new NginxSiteCollector(config.nginxConfigDirs)),
     databaseBackups: new DatabaseBackupService(database, isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath), config, repoRoot),
     tasks: new TaskService(overview, state, exports),
