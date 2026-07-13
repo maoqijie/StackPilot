@@ -22,6 +22,7 @@ import { NodeService } from "./modules/nodes/nodeService.js";
 import { HostMonitoringService } from "./modules/hosts/hostMonitoringService.js";
 import { SiteMonitoringService } from "./modules/sites/siteMonitoringService.js";
 import { CertificateRenewalService } from "./modules/sites/certificateRenewalService.js";
+import { DatabaseMonitoringService } from "./modules/databases/databaseMonitoringService.js";
 import { DatabaseBackupService } from "./modules/databases/databaseBackupService.js";
 import { NginxSiteCollector } from "./platform/siteCollector.js";
 import { RemoteTaskService } from "./modules/remote-tasks/remoteTaskService.js";
@@ -43,6 +44,7 @@ import { requestSource } from "./http/trustedProxy.js";
 import { SecretStore } from "./security/secretStore.js";
 import { MemorySiteManagementRepository, SqliteSiteManagementRepository, type SiteManagementRepository } from "./modules/sites/siteManagementRepository.js";
 import { RemoteSiteExecutor, SiteManagementService } from "./modules/sites/siteManagementService.js";
+import { FileService } from "./modules/files/fileService.js";
 import { FileUploadRepository } from "./repositories/fileUploadRepository.js";
 import { FileUploadService } from "./modules/files/fileUploadService.js";
 import { DatabaseSlowQueryService } from "./modules/databases/databaseSlowQueryService.js";
@@ -75,14 +77,16 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
   const certificateRenewals = new CertificateRenewalService(repository, sites);
   const remoteTasks = new RemoteTaskService(repository);
   const managementRepository = siteRepository ?? new MemorySiteManagementRepository();
-  const files = database ? createFileUploadService(database, repoRoot, config) : undefined;
+  const fileUploads = database ? createFileUploadService(database, repoRoot, config) : undefined;
   return {
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
-    databases: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
+    databaseSlowQueries: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
+    databaseInstances: new DatabaseMonitoringService(repository),
     sites,
     siteManagement: new SiteManagementService(managementRepository, sites, certificateRenewals, new RemoteSiteExecutor(remoteTasks, managementRepository), config.protectedSiteIds),
     certificateRenewals,
+    fileManager: new FileService(config.fileRoots),
     databaseBackups: new DatabaseBackupService(database, isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath), config, repoRoot),
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
@@ -90,7 +94,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     enrollments: new EnrollmentService(repository),
     nodes: new NodeService(repository),
     remoteTasks,
-    ...(files ? { files } : {}),
+    ...(fileUploads ? { fileUploads } : {}),
   };
 }
 
@@ -112,7 +116,7 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
   const agentRepository = options.agentRepository ?? (database ? new SqliteAgentControlRepository(database,identity?.audit,secrets) : undefined);
   const siteRepository = database && secrets ? new SqliteSiteManagementRepository(database, secrets) : undefined;
   const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, database, siteRepository);
-  if (!services.files && database) services.files = createFileUploadService(database, repoRoot, config);
+  if (!services.fileUploads && database) services.fileUploads = createFileUploadService(database, repoRoot, config);
   const logger = options.logger ?? consoleLogger;
   const surface = options.surface ?? "all";
 
@@ -143,8 +147,10 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
       if (surface === "management" && isAgentPath) throw new ServiceError(426, "BAD_REQUEST", "Agent API 仅在 TLS 监听器可用");
       principal = !isAgentPath && !isHealthPath && !isLoginPath && !isSessionStatusPath ? authenticateUser(request, identity) : isSessionStatusPath && identity ? (()=>{try{return authenticateUser(request,identity);}catch{return undefined;}})() : undefined;
       if (!isAgentPath && isWriteMethod(method) && !isLoginPath && principal && identity) requireCsrf(request, principal, identity, config.allowedOrigins);
-      const bodyLimit = url.pathname === "/api/agent/heartbeat" ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
-      const parsedBody = isWriteMethod(method) && !isFileChunkPath ? await readJsonRequest(request, bodyLimit) : { value: {}, raw: Buffer.alloc(0) };
+      const isFileUpload = url.pathname === "/api/files/upload" && method === "POST";
+      if (isFileUpload) identity?.require(principal, "files:manage");
+      const bodyLimit = isFileUpload ? config.fileUploadLimitBytes : url.pathname === "/api/agent/heartbeat" ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
+      const parsedBody = isWriteMethod(method) && !isFileChunkPath ? await readJsonRequest(request, bodyLimit, isFileUpload) : { value: {}, raw: Buffer.alloc(0) };
       const parts = url.pathname.split("/").filter(Boolean);
       const authenticatedAgent = isAgentPath && url.pathname !== "/api/agent/enroll"
         ? await authenticateAgentRequest(request, `${url.pathname}${url.search}`, parsedBody.raw, services.nodes)

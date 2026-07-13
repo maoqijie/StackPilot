@@ -73,27 +73,43 @@ function remoteSite(node: AgentNodeState, site: AgentSiteSnapshotRecord, tasks: 
 }
 
 export class SiteMonitoringService {
-  private cached: { expiresAt: number; payload: SiteRuntimePayload } | null = null;
+  private cached: SiteRuntimePayload | null = null;
   private inFlight: Promise<SiteRuntimePayload> | null = null;
+  private refreshTimer: NodeJS.Timeout | null = null;
 
   private readonly repository?: AgentControlRepository;
-  private readonly cacheMs: number;
+  private readonly refreshMs: number;
 
-  constructor(private readonly collector: SiteCollector, repositoryOrCache?: AgentControlRepository | number, cacheMs = 8_000) {
+  constructor(private readonly collector: SiteCollector, repositoryOrCache?: AgentControlRepository | number, refreshMs = 60_000) {
     this.repository = typeof repositoryOrCache === "number" ? undefined : repositoryOrCache;
-    this.cacheMs = typeof repositoryOrCache === "number" ? repositoryOrCache : cacheMs;
+    this.refreshMs = typeof repositoryOrCache === "number" ? repositoryOrCache : refreshMs;
   }
 
-  getLocalSites() {
-    if (this.cached && this.cached.expiresAt > Date.now()) return Promise.resolve(this.cached.payload);
+  async startup() {
+    await this.refreshLocalSites();
+    if (this.refreshTimer) return;
+    this.refreshTimer = setInterval(() => { void this.refreshLocalSites().catch(() => undefined); }, this.refreshMs);
+    this.refreshTimer.unref();
+  }
+
+  shutdown() {
+    if (this.refreshTimer) clearInterval(this.refreshTimer);
+    this.refreshTimer = null;
+  }
+
+  private refreshLocalSites() {
     if (this.inFlight) return this.inFlight;
     const request = this.collector.collectSites().then((payload) => {
       const parsed = SiteRuntimePayloadSchema.parse(payload);
-      this.cached = { expiresAt: Date.now() + this.cacheMs, payload: parsed };
+      this.cached = parsed;
       return parsed;
     }).finally(() => { if (this.inFlight === request) this.inFlight = null; });
     this.inFlight = request;
     return request;
+  }
+
+  getLocalSites() {
+    return this.cached ? Promise.resolve(this.cached) : this.refreshLocalSites();
   }
 
   async getSites(access: SiteAccess = { nodeScope: [] }) {

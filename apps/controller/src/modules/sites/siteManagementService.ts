@@ -21,7 +21,7 @@ export type SiteExecutionInstruction =
 
 export interface SiteExecutor {
   dispatch(operationId: string, nodeId: string, instruction: SiteExecutionInstruction): Promise<string>;
-  reconcile(operation: SiteOperation): Promise<{ status: SiteOperation["status"]; result: SiteOperationResult | null; errorCode: string | null } | null>;
+  reconcile(operation: SiteOperation): Promise<{ status: SiteOperation["status"]; result: SiteOperationResult | null; errorCode: string | null; taskId?: string } | null>;
 }
 
 export class DeferredSiteExecutor implements SiteExecutor {
@@ -56,6 +56,11 @@ function planDigest(input: CreateSitePlanRequest) {
 }
 
 export class SiteManagementService {
+  private reconciliationTimer: NodeJS.Timeout | undefined;
+  private reconciliationRun: Promise<void> | undefined;
+  private reconciliationActive = false;
+  private readonly operationReconciliations = new Map<string, Promise<SiteOperation>>();
+
   constructor(
     private readonly repository: SiteManagementRepository,
     private readonly monitoring: SiteMonitoringService,
@@ -88,11 +93,16 @@ export class SiteManagementService {
 
   private async dispatch(operation: SiteOperation, instruction: SiteExecutionInstruction) {
     try {
-      operation.taskId = await this.executor.dispatch(operation.operationId, operation.nodeId, instruction);
-      this.repository.updateOperation(operation);
-      return operation;
+      const taskId = await this.executor.dispatch(operation.operationId, operation.nodeId, instruction);
+      const current = this.repository.getOperation(operation.operationId);
+      if (!current || terminal.has(current.status)) return current ?? operation;
+      const dispatched = { ...current, taskId };
+      this.repository.updateOperation(dispatched);
+      return dispatched;
     } catch {
-      const failed = SiteOperationSchema.parse({ ...operation, status: "failed", stage: "dispatch_failed", progressPercent: 100, errorCode: "DISPATCH_FAILED", updatedAt: new Date().toISOString() });
+      const current = this.repository.getOperation(operation.operationId);
+      if (current && terminal.has(current.status)) return current;
+      const failed = SiteOperationSchema.parse({ ...(current ?? operation), status: "failed", stage: "dispatch_failed", progressPercent: 100, errorCode: "DISPATCH_FAILED", updatedAt: new Date().toISOString() });
       this.repository.updateOperation(failed);
       if (operation.type === "prepare" && operation.planId) {
         const plan = this.repository.getPlan(operation.planId);
@@ -187,11 +197,61 @@ export class SiteManagementService {
   }
 
   async getOperation(operationId: string, access: SiteAccess) {
-    let found = this.repository.getOperation(operationId);
+    const found = this.repository.getOperation(operationId);
     if (!found) throw new ServiceError(404, "NOT_FOUND", "站点操作不存在");
     this.assertNodeAccess(found.nodeId, access);
-    if (found.taskId && !terminal.has(found.status)) {
+    return this.reconcileOperation(found, access);
+  }
+
+  startBackgroundReconciliation(intervalMs = 10_000, onError: (error: unknown) => void = () => undefined) {
+    if (this.reconciliationActive) return;
+    this.reconciliationActive = true;
+    const report = (error: unknown) => { try { onError(error); } catch { /* Error reporting must not stop reconciliation. */ } };
+    const run = async () => {
+      if (!this.reconciliationActive) return;
+      try {
+        for (const operation of this.repository.listNonTerminalOperations()) {
+          try { await this.reconcileOperation(operation, { nodeScope: "all" }); }
+          catch (error) { report(error); }
+        }
+      } catch (error) {
+        report(error);
+      } finally {
+        if (this.reconciliationActive) this.reconciliationTimer = setTimeout(() => { this.reconciliationRun = run(); }, intervalMs);
+      }
+    };
+    this.reconciliationRun = run();
+  }
+
+  async stopBackgroundReconciliation() {
+    this.reconciliationActive = false;
+    if (this.reconciliationTimer) clearTimeout(this.reconciliationTimer);
+    this.reconciliationTimer = undefined;
+    await this.reconciliationRun;
+    this.reconciliationRun = undefined;
+  }
+
+  private async reconcileOperation(initial: SiteOperation, access: SiteAccess) {
+    const active = this.operationReconciliations.get(initial.operationId);
+    if (active) return active;
+    const reconciliation = this.reconcileOperationOnce(initial, access);
+    this.operationReconciliations.set(initial.operationId, reconciliation);
+    try { return await reconciliation; }
+    finally { this.operationReconciliations.delete(initial.operationId); }
+  }
+
+  private async reconcileOperationOnce(initial: SiteOperation, access: SiteAccess) {
+    let found = this.repository.getOperation(initial.operationId) ?? initial;
+    if (terminal.has(found.status)) return found;
+    if (found.type !== "certificate_renewal") {
       const reconciled = await this.executor.reconcile(found);
+      const current = this.repository.getOperation(found.operationId);
+      if (!current || terminal.has(current.status)) return current ?? found;
+      found = current;
+      if (reconciled?.taskId && found.taskId !== reconciled.taskId) {
+        found = { ...found, taskId: reconciled.taskId, updatedAt: new Date().toISOString() };
+        this.repository.updateOperation(found);
+      }
       if (reconciled?.status === "running") found = this.markRunning(found.operationId, 50, "agent_running");
       else if (reconciled && terminal.has(reconciled.status)) found = this.complete(found.operationId, reconciled.status === "succeeded", reconciled.result, reconciled.errorCode);
     }
@@ -271,13 +331,15 @@ export class RemoteSiteExecutor implements SiteExecutor {
   }
 
   async reconcile(operation: SiteOperation) {
-    const task = (await this.tasks.list(operation.nodeId)).find((item) => item.taskId === operation.taskId);
-    if (!task) return { status: "failed" as const, result: null, errorCode: "REMOTE_TASK_NOT_FOUND" };
-    if (["queued", "dispatched"].includes(task.status)) return { status: "queued" as const, result: null, errorCode: null };
-    if (task.status === "running") return { status: "running" as const, result: null, errorCode: null };
-    if (task.status !== "succeeded") return { status: "failed" as const, result: null, errorCode: task.errorCode ?? "REMOTE_TASK_FAILED" };
-    try { return { status: "succeeded" as const, result: this.result(operation, task.result?.data), errorCode: null }; }
-    catch { return { status: "failed" as const, result: null, errorCode: "INVALID_REMOTE_TASK_RESULT" }; }
+    const task = (await this.tasks.list(operation.nodeId)).find((item) => item.taskId === operation.taskId
+      || (!operation.taskId && (item.parameters as { operationId?: unknown }).operationId === operation.operationId));
+    if (!task && !operation.taskId && Date.now() - Date.parse(operation.updatedAt) < 60_000) return null;
+    if (!task) return { status: "failed" as const, result: null, errorCode: operation.taskId ? "REMOTE_TASK_NOT_FOUND" : "DISPATCH_RESULT_UNKNOWN" };
+    if (["queued", "dispatched"].includes(task.status)) return { status: "queued" as const, result: null, errorCode: null, taskId: task.taskId };
+    if (task.status === "running") return { status: "running" as const, result: null, errorCode: null, taskId: task.taskId };
+    if (task.status !== "succeeded") return { status: "failed" as const, result: null, errorCode: task.errorCode ?? "REMOTE_TASK_FAILED", taskId: task.taskId };
+    try { return { status: "succeeded" as const, result: this.result(operation, task.result?.data), errorCode: null, taskId: task.taskId }; }
+    catch { return { status: "failed" as const, result: null, errorCode: "INVALID_REMOTE_TASK_RESULT", taskId: task.taskId }; }
   }
 
   private taskRequest(operationId: string, instruction: SiteExecutionInstruction) {

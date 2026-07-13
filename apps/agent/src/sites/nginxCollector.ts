@@ -1,16 +1,16 @@
-import { X509Certificate, createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, join } from "node:path";
 import { AgentSiteSnapshotSchema, type AgentSiteSnapshot, type AgentSiteSnapshotRecord, type SiteCertificate } from "@stackpilot/contracts";
-import { certificateIdForCertbotName, certbotNameFromCertificatePath } from "./certificateIdentity.js";
-import { certHelperAvailable } from "./helperClient.js";
+import { certificateSourceIdForPath } from "./certificateIdentity.js";
+import { certHelperCertificates } from "./helperClient.js";
 
 type Listener = { port: number; secure: boolean };
 type Candidate = { domain: string; listeners: Listener[]; runtime: string; upstream: string | null; source: string; certificatePath: string | null };
 type CollectorOptions = {
-  roots?: string[]; liveRoot?: string; hostName?: string; now?: () => Date;
-  readText?: (path: string) => Promise<string>; helperAvailable?: () => Promise<boolean>;
+  roots?: string[]; hostName?: string; now?: () => Date;
+  readText?: (path: string) => Promise<string>; helperCertificates?: () => Promise<Map<string, SiteCertificate>>;
 };
 const MAX_FILES = 500;
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -61,36 +61,20 @@ function candidates(block: string, source: string): Candidate[] {
   return domains(block).map((domain) => ({ domain: domain.startsWith("*.") ? domain.slice(2) : domain, listeners: listeners(block), runtime, upstream: safeUpstream(proxy ?? fastcgi), source, certificatePath }));
 }
 
-function status(expiresAt: string | null, now: Date): SiteCertificate["status"] {
-  if (!expiresAt) return "unavailable"; const remaining = Date.parse(expiresAt) - now.getTime();
-  if (remaining <= 0) return "expired"; if (remaining <= 7 * 86_400_000) return "critical"; if (remaining < 14 * 86_400_000) return "expiring"; return "valid";
-}
-
 function unavailable(reason: string): SiteCertificate {
   return { status: "unavailable", notBefore: null, expiresAt: null, issuer: null, subjectAlternativeNames: [], fingerprintSha256: null, renewalMode: "unsupported", renewable: false, unavailableReason: reason, certificateId: null };
 }
 
-function sans(value: string | undefined) {
-  return value ? value.split(/,\s*/).map((entry) => entry.replace(/^DNS:/, "")).filter((entry) => !entry.startsWith("IP Address:")).slice(0, 100) : [];
-}
-
 export class NginxSiteCollector {
-  private readonly roots; private readonly liveRoot; private readonly hostName; private readonly now; private readonly readText; private readonly isHelperAvailable;
+  private readonly roots; private readonly hostName; private readonly now; private readonly readText; private readonly helperInventory;
   constructor(private readonly nodeId: string, options: CollectorOptions = {}) {
     this.roots = options.roots ?? ["/etc/nginx/conf.d", "/etc/nginx/sites-enabled"];
-    this.liveRoot = options.liveRoot ?? "/etc/letsencrypt/live"; this.hostName = options.hostName ?? hostname(); this.now = options.now ?? (() => new Date());
-    this.readText = options.readText ?? ((path) => readFile(path, "utf8")); this.isHelperAvailable = options.helperAvailable ?? certHelperAvailable;
+    this.hostName = options.hostName ?? hostname(); this.now = options.now ?? (() => new Date());
+    this.readText = options.readText ?? ((path) => readFile(path, "utf8")); this.helperInventory = options.helperCertificates ?? certHelperCertificates;
   }
-  private async certificate(path: string | null, helperReady: boolean): Promise<SiteCertificate> {
-    if (!path) return unavailable("No readable public TLS certificate is configured");
-    try {
-      const certificate = new X509Certificate(await this.readText(path)); const expires = new Date(certificate.validTo); const starts = new Date(certificate.validFrom);
-      const expiresAt = Number.isNaN(expires.getTime()) ? null : expires.toISOString(); const name = certbotNameFromCertificatePath(path, this.liveRoot);
-      const renewalMode = name ? "automatic" as const : "manual" as const; const renewable = Boolean(name && helperReady);
-      return { status: status(expiresAt, this.now()), notBefore: Number.isNaN(starts.getTime()) ? null : starts.toISOString(), expiresAt,
-        issuer: certificate.issuer.replace(/\n/g, ", ").slice(0, 253) || null, subjectAlternativeNames: sans(certificate.subjectAltName), fingerprintSha256: certificate.fingerprint256.replaceAll(":", "").toUpperCase(),
-        renewalMode, renewable, unavailableReason: renewable ? null : name ? "Certificate renewal helper is unavailable or not authorized" : "Certificate is not managed by Certbot", certificateId: name ? certificateIdForCertbotName(name) : null };
-    } catch { return unavailable("Public TLS certificate could not be read or parsed"); }
+  private certificate(path: string | null, certificates: Map<string, SiteCertificate>): SiteCertificate {
+    if (!path) return unavailable("No public TLS certificate is configured");
+    return certificates.get(certificateSourceIdForPath(path)) ?? unavailable("Certificate helper cannot read the active public chain");
   }
   async collect(platform: "linux" | "darwin" | "win32" = "linux"): Promise<AgentSiteSnapshot> {
     const collectedAt = this.now().toISOString();
@@ -107,12 +91,12 @@ export class NginxSiteCollector {
       const listenersByKey = new Map([...(previous?.listeners ?? []), ...candidate.listeners].map((listener) => [`${listener.port}:${Number(listener.secure)}`, listener]));
       merged.set(key, previous ? { ...previous, listeners: [...listenersByKey.values()], runtime: candidate.runtime !== "Nginx" ? candidate.runtime : previous.runtime, upstream: candidate.upstream ?? previous.upstream, certificatePath: candidate.certificatePath ?? previous.certificatePath, source: `${previous.source}, ${candidate.source}`.slice(0, 128) } : candidate);
     }
-    const helperReady = await this.isHelperAvailable(); const sites: AgentSiteSnapshotRecord[] = [];
+    const helperCertificates = await this.helperInventory().catch(() => new Map<string, SiteCertificate>()); const sites: AgentSiteSnapshotRecord[] = [];
     for (const candidate of [...merged.values()].slice(0, 2_000)) {
       const id = `site_${createHash("sha256").update(`${this.nodeId}\0${candidate.domain.toLowerCase()}`).digest("hex").slice(0, 32)}`;
       sites.push({ id, domain: candidate.domain, status: "unknown", runtime: candidate.runtime, host: this.hostName, upstream: candidate.upstream, source: candidate.source, latencyMs: null, trafficBytes: null,
         errorRatePercent: null, lastDeployAt: null, manageability: "monitored", managementReason: "Discovered from existing Nginx configuration", protected: false, version: 1, desiredState: null,
-        certificate: await this.certificate(candidate.certificatePath, helperReady) });
+        certificate: this.certificate(candidate.certificatePath, helperCertificates) });
     }
     const unique = [...new Map(sites.map((site) => [site.id, site])).values()];
     return AgentSiteSnapshotSchema.parse({ collectedAt, collectionStatus: files.length === 0 ? "unavailable" : warnings.length ? "partial" : "complete", warnings: warnings.slice(0, 20), sites: unique });

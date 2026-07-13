@@ -1,5 +1,5 @@
 import {
-  AgentEnrollmentRequestSchema, AgentEnrollmentResponseSchema, AgentHeartbeatResponseSchema, AgentHeartbeatSchema,
+  AGENT_FEATURE_DATABASE_INVENTORY, AgentEnrollmentRequestSchema, AgentEnrollmentResponseSchema, AgentHeartbeatResponseSchema, AgentHeartbeatSchema,
   RemoteTaskPollResponseSchema, RemoteTaskRecordSchema, RemoteTaskStatusUpdateSchema, RotateCredentialRequestSchema, RotateCredentialResponseSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
@@ -9,6 +9,7 @@ import { parseSchema } from "./validation.js";
 
 export async function routeAgentRequest(context: RequestContext) {
   const method = context.request.method ?? "GET";
+  context.response.setHeader("X-StackPilot-Agent-Features", AGENT_FEATURE_DATABASE_INVENTORY);
   if (context.url.pathname === "/api/agent/enroll" && method === "POST") {
     const input = parseSchema(AgentEnrollmentRequestSchema, context.body, "注册请求");
     sendJson(context.response, 201, await context.services.enrollments.enroll(input, context.requestId), AgentEnrollmentResponseSchema);

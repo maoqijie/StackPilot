@@ -1,7 +1,8 @@
 import { connect } from "node:net";
+import { CertificateHelperStatusDataSchema, type SiteCertificate } from "@stackpilot/contracts";
 
 export const CERT_HELPER_SOCKET_PATH = "/run/stackpilot-cert-helper/helper.sock";
-const MAX_RESPONSE_BYTES = 16_384;
+const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 export type SiteHelperRequest =
   | { operation: "status" }
@@ -47,4 +48,10 @@ export function requestCertHelper(request: SiteHelperRequest, signal?: AbortSign
 
 export async function certHelperAvailable() {
   try { return (await requestCertHelper({ operation: "status" })).ok; } catch { return false; }
+}
+
+export async function certHelperCertificates() {
+  const response = await requestCertHelper({ operation: "status" });
+  const data = CertificateHelperStatusDataSchema.parse(response.data);
+  return new Map(data.certificates.map((entry): [string, SiteCertificate] => [entry.sourceId, entry.certificate]));
 }

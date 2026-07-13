@@ -39,7 +39,10 @@ export const RemoteTaskRecordSchema = RemoteTaskEnvelopeSchema.extend({
   status: RemoteTaskStatusSchema, updatedAt: z.string().datetime(), result: RemoteTaskResultSummarySchema.nullable(),
   errorCode: z.string().nullable(), retryable: z.boolean(), nextAttemptAt: z.string().datetime().nullable(),
 });
-export const RemoteTaskListResponseSchema = z.object({ tasks: z.array(RemoteTaskRecordSchema) });
+export const RemoteTaskListResponseSchema = z.object({
+  tasks: z.array(RemoteTaskRecordSchema),
+  collectedAt: z.string().datetime().optional(),
+});
 
 export type RemoteTaskStatus = z.infer<typeof RemoteTaskStatusSchema>;
 export type RemoteTaskEnvelope = z.infer<typeof RemoteTaskEnvelopeSchema>;

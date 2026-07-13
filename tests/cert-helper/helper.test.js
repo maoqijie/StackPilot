@@ -3,14 +3,16 @@ import { chmod, lstat, mkdtemp, mkdir, readFile, readdir, readlink, rm, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import selfsigned from "selfsigned";
 import { activatePlan, preview } from "../../apps/cert-helper/dist/activation.js";
+import { buildCertificateInventory, buildCertificateMap, certificateIdForName, certificateSourceId, publicCertificatePaths } from "../../apps/cert-helper/dist/certificateMap.js";
 import { loadConfig } from "../../apps/cert-helper/dist/config.js";
 import { issueCertificate, renewCertbotCertificate } from "../../apps/cert-helper/dist/certificates.js";
 import { updateLifecycle } from "../../apps/cert-helper/dist/lifecycle.js";
 import { fitLogBudget, parseAccessLine } from "../../apps/cert-helper/dist/logs.js";
 import { assertDomainsUnclaimed } from "../../apps/cert-helper/dist/nginx.js";
 import { prepareRepository } from "../../apps/cert-helper/dist/repository.js";
-import { SiteStateStore, stagingId } from "../../apps/cert-helper/dist/siteState.js";
+import { siteId, SiteStateStore, stagingId } from "../../apps/cert-helper/dist/siteState.js";
 import { handleRequest, parseRequest } from "../../apps/cert-helper/dist/protocol.js";
 
 const planId = "11111111-1111-4111-8111-111111111111";
@@ -155,8 +157,83 @@ test("prepare and activate independently reject protected core domains", async (
 
 test("helper readiness requires explicit core-site protection configuration", async () => {
   const root = await mkdtemp(join(tmpdir(), "stackpilot-helper-"));
-  assert.equal((await handleRequest('{"operation":"status"}', { config: config(root), ready: async () => true })).ok, true);
+  const certificate = { status: "valid", notBefore: "2026-01-01T00:00:00.000Z", expiresAt: "2026-09-01T00:00:00.000Z", issuer: "Test CA", subjectAlternativeNames: ["example.test"], fingerprintSha256: null, renewalMode: "automatic", renewable: true, unavailableReason: null, certificateId: `cert_${"a".repeat(32)}` };
+  const ready = await handleRequest('{"operation":"status"}', { config: config(root), ready: async () => true, inventory: async () => [{ sourceId: `source_${"b".repeat(32)}`, certificate }] });
+  assert.equal(ready.ok, true); assert.deepEqual(ready.data.certificates, [{ sourceId: `source_${"b".repeat(32)}`, certificate }]); assert.doesNotMatch(JSON.stringify(ready), /\/etc\/|privkey|fullchain/);
   const unsafe = await handleRequest('{"operation":"status"}', { config: config(root, new Set()), ready: async () => true }); assert.equal(unsafe.ok, false); assert.equal(unsafe.errorCode, "HELPER_NOT_READY");
   assert.equal(loadConfig({ STACKPILOT_CORE_SITE_DOMAINS: "panel.example.invalid" }).protectedDomains.size, 0);
   await rm(root, { recursive: true, force: true });
+});
+
+test("certificate mapping reads active public certificates and ignores private key directives", async () => {
+  const root = await mkdtemp(join(tmpdir(), "stackpilot-cert-helper-"));
+  const nginxRoot = join(root, "sites-enabled");
+  const liveRoot = join(root, "letsencrypt", "live");
+  await mkdir(nginxRoot, { recursive: true });
+  await mkdir(join(liveRoot, "app.example.test"), { recursive: true });
+  const fullchain = join(liveRoot, "app.example.test", "fullchain.pem");
+  const privateKey = join(liveRoot, "app.example.test", "privkey.pem");
+  try {
+    const source = `server { ssl_certificate ${fullchain}; ssl_certificate_key ${privateKey}; }`;
+    const pair = await selfsigned.generate([{ name: "commonName", value: "app.example.test" }], { days: 30, keySize: 2048, extensions: [{ name: "subjectAltName", altNames: [{ type: 2, value: "app.example.test" }] }] });
+    await writeFile(join(nginxRoot, "app.conf"), source);
+    await writeFile(fullchain, pair.cert);
+    await writeFile(join(nginxRoot, "disabled.conf.bak"), `ssl_certificate ${join(liveRoot, "disabled", "fullchain.pem")};`);
+    assert.deepEqual(publicCertificatePaths(source), [fullchain]);
+    const mapping = await buildCertificateMap([nginxRoot], liveRoot);
+    assert.equal(mapping.get(certificateIdForName("app.example.test")), "app.example.test");
+    assert.equal([...mapping.values()].includes("disabled"), false);
+    assert.doesNotMatch(JSON.stringify([...mapping]), /privkey/);
+    const inventory = await buildCertificateInventory([nginxRoot], liveRoot);
+    assert.equal(inventory[0].sourceId, certificateSourceId(fullchain));
+    assert.equal(inventory[0].certificate.certificateId, certificateIdForName("app.example.test"));
+    assert.equal(inventory[0].certificate.renewable, true);
+    assert.doesNotMatch(JSON.stringify(inventory), /fullchain|privkey|\/etc\//);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Node activation skips managed and system-occupied ports", async () => {
+  const root = await mkdtemp(join(tmpdir(), "stackpilot-helper-")); const cfg = config(root);
+  const value = prepared({ manifest: { ...prepared().manifest, runtime: "node22", outputDirectory: ".", startScript: "start", healthCheckPath: "/health" }, runtimePath: "/opt/stackpilot-runtimes/node22" });
+  const bundle = join(cfg.stateRoot, "workspaces", planId, "bundle", "app"); await mkdir(bundle, { recursive: true }); await writeFile(join(bundle, "package.json"), "{}");
+  const id = siteId(nodeId, value.domains[0]); const first = 20_000 + Number.parseInt(id.slice(-4), 16) % 20_000; const second = 20_000 + (first - 20_000 + 1) % 20_000; const third = 20_000 + (first - 20_000 + 2) % 20_000;
+  const occupied = { siteId: `site-${"d".repeat(32)}`, planId, domains: ["other.example.com"], manifest: value.manifest, releaseId: value.releaseId, port: first, desiredState: "running", protected: false, version: 1, certificateName: "other.example.com", runtimePath: value.runtimePath, createdAt: value.preparedAt, updatedAt: value.preparedAt };
+  const store = new SiteStateStore(cfg); await store.saveSite(occupied); const probed = [];
+  const run = async (_executable, args) => { assert.notEqual(args[0], "show", "a new unit has no previous enabled state"); return { stdout: "", stderr: "" }; };
+  try {
+    const result = await activatePlan(value, cfg, { run, issue: async () => {}, isPortAvailable: async (port) => { probed.push(port); return port !== second; } });
+    assert.deepEqual(probed, [second, third]); assert.equal((await store.site(result.siteId)).port, third);
+  } finally { await writableTree(root); await rm(root, { recursive: true, force: true }); }
+});
+
+test("failed Node activation restores the previous enabled state", async () => {
+  const root = await mkdtemp(join(tmpdir(), "stackpilot-helper-")); const cfg = config(root);
+  const nodeManifest = { ...prepared().manifest, runtime: "node22", outputDirectory: ".", startScript: "start", healthCheckPath: "/health" }; const runtimePath = "/opt/stackpilot-runtimes/node22";
+  const bundle = join(cfg.stateRoot, "workspaces", planId, "bundle", "app"); await mkdir(bundle, { recursive: true }); await writeFile(join(bundle, "package.json"), "{}");
+  let enabled = false; let failHealth = false; const calls = [];
+  const run = async (executable, args) => { calls.push([executable, ...args]); if (executable === "/usr/bin/systemctl" && args[0] === "show") return { stdout: `${enabled ? "enabled" : "disabled"}\n`, stderr: "" }; if (executable === "/usr/bin/systemctl" && args[0] === "enable") enabled = true; if (executable === "/usr/bin/systemctl" && args[0] === "disable") enabled = false; if (executable === "/usr/bin/curl" && failHealth) throw new Error("health failed"); return { stdout: "", stderr: "" }; };
+  try {
+    const first = prepared({ manifest: nodeManifest, runtimePath }); const activated = await activatePlan(first, cfg, { run, issue: async () => {}, isPortAvailable: async () => true });
+    const unitPath = join(cfg.unitRoot, `stackpilot-site-${activated.siteId}.service`); const previousUnit = await readFile(unitPath, "utf8"); failHealth = true;
+    const next = prepared({ manifest: nodeManifest, runtimePath, releaseId: `release_${"e".repeat(32)}`, commitSha: "f".repeat(40) });
+    await assert.rejects(() => activatePlan(next, cfg, { run, issue: async () => {}, isPortAvailable: async () => { throw new Error("existing port must be retained"); } }), /health failed/);
+    assert.equal(enabled, true); assert.equal(await readFile(unitPath, "utf8"), previousUnit); enabled = false; const start = calls.length;
+    await assert.rejects(() => activatePlan(next, cfg, { run, issue: async () => {}, isPortAvailable: async () => { throw new Error("existing port must be retained"); } }), /health failed/);
+    assert.equal(enabled, false); assert.equal(await readFile(unitPath, "utf8"), previousUnit);
+    const attempt = calls.slice(start); assert.ok(attempt.findLastIndex((call) => call[1] === "disable") > attempt.findLastIndex((call) => call[1] === "enable"));
+  } finally { await writableTree(root); await rm(root, { recursive: true, force: true }); }
+});
+
+test("failed first Node activation stops and disables the new unit", async () => {
+  const root = await mkdtemp(join(tmpdir(), "stackpilot-helper-")); const cfg = config(root);
+  const value = prepared({ manifest: { ...prepared().manifest, runtime: "node22", outputDirectory: ".", startScript: "start", healthCheckPath: "/health" }, runtimePath: "/opt/stackpilot-runtimes/node22" });
+  const bundle = join(cfg.stateRoot, "workspaces", planId, "bundle", "app"); await mkdir(bundle, { recursive: true }); await writeFile(join(bundle, "package.json"), "{}");
+  const calls = []; const run = async (executable, args) => { calls.push([executable, ...args]); assert.notEqual(args[0], "show", "a new unit has no previous enabled state"); if (executable === "/usr/bin/curl") throw new Error("health failed"); return { stdout: "", stderr: "" }; };
+  try {
+    await assert.rejects(() => activatePlan(value, cfg, { run, issue: async () => {}, isPortAvailable: async () => true }), /health failed/);
+    const enable = calls.findIndex((call) => call[1] === "enable"); const stop = calls.findLastIndex((call) => call[1] === "stop"); const disable = calls.findLastIndex((call) => call[1] === "disable"); const daemonReload = calls.findLastIndex((call) => call[1] === "daemon-reload");
+    assert.ok(enable >= 0); assert.ok(stop > enable); assert.ok(disable > stop); assert.ok(daemonReload > disable);
+  } finally { await writableTree(root); await rm(root, { recursive: true, force: true }); }
 });

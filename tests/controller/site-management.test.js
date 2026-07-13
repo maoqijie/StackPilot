@@ -4,7 +4,7 @@ import { once } from "node:events";
 import test from "node:test";
 import { openDatabase } from "../../apps/controller/dist/database/database.js";
 import { IdentityService } from "../../apps/controller/dist/identity/identityService.js";
-import { SiteManagementService } from "../../apps/controller/dist/modules/sites/siteManagementService.js";
+import { RemoteSiteExecutor, SiteManagementService } from "../../apps/controller/dist/modules/sites/siteManagementService.js";
 import { SqliteSiteManagementRepository } from "../../apps/controller/dist/modules/sites/siteManagementRepository.js";
 import { SecretStore } from "../../apps/controller/dist/security/secretStore.js";
 import { createControllerServices } from "../../apps/controller/dist/app.js";
@@ -21,6 +21,14 @@ const managedSiteId = (nodeId, domain) => {
   const agentSiteId = `site_${sha256(`${nodeId}\0${domain.toLowerCase()}`).slice(0, 32)}`;
   return `site-${sha256(`${nodeId}\0${agentSiteId}`).slice(0, 32)}`;
 };
+
+async function waitFor(predicate, timeoutMs = 1_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("timed out waiting for condition");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
 
 function managementFixture(database, executorOverride, sites = []) {
   const repository = new SqliteSiteManagementRepository(database, new SecretStore(database, Buffer.alloc(32, 7)));
@@ -105,6 +113,125 @@ test("dispatch failures persist as terminal operations and idempotent retries do
   } finally { database.close(); }
 });
 
+test("background reconciliation completes site plans without an operation API poll", async () => {
+  const database = openDatabase(":memory:"); let reconciliations = 0;
+  try {
+    const executor = {
+      dispatch: async () => crypto.randomUUID(),
+      reconcile: async (operation) => {
+        reconciliations += 1;
+        return operation.type === "prepare"
+          ? { status: "succeeded", result: { ...emptyResult({ runtime: "static", healthCheckPath: "/", changes: ["repository"] }), stagingId: "staging-background-001" }, errorCode: null }
+          : { status: "succeeded", result: { ...emptyResult(), siteId: managedSiteId(planInput.nodeId, planInput.domains[0]), releaseId: "release-background-001" }, errorCode: null };
+      },
+    };
+    const { repository, service } = managementFixture(database, executor);
+    const plan = await service.createPlan(planInput, { nodeScope: "all" }, "user:test");
+
+    service.startBackgroundReconciliation(10);
+    await waitFor(() => repository.getPlan(plan.planId)?.status === "ready");
+    const ready = repository.getPlan(plan.planId);
+    await service.activate(plan.planId, { planVersion: ready.version, planDigest: ready.digest, idempotencyKey: "activate-background-001" }, { nodeScope: "all" }, "user:test");
+    await waitFor(() => repository.getManagedSite(managedSiteId(planInput.nodeId, planInput.domains[0])) !== null);
+    await service.stopBackgroundReconciliation();
+
+    assert.equal(reconciliations, 2);
+    assert.equal(repository.getOperation(plan.operationId).status, "succeeded");
+    assert.equal(repository.getPlan(plan.planId).status, "activated");
+    assert.equal(repository.getManagedSite(managedSiteId(planInput.nodeId, planInput.domains[0])).desiredState, "running");
+  } finally { database.close(); }
+});
+
+test("background reconciliation resumes persisted operations after a Controller restart", async () => {
+  const database = openDatabase(":memory:"); let restarted;
+  try {
+    const first = managementFixture(database, { dispatch: async () => crypto.randomUUID(), reconcile: async () => null });
+    const plan = await first.service.createPlan({ ...planInput, idempotencyKey: "restart-plan-001" }, { nodeScope: "all" }, "user:test");
+    assert.equal(first.repository.getOperation(plan.operationId).status, "queued");
+    const persisted = first.repository.getOperation(plan.operationId);
+    first.repository.updateOperation({ ...persisted, taskId: null });
+
+    const restartedRepository = new SqliteSiteManagementRepository(database, new SecretStore(database, Buffer.alloc(32, 7)));
+    const recoveredTaskId = crypto.randomUUID();
+    const executor = new RemoteSiteExecutor({ list: async () => [{
+      taskId: recoveredTaskId, status: "succeeded", parameters: { operationId: plan.operationId },
+      result: { data: { operationId: plan.operationId, stagingId: "staging-recovered-001", planPreview: { runtime: "static", healthCheckPath: "/", changes: ["repository"] } } },
+    }] }, restartedRepository);
+    restarted = new SiteManagementService(
+      restartedRepository,
+      { getSites: async () => ({ collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], sites: [] }) },
+      { create: async () => { throw new Error("unused"); }, get: async () => { throw new Error("unused"); } },
+      executor,
+    );
+
+    restarted.startBackgroundReconciliation();
+    await waitFor(() => restartedRepository.getPlan(plan.planId)?.status === "ready");
+    await restarted.stopBackgroundReconciliation();
+
+    assert.equal(restartedRepository.getOperation(plan.operationId).status, "succeeded");
+    assert.equal(restartedRepository.getOperation(plan.operationId).taskId, recoveredTaskId);
+  } finally { await restarted?.stopBackgroundReconciliation(); database.close(); }
+});
+
+test("background reconciliation isolates errors, never overlaps cycles and stops cleanly", async () => {
+  const database = openDatabase(":memory:"); let active = 0; let maximumActive = 0; let calls = 0; let reportedErrors = 0;
+  try {
+    const executor = {
+      dispatch: async () => crypto.randomUUID(),
+      reconcile: async (item) => {
+        calls += 1; active += 1; maximumActive = Math.max(maximumActive, active);
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 15));
+          if (item.planId && calls === 1) throw new Error("transient reconcile failure");
+          return { status: "succeeded", result: { ...emptyResult(), stagingId: `staging-${item.operationId}` }, errorCode: null };
+        } finally { active -= 1; }
+      },
+    };
+    const { repository, service } = managementFixture(database, executor);
+    const first = await service.createPlan({ ...planInput, idempotencyKey: "background-error-001" }, { nodeScope: "all" }, "user:test");
+    const second = await service.createPlan({ ...planInput, domains: ["second.example.com"], idempotencyKey: "background-error-002" }, { nodeScope: "all" }, "user:test");
+
+    service.startBackgroundReconciliation(1, () => { reportedErrors += 1; });
+    await waitFor(() => repository.getPlan(first.planId)?.status === "ready" && repository.getPlan(second.planId)?.status === "ready");
+    await service.stopBackgroundReconciliation();
+    const stoppedAt = calls;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    assert.equal(reportedErrors, 1);
+    assert.equal(maximumActive, 1);
+    assert.equal(calls, stoppedAt);
+  } finally { database.close(); }
+});
+
+test("dispatch task-id persistence cannot overwrite a background terminal result", async () => {
+  const database = openDatabase(":memory:"); let releaseDispatch; let dispatchStarted = false; let taskAvailable = false; let service;
+  try {
+    const executor = {
+      dispatch: async () => {
+        dispatchStarted = true;
+        await new Promise((resolve) => { releaseDispatch = resolve; });
+        return crypto.randomUUID();
+      },
+      reconcile: async (item) => taskAvailable
+        ? { status: "succeeded", result: { ...emptyResult(), stagingId: `staging-${item.operationId}` }, errorCode: null }
+        : null,
+    };
+    const fixture = managementFixture(database, executor);
+    const repository = fixture.repository; service = fixture.service;
+    service.startBackgroundReconciliation(1);
+    const creating = service.createPlan({ ...planInput, idempotencyKey: "dispatch-race-001" }, { nodeScope: "all" }, "user:test");
+    await waitFor(() => dispatchStarted && typeof releaseDispatch === "function");
+    taskAvailable = true;
+    await waitFor(() => repository.listNonTerminalOperations().length === 0);
+    releaseDispatch();
+    const plan = await creating;
+    await service.stopBackgroundReconciliation();
+
+    assert.equal(repository.getOperation(plan.operationId).status, "succeeded");
+    assert.equal(repository.getPlan(plan.planId).status, "ready");
+  } finally { await service?.stopBackgroundReconciliation(); database.close(); }
+});
+
 test("SQLite remote task storage encrypts site deployment parameters", async () => {
   const database = openDatabase(":memory:");
   try {
@@ -131,7 +258,7 @@ test("site management HTTP endpoints enforce permission, CSRF, one-time reauthen
   await identity.createInitialAdministrator("admin", "Administrator", "correct horse battery staple");
   const config = loadControllerConfig({ STACKPILOT_COOKIE_SECURE: "0", STACKPILOT_ALLOWED_ORIGINS: "http://127.0.0.1:5173" });
   const siteRepository = new SqliteSiteManagementRepository(database, new SecretStore(database, Buffer.alloc(32, 8)));
-  const services = createControllerServices(new FakePlatformAdapter(), process.cwd(), config, new MemoryAgentControlRepository(), database, siteRepository);
+  const services = createControllerServices(new FakePlatformAdapter(), process.cwd(), config, new MemoryAgentControlRepository(), null, siteRepository);
   services.siteManagement = new SiteManagementService(siteRepository, services.sites, services.certificateRenewals, { dispatch: async () => crypto.randomUUID(), reconcile: async () => null });
   const server = createStackPilotServer({ config, services, database, identity });
   server.listen(0, "127.0.0.1"); await once(server, "listening");

@@ -49,8 +49,8 @@ export class TaskExecutor {
     }
     const controller = new AbortController(); this.running.set(task.taskId, controller); const timer = setTimeout(() => controller.abort(), definition.timeoutMs);
     let update: RemoteTaskStatusUpdate;
-    try { const result = await definition.run(parameters, controller.signal, this.nodeId); update = { taskId: task.taskId, attempt: task.attempt, status: "succeeded", timestamp: new Date().toISOString(), result }; }
-    catch (error) { const cancelled = controller.signal.aborted; const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" && /^[A-Z0-9_]{1,80}$/.test(error.code) ? error.code : "TASK_FAILED"; update = { taskId: task.taskId, attempt: task.attempt, status: cancelled ? "cancelled" : "failed", timestamp: new Date().toISOString(), errorCode: cancelled ? "TASK_CANCELLED_OR_TIMEOUT" : code, result: { message: cancelled ? "Task cancelled or timed out" : "Task failed", truncated: false } }; }
+    try { const result = await definition.run(parameters, controller.signal, this.nodeId); controller.signal.throwIfAborted(); update = { taskId: task.taskId, attempt: task.attempt, status: "succeeded", timestamp: new Date().toISOString(), result }; }
+    catch (error) { const cancelled = controller.signal.aborted; const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" && /^[A-Z0-9_]{1,80}$/.test(error.code) ? error.code : error instanceof Error && /^[A-Z0-9_]{1,80}$/.test(error.name) ? error.name : "TASK_FAILED"; update = { taskId: task.taskId, attempt: task.attempt, status: cancelled ? "cancelled" : "failed", timestamp: new Date().toISOString(), errorCode: cancelled ? "TASK_CANCELLED_OR_TIMEOUT" : code, result: { message: cancelled ? "Task cancelled or timed out" : "Task failed", truncated: false } }; }
     finally { clearTimeout(timer); this.running.delete(task.taskId); }
     this.receipts.set(task.taskId, { taskId: task.taskId, idempotencyKey: task.idempotencyKey, attempt: task.attempt, status: update.status, updatedAt: update.timestamp, reported: false, update }); await this.persist(); return update;
   }

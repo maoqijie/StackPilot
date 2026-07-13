@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstat, mkdir, readlink, rename, symlink } from "node:fs/promises";
+import { lstat, mkdir, readdir, readlink, rename, symlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { HelperConfig } from "./config.js";
 import { atomicWrite, readJson, within } from "./io.js";
@@ -17,6 +17,14 @@ export class SiteStateStore {
   async plan(id: string) { return readJson<PreparedPlan>(this.planPath(id)); }
   async saveSite(site: ManagedSite) { await atomicWrite(this.sitePath(site.siteId), `${JSON.stringify(site)}\n`); }
   async site(id: string) { return readJson<ManagedSite>(this.sitePath(id)); }
+  async sites() {
+    const root = within(this.config.stateRoot, "sites");
+    let names: string[];
+    try { names = await readdir(root); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
+    const sites = await Promise.all(names.filter((name) => name.endsWith(".json")).sort().map((name) => readJson<ManagedSite>(within(root, name))));
+    return sites.filter((site): site is ManagedSite => site !== null);
+  }
 }
 
 export async function swapLink(link: string, target: string) {

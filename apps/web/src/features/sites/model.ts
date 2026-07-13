@@ -7,7 +7,7 @@ function sitesPagePreset(page: PageKey) {
   if (page === "sites-create") return { status: "全部", runtime: "全部", search: "", subtitle: "通过严格部署计划发布公开 GitHub 仓库。" };
   if (page === "sites-cert") return { status: "全部", runtime: "全部", search: "", subtitle: "证书续期视图，优先展示即将过期的站点。" };
   if (page === "sites-runtime") return { status: "全部", runtime: "全部", search: "", subtitle: "服务分组视图，按 Node、PHP、静态站点聚合容量与风险。" };
-  if (page === "sites-running") return { status: "活跃", runtime: "全部", search: "", subtitle: "监控正在运行或处于告警状态的站点、上游延迟和错误率。" };
+  if (page === "sites-running") return { status: "活跃", runtime: "全部", search: "", subtitle: "监控已发现站点的运行状态、上游和延迟数据。" };
   return { status: "全部", runtime: "全部", search: "", subtitle: "自动发现 Controller 本机的 Nginx 虚拟主机与证书状态。" };
 }
 

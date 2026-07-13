@@ -21,10 +21,12 @@ test("task registry exposes only structured handlers and keeps renewal non-retry
   assert.equal(taskRegistry["sites.logs.read"].capability, "sites.logs.read"); assert.equal(taskRegistry["sites.logs.read"].retryable, false);
 });
 
-test("high-risk renewal capability is declared only on Linux with a reachable helper", () => {
+test("site mutations require a Linux helper and database inventory requires controller negotiation", () => {
   assert.deepEqual(activeAgentCapabilities("linux", false), ["system.summary.read", "service.status.read", "sites.inventory.read"]);
   assert.deepEqual(activeAgentCapabilities("darwin", true), ["system.summary.read", "service.status.read", "sites.inventory.read"]);
   assert.deepEqual(activeAgentCapabilities("linux", true), ["system.summary.read", "service.status.read", "sites.inventory.read", "sites.logs.read", "sites.deploy", "sites.lifecycle.manage", "sites.certificates.renew", "runtime.install"]);
+  assert.deepEqual(activeAgentCapabilities("linux", false, true), ["system.summary.read", "service.status.read", "sites.inventory.read", "databases.inventory.read"]);
+  assert.deepEqual(activeAgentCapabilities("linux", true, true), ["system.summary.read", "service.status.read", "sites.inventory.read", "sites.logs.read", "sites.deploy", "sites.lifecycle.manage", "sites.certificates.renew", "runtime.install", "databases.inventory.read"]);
 });
 
 test("executor validates target, expiry, capability and unknown types", async () => {
@@ -79,5 +81,22 @@ test("executor enforces timeout and cooperative cancellation with an injected ha
     const cancelExecutor = new TaskExecutor(join(directory, "cancel.json"), nodeId, "linux", ["system.summary.read"], slowRegistry); await cancelExecutor.load();
     const execution = cancelExecutor.execute(cancelTask); setTimeout(() => cancelExecutor.cancel(cancelTask.taskId), 5);
     assert.equal((await execution).status, "cancelled");
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("executor reports cancellation when a handler returns after its abort signal", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "stackpilot-agent-test-"));
+  const lateRegistry = {
+    ...taskRegistry,
+    "system.summary.read": {
+      ...taskRegistry["system.summary.read"], timeoutMs: 5,
+      run: () => new Promise((resolve) => setTimeout(() => resolve({ message: "late result", truncated: false }), 15)),
+    },
+  };
+  try {
+    const executor = new TaskExecutor(join(directory, "late.json"), nodeId, "linux", ["system.summary.read"], lateRegistry); await executor.load();
+    const result = await executor.execute(task());
+    assert.equal(result.status, "cancelled");
+    assert.equal(result.errorCode, "TASK_CANCELLED_OR_TIMEOUT");
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

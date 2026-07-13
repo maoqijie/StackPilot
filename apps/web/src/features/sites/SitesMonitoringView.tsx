@@ -39,7 +39,7 @@ function SitesMonitoringView({ page, canReadLogs, canOperate }: { page: PageKey;
     const query = search.trim().toLowerCase();
     const matchSearch = !query || [row.domain, row.runtime, row.host, row.upstream, row.source].join(" ").toLowerCase().includes(query);
     const matchStatus = statusFilter === "全部" || (statusFilter === "活跃"
-      ? row.status === "运行中" || row.status === "告警" : row.status === statusFilter);
+      ? row.status === "运行中" || row.status === "告警" || row.status === "待采集" : row.status === statusFilter);
     return matchSearch && matchStatus && (runtimeFilter === "全部" || row.runtime === runtimeFilter);
   });
   const runtimeGroups = runtimeGroupsFromSites(filteredRows);
@@ -59,7 +59,7 @@ function SitesMonitoringView({ page, canReadLogs, canOperate }: { page: PageKey;
   const metrics = mode === "runtime"
     ? <><MetricTile icon={Code2} label="服务组" value={`${runtimeGroups.length}`} tone="blue" /><MetricTile icon={Globe2} label="覆盖站点" value={`${filteredRows.length}`} tone="green" /><MetricTile icon={Shield} label="证书风险" value={certDataAvailable ? `${filteredRows.filter(isSiteCertDue).length}` : "暂不可用"} tone="orange" /></>
     : mode === "running"
-      ? <><MetricTile icon={Activity} label="活跃站点" value={`${filteredRows.length}`} tone="green" /><MetricTile icon={Clock3} label="平均延迟" value={averageLatency} tone="blue" /><MetricTile icon={Shield} label="异常站点" value={`${filteredRows.filter((row) => row.status === "告警").length}`} tone="orange" /></>
+      ? <><MetricTile icon={Activity} label="已发现站点" value={`${filteredRows.length}`} tone="green" /><MetricTile icon={Clock3} label="平均延迟" value={averageLatency} tone="blue" /><MetricTile icon={Shield} label="异常站点" value={`${filteredRows.filter((row) => row.status === "告警").length}`} tone="orange" /></>
       : <><MetricTile icon={Globe2} label="站点" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="green" /><MetricTile icon={Shield} label="证书告警" value={certDataAvailable ? `${rows.filter(isSiteCertDue).length}` : "暂不可用"} tone="orange" /></>;
   const emptyText = error ? "实时采集失败，未显示示例站点" : loading ? "正在采集站点状态" : "未发现匹配的 Nginx 站点，系统将继续自动采集";
 
@@ -69,7 +69,7 @@ function SitesMonitoringView({ page, canReadLogs, canOperate }: { page: PageKey;
     hideHeading={mode === "runtime"}
     page={page}
     viewContext={initialError || mode === "runtime" ? false : context}
-    filters={initialError ? undefined : <><ModuleSearch value={search} placeholder="搜索域名、上游、主机或数据源" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={mode === "running" ? ["活跃", "运行中", "告警"] : ["全部", "运行中", "告警", "已停止", "待采集"]} onChange={setStatusFilter} /><FieldSelect label="服务" value={runtimeFilter} options={["全部", ...uniqueSorted(rows.map((row) => row.runtime))]} onChange={setRuntimeFilter} /></>}
+    filters={initialError ? undefined : <><ModuleSearch value={search} placeholder="搜索域名、上游、主机或数据源" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={mode === "running" ? ["活跃", "运行中", "告警", "待采集"] : ["全部", "运行中", "告警", "已停止", "待采集"]} onChange={setStatusFilter} /><FieldSelect label="服务" value={runtimeFilter} options={["全部", ...uniqueSorted(rows.map((row) => row.runtime))]} onChange={setRuntimeFilter} /></>}
     metrics={initialError ? undefined : metrics}
     side={selectedGroup ? <RuntimeDetail group={selectedGroup} onClose={() => setSelectedRuntime(null)} /> : selectedSite ? <SiteOperationsDrawer site={selectedSite} onClose={() => setSelectedSiteId(null)} onChanged={() => retry(undefined, true)} canReadLogs={canReadLogs} canOperate={canOperate} /> : null}
   >

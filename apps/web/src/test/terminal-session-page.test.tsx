@@ -1,58 +1,66 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createTerminalTask } from "../api/terminalApi";
 import { TerminalPage } from "../pages/TerminalPage";
 import type { Notify } from "../types/app";
+import { resetTerminalApiMocks, terminalNode } from "./terminalTestFixtures";
+
+vi.mock("../api/identityApi", () => ({ reauthenticate: vi.fn() }));
+vi.mock("../api/terminalApi", () => ({ createTerminalTask: vi.fn(), fetchTerminalHosts: vi.fn(), fetchTerminalNodes: vi.fn(), fetchTerminalTasks: vi.fn() }));
 
 describe("terminal session page", () => {
-  it("opens complete session details in a body-level modal drawer", async () => {
+  beforeEach(resetTerminalApiMocks);
+
+  it("opens complete Agent details and closes them with Escape", async () => {
     const user = userEvent.setup();
     render(<TerminalPage page="terminal" notify={vi.fn()} />);
 
-    await user.click(screen.getByRole("button", { name: "查看 panel-se-01 会话详情" }));
+    await user.click(await screen.findByRole("button", { name: "详情" }));
 
-    const drawer = screen.getByRole("dialog", { name: "root@panel-se-01" });
+    const drawer = screen.getByRole("dialog", { name: "stackpilot-agent@real-agent-01" });
     expect(drawer.parentElement).toBe(document.body);
     expect(drawer).toHaveClass("terminal-session-drawer");
-    expect(within(drawer).getAllByText("10.0.0.11")).toHaveLength(2);
-    expect(within(drawer).getByText("sudo 管理权限")).toBeInTheDocument();
-    expect(within(drawer).getByText("systemctl status nginx")).toBeInTheDocument();
+    expect(within(drawer).getAllByText("198.18.0.10")).toHaveLength(2);
 
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: "root@panel-se-01" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "stackpilot-agent@real-agent-01" })).not.toBeInTheDocument();
   });
 
-  it("requires confirmation before running a privileged command", async () => {
+  it("reauthenticates before running an allowed read-only command", async () => {
     const user = userEvent.setup();
     const notify = vi.fn<Notify>();
     render(<TerminalPage page="terminal" notify={notify} />);
 
-    const input = screen.getByLabelText("命令输入");
-    await user.type(input, "systemctl restart nginx");
+    const input = await screen.findByLabelText("命令输入");
+    await user.type(input, "systemctl status nginx --no-pager");
     await user.click(screen.getByRole("button", { name: "运行" }));
 
-    const dialog = screen.getByRole("alertdialog", { name: "确认执行变更命令" });
+    const dialog = screen.getByRole("alertdialog", { name: "确认执行受控命令" });
     expect(dialog.parentElement).toBe(document.body);
     expect(dialog).toHaveClass("terminal-command-confirm");
-    expect(within(dialog).getByText(/root@panel-se-01/)).toBeInTheDocument();
-    expect(input).toHaveValue("systemctl restart nginx");
-
+    expect(input).toHaveValue("systemctl status nginx --no-pager");
+    await user.type(within(dialog).getByLabelText("当前密码"), "current-password");
     await user.click(within(dialog).getByRole("button", { name: "确认执行" }));
 
-    expect(screen.queryByRole("alertdialog", { name: "确认执行变更命令" })).not.toBeInTheDocument();
+    await vi.waitFor(() => expect(createTerminalTask).toHaveBeenCalledWith(
+      terminalNode.nodeId,
+      expect.objectContaining({ type: "service.status.read", parameters: { serviceName: "nginx" } }),
+      expect.any(String),
+    ));
     expect(input).toHaveValue("");
-    expect(notify).toHaveBeenCalledWith("panel-se-01 输出已记录", "success");
+    expect(notify).toHaveBeenCalledWith("真实任务已提交，等待 Agent 返回结果", "success");
   });
 
-  it("keeps a cancelled privileged command ready for review", async () => {
+  it("keeps a cancelled command ready for review", async () => {
     const user = userEvent.setup();
     render(<TerminalPage page="terminal" notify={vi.fn()} />);
 
-    const input = screen.getByLabelText("命令输入");
-    await user.type(input, "systemctl restart worker.service");
+    const input = await screen.findByLabelText("命令输入");
+    await user.type(input, "uptime");
     await user.click(screen.getByRole("button", { name: "运行" }));
-    await user.click(within(screen.getByRole("alertdialog", { name: "确认执行变更命令" })).getByRole("button", { name: "取消" }));
+    await user.click(within(screen.getByRole("alertdialog", { name: "确认执行受控命令" })).getByRole("button", { name: "取消" }));
 
-    expect(input).toHaveValue("systemctl restart worker.service");
+    expect(input).toHaveValue("uptime");
   });
 });

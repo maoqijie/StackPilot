@@ -1,5 +1,6 @@
 import { CheckCircle2, PlugZap, Unplug, WifiOff } from "lucide-react";
 import { DetailDrawer } from "../../components/ui/DetailDrawer";
+import type { LiveTerminalSession } from "./liveTypes";
 import type { TerminalSessionRecord } from "./types";
 
 function TerminalSessionDrawer({
@@ -9,11 +10,11 @@ function TerminalSessionDrawer({
   onConnect,
   onDisconnect,
 }: {
-  session: TerminalSessionRecord;
+  session: TerminalSessionRecord | LiveTerminalSession;
   outputLineCount: number;
   onClose: () => void;
-  onConnect: () => void;
-  onDisconnect: () => void;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
 }) {
   const connected = session.status === "connected";
 
@@ -24,16 +25,16 @@ function TerminalSessionDrawer({
       subtitle={session.ip}
       modal
       onClose={onClose}
-      actions={connected
+      actions={onConnect && onDisconnect ? connected
         ? <button className="ghost" type="button" onClick={onDisconnect}><Unplug size={15} />关闭会话</button>
-        : <button className="primary" type="button" onClick={onConnect}><PlugZap size={15} />打开会话</button>}
+        : <button className="primary" type="button" onClick={onConnect}><PlugZap size={15} />打开会话</button> : undefined}
     >
       <div className="terminal-session-detail">
         <div className={`terminal-session-detail-status ${session.status}`}>
           {connected ? <CheckCircle2 size={20} /> : <WifiOff size={20} />}
           <span>
-            <strong>{connected ? "会话已打开" : "会话未打开"}</strong>
-            <small>{connected ? `当前延迟 ${session.latency}` : "连接已关闭，可从抽屉底部重新打开"}</small>
+            <strong>{onConnect ? connected ? "会话已打开" : "会话未打开" : connected ? "Agent 已连接" : "Agent 未连接"}</strong>
+            <small>{onConnect ? connected ? `当前延迟 ${session.latency}` : "连接已关闭，可从抽屉底部重新打开" : connected ? "受控命令将由此 Agent 执行" : "等待 Agent 心跳恢复"}</small>
           </span>
         </div>
         <dl className="terminal-session-detail-grid">

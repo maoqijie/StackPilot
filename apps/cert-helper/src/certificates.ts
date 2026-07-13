@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
-import { buildCertificateMap } from "./certificateMap.js";
+import { buildCertificateInventory, buildCertificateMap } from "./certificateMap.js";
 import { runFixedCommand, type FixedCommandRunner } from "./runner.js";
 import type { PreparedPlan } from "./types.js";
 import { HelperError } from "./types.js";
@@ -15,6 +15,8 @@ export async function issueCertificate(plan: PreparedPlan, challengeRoot: string
   for (const domain of plan.domains) args.push("--domain", domain);
   await run("/usr/bin/certbot", args, 540_000);
 }
+
+export { buildCertificateInventory };
 
 export async function renewCertbotCertificate(name: string, run: FixedCommandRunner = runFixedCommand) {
   if (!/^[A-Za-z0-9._-]{1,128}$/.test(name)) throw new HelperError("CERTIFICATE_NAME_INVALID", "Certificate name is invalid");

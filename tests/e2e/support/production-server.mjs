@@ -14,11 +14,10 @@ import { SqliteAgentControlRepository } from "../../../apps/controller/dist/repo
 import { FakePlatformAdapter } from "../../controller/support/fakePlatform.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const runtime = join(root, "output", "e2e", "runtime");
-const webPort = Number(process.env.STACKPILOT_E2E_WEB_PORT ?? 18_443);
-const managementPort = Number(process.env.STACKPILOT_E2E_MANAGEMENT_PORT ?? 18_787);
-const agentPort = Number(process.env.STACKPILOT_E2E_AGENT_PORT ?? 19_443);
-const webOrigin = `https://127.0.0.1:${webPort}`;
+const managementPort = Number(process.env.STACKPILOT_E2E_MANAGEMENT_PORT ?? 18787);
+const webPort = Number(process.env.STACKPILOT_E2E_WEB_PORT ?? 18443);
+const agentPort = Number(process.env.STACKPILOT_E2E_AGENT_PORT ?? 19443);
+const runtime = process.env.STACKPILOT_E2E_RUNTIME ? resolve(process.env.STACKPILOT_E2E_RUNTIME) : join(root, "output", "e2e", "runtime");
 rmSync(runtime, { recursive: true, force: true });
 mkdirSync(runtime, { recursive: true });
 
@@ -39,7 +38,7 @@ await Promise.all([writeFile(certPath, certificate.cert), writeFile(keyPath, cer
 const config = loadControllerConfig({
   HOST: "127.0.0.1", PORT: String(managementPort), STACKPILOT_DATABASE_PATH: join(runtime, "stackpilot.sqlite3"),
   STACKPILOT_MASTER_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", STACKPILOT_COOKIE_SECURE: "1", STACKPILOT_PRODUCTION: "1",
-  STACKPILOT_ALLOWED_ORIGINS: webOrigin, STACKPILOT_AGENT_HOST: "127.0.0.1", STACKPILOT_AGENT_PORT: String(agentPort),
+  STACKPILOT_ALLOWED_ORIGINS: `https://127.0.0.1:${webPort}`, STACKPILOT_AGENT_HOST: "127.0.0.1", STACKPILOT_AGENT_PORT: String(agentPort),
   STACKPILOT_AGENT_TLS_CERT_PATH: certPath, STACKPILOT_AGENT_TLS_KEY_PATH: keyPath,
   STACKPILOT_AGENT_STATE_PATH: join(runtime, "legacy.json"), STACKPILOT_TRUSTED_PROXIES: "127.0.0.1/32",
 });
@@ -82,7 +81,7 @@ const proxy = createHttpsServer({ cert: certificate.cert, key: certificate.priva
   response.setHeader("Content-Type", mime[extname(path)] ?? "application/octet-stream");
   createReadStream(path).pipe(response);
 });
-proxy.listen(webPort, "127.0.0.1", () => process.stdout.write("StackPilot E2E production fixture ready\n"));
+proxy.listen(webPort, "127.0.0.1", () => process.stdout.write(`StackPilot E2E production fixture ready on ${webPort}\n`));
 
 const close = () => { proxy.close(); agent.close(); management.close(() => database.close()); };
 process.once("SIGTERM", close);

@@ -66,7 +66,9 @@ test("Controller local collector exposes a renewable opaque Certbot identity onl
   const root = await mkdtemp(join(tmpdir(), "stackpilot-local-cert-"));
   try {
     await writeFile(join(root, "site.conf"), "server { listen 443 ssl; server_name local.example.com; ssl_certificate /etc/letsencrypt/live/local.example.com/fullchain.pem; }");
-    const payload = await new NginxSiteCollector([root], probe, "controller", async () => true, async () => (await probe("local.example.com", [{ port: 443, secure: true }])).certificate).collectSites();
+    const certificate = { ...(await probe("local.example.com", [{ port: 443, secure: true }])).certificate, renewalMode: "automatic", renewable: true, unavailableReason: null, certificateId: `cert_${"a".repeat(32)}` };
+    const sourceId = `source_${(await import("node:crypto")).createHash("sha256").update("public-certificate:/etc/letsencrypt/live/local.example.com/fullchain.pem").digest("hex").slice(0, 32)}`;
+    const payload = await new NginxSiteCollector([root], probe, "controller", async () => new Map([[sourceId, certificate]])).collectSites();
     assert.equal(payload.sites[0].certificate.renewable, true);
     assert.match(payload.sites[0].certificate.certificateId, /^cert_[a-f0-9]{32}$/);
     assert.doesNotMatch(JSON.stringify(payload), /\/etc\/letsencrypt|fullchain\.pem/);
@@ -80,6 +82,25 @@ test("site monitoring service coalesces and caches collection", async () => {
   await Promise.all([service.getSites(), service.getSites()]);
   await service.getSites();
   assert.equal(calls, 1);
+});
+
+test("site monitoring startup refreshes in the background while GET reads the saved snapshot", async () => {
+  let calls = 0;
+  const collector = { collectSites: async () => ({ collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], sites: [{
+    id: "local-site", nodeId: "node-local", domain: `site-${++calls}.example.com`, status: "running", runtime: "Nginx", host: "controller", upstream: null,
+    source: "Nginx", latencyMs: 1, trafficBytes: null, collectedAt: new Date().toISOString(), freshness: "current",
+    certificate: { status: "unavailable", notBefore: null, expiresAt: null, issuer: null, subjectAlternativeNames: [], fingerprintSha256: null, renewalMode: "unsupported", renewable: false, unavailableReason: "no TLS", certificateId: null },
+    renewal: { batchId: null, taskId: null, status: "idle", message: null, updatedAt: null },
+  }] }) };
+  const service = new SiteMonitoringService(collector, 30);
+  await service.startup();
+  await Promise.all([service.getSites(), service.getSites(), service.getSites()]);
+  assert.equal(calls, 1);
+  await new Promise((resolve) => setTimeout(resolve, 45));
+  assert.equal(calls, 2);
+  assert.equal((await service.getSites()).sites[0].domain, "site-2.example.com");
+  assert.equal(calls, 2);
+  service.shutdown();
 });
 
 function remoteNode(nodeId, collected = new Date().toISOString()) {
@@ -129,6 +150,23 @@ test("certificate renewal batches are atomic, idempotent, deduplicated and non-r
   await assert.rejects(() => service.get(first.batchId, { nodeScope: [] }), /授权范围/);
   state = await repository.read();
   assert.doesNotMatch(JSON.stringify(state.audits), /private|ssl_certificate|BEGIN/);
+});
+
+test("remote certificate renewals dispatch only one Certbot task per node at a time", async () => {
+  const repository = new MemoryAgentControlRepository();
+  const nodeId = "11111111-1111-4111-8111-111111111111";
+  const node = remoteNode(nodeId); const second = structuredClone(node.siteSnapshot.sites[0]);
+  second.id = "agent-site-2"; second.domain = "second.example.com"; second.certificate.certificateId = "cert-agent-2";
+  node.siteSnapshot.sites.push(second); await repository.update((state) => state.nodes.push(node));
+  const renewals = new CertificateRenewalService(repository);
+  await renewals.create({ siteIds: [publicSiteId(nodeId, "agent-site-1"), publicSiteId(nodeId, "agent-site-2")], idempotencyKey: "serial-renewal-1" }, { nodeScope: [nodeId] }, "user:test", crypto.randomUUID());
+  const { RemoteTaskService } = await import("../../apps/controller/dist/modules/remote-tasks/remoteTaskService.js");
+  const tasks = new RemoteTaskService(repository);
+  const first = await tasks.poll(nodeId, crypto.randomUUID()); assert.equal(first.length, 1);
+  assert.equal(first[0].type, "sites.certificates.renew");
+  assert.equal((await tasks.poll(nodeId, crypto.randomUUID())).length, 0);
+  await tasks.update(nodeId, { taskId: first[0].taskId, attempt: 1, status: "succeeded", timestamp: new Date().toISOString(), result: { message: "renewed", truncated: false } }, crypto.randomUUID());
+  assert.equal((await tasks.poll(nodeId, crypto.randomUUID())).length, 1);
 });
 
 test("certificate renewal rejects stale or unknown sites without creating partial tasks", async () => {

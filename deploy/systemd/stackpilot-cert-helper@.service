@@ -36,4 +36,4 @@ CapabilityBoundingSet=
 AmbientCapabilities=
 SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-ReadWritePaths=/var/lib/stackpilot-site-helper /srv/stackpilot/sites /etc/nginx/conf.d /etc/stackpilot-sites /etc/systemd/system /etc/letsencrypt /var/lib/letsencrypt /var/log/letsencrypt /opt/stackpilot-runtimes /run/stackpilot-sites
+ReadWritePaths=/var/lib/stackpilot-site-helper /srv/stackpilot/sites /etc/nginx/conf.d /etc/stackpilot-sites /etc/systemd/system /etc/letsencrypt /var/lib/letsencrypt /var/log/letsencrypt -/var/www/certbot /opt/stackpilot-runtimes /run/stackpilot-sites

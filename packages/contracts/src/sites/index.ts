@@ -46,6 +46,13 @@ export const SiteCertificateSchema = z.object({
   if (value.status !== "unavailable" && !value.expiresAt) context.addIssue({ code: "custom", path: ["expiresAt"], message: "available certificates require expiresAt" });
 });
 
+export const CertificateHelperStatusDataSchema = z.object({
+  certificates: z.array(z.object({
+    sourceId: OpaqueIdSchema,
+    certificate: SiteCertificateSchema,
+  }).strict()).max(200),
+}).strict();
+
 export const AgentSiteSnapshotRecordSchema = z.object({
   id: OpaqueIdSchema,
   domain: z.string().min(1).max(253),
@@ -314,6 +321,7 @@ export const SiteOperationSchema = z.object({
 
 export type SiteRuntimeStatus = z.infer<typeof SiteRuntimeStatusSchema>;
 export type SiteCertificate = z.infer<typeof SiteCertificateSchema>;
+export type CertificateHelperStatusData = z.infer<typeof CertificateHelperStatusDataSchema>;
 export type AgentSiteSnapshotRecord = z.infer<typeof AgentSiteSnapshotRecordSchema>;
 export type AgentSiteSnapshot = z.infer<typeof AgentSiteSnapshotSchema>;
 export type SiteRuntimeRecord = z.infer<typeof SiteRuntimeRecordSchema>;

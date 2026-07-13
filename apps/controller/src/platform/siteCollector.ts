@@ -1,13 +1,13 @@
-import { X509Certificate, createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
-import { Agent as HttpsAgent, request as httpsRequest } from "node:https";
+import { request as httpsRequest } from "node:https";
 import { hostname } from "node:os";
 import { basename, join } from "node:path";
 import type { TLSSocket } from "node:tls";
 import { SiteRuntimePayloadSchema } from "@stackpilot/contracts";
 import type { SiteCertificate, SiteRuntimePayload, SiteRuntimeRecord, SiteRuntimeStatus } from "@stackpilot/contracts";
-import { certHelperAvailable } from "./certHelperClient.js";
+import { certHelperCertificates } from "./certHelperClient.js";
 
 type Listener = { port: number; secure: boolean };
 type SiteCandidate = {
@@ -20,13 +20,11 @@ type SiteCandidate = {
 };
 type ProbeResult = Pick<SiteRuntimeRecord, "status" | "latencyMs" | "certificate">;
 type SiteProbe = (domain: string, listeners: Listener[]) => Promise<ProbeResult>;
-type PublicCertificateReader = (path: string) => Promise<SiteCertificate>;
 
 const MAX_CONFIG_FILES = 500;
 const MAX_CONFIG_BYTES = 2 * 1024 * 1024;
 const MAX_SITES = 500;
 const MAX_CONCURRENT_PROBES = 8;
-const siteProbeHttpsAgent = new HttpsAgent({ keepAlive: false, maxCachedSessions: 0 });
 
 function extractServerBlocks(source: string) {
   const cleaned = source.replace(/#[^\r\n]*/g, "");
@@ -150,27 +148,8 @@ function unavailableCertificate(reason: string): SiteCertificate {
   return { status: "unavailable", notBefore: null, expiresAt: null, issuer: null, subjectAlternativeNames: [], fingerprintSha256: null, renewalMode: "unsupported", renewable: false, unavailableReason: reason, certificateId: null };
 }
 
-function certbotIdentity(path: string | null) {
-  const match = path?.match(/^\/etc\/letsencrypt\/live\/([A-Za-z0-9._-]{1,128})\/(?:cert|chain|fullchain)\.pem$/);
-  if (!match?.[1]) return null;
-  return `cert_${createHash("sha256").update(`certbot:${match[1]}`).digest("hex").slice(0, 32)}`;
-}
-
-async function readPublicCertificate(path: string): Promise<SiteCertificate> {
-  try {
-    const certificate = new X509Certificate(await readFile(path));
-    const expires = new Date(certificate.validTo); const starts = new Date(certificate.validFrom);
-    const expiresAt = Number.isNaN(expires.getTime()) ? null : expires.toISOString();
-    const sans = certificate.subjectAltName
-      ? certificate.subjectAltName.split(/,\s*/).map((entry) => entry.replace(/^DNS:/, "")).filter((entry) => entry && !entry.startsWith("IP Address:")).slice(0, 100)
-      : [];
-    return {
-      status: certificateStatus(expiresAt), notBefore: Number.isNaN(starts.getTime()) ? null : starts.toISOString(), expiresAt,
-      issuer: certificate.issuer.replace(/\n/g, ", ").slice(0, 253) || null, subjectAlternativeNames: sans,
-      fingerprintSha256: certificate.fingerprint256.replaceAll(":", "").toUpperCase(), renewalMode: "manual",
-      renewable: false, unavailableReason: "证书不由 Certbot 管理", certificateId: null,
-    };
-  } catch { return unavailableCertificate("无法读取或解析公开 TLS 证书"); }
+function certificateSourceId(path: string) {
+  return `source_${createHash("sha256").update(`public-certificate:${path}`).digest("hex").slice(0, 32)}`;
 }
 
 function certificateDetails(socket: TLSSocket): SiteCertificate {
@@ -204,7 +183,7 @@ function probeListener(domain: string, listener: Listener): Promise<ProbeResult>
       host: "127.0.0.1", port: listener.port, method: "HEAD", path: "/",
       headers: { Host: domain, "User-Agent": "StackPilot-Site-Monitor/1.0" },
       timeout: 1_500,
-      ...(listener.secure ? { agent: siteProbeHttpsAgent, servername: domain, rejectUnauthorized: true } : {}),
+      ...(listener.secure ? { agent: false, servername: domain, rejectUnauthorized: true } : {}),
     }, (response) => {
       const status: SiteRuntimeStatus = (response.statusCode ?? 500) < 500 ? "running" : "warning";
       const certificate = listener.secure ? certificateDetails(response.socket as TLSSocket) : unavailableCertificate("站点未启用 TLS");
@@ -243,8 +222,7 @@ async function mapConcurrent<T, R>(values: T[], limit: number, mapper: (value: T
 export class NginxSiteCollector {
   constructor(
     private readonly roots: string[], private readonly probe: SiteProbe = defaultProbe,
-    private readonly hostName = hostname(), private readonly helperAvailable: () => Promise<boolean> = certHelperAvailable,
-    private readonly publicCertificateReader: PublicCertificateReader = readPublicCertificate,
+    private readonly hostName = hostname(), private readonly helperInventory: () => Promise<Map<string, SiteCertificate>> = certHelperCertificates,
   ) {}
 
   async collectSites(): Promise<SiteRuntimePayload> {
@@ -270,17 +248,13 @@ export class NginxSiteCollector {
     if (unreadable) warnings.push(`${unreadable} 个 Nginx 配置文件不可读`);
     const merged = mergeCandidates(candidates).slice(0, MAX_SITES);
     const collectedAt = new Date().toISOString();
-    const helperReady = await this.helperAvailable();
+    const helperCertificates = await this.helperInventory().catch(() => new Map<string, SiteCertificate>());
     const sites = await mapConcurrent(merged, MAX_CONCURRENT_PROBES, async (candidate): Promise<SiteRuntimeRecord> => {
       const result = await this.probe(candidate.domain, candidate.listeners);
       const id = createHash("sha256").update(candidate.domain.toLowerCase()).digest("hex").slice(0, 24);
-      const certificateId = certbotIdentity(candidate.certificatePath);
-      const publicCertificate = candidate.certificatePath ? await this.publicCertificateReader(candidate.certificatePath) : result.certificate;
-      const certificate = publicCertificate.status === "unavailable" ? publicCertificate : {
-        ...publicCertificate, certificateId, renewalMode: certificateId ? "automatic" as const : "manual" as const,
-        renewable: Boolean(certificateId && helperReady), unavailableReason: certificateId && helperReady ? null
-          : certificateId ? "Controller 本机证书续期 helper 不可用或未授权" : "证书不由 Certbot 管理",
-      };
+      const certificate = candidate.certificatePath
+        ? helperCertificates.get(certificateSourceId(candidate.certificatePath)) ?? unavailableCertificate("Controller 本机证书 helper 无法读取公开证书链")
+        : result.certificate;
       return {
         id: `nginx-${id}`, nodeId: "node-local", domain: candidate.domain, runtime: candidate.runtime, host: this.hostName,
         upstream: candidate.upstream, source: candidate.source, trafficBytes: null, collectedAt, freshness: "current",

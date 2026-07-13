@@ -24,6 +24,7 @@ export interface SiteManagementRepository {
   getPlanExecutionSecrets(planId: string): SitePlanExecutionSecrets;
   findOperationByIdempotency(digest: string): SiteOperation | null;
   getOperation(operationId: string): SiteOperation | null;
+  listNonTerminalOperations(): SiteOperation[];
   saveOperation(operation: SiteOperation, idempotencyDigest: string): void;
   updateOperation(operation: SiteOperation): void;
   getManagedSite(siteId: string): ManagedSiteState | null;
@@ -48,6 +49,7 @@ export class MemorySiteManagementRepository implements SiteManagementRepository 
   getPlanExecutionSecrets(planId: string) { return { certificateEmail: this.certificateEmails.get(planId) ?? "", environmentVariables: structuredClone(this.environments.get(planId) ?? []) }; }
   findOperationByIdempotency(digest: string) { const id = this.operationKeys.get(digest); return id ? structuredClone(this.operations.get(id) ?? null) : null; }
   getOperation(operationId: string) { return structuredClone(this.operations.get(operationId) ?? null); }
+  listNonTerminalOperations() { return structuredClone([...this.operations.values()].filter((item) => !["succeeded", "failed", "cancelled"].includes(item.status))); }
   saveOperation(operation: SiteOperation, digest: string) { this.operations.set(operation.operationId, structuredClone(operation)); this.operationKeys.set(digest, operation.operationId); }
   updateOperation(operation: SiteOperation) { this.operations.set(operation.operationId, structuredClone(operation)); }
   getManagedSite(siteId: string) { return structuredClone(this.sites.get(siteId) ?? null); }
@@ -103,6 +105,10 @@ export class SqliteSiteManagementRepository implements SiteManagementRepository 
   }
   findOperationByIdempotency(digest: string) { return this.operation(this.database.prepare("SELECT payload,result FROM site_operations WHERE idempotency_digest=?").get(digest) as OperationRow | undefined); }
   getOperation(operationId: string) { return this.operation(this.database.prepare("SELECT payload,result FROM site_operations WHERE operation_id=?").get(operationId) as OperationRow | undefined); }
+  listNonTerminalOperations() {
+    return (this.database.prepare("SELECT payload,result FROM site_operations WHERE status NOT IN ('succeeded','failed','cancelled') ORDER BY created_at").all() as OperationRow[])
+      .map((row) => this.operation(row)!);
+  }
   saveOperation(operation: SiteOperation, digest: string) {
     this.database.prepare("INSERT INTO site_operations(operation_id,task_id,node_id,site_id,plan_id,operation_type,status,stage,progress_percent,payload,result,error_code,idempotency_digest,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
       .run(operation.operationId, operation.taskId, operation.nodeId, operation.siteId, operation.planId, operation.type, operation.status, operation.stage, operation.progressPercent, JSON.stringify(operation), operation.result ? JSON.stringify(operation.result) : null, operation.errorCode, digest, operation.createdAt, operation.updatedAt);
