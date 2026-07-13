@@ -47,6 +47,7 @@
 }
 .terminal-history-status.green { color: #16a34a; border-color: #bbf7d0; background: #f0fdf4; }
 .terminal-history-status.red { color: #dc2626; border-color: #fecaca; background: #fef2f2; }
+.terminal-history-status.blue { color: var(--primary-hover); border-color: var(--primary-line); background: var(--primary-soft); }
 .terminal-history-pinned { margin-left: auto; color: var(--primary-hover); border-color: var(--primary-line); background: var(--primary-soft); }
 .terminal-history-pinned { border: 0; border-radius: var(--radius-sm); }
 .terminal-history-command {

@@ -18,11 +18,12 @@ export async function responseError(response: Response): Promise<Error> {
 }
 
 export async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const hasJsonBody = typeof init.body === "string";
   const response = await fetch(`${API_CLIENT_PREFIX}${path}`, {
     ...init,
     credentials: "include",
     headers: {
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(hasJsonBody ? { "Content-Type": "application/json" } : {}),
       ...((init.method && init.method !== "GET" && csrfToken) ? { "X-CSRF-Token": csrfToken } : {}),
       ...init.headers,
     },
