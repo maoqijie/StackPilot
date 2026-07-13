@@ -54,4 +54,16 @@ describe("files browser page", () => {
     expect(screen.queryByText("index.html")).not.toBeInTheDocument();
     expect(notify).toHaveBeenCalledWith("index.html 已移入回收站", "warning");
   });
+
+  it("does not offer mutations for symbolic links rejected by the backend", async () => {
+    vi.stubGlobal("fetch",vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ...listPayload,
+      entries:[{...listPayload.entries[0],id:"entry-link",name:"current",kind:"symlink",path:"/var/www/current",sizeBytes:null}],
+    }),{status:200,headers:{"Content-Type":"application/json"}})));
+
+    render(<FilesPageHarness />);
+
+    expect(await screen.findByRole("button",{name:"重命名 current"})).toBeDisabled();
+    expect(screen.getByRole("button",{name:"删除 current 到回收站"})).toBeDisabled();
+  });
 });
