@@ -15,7 +15,7 @@ export function applyCors(request: IncomingMessage, response: ServerResponse, al
   if (!allowedOrigins.includes(origin)) throw new ApiError(403, "FORBIDDEN", "请求来源不在允许列表中");
   response.setHeader("Access-Control-Allow-Origin", origin);
   response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
-  response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, X-CSRF-Token, X-Reauth-Proof");
+  response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Upload-Offset, X-CSRF-Token, X-Reauth-Proof");
   response.setHeader("Access-Control-Allow-Credentials", "true");
   response.setHeader("Access-Control-Max-Age", "600");
 }

@@ -4,7 +4,7 @@ import {
   OverviewRisksPayloadSchema, OverviewRisksScanResponseSchema, OverviewSummaryPayloadSchema,
   OverviewTasksPayloadSchema, OverviewTasksRefreshResponseSchema, PathIdSchema,
   HostMonitoringPayloadSchema, ReadinessResponseSchema, RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
-  SiteRuntimePayloadSchema,
+  SiteRuntimePayloadSchema, DatabaseSlowQueriesPayloadSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
@@ -15,6 +15,8 @@ import { parseSchema } from "./validation.js";
 import { routeControlPlaneRequest } from "./controlPlaneRouter.js";
 import { routeIdentityRequest } from "./identityRouter.js";
 import type { OverviewAccess } from "../modules/overview/overviewService.js";
+import { routeDatabaseBackupRequest } from "./databaseBackupRouter.js";
+import { routeFileManagerRequest, routeFileUploadRequest } from "./fileRouter.js";
 
 function idAt(context: RequestContext, index: number) {
   try {
@@ -31,6 +33,7 @@ function overviewAccess(context:RequestContext):OverviewAccess{return{nodeScope:
 export async function routeRequest(context: RequestContext): Promise<void> {
   const { request, response, parts, services } = context;
   const method = request.method ?? "GET";
+  if (parts[0] === "api" && parts[1] === "files") { await routeFileManagerRequest(context); return; }
   if (context.url.searchParams.size > 0) throw new ApiError(400, "BAD_REQUEST", "查询参数无效：当前接口不接受查询参数");
 
   if (context.url.pathname === "/healthz" && method === "GET") {
@@ -46,11 +49,18 @@ export async function routeRequest(context: RequestContext): Promise<void> {
   if (parts[0] === "api" && ["enrollments", "nodes", "remote-tasks"].includes(parts[1] ?? "")) {
     await routeControlPlaneRequest(context); return;
   }
+  if (parts[0] === "api" && parts[1] === "database-backups") { await routeDatabaseBackupRequest(context); return; }
+  if (parts[0] === "api" && parts[1] === "file-uploads") { await routeFileUploadRequest(context); return; }
   if (context.url.pathname === "/api/hosts" && method === "GET") {
     context.identity?.require(context.principal, "overview:read");
     const nodeScope = context.principal?.nodeScope ?? [];
     const canReadNodes = Boolean(context.principal?.permissions.has("nodes:read"));
     sendJson(response,200,await services.hosts.getHosts(canReadNodes&&(nodeScope==="all"||nodeScope.length>0),nodeScope),HostMonitoringPayloadSchema);return;
+  }
+  if (context.url.pathname === "/api/databases/slow-queries" && method === "GET") {
+    context.identity?.require(context.principal, "databases:read");
+    sendJson(response, 200, await services.databases.getSlowQueries(), DatabaseSlowQueriesPayloadSchema);
+    return;
   }
   if (context.url.pathname === "/api/sites" && method === "GET") {
     context.identity?.require(context.principal, "overview:read");

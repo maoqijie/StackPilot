@@ -90,6 +90,9 @@ npm run dev --workspace @stackpilot/web -- --host 0.0.0.0
 | `STACKPILOT_SESSION_SECONDS` | `43200` | 可撤销浏览器会话期限。 |
 | `STACKPILOT_ALLOWED_ORIGINS` | 本机 `5173`/`4173` 的 `localhost` 与 `127.0.0.1` 来源 | 逗号分隔的精确 HTTP(S) 来源；不允许 `*` 或带路径的 URL。设为空字符串可禁止所有跨域来源。 |
 | `STACKPILOT_JSON_BODY_LIMIT_BYTES` | `65536` | 管理端 JSON 请求体字节上限，超限返回 `413`；严格校验的 Agent API 为遥测保留最多 `1 MiB`。 |
+| `STACKPILOT_UPLOAD_ROOT` | `.stackpilot/uploads` | Controller 本机上传根目录。浏览器只能选择该根目录下的相对目录，不能写任意绝对路径。 |
+| `STACKPILOT_UPLOAD_MAX_BYTES` | `1073741824` | 单文件最大字节数。 |
+| `STACKPILOT_UPLOAD_CHUNK_MAX_BYTES` | `8388608` | 单个上传分片最大字节数；反向代理必须允许同等大小。 |
 | `STACKPILOT_ENABLE_CRONTAB_WRITE` | `0` | 危险开关；只有精确设置为 `1` 才允许 crontab 写入、修改、删除和立即执行。 |
 | `STACKPILOT_BACKUP_DIRS` | 未配置 | 可选备份目录列表，供本机平台采集使用。 |
 | `STACKPILOT_NGINX_CONFIG_DIRS` | `/etc/nginx/conf.d,/etc/nginx/sites-enabled` | 逗号分隔的只读 Nginx 配置目录，供站点运行时自动发现使用。 |
@@ -230,7 +233,7 @@ npm run test --workspace @stackpilot/agent
 
 ## 生产部署与发布
 
-正式支持的生产运行时为 Linux x86_64、Node.js 22.x 和 SQLite schema 2。Docker Compose 默认仅公开 HTTPS 443；Controller 8787 位于内部网络，Agent 9443 默认只绑定回环地址。原生 systemd 方案为 Controller 与 Agent 创建不同的低权限用户，并通过 systemd credential 注入主密钥和 TLS 私钥。
+正式支持的生产运行时为 Linux x86_64、Node.js 22.x 和 SQLite schema 3。Docker Compose 默认仅公开 HTTPS 443；Controller 8787 位于内部网络，Agent 9443 默认只绑定回环地址。原生 systemd 方案为 Controller 与 Agent 创建不同的低权限用户，并通过 systemd credential 注入主密钥和 TLS 私钥。
 
 - [Docker Compose 安装](docs/installation/docker-compose.md)
 - [systemd 安装](docs/installation/systemd.md)

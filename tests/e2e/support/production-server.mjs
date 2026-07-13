@@ -53,7 +53,7 @@ const repository = new SqliteAgentControlRepository(database, identity.audit);
 const platform = new FakePlatformAdapter();
 const collectFixtureSnapshot = platform.collectSnapshot.bind(platform);
 platform.collectSnapshot = async () => ({ ...await collectFixtureSnapshot(), platformLabel: "win32 10.0" });
-const services = createControllerServices(platform, root, config, repository);
+const services = createControllerServices(platform, root, config, repository, database);
 const options = { config, database, identity, agentRepository: repository, platform, services, repoRoot: root };
 const management = createStackPilotServer(options);
 const agent = createStackPilotAgentServer({ cert: certificate.cert, key: certificate.private }, options);
