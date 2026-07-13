@@ -35,12 +35,24 @@ describe("requestJson", () => {
   it("can keep a credential-check 401 inside the current dialog", async () => {
     const expired = vi.fn();
     window.addEventListener("stackpilot:session-expired", expired);
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "重新认证失败" }), {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: "REAUTHENTICATION_FAILED", error: "重新认证失败" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
     })));
-    await expect(requestJson("/auth/reauthenticate", { dispatchSessionExpired: false })).rejects.toThrow("重新认证失败");
+    await expect(requestJson("/auth/reauthenticate", { suppressSessionExpiredCodes: ["REAUTHENTICATION_FAILED"] })).rejects.toThrow("重新认证失败");
     expect(expired).not.toHaveBeenCalled();
+    window.removeEventListener("stackpilot:session-expired", expired);
+  });
+
+  it("still expires the session when reauthentication reports a missing login", async () => {
+    const expired = vi.fn();
+    window.addEventListener("stackpilot:session-expired", expired);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: "UNAUTHORIZED", error: "需要登录" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    })));
+    await expect(requestJson("/auth/reauthenticate", { suppressSessionExpiredCodes: ["REAUTHENTICATION_FAILED"] })).rejects.toThrow("需要登录");
+    expect(expired).toHaveBeenCalledOnce();
     window.removeEventListener("stackpilot:session-expired", expired);
   });
 

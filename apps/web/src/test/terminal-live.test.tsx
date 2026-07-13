@@ -43,6 +43,33 @@ describe("terminal real backend integration", () => {
     expect(reauthenticate).not.toHaveBeenCalled();
     expect(createTerminalTask).not.toHaveBeenCalled();
   });
+  it("rechecks Agent capability when the confirmation dialog is submitted", async () => {
+    const limited = { ...node, declaredCapabilities: ["system.summary.read" as const], allowedCapabilities: ["system.summary.read" as const] };
+    const { fetchTerminalNodes } = await import("../api/terminalApi");
+    vi.mocked(fetchTerminalNodes).mockResolvedValueOnce({ nodes: [node] }).mockResolvedValue({ nodes: [limited] });
+    render(<TerminalPage page="terminal" notify={vi.fn()} />);
+    const input = await screen.findByLabelText("命令输入");
+    fireEvent.change(input, { target: { value: "systemctl status nginx --no-pager" } });
+    fireEvent.click(screen.getByRole("button", { name: "运行" }));
+    const dialog = screen.getByRole("alertdialog", { name: "确认执行受控命令" });
+    fireEvent.change(within(dialog).getByLabelText("当前密码"), { target: { value: "current-password" } });
+    fireEvent(document, new Event("visibilitychange"));
+    await vi.waitFor(() => expect(fetchTerminalNodes).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "运行", hidden: true })).toBeDisabled());
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认执行" }));
+    expect(await within(dialog).findByText("目标 Agent 能力已变更，请重新选择命令")).toBeInTheDocument();
+    expect(reauthenticate).not.toHaveBeenCalled();
+    expect(createTerminalTask).not.toHaveBeenCalled();
+  });
+  it("removes task history that the authoritative backend no longer returns", async () => {
+    vi.mocked(fetchTerminalTasks).mockResolvedValueOnce({ tasks: [task] }).mockResolvedValue({ tasks: [] });
+    render(<TerminalPage page="terminal-history" notify={vi.fn()} />);
+    expect(await screen.findByText("hostname: real-agent-01")).toBeInTheDocument();
+    fireEvent(document, new Event("visibilitychange"));
+    await vi.waitFor(() => expect(fetchTerminalTasks).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(screen.queryByText("hostname: real-agent-01")).not.toBeInTheDocument());
+    expect(screen.getByText("没有真实终端任务历史")).toBeInTheDocument();
+  });
   it("reuses the task idempotency key when a submission response is lost", async () => {
     vi.mocked(createTerminalTask).mockRejectedValueOnce(new Error("响应连接中断"));
     render(<TerminalPage page="terminal" notify={vi.fn()} />);
