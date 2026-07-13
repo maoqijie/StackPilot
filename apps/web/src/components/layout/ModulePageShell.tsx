@@ -7,31 +7,36 @@ function ModulePageShell({
   subtitle,
   hideHeading = false,
   page,
+  className,
   viewContext,
   tabs,
   actions,
   filters,
   metrics,
   side,
+  sideModal = false,
   children,
 }: {
   title: string;
   subtitle?: string | null;
   hideHeading?: boolean;
   page?: PageKey;
+  className?: string;
   viewContext?: ViewContext | false | null;
   tabs?: React.ReactNode;
   actions?: React.ReactNode;
   filters?: React.ReactNode;
   metrics?: React.ReactNode;
   side?: React.ReactNode;
+  sideModal?: boolean;
   children: React.ReactNode;
 }) {
   const effectiveViewContext = viewContext === false ? null : viewContext ?? (page ? viewContextForPage(page) : null);
   const isNarrowViewport = useIsNarrowViewport();
-  const isModalSide = Boolean(side) && isNarrowViewport;
+  const isModalSide = Boolean(side) && (sideModal || isNarrowViewport);
+  const pageClassName = ["module-page", page ? `module-page-${page}` : "", className].filter(Boolean).join(" ");
   return (
-    <div className={`module-page ${page ? `module-page-${page}` : ""}`}>
+    <div className={pageClassName}>
       {hideHeading && !actions ? <h1 className="sr-only">{title}</h1> : (
         <div className={`page-head module-head ${hideHeading ? "module-head-actions-only" : ""}`} inert={isModalSide} aria-hidden={isModalSide ? "true" : undefined}>
           {hideHeading ? <h1 className="sr-only">{title}</h1> : (
@@ -43,7 +48,7 @@ function ModulePageShell({
           {actions && <div>{actions}</div>}
         </div>
       )}
-      <div className={`module-layout ${side ? "has-side" : ""}`}>
+      <div className={`module-layout ${side && !sideModal ? "has-side" : ""}`}>
         <section className="module-main" inert={isModalSide} aria-hidden={isModalSide ? "true" : undefined}>
           {effectiveViewContext && <ModuleViewContext context={effectiveViewContext} />}
           {tabs}

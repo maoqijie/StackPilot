@@ -1,0 +1,271 @@
+.module-page-databases .module-view-context,
+.module-page-databases .module-filter-line,
+.module-page-databases .module-metrics article,
+.module-page-databases .module-table-wrap,
+.module-page-databases .database-instance-lower .panel-card,
+.module-page-databases .module-card-sort,
+.module-page-databases .module-card-row,
+.module-page-databases .module-card-empty {
+  border: 0;
+  outline: 0;
+}
+
+.module-page-databases :is(
+  .module-view-context,
+  .module-filter-line,
+  .module-metrics article,
+  .module-table-wrap,
+  .database-instance-lower .panel-card,
+  .module-card-sort,
+  .module-card-row,
+  .module-card-empty
+):is(:hover, :focus, :focus-visible, :focus-within, :active) {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.module-page-databases {
+  padding: 32px 32px 64px;
+}
+
+.module-page-databases .page-head {
+  gap: 24px;
+}
+
+.module-page-databases .page-head h1 {
+  font: 700 40px/1.2 var(--font-display);
+  letter-spacing: 0;
+}
+
+.module-page-databases .page-subtitle {
+  max-width: 80ch;
+  margin-top: 8px;
+  font: 400 16px/1.6 var(--font-body);
+}
+
+.module-page-databases .page-head > div:last-child :is(.primary, .ghost),
+.database-instance-drawer .drawer-actions :is(.primary, .ghost) {
+  min-height: var(--control-md);
+  padding: 10px 20px;
+  font: 600 15px/1 var(--font-body);
+}
+
+.module-page-databases .page-head .ghost,
+.database-instance-drawer .drawer-actions .ghost {
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+}
+
+.module-page-databases .page-head .ghost:hover,
+.module-page-databases .page-head .ghost:focus-visible,
+.database-instance-drawer .drawer-actions .ghost:hover,
+.database-instance-drawer .drawer-actions .ghost:focus-visible {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.module-page-databases .database-instance-content {
+  gap: 64px;
+}
+
+.module-page-databases .module-view-context {
+  box-shadow: none;
+}
+
+.module-page-databases .module-view-context em {
+  border: 0;
+  outline: 0;
+  background: var(--surface);
+}
+
+.module-page-databases .module-filter-line {
+  box-shadow: none;
+}
+
+.module-page-databases .module-metrics article,
+.module-page-databases .database-instance-lower .panel-card,
+.module-page-databases .module-card-row {
+  box-shadow: none;
+}
+
+.module-page-databases .module-table-wrap {
+  box-shadow: none;
+}
+
+.module-page-databases .module-table :is(th, td) {
+  border: 0;
+}
+
+.module-page-databases .database-pill-group {
+  padding: 0;
+  border: 0;
+  gap: 4px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.module-page-databases .database-instance-lower .panel-card > header {
+  border-bottom: 0;
+}
+
+.module-page-databases .page-head .ghost,
+.module-page-databases .page-head .ghost:hover,
+.module-page-databases .page-head .ghost:focus-visible,
+.module-page-databases .page-head .ghost:active {
+  border: 0;
+}
+
+.module-page-databases .database-table-actions button,
+.module-page-databases .database-mobile-actions .ghost,
+.database-instance-drawer .database-detail-actions button {
+  border: 0;
+}
+
+.module-page-databases :is(
+  .database-table-actions button,
+  .database-mobile-actions button,
+  .database-instance-lower .panel-link,
+  .database-watch-list button,
+  .database-instance-name,
+  .table-sort-button
+):is(:hover, :focus-visible, :active) {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.module-page-databases :is(
+  .database-instance-lower .panel-link,
+  .database-watch-list button,
+  .database-instance-name,
+  .table-sort-button
+):focus-visible {
+  color: var(--primary-hover);
+  background: var(--primary-soft) !important;
+}
+
+.module-page-databases .database-instance-lower .panel-link {
+  border: 0;
+}
+
+.module-page-databases .database-table-actions button:focus-visible {
+  background: var(--primary-soft) !important;
+}
+
+.module-page-databases .database-table-actions button {
+  color: var(--muted);
+  background: transparent;
+}
+
+.module-page-databases .database-table-actions button:hover,
+.module-page-databases .database-table-actions button:focus-visible,
+.module-page-databases .database-table-actions button:active {
+  color: var(--primary-hover);
+  border: 0;
+  outline: 0;
+  background: var(--primary-soft);
+  box-shadow: none;
+}
+
+.module-page-databases .database-mobile-actions .ghost {
+  background: var(--surface-soft);
+}
+
+.module-page-databases .database-mobile-actions .ghost:hover,
+.module-page-databases .database-mobile-actions .ghost:focus-visible,
+.module-page-databases .database-mobile-actions .ghost:active {
+  border: 0;
+  outline: 0;
+  background: var(--surface-hover);
+  box-shadow: none;
+}
+
+.database-instance-drawer {
+  border-left: 0;
+}
+
+.database-instance-drawer .drawer-head,
+.database-instance-drawer .drawer-actions {
+  border: 0;
+}
+
+.database-instance-drawer .drawer-close-button,
+.database-instance-drawer .drawer-close-button:is(:hover, :focus-visible, :active),
+.database-instance-drawer :is(.drawer-tip, .drawer-warning),
+.database-instance-drawer :is(.drawer-tip, .drawer-warning):is(:hover, :focus, :focus-visible, :focus-within, :active) {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.database-instance-drawer .drawer-close-button:focus-visible {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.database-instance-drawer .drawer-head {
+  background: var(--surface);
+}
+
+.database-instance-drawer .drawer-head strong {
+  font: 600 28px/1.3 var(--font-display);
+  letter-spacing: 0;
+}
+
+.database-instance-drawer .drawer-actions {
+  background: var(--surface-soft);
+}
+
+.database-instance-drawer .database-detail-grid > * {
+  border: 0;
+}
+
+.database-instance-drawer .database-detail-actions button {
+  background: var(--surface-soft);
+}
+
+.database-instance-drawer .database-detail-actions button:hover,
+.database-instance-drawer .database-detail-actions button:focus-visible,
+.database-instance-drawer .database-detail-actions button:active {
+  border: 0;
+  outline: 0;
+  background: var(--primary-soft);
+  box-shadow: none;
+}
+
+@media (max-width: 773px) {
+  .module-page-databases {
+    padding: 32px 16px;
+  }
+
+  .module-page-databases .page-head h1 {
+    font-size: 40px;
+  }
+
+  .module-page-databases .database-instance-content {
+    gap: 32px;
+  }
+
+  .module-page-databases .module-card-sort {
+    border-bottom: 0;
+    background: var(--surface-soft);
+  }
+
+  .module-page-databases .module-card-sort button,
+  .module-page-databases .module-card-sort button:is(:hover, :focus-visible, :active) {
+    border: 0;
+    outline: 0;
+    box-shadow: none;
+  }
+
+  .module-page-databases .module-card-sort button:focus-visible {
+    color: var(--primary-hover);
+    background: var(--primary-soft);
+  }
+
+  .module-page-databases .module-card-list {
+    padding-top: 16px;
+  }
+}
