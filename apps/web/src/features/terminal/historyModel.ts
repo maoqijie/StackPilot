@@ -15,6 +15,13 @@ const statuses: Record<RemoteTaskStatus, Pick<TerminalHistoryView, "status" | "t
 
 function actionLabel(task: RemoteTaskRecord) {
   if (task.type === "system.summary.read") return "读取系统摘要";
+  if (task.type === "terminal.command.execute") {
+    if (task.parameters.command === "disk-usage") return "执行 df -h";
+    if (task.parameters.command === "uptime") return "执行 uptime";
+    if (task.parameters.command === "top-summary") return "执行 top";
+    if (task.parameters.command === "service-status") return `执行 systemctl status ${String(task.parameters.serviceName)}`;
+    return "执行受控终端命令";
+  }
   const serviceName = typeof task.parameters.serviceName === "string" ? task.parameters.serviceName : "";
   return `读取服务状态${serviceName ? ` · ${serviceName}` : ""}`;
 }

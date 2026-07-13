@@ -46,7 +46,7 @@ describe("terminal session page", () => {
 
     await vi.waitFor(() => expect(createTerminalTask).toHaveBeenCalledWith(
       terminalNode.nodeId,
-      expect.objectContaining({ type: "service.status.read", parameters: { serviceName: "nginx" } }),
+      expect.objectContaining({ type: "terminal.command.execute", parameters: { command: "service-status", serviceName: "nginx" } }),
       expect.any(String),
     ));
     expect(input).toHaveValue("");

@@ -7,22 +7,44 @@ import { AGENT_PROTOCOL_VERSION } from "@stackpilot/contracts";
 import { TaskExecutor } from "../../apps/agent/dist/tasks/executor.js";
 import { taskRegistry } from "../../apps/agent/dist/tasks/registry.js";
 import { activeAgentCapabilities } from "../../apps/agent/dist/capabilities/index.js";
+import { terminalCommandHandler, terminalCommandInvocation, terminalCommandsAvailable, truncateTerminalOutput } from "../../apps/agent/dist/tasks/handlers/terminalCommand.js";
 
 const nodeId = "11111111-1111-4111-8111-111111111111";
 const task = (overrides = {}) => ({ protocolVersion: AGENT_PROTOCOL_VERSION, taskId: "22222222-2222-4222-8222-222222222222", type: "system.summary.read", targetNodeId: nodeId, parameters: { includeLoad: false }, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), idempotencyKey: "summary-once-123", requester: "test", traceId: "33333333-3333-4333-8333-333333333333", requiredCapability: "system.summary.read", attempt: 1, maxAttempts: 3, ...overrides });
 
-test("task registry exposes only structured handlers and keeps renewal non-retryable", () => {
-  assert.deepEqual(Object.keys(taskRegistry).sort(), ["service.status.read", "sites.certificates.renew", "system.summary.read"]);
+test("task registry exposes only structured handlers and keeps side effects non-retryable", () => {
+  assert.deepEqual(Object.keys(taskRegistry).sort(), ["service.status.read", "sites.certificates.renew", "system.summary.read", "terminal.command.execute"]);
   assert.ok(Object.values(taskRegistry).every((definition) => definition.maxOutputBytes <= 16_384));
-  assert.ok(Object.keys(taskRegistry).every((name) => !/shell|exec|command/i.test(name)));
+  assert.ok(Object.keys(taskRegistry).every((name) => !/shell/i.test(name)));
   assert.equal(taskRegistry["system.summary.read"].timeoutMs, 6_000);
+  assert.equal(taskRegistry["terminal.command.execute"].timeoutMs, 10_000); assert.equal(taskRegistry["terminal.command.execute"].maxOutputBytes, 1_024); assert.equal(taskRegistry["terminal.command.execute"].retryable, false); assert.equal(taskRegistry["terminal.command.execute"].cancellable, true); assert.deepEqual(taskRegistry["terminal.command.execute"].platforms, ["linux"]);
   assert.equal(taskRegistry["sites.certificates.renew"].retryable, false); assert.equal(taskRegistry["sites.certificates.renew"].cancellable, false); assert.deepEqual(taskRegistry["sites.certificates.renew"].platforms, ["linux"]); assert.equal(taskRegistry["sites.certificates.renew"].timeoutMs, 600_000);
 });
 
-test("high-risk renewal capability is declared only on Linux with a reachable helper", () => {
+test("Linux Agent declares terminal execution only when every fixed executable is available", () => {
   assert.deepEqual(activeAgentCapabilities("linux", false), ["system.summary.read", "service.status.read", "sites.inventory.read"]);
+  assert.deepEqual(activeAgentCapabilities("linux", false, false, true), ["system.summary.read", "service.status.read", "sites.inventory.read", "terminal.command.execute"]);
   assert.deepEqual(activeAgentCapabilities("darwin", true), ["system.summary.read", "service.status.read", "sites.inventory.read"]);
-  assert.deepEqual(activeAgentCapabilities("linux", true), ["system.summary.read", "service.status.read", "sites.inventory.read", "sites.certificates.renew"]);
+  assert.deepEqual(activeAgentCapabilities("linux", true, false, true), ["system.summary.read", "service.status.read", "sites.inventory.read", "terminal.command.execute", "sites.certificates.renew"]);
+  assert.equal(terminalCommandsAvailable(() => true), true); assert.equal(terminalCommandsAvailable((path) => path !== "/usr/bin/top"), false);
+});
+
+test("terminal handler maps strict commands to fixed executables and preserves non-zero output", async () => {
+  assert.deepEqual(terminalCommandInvocation({ command: "disk-usage" }), { executable: "/usr/bin/df", args: ["-h"] });
+  assert.deepEqual(terminalCommandInvocation({ command: "uptime" }), { executable: "/usr/bin/uptime", args: [] });
+  assert.deepEqual(terminalCommandInvocation({ command: "top-summary" }), { executable: "/usr/bin/top", args: ["-b", "-n", "1"] });
+  assert.deepEqual(terminalCommandInvocation({ command: "service-status", serviceName: "nginx.service" }), { executable: "/usr/bin/systemctl", args: ["status", "nginx.service", "--no-pager"] });
+  const calls = [];
+  const result = await terminalCommandHandler({ command: "service-status", serviceName: "nginx.service" }, new AbortController().signal, async (executable, args, options) => {
+    calls.push({ executable, args, options }); const error = new Error("inactive"); error.code = 3; error.stdout = "nginx.service inactive\n"; error.stderr = "diagnostic\n"; throw error;
+  });
+  assert.equal(calls[0].executable, "/usr/bin/systemctl"); assert.deepEqual(calls[0].args, ["status", "nginx.service", "--no-pager"]); assert.equal(calls[0].options.maxBuffer, 64 * 1_024);
+  assert.equal(result.message, "nginx.service inactive\ndiagnostic"); assert.equal(result.data.exitCode, 3); assert.equal(result.truncated, false);
+});
+
+test("terminal output truncation is UTF-8 safe and reports truncation", () => {
+  const result = truncateTerminalOutput("你".repeat(400), 1_024);
+  assert.equal(Buffer.byteLength(result.output, "utf8") <= 1_024, true); assert.equal(result.output.endsWith("�"), false); assert.equal(result.truncated, true);
 });
 
 test("executor validates target, expiry, capability and unknown types", async () => {

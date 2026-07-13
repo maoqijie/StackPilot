@@ -131,8 +131,8 @@ export const CertificateRenewalTaskParametersSchema = z.object({
 
 export const UpdateNodeCapabilitiesRequestSchema = z.object({
   allowedCapabilities: z.array(z.enum([
-    "system.summary.read", "service.status.read", "sites.inventory.read", "sites.certificates.renew",
-  ])).max(4),
+    "system.summary.read", "service.status.read", "terminal.command.execute", "sites.inventory.read", "sites.certificates.renew",
+  ])).max(5),
 }).strict().superRefine((value, context) => {
   if (new Set(value.allowedCapabilities).size !== value.allowedCapabilities.length) {
     context.addIssue({ code: "custom", path: ["allowedCapabilities"], message: "capabilities must be unique" });
