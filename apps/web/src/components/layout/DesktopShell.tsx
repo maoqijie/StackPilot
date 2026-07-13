@@ -221,7 +221,7 @@ function DesktopShellContent({
           {page === "overview-tasks" && <OverviewTasksPage notify={notify} setPage={setPage} />}
           {page === "overview-risks" && <OverviewRisksPage notify={notify} />}
           {activeModule === "hosts" && <HostsPage page={page} notify={notify} />}
-          {activeModule === "sites" && <SitesPage page={page} notify={notify} />}
+          {activeModule === "sites" && <SitesPage page={page} notify={notify} permissions={user.permissions} />}
           {activeModule === "databases" && (
             page === "databases-backups"
               ? <DatabaseBackupsPage page={page} notify={notify} canManage={user.permissions.includes("system:backup")} />

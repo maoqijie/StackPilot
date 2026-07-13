@@ -40,6 +40,8 @@ if (isMainModule) {
     const identity=new IdentityService(database,loadOrCreateAuditKey(database,parseMasterKey(config.masterKey)),config.sessionSeconds);
     const agentRepository=new SqliteAgentControlRepository(database,identity.audit);
     const services = createControllerServices(platform, repoRoot, config, agentRepository, database);
+    await services.sites.startup();
+    await services.certificateRenewals.startup();
     const appOptions={ config, services, platform, repoRoot,database,identity,agentRepository };
     const server = createStackPilotServer(appOptions);
 
@@ -55,7 +57,7 @@ if (isMainModule) {
 
     for (const signal of ["SIGINT", "SIGTERM"] as const) {
       process.once(signal, () => {
-        let remaining=agentServer?2:1;const closed=()=>{remaining-=1;if(remaining===0){database.close();process.exit(0);}};
+        services.sites.shutdown();let remaining=agentServer?2:1;const closed=()=>{remaining-=1;if(remaining===0){database.close();process.exit(0);}};
         agentServer?.close(closed);
         server.close(closed);
       });

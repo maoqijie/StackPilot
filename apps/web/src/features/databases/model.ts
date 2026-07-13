@@ -25,7 +25,20 @@ function writeSlowRemediationIds(ids: string[]) {
 }
 
 function databaseHealthTone(instance: DatabaseInstance): Tone {
+  if (instance.freshness === "stale") return "gray";
   return instance.connectionHealth === "运行中" ? "green" : instance.connectionHealth === "未知" ? "gray" : "orange";
+}
+
+function databaseHealthLabel(instance: DatabaseInstance) {
+  return instance.freshness === "stale" ? "数据已过期" : instance.connectionHealth;
+}
+
+function isDatabaseHealthy(instance: DatabaseInstance) {
+  return instance.freshness === "current" && instance.connectionHealth === "运行中";
+}
+
+function isDatabaseAlert(instance: DatabaseInstance) {
+  return instance.freshness === "stale" || (instance.connectionHealth !== "运行中" && instance.connectionHealth !== "未知");
 }
 
 const engineLabel = { postgresql: "PostgreSQL", mysql: "MySQL", mariadb: "MariaDB" } as const;
@@ -61,4 +74,4 @@ function databaseBackupTone(status: DatabaseInstance["backupStatus"]): Tone {
   return "green";
 }
 
-export { databaseBackupTone, databaseHealthTone, databaseInstanceFromApi, readSlowRemediationIds, slowRemediationStorageKey, writeSlowRemediationIds };
+export { databaseBackupTone, databaseHealthLabel, databaseHealthTone, databaseInstanceFromApi, isDatabaseAlert, isDatabaseHealthy, readSlowRemediationIds, slowRemediationStorageKey, writeSlowRemediationIds };

@@ -45,10 +45,30 @@ test("heartbeat controls online/offline lifecycle and node revocation rejects id
   await fixture.nodes.revoke(fixture.enrolled.nodeId, "admin", crypto.randomUUID()); assert.equal((await fixture.nodes.list())[0].status, "revoked");
 });
 
+test("heartbeat persists optional site snapshots and legacy heartbeats preserve the last snapshot", async () => {
+  const fixture = await enrolledFixture();
+  const heartbeat = { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["sites.inventory.read"], health: { status: "healthy", uptimeSeconds: 10 } };
+  const siteSnapshot = { collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], sites: [] };
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { ...heartbeat, siteSnapshot }, crypto.randomUUID());
+  assert.deepEqual((await fixture.repository.read()).nodes[0].siteSnapshot, siteSnapshot);
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { ...heartbeat, timestamp: new Date().toISOString() }, crypto.randomUUID());
+  assert.deepEqual((await fixture.repository.read()).nodes[0].siteSnapshot, siteSnapshot);
+});
+
+test("node capability authorization accepts only declared Controller-supported capabilities", async () => {
+  const fixture = await enrolledFixture();
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read", "sites.certificates.renew"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID());
+  const updated = await fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["sites.certificates.renew"], "admin", crypto.randomUUID());
+  assert.deepEqual(updated.allowedCapabilities, ["sites.certificates.renew"]);
+  await assert.rejects(() => fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["service.status.read"], "admin", crypto.randomUUID()), /已声明/);
+});
+
 test("task state machine enforces capability, idempotency, expiry, cancellation and queue limit", async () => {
   const fixture = await enrolledFixture(); await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read", "service.status.read"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID());
   const input = { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "idempotent-summary-a" };
-  const first = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID()); const duplicate = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID()); assert.equal(duplicate.taskId, first.taskId);
+  let authorizationCount = 0;
+  const authorize = () => { authorizationCount += 1; };
+  const first = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID(), authorize); const duplicate = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID(), authorize); assert.equal(duplicate.taskId, first.taskId); assert.equal(authorizationCount, 2);
   const dispatched = await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID()); assert.equal(dispatched.length, 1);
   await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: first.taskId, attempt: 1, status: "running", timestamp: new Date().toISOString() }, crypto.randomUUID());
   assert.equal((await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: first.taskId, attempt: 1, status: "running", timestamp: new Date().toISOString() }, crypto.randomUUID())).status, "running");
@@ -97,8 +117,9 @@ test("task expiry, queue limits and audit redaction are persisted", async () => 
   const first = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "expire-task-one" }, "admin", crypto.randomUUID());
   await fixture.repository.update((state) => { state.tasks.find((item) => item.taskId === first.taskId).expiresAt = new Date(Date.now() - 1).toISOString(); state.audits.push({ eventId: crypto.randomUUID(), timestamp: new Date().toISOString(), requester: "test", nodeId: fixture.enrolled.nodeId, taskId: first.taskId, event: "redaction.test", taskType: "system.summary.read", parameters: { nested: { authorization: "Bearer secret", safe: "visible" } }, fromStatus: null, toStatus: null, resultSummary: "ok", traceId: crypto.randomUUID() }); });
   assert.equal((await fixture.tasks.list()).find((item) => item.taskId === first.taskId).status, "expired");
-  await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "queue-task-one" }, "admin", crypto.randomUUID());
+  const queued = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "queue-task-one" }, "admin", crypto.randomUUID());
   await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "queue-task-two" }, "admin", crypto.randomUUID());
+  assert.equal((await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "queue-task-one" }, "admin", crypto.randomUUID())).taskId, queued.taskId);
   await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "queue-task-three" }, "admin", crypto.randomUUID()), /队列已满/);
   const state = await fixture.repository.read(); assert.ok(state.audits.some((event) => event.event === "task.expired" && event.taskId === first.taskId));
   const redacted = state.audits.find((event) => event.event === "redaction.test"); assert.equal(redacted.parameters.nested.authorization, "[REDACTED]"); assert.equal(redacted.parameters.nested.safe, "visible");

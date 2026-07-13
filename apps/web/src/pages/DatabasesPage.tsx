@@ -10,7 +10,7 @@ import { DataTable } from "../components/ui/DataTable";
 import { DetailDrawer } from "../components/ui/DetailDrawer";
 import { FieldSelect } from "../components/ui/FormControls";
 import type { DatabaseInstance } from "../features/databases/types";
-import { databaseBackupTone, databaseHealthTone, databaseInstanceFromApi } from "../features/databases/model";
+import { databaseBackupTone, databaseHealthLabel, databaseHealthTone, databaseInstanceFromApi, isDatabaseAlert, isDatabaseHealthy } from "../features/databases/model";
 import { AccessSummary, BackupSummary, HealthMini, SlowInstanceList } from "../features/databases/OverviewWidgets";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import type { Notify, PageKey, SetPage } from "../types/app";
@@ -102,13 +102,13 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
     const searchable = `${row.name} ${row.engine} ${row.host} ${row.nodeName ?? ""} ${row.owner} ${row.access} ${row.region}`.toLowerCase();
     const matchSearch = !keyword || searchable.includes(keyword);
     const matchType = typeFilter === "全部" || row.engine.includes(typeFilter);
-    const matchStatus = statusFilter === "全部" || (statusFilter === "告警" ? row.connectionHealth !== "运行中" : row.connectionHealth === "运行中");
+    const matchStatus = statusFilter === "全部" || (statusFilter === "告警" ? isDatabaseAlert(row) : isDatabaseHealthy(row));
     return matchSearch && matchType && matchStatus && (hostFilter === "全部主机" || (row.nodeName ?? row.host) === hostFilter);
   });
   const postgresCount = rows.filter((row) => row.engine.includes("PostgreSQL")).length;
   const mysqlCount = rows.filter((row) => row.engine.includes("MySQL") || row.engine.includes("MariaDB")).length;
-  const healthyCount = rows.filter((row) => row.connectionHealth === "运行中").length;
-  const alertCount = rows.filter((row) => row.connectionHealth !== "运行中" && row.connectionHealth !== "未知").length;
+  const healthyCount = rows.filter(isDatabaseHealthy).length;
+  const alertCount = rows.filter(isDatabaseAlert).length;
   const knownBackups = rows.filter((row) => row.backupStatus !== "暂不可用");
   const backupSuccessRate = knownBackups.length ? Math.round((knownBackups.filter((row) => row.backupStatus === "成功").length / knownBackups.length) * 100) : null;
   const knownSlowRows = rows.filter((row) => row.slowQueries !== null);
@@ -132,7 +132,8 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
       viewContext={{ eyebrow: "数据库 / 实例列表", title: "数据库实例", chips: [`筛选 ${filteredRows.length}/${rows.length}`, `告警 ${alertCount}`, knownSlowRows.length ? `慢查询 ${slowQueryCount}` : "慢查询待采集"] }}
       filters={<><ModuleSearch value={search} placeholder="搜索数据库、主机、节点或权限" onChange={setSearch} /><FieldSelect label="类型" value={typeFilter} options={["全部", "PostgreSQL", "MySQL", "MariaDB"]} onChange={setTypeFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "正常", "告警"]} onChange={setStatusFilter} /><FieldSelect label="主机" value={hostFilter} options={hostOptions} onChange={setHostFilter} /></>}
       metrics={<><MetricTile icon={Database} label="PostgreSQL" value={`${postgresCount}`} tone="blue" /><MetricTile icon={Database} label="MySQL / MariaDB" value={`${mysqlCount}`} tone="blue" /><MetricTile icon={Activity} label="运行中" value={`${healthyCount}`} tone="green" /><MetricTile icon={Shield} label="告警" value={`${alertCount}`} tone={alertCount ? "orange" : "green"} /><BackupRateMetric value={backupSuccessRate} /><MetricTile icon={CircleAlert} label="慢查询" value={knownSlowRows.length ? `${slowQueryCount}` : "待采集"} tone={slowQueryCount ? "orange" : knownSlowRows.length ? "green" : "gray"} /></>}
-      side={selected ? <DetailDrawer className="database-instance-drawer" title="数据库详情" subtitle={selected.name} onClose={() => setSelectedId(null)} actions={selected.port !== "待采集" ? <button className="ghost" type="button" onClick={() => void copyEndpoint(selected)}><Copy size={15} /> 复制端点</button> : undefined}><DatabaseInstanceDetail instance={selected} onCopy={() => void copyEndpoint(selected)} /></DetailDrawer> : null}
+      side={selected ? <DetailDrawer className="database-instance-drawer" title="数据库详情" subtitle={selected.name} modal onClose={() => setSelectedId(null)} actions={selected.port !== "待采集" ? <button className="ghost" type="button" onClick={() => void copyEndpoint(selected)}><Copy size={15} /> 复制端点</button> : undefined}><DatabaseInstanceDetail instance={selected} onCopy={() => void copyEndpoint(selected)} /></DetailDrawer> : null}
+      sideModal={Boolean(selected)}
     >
       {loading && <span className="sr-only" role="status" aria-live="polite">正在从 /api/databases 采集数据库实例</span>}
       {error && <div className="overview-error-state database-error-state"><Shield size={18} /><span>{error}</span><button type="button" disabled={loading} onClick={() => void loadDatabases()}>重试</button></div>}
@@ -154,6 +155,7 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
           emptyText={error ? "实时采集失败，未显示示例数据库" : loading ? "正在采集数据库实例" : "没有匹配的真实数据库实例，系统将继续自动采集"}
           getRowKey={(row) => row.id}
           mobileCard={(row) => <DatabaseMobileCard instance={row} onOpen={() => setSelectedId(row.id)} />}
+          pageSize={100}
         />
         {filteredRows.length > 0 && <section className="database-instance-lower"><PanelCard title="当前备份状态" action="查看备份计划" onAction={() => setPage("databases-backups", { message: "已打开数据库 / 备份计划", tone: "info" })}><BackupSummary rows={filteredRows} /></PanelCard><PanelCard title={`连接健康（${healthFocus?.name ?? "不可用"})`} action={healthFocus ? "查看监控详情" : undefined} onAction={healthFocus ? () => setSelectedId(healthFocus.id) : undefined}><HealthMini instance={healthFocus} collectedAt={collectedAt} /></PanelCard><PanelCard title="慢查询实例"><SlowInstanceList rows={filteredRows} onOpen={setSelectedId} /></PanelCard><PanelCard title="权限分布"><AccessSummary rows={filteredRows} /></PanelCard></section>}
       </div>
@@ -164,8 +166,9 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
 function databaseLatency(instance: DatabaseInstance) { const value = Number.parseInt(instance.latency, 10); return Number.isFinite(value) ? value : -1; }
 
 function ConnectionStatus({ instance }: { instance: DatabaseInstance }) {
-  const Icon = instance.connectionHealth === "运行中" ? CircleCheck : instance.connectionHealth === "未知" ? CircleHelp : CircleAlert;
-  return <span className={`database-semantic-status ${databaseHealthTone(instance)}`}><Icon size={15} aria-hidden="true" /><span>{instance.connectionHealth}</span></span>;
+  const label = databaseHealthLabel(instance);
+  const Icon = label === "运行中" ? CircleCheck : label === "未知" || label === "数据已过期" ? CircleHelp : CircleAlert;
+  return <span className={`database-semantic-status ${databaseHealthTone(instance)}`}><Icon size={15} aria-hidden="true" /><span>{label}</span></span>;
 }
 
 function BackupStatus({ status }: { status: DatabaseInstance["backupStatus"] }) {

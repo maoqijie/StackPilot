@@ -24,9 +24,10 @@ function BackupSummary({ rows }: { rows: DatabaseInstance[] }) {
 function HealthMini({ instance, collectedAt }: { instance: DatabaseInstance | null; collectedAt: string }) {
   if (!instance) return <p className="module-card-empty">没有可展示的连接健康数据</p>;
   const latency = parseMetric(instance.latency);
+  const latencyUnavailable = latency === null;
   return (
     <div className="health-mini">
-      <p><span>连接延迟</span><b className={latency > 120 ? "orange-text" : "green-text"}>{instance.latency}</b><em>{latency > 120 ? "需要关注" : "连接正常"}</em></p>
+      <p><span>连接延迟</span><b className={latencyUnavailable ? "gray-text" : latency > 120 ? "orange-text" : "green-text"}>{instance.latency}</b><em>{latencyUnavailable ? "等待采集" : latency > 120 ? "需要关注" : "连接正常"}</em></p>
       <p><span>连接占用</span><b>{instance.connections}</b><em>当前连接 / 上限</em></p>
       <p><span>区域</span><b>{instance.region}</b><em>{instance.engine}</em></p>
       <p><span>采集时间</span><b>{collectedAt}</b><em>{instance.freshness === "stale" ? "数据已过期" : "后端采集"}</em></p>
@@ -73,7 +74,7 @@ function AccessSummary({ rows }: { rows: DatabaseInstance[] }) {
 
 function parseMetric(value: string) {
   const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export { AccessSummary, BackupSummary, HealthMini, SlowInstanceList };

@@ -10,7 +10,8 @@ const ReceiptSchema: z.ZodType<Receipt> = z.object({ taskId: z.string().uuid(), 
 export class TaskExecutor {
   private receipts = new Map<string, Receipt>();
   private running = new Map<string, AbortController>();
-  constructor(private readonly receiptPath: string, private readonly nodeId: string, private readonly platform: AgentPlatform, private readonly capabilities: readonly AgentCapability[], private readonly registry = taskRegistry) {}
+  private capabilities: readonly AgentCapability[];
+  constructor(private readonly receiptPath: string, private readonly nodeId: string, private readonly platform: AgentPlatform, capabilities: readonly AgentCapability[], private readonly registry = taskRegistry) { this.capabilities = capabilities; }
   async load() {
     try {
       const rows = z.array(ReceiptSchema).max(1000).parse(JSON.parse(await readFile(this.receiptPath, "utf8")));
@@ -24,6 +25,7 @@ export class TaskExecutor {
   }
   private async persist() { const directory = dirname(this.receiptPath); await mkdir(directory, { recursive: true, mode: 0o700 }); await chmod(directory, 0o700); const temporary = `${this.receiptPath}.${process.pid}.tmp`; await writeFile(temporary, JSON.stringify([...this.receipts.values()].slice(-1000), null, 2), { mode: 0o600 }); await rename(temporary, this.receiptPath); await chmod(this.receiptPath, 0o600); }
   cancel(taskId: string) { this.running.get(taskId)?.abort(); }
+  setCapabilities(capabilities: readonly AgentCapability[]) { this.capabilities = capabilities; }
   get activeCount() { return this.running.size; }
   pendingUpdates() { return [...this.receipts.values()].filter((receipt) => !receipt.reported).map((receipt) => receipt.update); }
   async markReported(taskId: string) { const receipt = this.receipts.get(taskId); if (receipt) { receipt.reported = true; await this.persist(); } }
@@ -47,8 +49,8 @@ export class TaskExecutor {
     }
     const controller = new AbortController(); this.running.set(task.taskId, controller); const timer = setTimeout(() => controller.abort(), definition.timeoutMs);
     let update: RemoteTaskStatusUpdate;
-    try { const result = await definition.run(parameters, controller.signal); controller.signal.throwIfAborted(); update = { taskId: task.taskId, attempt: task.attempt, status: "succeeded", timestamp: new Date().toISOString(), result }; }
-    catch (error) { const cancelled = controller.signal.aborted; update = { taskId: task.taskId, attempt: task.attempt, status: cancelled ? "cancelled" : "failed", timestamp: new Date().toISOString(), errorCode: cancelled ? "TASK_CANCELLED_OR_TIMEOUT" : error instanceof Error ? error.name.slice(0, 80) : "TASK_FAILED", result: { message: cancelled ? "Task cancelled or timed out" : "Task failed", truncated: false } }; }
+    try { const result = await definition.run(parameters, controller.signal, this.nodeId); controller.signal.throwIfAborted(); update = { taskId: task.taskId, attempt: task.attempt, status: "succeeded", timestamp: new Date().toISOString(), result }; }
+    catch (error) { const cancelled = controller.signal.aborted; const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" && /^[A-Z0-9_]{1,80}$/.test(error.code) ? error.code : error instanceof Error && /^[A-Z0-9_]{1,80}$/.test(error.name) ? error.name : "TASK_FAILED"; update = { taskId: task.taskId, attempt: task.attempt, status: cancelled ? "cancelled" : "failed", timestamp: new Date().toISOString(), errorCode: cancelled ? "TASK_CANCELLED_OR_TIMEOUT" : code, result: { message: cancelled ? "Task cancelled or timed out" : "Task failed", truncated: false } }; }
     finally { clearTimeout(timer); this.running.delete(task.taskId); }
     this.receipts.set(task.taskId, { taskId: task.taskId, idempotencyKey: task.idempotencyKey, attempt: task.attempt, status: update.status, updatedAt: update.timestamp, reported: false, update }); await this.persist(); return update;
   }
