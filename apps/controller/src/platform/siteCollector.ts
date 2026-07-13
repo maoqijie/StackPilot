@@ -184,7 +184,7 @@ export class NginxSiteCollector {
     for (const root of this.roots) {
       try {
         const entries = await readdir(root, { withFileTypes: true });
-        files.push(...entries.filter((entry) => entry.isFile() || entry.isSymbolicLink()).map((entry) => join(root, entry.name)));
+        files.push(...entries.filter((entry) => entry.isSymbolicLink() || (entry.isFile() && entry.name.endsWith(".conf"))).map((entry) => join(root, entry.name)));
       } catch { warnings.push(`Nginx 配置目录不可读：${root}`); }
     }
     const candidates: SiteCandidate[] = [];

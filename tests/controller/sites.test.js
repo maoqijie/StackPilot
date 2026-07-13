@@ -31,6 +31,7 @@ test("Nginx site collector discovers, merges and probes real virtual hosts witho
       server { listen 80; server_name dynamic.example.com; proxy_pass http://$backend/private; }
       server { listen 80; server_name _ $host ~^regex; }
     `);
+    await writeFile(join(root, "stale.conf.bak"), "server { listen 80; server_name stale.example.com; }");
     const payload = await new NginxSiteCollector([root], probe, "controller-1").collectSites();
     assert.equal(payload.collectionStatus, "complete");
     assert.deepEqual(payload.sites.map((site) => site.domain), ["app.example.com", "docs.example.com", "dynamic.example.com"]);
@@ -41,6 +42,7 @@ test("Nginx site collector discovers, merges and probes real virtual hosts witho
     assert.equal(payload.sites[1].host, "controller-1");
     assert.equal(payload.sites[1].trafficBytes, null);
     assert.equal(payload.sites[2].upstream, "动态上游");
+    assert.equal(payload.sites.some((site) => site.domain === "stale.example.com"), false);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
