@@ -6,6 +6,7 @@ import {
   AGENT_PROTOCOL_VERSION, AgentDatabaseSnapshotSchema, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema,
   CreateRemoteTaskRequestSchema, RemoteTaskListResponseSchema, isAgentProtocolCompatible,
   SiteRuntimePayloadSchema,
+  ExecuteTerminalSnippetRequestSchema, TerminalSnippetListResponseSchema,
   AgentSiteSnapshotSchema, CertificateRenewalTaskParametersSchema, CreateCertificateRenewalRequestSchema,
   CreateFileUploadRequestSchema, FileUploadRecordSchema,
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema,
@@ -120,6 +121,8 @@ test("identity schemas reject privilege fields and invalid node scopes", () => {
   assert.equal(UpdateUserAccessRequestSchema.safeParse({ roleIds: ["operator"], nodeScope: ["not-a-uuid"], disabled: false }).success, false);
   assert.equal(PermissionSchema.safeParse("databases:read").success, true);
   assert.equal(PermissionSchema.safeParse("files:manage").success, true);
+  assert.equal(PermissionSchema.safeParse("terminal:read").success, true);
+  assert.equal(PermissionSchema.safeParse("terminal:execute").success, true);
 });
 
 test("file upload contracts reject paths and inconsistent progress", () => {
@@ -148,6 +151,14 @@ test("shared schemas validate external request and error contracts at runtime", 
   assert.equal(ApiErrorResponseSchema.safeParse({ code: "BAD_REQUEST", error: "invalid", requestId: "request-1" }).success, true);
   assert.equal(ApiErrorResponseSchema.safeParse({ code: "REAUTHENTICATION_FAILED", error: "重新认证失败", requestId: "request-2" }).success, true);
   assert.equal(OverviewSummaryPayloadSchema.safeParse({}).success, false);
+});
+
+test("terminal snippet contracts reject browser-supplied commands", () => {
+  const now = new Date().toISOString();
+  assert.equal(TerminalSnippetListResponseSchema.safeParse({ collectedAt: now, snippets: [{ id: "system-summary", version: 1, title: "Summary", command: "df -h", category: "resource", risk: "read", description: "Read resources", favorite: false, lastUsedAt: null, executable: true, requiredCapability: "system.summary.read" }] }).success, true);
+  const request = { nodeId: crypto.randomUUID(), snippetVersion: 1, idempotencyKey: "terminal-contract-1" };
+  assert.equal(ExecuteTerminalSnippetRequestSchema.safeParse(request).success, true);
+  assert.equal(ExecuteTerminalSnippetRequestSchema.safeParse({ ...request, command: "id" }).success, false);
 });
 
 test("file contracts reject unsafe names and non-absolute paths",()=>{

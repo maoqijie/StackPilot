@@ -40,7 +40,10 @@ function ConfirmDialog({
     if (!dialog) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusFrame = window.requestAnimationFrame(() => {
-      dialog.querySelector<HTMLElement>("[data-confirm-initial], [data-confirm-cancel]")?.focus({ preventScroll: true });
+      if (!dialog.contains(document.activeElement)) {
+        dialog.querySelector<HTMLElement>("[data-confirm-initial], [data-confirm-cancel]")
+          ?.focus({ preventScroll: true });
+      }
     });
 
     const handleKeyDown = (event: KeyboardEvent) => {
