@@ -85,9 +85,11 @@ test("task results reject sensitive fields and oversized output", async () => {
 test("Controller policy and Agent declaration are both required for a task", async () => {
   const fixture = await enrolledFixture();
   await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 1 } }, crypto.randomUUID());
-  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "service.status.read", parameters: { serviceName: "sshd" }, expiresInSeconds: 60, idempotencyKey: "missing-agent-capability" }, "admin", crypto.randomUUID()), (error) => error.status === 403);
+  let authorizationCount = 0;
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "service.status.read", parameters: { serviceName: "sshd" }, expiresInSeconds: 60, idempotencyKey: "missing-agent-capability" }, "admin", crypto.randomUUID(), () => { authorizationCount += 1; }), (error) => error.status === 403);
   await fixture.repository.update((state) => { state.nodes[0].allowedCapabilities = []; });
-  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "missing-controller-policy" }, "admin", crypto.randomUUID()), (error) => error.status === 403);
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "missing-controller-policy" }, "admin", crypto.randomUUID(), () => { authorizationCount += 1; }), (error) => error.status === 403);
+  assert.equal(authorizationCount, 0);
 });
 
 test("task expiry, queue limits and audit redaction are persisted", async () => {

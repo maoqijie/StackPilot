@@ -36,9 +36,10 @@ export async function routeControlPlaneRequest(context: RequestContext) {
     sendJson(context.response, 200, { message: "节点及其凭据已撤销", tone: "warning" }, ApiNoticeSchema); return;
   }
   if (context.parts[1] === "nodes" && context.parts[3] === "tasks" && context.parts.length === 4 && method === "POST") {
-    const nodeId=id(context,2);identity?.require(principal,"tasks:create",nodeId);identity?.consumeReauth(principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);
+    const nodeId=id(context,2);identity?.require(principal,"tasks:create",nodeId);
     const input = parseSchema(CreateRemoteTaskRequestSchema, context.body, "远程任务");
-    sendJson(context.response, 201, await context.services.remoteTasks.create(nodeId, input, `user:${principal?.userId}`, context.requestId), RemoteTaskRecordSchema); return;
+    const authorize=()=>identity?.consumeReauth(principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);
+    sendJson(context.response, 201, await context.services.remoteTasks.create(nodeId, input, `user:${principal?.userId}`, context.requestId, authorize), RemoteTaskRecordSchema); return;
   }
   if (context.parts[1] === "remote-tasks" && context.parts.length === 2 && method === "GET") {
     identity?.require(principal,"tasks:read");const tasks=await context.services.remoteTasks.listReadOnly();const scoped=principal?.nodeScope==="all"?tasks:tasks.filter(task=>principal?.nodeScope.includes(task.targetNodeId));sendJson(context.response, 200, { tasks: scoped.sort((left,right)=>Date.parse(right.updatedAt)-Date.parse(left.updatedAt)).slice(0,200), collectedAt: new Date().toISOString() }, RemoteTaskListResponseSchema); return;
