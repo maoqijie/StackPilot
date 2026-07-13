@@ -1,12 +1,21 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { AgentCapability, AgentNodeRecord, AgentTelemetrySnapshot, RemoteTaskRecord } from "@stackpilot/contracts";
-import { AgentNodeRecordSchema, AgentTelemetrySnapshotSchema, RemoteTaskRecordSchema } from "@stackpilot/contracts";
+import type { AgentCapability, AgentHeartbeat, AgentNodeRecord, AgentTelemetrySnapshot, RemoteTaskRecord } from "@stackpilot/contracts";
+import { AgentHealthSchema, AgentNodeRecordSchema, AgentTelemetrySnapshotSchema, RemoteTaskRecordSchema } from "@stackpilot/contracts";
 import { z } from "zod";
 
 export type EnrollmentState = { enrollmentId: string; tokenDigest: string; nodeName: string; expiresAt: string; usedAt: string | null; revokedAt: string | null };
 export type AgentCredentialState = { credentialId: string; nodeId: string; publicKey: string; createdAt: string; revokedAt: string | null; replacedBy: string | null; rotationId: string | null };
-export type AgentNodeState = AgentNodeRecord & { telemetry?: AgentTelemetrySnapshot };
+export type AgentNodeState = AgentNodeRecord & { telemetry?: AgentTelemetrySnapshot; heartbeatHealthStatus?: AgentHeartbeat["health"]["status"] };
+export const AgentNodeStateSchema = AgentNodeRecordSchema.extend({ telemetry: AgentTelemetrySnapshotSchema.optional(), heartbeatHealthStatus: AgentHealthSchema.shape.status.optional() });
+export type AgentNonceConsumption = "accepted" | "replayed" | "unauthorized";
+export type AgentNonceRequest = {
+  nodeId: string;
+  credentialId: string;
+  nonce: string;
+  expiresAt: string;
+  allowRevokedCredential: boolean;
+};
 export type AuditEvent = { eventId: string; timestamp: string; requester: string; nodeId: string | null; taskId: string | null; event: string; taskType: string | null; parameters: Record<string, unknown> | null; fromStatus: string | null; toStatus: string | null; resultSummary: string | null; traceId: string };
 export type AgentControlState = {
   enrollments: EnrollmentState[];
@@ -20,7 +29,7 @@ export type AgentControlState = {
 const AgentControlStateSchema: z.ZodType<AgentControlState> = z.object({
   enrollments: z.array(z.object({ enrollmentId: z.string().uuid(), tokenDigest: z.string().regex(/^[a-f0-9]{64}$/), nodeName: z.string(), expiresAt: z.string().datetime(), usedAt: z.string().datetime().nullable(), revokedAt: z.string().datetime().nullable() })),
   credentials: z.array(z.object({ credentialId: z.string().uuid(), nodeId: z.string().uuid(), publicKey: z.string(), createdAt: z.string().datetime(), revokedAt: z.string().datetime().nullable(), replacedBy: z.string().uuid().nullable(), rotationId: z.string().uuid().nullable() })),
-  nodes: z.array(AgentNodeRecordSchema.extend({ telemetry: AgentTelemetrySnapshotSchema.optional() })),
+  nodes: z.array(AgentNodeStateSchema),
   nonces: z.array(z.object({ credentialId: z.string().uuid(), nonce: z.string(), expiresAt: z.string().datetime() })),
   tasks: z.array(RemoteTaskRecordSchema),
   audits: z.array(z.object({ eventId: z.string().uuid(), timestamp: z.string().datetime(), requester: z.string(), nodeId: z.string().uuid().nullable(), taskId: z.string().uuid().nullable(), event: z.string(), taskType: z.string().nullable(), parameters: z.record(z.string(), z.unknown()).nullable(), fromStatus: z.string().nullable(), toStatus: z.string().nullable(), resultSummary: z.string().nullable(), traceId: z.string().uuid() })),
@@ -34,13 +43,30 @@ function sanitizeState(state: AgentControlState) { state.audits = state.audits.m
 export interface AgentControlRepository {
   read(): Promise<AgentControlState>;
   update(mutate: (state: AgentControlState) => void): Promise<AgentControlState>;
+  consumeNonce(request: AgentNonceRequest): Promise<AgentNonceConsumption>;
   updateNodeWithAudit(nodeId: string, mutate: (node: AgentNodeState) => AuditEvent): Promise<AgentNodeState | null>;
+}
+
+function consumeNonce(state: AgentControlState, request: AgentNonceRequest): AgentNonceConsumption {
+  state.nonces = state.nonces.filter((item) => Date.parse(item.expiresAt) > Date.now());
+  const node = state.nodes.find((item) => item.nodeId === request.nodeId);
+  const credential = state.credentials.find((item) => item.credentialId === request.credentialId && item.nodeId === request.nodeId);
+  const revokedCredentialAllowed = request.allowRevokedCredential && Boolean(credential?.revokedAt && credential.replacedBy && credential.rotationId);
+  if (!node || node.revokedAt || !credential || (credential.revokedAt && !revokedCredentialAllowed)) return "unauthorized";
+  if (state.nonces.some((item) => item.credentialId === request.credentialId && item.nonce === request.nonce)) return "replayed";
+  state.nonces.push({ credentialId: request.credentialId, nonce: request.nonce, expiresAt: request.expiresAt });
+  return "accepted";
 }
 
 export class MemoryAgentControlRepository implements AgentControlRepository {
   private state = emptyState();
   async read() { return structuredClone(this.state); }
   async update(mutate: (state: AgentControlState) => void) { const next = structuredClone(this.state); mutate(next); sanitizeState(next); this.state = next; return structuredClone(next); }
+  async consumeNonce(request: AgentNonceRequest) {
+    let result: AgentNonceConsumption = "unauthorized";
+    await this.update((state) => { result = consumeNonce(state, request); });
+    return result;
+  }
   async updateNodeWithAudit(nodeId: string, mutate: (node: AgentNodeState) => AuditEvent) {
     let updated: AgentNodeState | undefined;
     await this.update((state) => {
@@ -79,6 +105,12 @@ export class FileAgentControlRepository implements AgentControlRepository {
     });
     this.queue = operation.then(() => undefined, () => undefined);
     return operation;
+  }
+
+  async consumeNonce(request: AgentNonceRequest) {
+    let result: AgentNonceConsumption = "unauthorized";
+    await this.update((state) => { result = consumeNonce(state, request); });
+    return result;
   }
 
   async updateNodeWithAudit(nodeId: string, mutate: (node: AgentNodeState) => AuditEvent) {

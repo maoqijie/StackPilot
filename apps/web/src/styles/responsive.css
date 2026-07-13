@@ -182,7 +182,8 @@
   .detail-kv p { grid-template-columns: minmax(80px, 0.4fr) minmax(0, 1fr); }
   .host-mobile-head { align-items: flex-start; flex-wrap: nowrap; }
   .host-detail-content .detail-kv { grid-template-columns: minmax(0, 1fr); }
-  .host-disk-tooltip { position: fixed; right: 16px; bottom: 16px; left: 16px; width: auto; max-width: none; }
+  .host-disk-tooltip:not(.host-disk-tooltip-portal) { position: fixed; right: 16px; bottom: 16px; left: 16px; width: auto; max-width: none; }
+  .host-disk-tooltip-portal { right: auto; bottom: auto; }
   .host-disk-tooltip::after { display: none; }
   .panel-card > header button,
   .panel-link,

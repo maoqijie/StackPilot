@@ -34,6 +34,7 @@ function hostPagePreset(page: PageKey) {
 function hostStatusTone(status: HostView["status"]): Tone {
   if (status === "健康") return "green";
   if (status === "警告") return "orange";
+  if (status === "离线") return "red";
   return "gray";
 }
 
@@ -62,7 +63,7 @@ function hostPressureScore(row: HostView) {
 }
 
 function hostNeedsAttention(row: HostView) {
-  return ["警告", "离线"].includes(row.status) || hostHasHighResource(row) || hostHasStaleBackup(row);
+  return ["警告", "离线", "待连接", "等待采集"].includes(row.status) || hostHasHighResource(row) || hostHasStaleBackup(row);
 }
 
 function hostHasHighResource(row: HostView) {
@@ -77,7 +78,7 @@ function hostRiskReasons(row: HostView) {
   const reasons: string[] = [];
   if (row.status === "待连接") reasons.push("等待首次连接");
   if (row.status === "离线") reasons.push("节点离线");
-  if (row.status === "未知") reasons.push("等待遥测");
+  if (row.status === "等待采集") reasons.push("等待遥测");
   if (row.status === "警告") reasons.push("健康告警");
   if (hostHasHighResource(row)) reasons.push(`资源高压 ${hostHighestResource(row)}`);
   if (hostHasStaleBackup(row)) reasons.push(`备份滞后 ${row.backup}`);
@@ -134,8 +135,8 @@ function hostMatchesHealth(row: HostView, healthFilter: string) {
 }
 
 function hostHealthOptions(mode: HostPageMode) {
-  if (mode === "alerts") return ["需关注", "离线", "警告", "全部", "健康", "未知", "待连接"];
-  return ["全部", "健康", "警告", "未知", "待连接", "离线"];
+  if (mode === "alerts") return ["需关注", "离线", "警告", "全部", "健康", "等待采集", "待连接"];
+  return ["全部", "健康", "警告", "等待采集", "待连接", "离线"];
 }
 
 export { hostPagePreset, hostStatusTone, hostResourceTone, hostHighestResource, hostPressureScore, hostNeedsAttention, hostHasHighResource, hostHasStaleBackup, hostRiskReasons, hostServiceSummary, percentValue, isCleanUpdate, averageLatency, hostViewContext, hostMatchesHealth, hostHealthOptions };

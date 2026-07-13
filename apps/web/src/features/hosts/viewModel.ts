@@ -1,6 +1,6 @@
 import type { HostMonitoringRecord } from "../../api/hostsApi";
 
-type HostStatus = "健康" | "警告" | "未知" | "待连接" | "离线";
+type HostStatus = "健康" | "警告" | "等待采集" | "待连接" | "离线";
 type HostServiceView = { id: string; name: string; target: string; status: "健康" | "警告" | "未知"; detail: string };
 type HostVolumeView = { label: string; mount: string; totalBytes: number; usedBytes: number; percent: number };
 
@@ -13,6 +13,7 @@ type HostView = {
   platform: string;
   source: "controller" | "agent";
   connectionStatus: HostMonitoringRecord["connectionStatus"];
+  connectionLabel: "本机" | "待连接" | "在线" | "离线";
   telemetryFreshness: HostMonitoringRecord["telemetryFreshness"];
   status: HostStatus;
   cpu: number | null;
@@ -66,9 +67,17 @@ function percent(total: number, used: number, provided?: number | null) {
 function statusOf(record: HostMonitoringRecord): HostStatus {
   if (record.connectionStatus === "pending") return "待连接";
   if (record.connectionStatus === "offline") return "离线";
-  if (record.healthStatus === "healthy") return "健康";
   if (record.healthStatus === "degraded") return "警告";
-  return "未知";
+  if (record.telemetryFreshness === "awaiting") return "等待采集";
+  if (record.healthStatus === "healthy") return "健康";
+  return "等待采集";
+}
+
+function connectionLabel(status: HostMonitoringRecord["connectionStatus"]): HostView["connectionLabel"] {
+  if (status === "local") return "本机";
+  if (status === "pending") return "待连接";
+  if (status === "online") return "在线";
+  return "离线";
 }
 
 function serviceStatus(status: string): HostServiceView["status"] {
@@ -91,6 +100,7 @@ function toHostView(record: HostMonitoringRecord): HostView {
     platform: record.platform,
     source: record.source,
     connectionStatus: record.connectionStatus,
+    connectionLabel: connectionLabel(record.connectionStatus),
     telemetryFreshness: record.telemetryFreshness,
     status: statusOf(record),
     cpu: record.cpuPercent,
@@ -102,7 +112,7 @@ function toHostView(record: HostMonitoringRecord): HostView {
     diskTotalBytes: disk?.totalBytes ?? null,
     version: record.version ?? "不可用",
     uptime: formatUptime(record.uptimeSeconds),
-    backup: record.backup ? (record.backup.latestAt ? formatTimestamp(record.backup.latestAt) : record.backup.detail) : "未配置",
+    backup: record.backup ? (record.backup.latestAt ? formatTimestamp(record.backup.latestAt) : record.backup.detail) : "不可用",
     backupStatus,
     update: record.updateStatus ?? "不可用",
     latency: record.latency === null ? "不可用" : `${Math.round(record.latency)}ms`,
