@@ -19,7 +19,10 @@ test("Linux inventory reads only the configured public PEM and emits opaque stab
     const publicPath = join(certDir, "fullchain.pem"); const privatePath = join(certDir, "privkey.pem"); const configPath = join(nginxRoot, "site.conf");
     await writeFile(publicPath, pair.cert); await writeFile(privatePath, pair.private);
     await writeFile(join(nginxRoot, "misplaced-private.key"), pair.private);
-    await writeFile(configPath, `server { listen 443 ssl; server_name example.test; ssl_certificate ${publicPath}; ssl_certificate_key ${privatePath}; proxy_pass http://127.0.0.1:3000; }`);
+    await writeFile(configPath, `
+      server { listen 80; server_name example.test; proxy_pass http://127.0.0.1:3000; }
+      server { listen 443 ssl; server_name example.test; ssl_certificate ${publicPath}; ssl_certificate_key ${privatePath}; proxy_pass http://127.0.0.1:3000; }
+    `);
     const reads = [];
     const certificateId = `cert_${"a".repeat(32)}`;
     const helperCertificate = { status: "valid", notBefore: "2026-01-01T00:00:00.000Z", expiresAt: "2026-09-01T00:00:00.000Z", issuer: "Test CA", subjectAlternativeNames: ["example.test", "www.example.test"], fingerprintSha256: null, renewalMode: "automatic", renewable: true, unavailableReason: null, certificateId };

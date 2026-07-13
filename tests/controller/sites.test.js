@@ -63,7 +63,10 @@ test("Nginx site collector reports unavailable sources instead of demo sites", a
 test("Controller local collector exposes a renewable opaque Certbot identity only when helper is ready", async () => {
   const root = await mkdtemp(join(tmpdir(), "stackpilot-local-cert-"));
   try {
-    await writeFile(join(root, "site.conf"), "server { listen 443 ssl; server_name local.example.com; ssl_certificate /etc/letsencrypt/live/local.example.com/fullchain.pem; }");
+    await writeFile(join(root, "site.conf"), `
+      server { listen 80; server_name local.example.com; }
+      server { listen 443 ssl; server_name local.example.com; ssl_certificate /etc/letsencrypt/live/local.example.com/fullchain.pem; }
+    `);
     const certificate = { ...(await probe("local.example.com", [{ port: 443, secure: true }])).certificate, renewalMode: "automatic", renewable: true, unavailableReason: null, certificateId: `cert_${"a".repeat(32)}` };
     const sourceId = `source_${(await import("node:crypto")).createHash("sha256").update("public-certificate:/etc/letsencrypt/live/local.example.com/fullchain.pem").digest("hex").slice(0, 32)}`;
     const payload = await new NginxSiteCollector([root], probe, "controller", async () => new Map([[sourceId, certificate]])).collectSites();

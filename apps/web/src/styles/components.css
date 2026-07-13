@@ -229,6 +229,12 @@
 .table-icon-actions button { width: 34px; min-height: 34px; padding: 0; }
 .module-card-list,
 .module-card-sort { display: none; }
+.module-table-pagination { min-height: 48px; padding: 8px 16px; display: flex; align-items: center; justify-content: flex-end; gap: 16px; color: var(--muted); font-size: 12px; }
+.module-table-pagination > div { display: flex; gap: 8px; }
+.module-table-pagination button { width: var(--control-sm); height: var(--control-sm); border: 0; border-radius: var(--radius-md); display: grid; place-items: center; color: var(--text-soft); background: var(--surface-soft); }
+.module-table-pagination button:hover:not(:disabled),
+.module-table-pagination button:focus-visible { color: var(--primary-hover); outline: 0; background: var(--primary-soft); box-shadow: none; }
+.module-table-pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .drawer-scrim { position: fixed; inset: 0; z-index: 190; background: var(--overlay); backdrop-filter: blur(3px); }
 .detail-drawer {

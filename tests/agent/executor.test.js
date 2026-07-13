@@ -15,6 +15,7 @@ test("task registry exposes only structured handlers and keeps renewal non-retry
   assert.deepEqual(Object.keys(taskRegistry).sort(), ["service.status.read", "sites.certificates.renew", "system.summary.read"]);
   assert.ok(Object.values(taskRegistry).every((definition) => definition.maxOutputBytes <= 16_384));
   assert.ok(Object.keys(taskRegistry).every((name) => !/shell|exec|command/i.test(name)));
+  assert.equal(taskRegistry["system.summary.read"].timeoutMs, 6_000);
   assert.equal(taskRegistry["sites.certificates.renew"].retryable, false); assert.deepEqual(taskRegistry["sites.certificates.renew"].platforms, ["linux"]); assert.equal(taskRegistry["sites.certificates.renew"].timeoutMs, 600_000);
 });
 
