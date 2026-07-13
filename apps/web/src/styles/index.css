@@ -3,6 +3,7 @@
 @import "./shell.css";
 @import "./page-transitions.css";
 @import "./components.css";
+@import "./internal-motion.css";
 @import "./pages.css";
 @import "./responsive.css";
 @import "./overview.css";

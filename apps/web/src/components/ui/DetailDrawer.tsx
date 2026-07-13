@@ -3,6 +3,9 @@ import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useIsNarrowViewport } from "../../hooks/useIsNarrowViewport";
 import { drawerFocusableElements, drawerRestoreFallback, isFocusableElement } from "../../utils/focus";
+import { useExitMotion } from "./useExitMotion";
+
+const modalDrawerClasses = new Set(["schedule-job-modal", "file-delete-dialog", "upload-create-modal", "health-node-modal", "task-log-modal"]);
 
 function DetailDrawer({
   title,
@@ -25,16 +28,13 @@ function DetailDrawer({
 }) {
   const drawerRef = useRef<HTMLElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
   const titleId = useId();
+  const { closing, requestClose } = useExitMotion(onClose);
   const isNarrowViewport = useIsNarrowViewport();
   const isModalDrawer = modal ?? isNarrowViewport;
   const drawerClassName = ["detail-drawer", className].filter(Boolean).join(" ");
   const scrimClassName = ["drawer-scrim", className ? `${className}-scrim` : ""].filter(Boolean).join(" ");
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
+  const motionSurface = drawerClassName.split(" ").some((name) => modalDrawerClasses.has(name)) ? "modal" : "drawer";
 
   useEffect(() => {
     const drawer = drawerRef.current;
@@ -55,7 +55,7 @@ function DetailDrawer({
       if (event.defaultPrevented || !document.contains(drawer)) return;
       if (event.key === "Escape") {
         if (document.querySelector(".cloud-header-results")) return;
-        onCloseRef.current();
+        requestClose();
         return;
       }
       if (event.key !== "Tab" || !isModalDrawer) return;
@@ -99,7 +99,7 @@ function DetailDrawer({
         fallbackTarget.focus({ preventScroll: true });
       }
     };
-  }, [autoFocus, isModalDrawer]);
+  }, [autoFocus, isModalDrawer, requestClose]);
 
   const handleFocusCapture = (event: React.FocusEvent<HTMLElement>) => {
     const previousFocus = event.relatedTarget;
@@ -110,13 +110,16 @@ function DetailDrawer({
 
   return createPortal(
     <>
-      <button className={scrimClassName} type="button" aria-label="关闭详情" onClick={onClose} tabIndex={-1} />
+      <button className={scrimClassName} data-closing={closing || undefined} type="button" aria-label="关闭详情" onClick={requestClose} tabIndex={-1} disabled={closing} />
       <aside
         ref={drawerRef}
         className={drawerClassName}
+        data-closing={closing || undefined}
+        data-motion-surface={motionSurface}
         role={isModalDrawer ? "dialog" : "region"}
         aria-modal={isModalDrawer ? "true" : undefined}
         aria-labelledby={titleId}
+        inert={closing || undefined}
         tabIndex={-1}
         onFocusCapture={handleFocusCapture}
       >
@@ -125,7 +128,7 @@ function DetailDrawer({
             <strong id={titleId}>{title}</strong>
             {subtitle && <span>{subtitle}</span>}
           </div>
-          <button type="button" className="icon-action drawer-close-button" onClick={onClose} aria-label="关闭详情"><X size={16} /></button>
+          <button type="button" className="icon-action drawer-close-button" disabled={closing} onClick={requestClose} aria-label="关闭详情"><X size={16} /></button>
         </div>
         <div className="drawer-body">{children}</div>
         {actions && <div className="drawer-actions inline">{actions}</div>}

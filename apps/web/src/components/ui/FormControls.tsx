@@ -118,7 +118,7 @@ function FieldSelect({
           }
         }}
       >
-        <span id={valueId}>{availableOptions[selectedIndex]?.label ?? value}</span><ChevronDown size={12} />
+        <span id={valueId}>{availableOptions[selectedIndex]?.label ?? value}</span><ChevronDown className="select-chevron" size={12} />
       </button>
       {open && availableOptions.length > 0 && (
         <div className="popover-panel" id={listboxId} role="listbox" aria-labelledby={`${safeId}-label`}>
@@ -325,7 +325,7 @@ function FormSelectLine({
             openMenu();
           }
         }}
-      >{icon}<span id={valueId}>{value}</span><ChevronDown size={12} /></button>
+      >{icon}<span id={valueId}>{value}</span><ChevronDown className="select-chevron" size={12} /></button>
       {open && availableOptions.length > 0 && !disabled && (
         <div className="select-menu" id={listboxId} role="listbox" aria-labelledby={labelId}>
           {availableOptions.map((option, index) => (
