@@ -5,6 +5,7 @@ import {
   OverviewSummaryPayloadSchema, PathIdSchema, WRITE_METHODS,
   AGENT_PROTOCOL_VERSION, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, CreateRemoteTaskRequestSchema, isAgentProtocolCompatible,
   SiteRuntimePayloadSchema,
+  CreateFileUploadRequestSchema, FileUploadRecordSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
 } from "@stackpilot/contracts";
 
@@ -58,6 +59,17 @@ test("identity schemas reject privilege fields and invalid node scopes", () => {
   assert.equal(CreateApiTokenRequestSchema.safeParse({ name: "reader", permissions: ["overview:read"], nodeScope: "all", expiresAt: null }).success, true);
   assert.equal(CreateApiTokenRequestSchema.safeParse({ name: "bad", permissions: ["unknown:permission"], nodeScope: "all", expiresAt: null }).success, false);
   assert.equal(UpdateUserAccessRequestSchema.safeParse({ roleIds: ["operator"], nodeScope: ["not-a-uuid"], disabled: false }).success, false);
+});
+
+test("file upload contracts reject paths and inconsistent progress", () => {
+  const request = { fileName: "artifact.zip", targetDirectory: "releases/2026", sizeBytes: 10, contentType: "application/zip", idempotencyKey: "upload-001" };
+  assert.equal(CreateFileUploadRequestSchema.safeParse(request).success, true);
+  for (const targetDirectory of ["/etc", "../etc", "safe/../etc", "safe//etc", "safe\\etc"]) assert.equal(CreateFileUploadRequestSchema.safeParse({ ...request, targetDirectory }).success, false);
+  assert.equal(CreateFileUploadRequestSchema.safeParse({ ...request, fileName: "../secret" }).success, false);
+  assert.equal(CreateFileUploadRequestSchema.safeParse({ ...request, sizeBytes: 0 }).success, true);
+  const record = { id: crypto.randomUUID(), fileName: request.fileName, targetDirectory: request.targetDirectory, targetPath: "releases/2026/artifact.zip", sizeBytes: request.sizeBytes, contentType: request.contentType, receivedBytes: 10, status: "completed", owner: "Admin", sha256: "a".repeat(64), errorMessage: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), completedAt: new Date().toISOString() };
+  assert.equal(FileUploadRecordSchema.safeParse(record).success, true);
+  assert.equal(FileUploadRecordSchema.safeParse({ ...record, receivedBytes: 9 }).success, false);
 });
 
 test("agent protocol schemas reject incompatible and generic command tasks", () => {
