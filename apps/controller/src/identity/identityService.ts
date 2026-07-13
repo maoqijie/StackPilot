@@ -33,12 +33,16 @@ export class IdentityService {
     this.database.transaction(() => {
       const permission = this.database.prepare("INSERT OR IGNORE INTO permissions(key,risk,description) VALUES(?,?,?)");
       for (const entry of PERMISSIONS) permission.run(...entry);
+      this.database.prepare("INSERT OR IGNORE INTO role_permissions(role_id,permission_key) SELECT role_id,'files:write' FROM role_permissions WHERE permission_key='files:manage'").run();
+      this.database.prepare("INSERT OR IGNORE INTO api_token_permissions(token_id,permission_key) SELECT token_id,'files:write' FROM api_token_permissions WHERE permission_key='files:manage'").run();
+      this.database.prepare("DELETE FROM role_permissions WHERE permission_key='files:manage'").run();
+      this.database.prepare("DELETE FROM api_token_permissions WHERE permission_key='files:manage'").run();
+      this.database.prepare("DELETE FROM permissions WHERE key='files:manage'").run();
       const role = this.database.prepare("INSERT INTO roles(id,name,description,builtin,created_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,builtin=1");
       const clearMappings = this.database.prepare("DELETE FROM role_permissions WHERE role_id=?");
       const mapping = this.database.prepare("INSERT INTO role_permissions(role_id,permission_key) VALUES(?,?)");
       for (const [id, name, permissions] of roleDefinitions) {
-        role.run(id, name, `${name}内置角色`, 1, new Date().toISOString());
-        clearMappings.run(id);
+        role.run(id, name, `${name}内置角色`, 1, new Date().toISOString()); clearMappings.run(id);
         for (const key of permissions) mapping.run(id, key);
       }
     })();
