@@ -171,6 +171,17 @@ describe("overview risks API states", () => {
 
     expect(screen.queryByRole("button", { name: "重新扫描" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "风险中心" })).toHaveClass("sr-only");
+    const page = screen.getByRole("heading", { name: "风险中心" }).closest(".module-page-overview-risks");
+    const metrics = page?.querySelector(".module-metrics");
+    const listSection = page?.querySelector(".risk-list-section");
+    const table = page?.querySelector(".module-table-wrap");
+    const toolbar = screen.getByRole("toolbar", { name: "风险列表操作" });
+    expect(page?.querySelector(".module-head-actions-only")).not.toBeInTheDocument();
+    expect((metrics?.compareDocumentPosition(toolbar) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(toolbar.compareDocumentPosition(table as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(listSection).toContainElement(toolbar);
+    expect(listSection).toContainElement(table as HTMLElement);
+    expect(toolbar).toContainElement(screen.getByRole("button", { name: "导出报告" }));
     expect(screen.queryByPlaceholderText("搜索风险、目标或 trace id")).not.toBeInTheDocument();
     expect(screen.queryAllByRole("combobox")).toHaveLength(0);
     fireEvent.click(screen.getAllByRole("button", { name: /详情/ })[0]);

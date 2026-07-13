@@ -982,6 +982,20 @@
   transform: translateY(-1px);
 }
 
+.module-page-overview-risks .risk-list-section {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.module-page-overview-risks .risk-list-toolbar {
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .module-page-overview-risks .mini-table th,
 .module-page-overview-risks .mini-table td,
 .module-page-overview-risks .module-card-sort {

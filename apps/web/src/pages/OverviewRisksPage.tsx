@@ -88,7 +88,6 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
       hideHeading
       page="overview-risks"
       viewContext={false}
-      actions={<button className="ghost" type="button" onClick={exportRisksFromApi}><Download size={14} /> 导出报告</button>}
       metrics={<><MetricTile icon={Shield} label="待处理风险" value={`${openCount}`} tone={openCount ? "orange" : "green"} /><MetricTile icon={KeyRound} label="高危风险" value={`${highCount}`} tone={highCount ? "red" : "green"} /><MetricTile icon={Clock3} label="实时扫描" value={scannedAt || "-"} tone="blue" /></>}
     >
       {loading && <span className="sr-only" role="status" aria-live="polite">正在从 /api/overview/risks 采集风险</span>}
@@ -102,41 +101,46 @@ function OverviewRisksPage({ notify }: { notify: Notify }) {
       {selected && (
         <OverviewRiskDetailModal risk={selected} onClose={() => setSelectedId(null)} />
       )}
-      <DataTable
-        columns={[
-          { key: "title", label: "风险", width: "208px", render: (row) => <b>{row.title}</b> },
-          { key: "level", label: "等级", width: "96px", render: (row) => <RiskLevel level={row.level} /> },
-          { key: "status", label: "状态", width: "104px", render: (row) => <span className="risk-status"><Clock3 size={14} />{row.status}</span> },
-          { key: "target", label: "目标", width: "176px", render: (row) => <span className="risk-target" title={row.target}>{row.target}</span> },
-          { key: "owner", label: "负责人", width: "86px", render: (row) => row.owner },
-          { key: "detected", label: "发现时间", width: "105px", render: (row) => row.detected },
-          { key: "impact", label: "影响", width: "208px", render: (row) => row.impact },
-          { key: "actions", label: "操作", width: "92px", render: (row) => (
-            <div className="table-actions">
-              <button type="button" onClick={() => setSelectedId(row.id)}><Eye size={13} /> 详情</button>
-            </div>
-          ) },
-        ]}
-        rows={rows}
-        emptyText={error ? "风险采集失败，未显示示例数据" : loading ? "正在采集风险" : "暂无风险"}
-        getRowKey={(row) => row.id}
-        mobileCard={(row) => (
-          <>
-            <header className="module-card-head">
-              <span className="module-card-title"><Shield size={15} /><strong>{row.title}</strong></span>
-              <RiskLevel level={row.level} />
-            </header>
-            <div className="module-card-meta">
-              <span><b>目标</b><em>{row.target}</em></span>
-              <span><b>状态</b><em className="risk-status"><Clock3 size={14} />{row.status}</em></span>
-              <span><b>负责人</b><em>{row.owner}</em></span>
-              <span><b>发现时间</b><em>{row.detected}</em></span>
-            </div>
-            <p className="module-card-code">{row.impact}</p>
-            <footer className="module-card-footer"><span>风险处置</span><button className="ghost small" type="button" onClick={() => setSelectedId(row.id)}><Eye size={13} /> 查看详情</button></footer>
-          </>
-        )}
-      />
+      <section className="risk-list-section" aria-label="风险列表">
+        <div className="risk-list-toolbar" role="toolbar" aria-label="风险列表操作">
+          <button className="ghost" type="button" onClick={exportRisksFromApi}><Download size={14} /> 导出报告</button>
+        </div>
+        <DataTable
+          columns={[
+            { key: "title", label: "风险", width: "208px", render: (row) => <b>{row.title}</b> },
+            { key: "level", label: "等级", width: "96px", render: (row) => <RiskLevel level={row.level} /> },
+            { key: "status", label: "状态", width: "104px", render: (row) => <span className="risk-status"><Clock3 size={14} />{row.status}</span> },
+            { key: "target", label: "目标", width: "176px", render: (row) => <span className="risk-target" title={row.target}>{row.target}</span> },
+            { key: "owner", label: "负责人", width: "86px", render: (row) => row.owner },
+            { key: "detected", label: "发现时间", width: "105px", render: (row) => row.detected },
+            { key: "impact", label: "影响", width: "208px", render: (row) => row.impact },
+            { key: "actions", label: "操作", width: "92px", render: (row) => (
+              <div className="table-actions">
+                <button type="button" onClick={() => setSelectedId(row.id)}><Eye size={13} /> 详情</button>
+              </div>
+            ) },
+          ]}
+          rows={rows}
+          emptyText={error ? "风险采集失败，未显示示例数据" : loading ? "正在采集风险" : "暂无风险"}
+          getRowKey={(row) => row.id}
+          mobileCard={(row) => (
+            <>
+              <header className="module-card-head">
+                <span className="module-card-title"><Shield size={15} /><strong>{row.title}</strong></span>
+                <RiskLevel level={row.level} />
+              </header>
+              <div className="module-card-meta">
+                <span><b>目标</b><em>{row.target}</em></span>
+                <span><b>状态</b><em className="risk-status"><Clock3 size={14} />{row.status}</em></span>
+                <span><b>负责人</b><em>{row.owner}</em></span>
+                <span><b>发现时间</b><em>{row.detected}</em></span>
+              </div>
+              <p className="module-card-code">{row.impact}</p>
+              <footer className="module-card-footer"><span>风险处置</span><button className="ghost small" type="button" onClick={() => setSelectedId(row.id)}><Eye size={13} /> 查看详情</button></footer>
+            </>
+          )}
+        />
+      </section>
     </ModulePageShell>
   );
 }
