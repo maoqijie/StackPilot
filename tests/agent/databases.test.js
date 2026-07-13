@@ -29,7 +29,7 @@ test("database runtime waits for Controller feature negotiation before using hel
 
 test("terminal operation update survives delivery failure and is replayed before new work", async () => {
   const operation = { operationId: crypto.randomUUID(), version: 1, kind: "set-read-only", parameters: { kind: "set-read-only", instanceLocalId: "orders" }, idempotencyKey: "readonly-replay", expiresAt: new Date(Date.now() + 60_000).toISOString() };
-  const terminal = { operationId: operation.operationId, version: 1, status: "succeeded", errorCode: null, errorMessage: null, credentialEnvelope: null, updatedAt: new Date().toISOString() };
+  const terminal = { operationId: operation.operationId, version: 1, status: "succeeded", errorCode: null, errorMessage: null, credentialEnvelope: null, result: null, updatedAt: new Date().toISOString() };
   const outbox = new MemoryDatabaseOperationOutbox(); let statusCalls = 0;
   const firstController = { async json(path) { if (path.endsWith("/poll")) return { operations: [operation], controllerTime: new Date().toISOString() }; if (path.endsWith("/status") && ++statusCalls === 1) throw new Error("network lost"); return {}; } };
   const helper = { async request() { return { ok: true, result: terminal }; } };

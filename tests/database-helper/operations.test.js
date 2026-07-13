@@ -14,9 +14,11 @@ const credential = { instanceId: "orders", username: "stackpilot", password: "th
 function service(directory, queryOverrides = {}) {
   const calls = [];
   const registry = { async get(id) { assert.equal(id, "orders"); return instance; }, async credential(id) { assert.equal(id, "orders"); return credential; } };
-  const queries = { async query(_instance, _credential, sql) { calls.push(sql); return [{ id: "42", protected: false }]; }, async execute(_instance, _credential, sql) { calls.push(sql); return ""; }, ...queryOverrides };
-  const backups = { async create() { calls.push("backup"); } };
-  return { calls, value: new DatabaseOperationService(registry, queries, backups, new OperationJournal(join(directory, "journal.json"))) };
+  const queries = { async query(_instance, _credential, sql) { calls.push(sql); return [{ id: "42", protected: false }]; }, async execute(_instance, _credential, sql) { calls.push(sql); return "[{\"Plan\":{\"Node Type\":\"Seq Scan\"}}]"; }, ...queryOverrides };
+  const backups = { async create() { calls.push("backup"); return { version: 1, id: crypto.randomUUID(), instanceId: "orders", engine: "postgresql", databaseVersion: "16", createdAt: new Date().toISOString(), files: [{ name: "globals.sql", sizeBytes: 12, sha256: "a".repeat(64), databaseName: null }] }; } };
+  const provisioner = { async install(parameters) { calls.push(["install", parameters.name]); return { credentialEnvelope: { algorithm: "RSA-OAEP-256", ciphertext: "encrypted", expiresAt: new Date(Date.now() + 60_000).toISOString() }, result: { localInstanceId: parameters.name, engine: parameters.engine, port: 5433, serviceName: `stackpilot-${parameters.engine}-${parameters.name}` } }; } };
+  const restores = { async restore(_instance, _credential, restorePointId) { calls.push(["restore", restorePointId]); return { recoveryPointId: restorePointId, healthy: true, rollbackExpiresAt: new Date(Date.now() + 60_000).toISOString() }; } };
+  return { calls, value: new DatabaseOperationService(registry, queries, backups, new OperationJournal(join(directory, "journal.json")), provisioner, restores) };
 }
 
 test("helper governance uses fixed SQL and rejects SQL or session injection", async () => {
@@ -24,6 +26,7 @@ test("helper governance uses fixed SQL and rejects SQL or session injection", as
   try {
     const { calls, value } = service(directory);
     assert.equal((await value.execute(operation("explain", { instanceLocalId: "orders", sql: "SELECT * FROM users WHERE id = 1" }))).status, "succeeded");
+    const explain = await value.execute(operation("explain", { instanceLocalId: "orders", sql: "SELECT * FROM users WHERE id = 2" })); assert.equal(explain.result.kind, "explain"); assert.equal(explain.result.format, "json");
     assert.match(calls.at(-1), /^BEGIN READ ONLY;/);
     assert.equal((await value.execute(operation("explain", { instanceLocalId: "orders", sql: "SELECT 1; DROP TABLE users" }))).errorCode, "EXPLAIN_SQL_DENIED");
     const invalid = operation("terminate-session", { instanceLocalId: "orders", sessionId: "42;DROP" });
@@ -33,14 +36,22 @@ test("helper governance uses fixed SQL and rejects SQL or session injection", as
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-test("unmanaged restore and unimplemented install fail structurally without side effects", async () => {
+test("install returns credentials and a structured instance result", async () => {
   const directory = await mkdtemp(join(tmpdir(), "stackpilot-helper-"));
   try {
     const { calls, value } = service(directory);
-    const restore = await value.execute(operation("restore", { instanceLocalId: "orders", restorePointId: crypto.randomUUID() }));
-    assert.equal(restore.errorCode, "RESTORE_UNMANAGED_DENIED"); assert.deepEqual(calls, []);
     const install = await value.execute(operation("install", { engine: "postgresql", name: "newdb", port: null, initialDatabase: "app", credentialPublicKey: "x".repeat(64) }));
-    assert.equal(install.errorCode, "INSTALL_REQUIRES_PROVISIONER"); assert.deepEqual(calls, []);
+    assert.equal(install.status, "succeeded"); assert.equal(install.result.kind, "install"); assert.equal(install.result.instanceLocalId, "newdb");
+    assert.equal(install.credentialEnvelope.algorithm, "RSA-OAEP-256"); assert.deepEqual(calls, [["install", "newdb"]]);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("backup returns a structured recovery point result", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "stackpilot-helper-"));
+  try {
+    const { value } = service(directory); const update = await value.execute(operation("backup", { instanceLocalId: "orders", retentionCount: 7 }));
+    assert.equal(update.status, "succeeded"); assert.equal(update.result.kind, "backup"); assert.equal(update.result.sizeBytes, 12);
+    assert.match(update.result.checksum, /^[a-f0-9]{64}$/); assert.equal(update.result.databaseVersion, "16");
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 

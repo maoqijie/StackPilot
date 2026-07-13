@@ -36,6 +36,6 @@ test("capacity rejection leaves no partial restore point", async () => {
   const queries = { async query() { return { storageBytes: 1024 * 1024 * 1024 }; } };
   try {
     await assert.rejects(() => new DatabaseBackupService(runner, queries).create(instance, credential, 7), (error) => error.code === "INSUFFICIENT_CAPACITY");
-    assert.deepEqual(await readdir(instance.backupDirectory), []);
+    assert.deepEqual((await readdir(instance.backupDirectory)).filter((name) => name !== ".instance-operation.lock"), []);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

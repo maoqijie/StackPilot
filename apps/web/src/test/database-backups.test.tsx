@@ -1,81 +1,19 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DatabaseBackupsPayload } from "@stackpilot/contracts";
+import type { BusinessDatabaseBackupsPayload, DatabaseInstancesPayload } from "@stackpilot/contracts";
 import { DatabaseBackupsPage } from "../pages/DatabaseBackupsPage";
-import { createDatabaseBackup, fetchDatabaseBackups, verifyDatabaseBackup } from "../api/databaseBackupsApi";
-import { reauthenticate } from "../api/identityApi";
+import { createBackupPlan, fetchBusinessDatabaseBackups, fetchDatabases, runBackupPlan } from "../api/databasesApi";
 
-vi.mock("../api/databaseBackupsApi", () => ({
-  fetchDatabaseBackups: vi.fn(),
-  createDatabaseBackup: vi.fn(),
-  verifyDatabaseBackup: vi.fn(),
-  drillDatabaseBackup: vi.fn(),
-}));
-vi.mock("../api/identityApi", () => ({ reauthenticate: vi.fn() }));
+vi.mock("../api/databasesApi", () => ({ fetchBusinessDatabaseBackups: vi.fn(), fetchDatabases: vi.fn(), createBackupPlan: vi.fn(), updateBackupPlan: vi.fn(), runBackupPlan: vi.fn(), createDatabaseOperationPlan: vi.fn() }));
+const instanceId = `database-${"a".repeat(32)}`;
+const backups: BusinessDatabaseBackupsPayload = { collectedAt: "2026-07-14T06:00:00.000Z", collectionStatus: "complete", warnings: [], plans: [{ id: "11111111-1111-4111-8111-111111111111", instanceId, name: "orders-daily", cron: "0 2 * * *", retentionCount: 7, enabled: true, version: 1, lastRunAt: null, nextRunAt: null, createdAt: "2026-07-14T05:00:00.000Z", updatedAt: "2026-07-14T05:00:00.000Z" }], jobs: [], restorePoints: [{ id: "22222222-2222-4222-8222-222222222222", jobId: "33333333-3333-4333-8333-333333333333", instanceId, createdAt: "2026-07-14T05:55:00.000Z", sizeBytes: 7_340_032, checksum: "a".repeat(64), databaseVersion: "16.9", manifestVersion: 1, verifiedAt: null, drillStatus: "not_started", drilledAt: null }] };
+const inventory: DatabaseInstancesPayload = { collectedAt: backups.collectedAt, collectionStatus: "complete", warnings: [], instances: [{ id: instanceId, nodeId: "44444444-4444-4444-8444-444444444444", nodeName: "db-node", name: "orders", engine: "postgresql", version: "16.9", host: "db-node", address: "10.0.0.8", port: 5432, status: "running", source: "managed", managed: true, historicalSlowQueriesAvailable: true, latencyMs: 2, storageBytes: 1024, activeConnections: 2, maxConnections: 100, slowQueryCount: 0, backupStatus: "succeeded", lastBackupAt: backups.collectedAt, accessMode: "read-write", owner: null, region: null, autoBackup: true, remoteAccess: true, volumes: [], collectedAt: backups.collectedAt, freshness: "current" }] };
 
-const payload: DatabaseBackupsPayload = {
-  collectedAt: "2026-07-14T06:00:00.000Z",
-  source: { id: "controller-sqlite", name: "StackPilot Controller", engine: "SQLite", schemaVersion: 3, sizeBytes: 8_388_608, target: "backups" },
-  backups: [{
-    id: "a".repeat(64), fileName: "stackpilot-20260714T055500Z.sqlite3", storage: "本地 / backups",
-    createdAt: "2026-07-14T05:55:00.000Z", sizeBytes: 7_340_032, checksumStatus: "pending", drillStatus: "not_started", drilledAt: null,
-  }],
-  warnings: [],
-};
-
-describe("database backups workbench", () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    vi.mocked(fetchDatabaseBackups).mockResolvedValue(payload);
-  });
-
-  it("renders backend timestamps and real backup files without a manual refresh", async () => {
-    render(<DatabaseBackupsPage page="databases-backups" notify={vi.fn()} />);
-    expect((await screen.findAllByText("stackpilot-20260714T055500Z.sqlite3")).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("7.0 MB").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("待校验").length).toBeGreaterThan(0);
-    expect(screen.queryByRole("button", { name: "刷新" })).not.toBeInTheDocument();
-  });
-
-  it("shows a retryable error without falling back to fixtures", async () => {
-    vi.mocked(fetchDatabaseBackups).mockRejectedValueOnce(new Error("backup api offline")).mockResolvedValue(payload);
-    const user = userEvent.setup();
-    render(<DatabaseBackupsPage page="databases-backups" notify={vi.fn()} />);
-    expect(await screen.findByText("backup api offline")).toBeInTheDocument();
-    expect(screen.queryByText(/生产 PostgreSQL/)).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "重试" }));
-    expect((await screen.findAllByText("stackpilot-20260714T055500Z.sqlite3")).length).toBeGreaterThan(0);
-  });
-
-  it("creates an online backup only after reauthentication", async () => {
-    const user = userEvent.setup();
-    const notify = vi.fn();
-    vi.mocked(reauthenticate).mockResolvedValue({ proof: "proof-value-with-more-than-thirty-two-characters", expiresAt: "2026-07-14T06:05:00.000Z" });
-    vi.mocked(createDatabaseBackup).mockResolvedValue({ backup: payload.backups[0], message: "在线备份完成", tone: "success" });
-    render(<DatabaseBackupsPage page="databases-backups" notify={notify} />);
-    await user.click(await screen.findByRole("button", { name: /创建在线备份/ }));
-    const dialog = screen.getByRole("alertdialog", { name: "创建在线备份" });
-    fireEvent.change(within(dialog).getByLabelText("当前密码"), { target: { value: "correct password" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "确认备份" }));
-    await waitFor(() => expect(reauthenticate).toHaveBeenCalledWith("correct password"));
-    await waitFor(() => expect(createDatabaseBackup).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: expect.any(String) }), "proof-value-with-more-than-thirty-two-characters"));
-    expect(notify).toHaveBeenCalledWith("在线备份完成", "success");
-  });
-
-  it("opens a body-level detail drawer and verifies the selected stable id", async () => {
-    const user = userEvent.setup();
-    vi.mocked(reauthenticate).mockResolvedValue({ proof: "proof-value-with-more-than-thirty-two-characters", expiresAt: "2026-07-14T06:05:00.000Z" });
-    vi.mocked(verifyDatabaseBackup).mockResolvedValue({ backup: { ...payload.backups[0], checksumStatus: "verified" }, message: "校验完成", tone: "success" });
-    render(<DatabaseBackupsPage page="databases-backups" notify={vi.fn()} />);
-    await user.click((await screen.findAllByRole("button", { name: `查看备份 ${payload.backups[0].fileName}` }))[0]);
-    const drawer = screen.getByRole("region", { name: "备份文件详情" });
-    expect(drawer.parentElement).toBe(document.body);
-    await user.click(within(drawer).getByRole("button", { name: "校验" }));
-    const dialog = screen.getByRole("alertdialog", { name: "校验备份" });
-    fireEvent.change(within(dialog).getByLabelText("当前密码"), { target: { value: "correct password" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "确认校验" }));
-    await waitFor(() => expect(reauthenticate).toHaveBeenCalledWith("correct password"));
-    await waitFor(() => expect(verifyDatabaseBackup).toHaveBeenCalledWith(payload.backups[0].id, "proof-value-with-more-than-thirty-two-characters"));
-  });
+describe("business database backups workbench", () => {
+  beforeEach(() => { vi.resetAllMocks(); vi.mocked(fetchBusinessDatabaseBackups).mockResolvedValue(backups); vi.mocked(fetchDatabases).mockResolvedValue(inventory); });
+  it("renders business restore points and never mixes Controller SQLite files", async () => { render(<DatabaseBackupsPage page="databases-backups" notify={vi.fn()} permissions={["databases:read", "databases:backup"]} />); expect((await screen.findAllByText("orders")).length).toBeGreaterThan(0); expect(screen.getByText("orders-daily")).toBeInTheDocument(); expect(screen.queryByText(/stackpilot-.*sqlite3/)).not.toBeInTheDocument(); });
+  it("shows a retryable initial error without fixtures", async () => { vi.mocked(fetchBusinessDatabaseBackups).mockRejectedValueOnce(new Error("backup api offline")).mockResolvedValue(backups); render(<DatabaseBackupsPage page="databases-backups" notify={vi.fn()} />); expect(await screen.findByText("backup api offline")).toBeInTheDocument(); fireEvent.click(screen.getByRole("button", { name: "重试" })); expect(await screen.findByText("orders-daily")).toBeInTheDocument(); });
+  it("runs a real backup plan without reauthentication", async () => { vi.mocked(runBackupPlan).mockResolvedValue({ operationId: "55555555-5555-4555-8555-555555555555", status: "queued", job: { id: "66666666-6666-4666-8666-666666666666", planId: backups.plans[0]!.id, instanceId, status: "queued", startedAt: null, completedAt: null, sizeBytes: null, errorCode: null, manifestVersion: null, checksum: null } }); render(<DatabaseBackupsPage page="databases-backups" notify={vi.fn()} permissions={["databases:backup"]} />); await userEvent.click(await screen.findByRole("button", { name: "立即备份" })); await waitFor(() => expect(runBackupPlan).toHaveBeenCalledWith(backups.plans[0]!.id, expect.stringContaining("backup:"))); expect(screen.queryByLabelText("当前密码")).not.toBeInTheDocument(); });
+  it("creates a plan for a real instance", async () => { vi.mocked(createBackupPlan).mockResolvedValue({ plan: backups.plans[0]! }); render(<DatabaseBackupsPage page="databases-backups" notify={vi.fn()} permissions={["databases:backup"]} />); await userEvent.click(await screen.findByRole("button", { name: "新建备份计划" })); const dialog = screen.getByRole("alertdialog", { name: "新建业务数据库备份计划" }); fireEvent.change(within(dialog).getByLabelText("计划名称"), { target: { value: "orders-daily" } }); await userEvent.click(within(dialog).getByRole("button", { name: "创建计划" })); await waitFor(() => expect(createBackupPlan).toHaveBeenCalledWith(expect.objectContaining({ instanceId, name: "orders-daily" }))); });
 });

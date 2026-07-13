@@ -1,7 +1,7 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AgentCapability, AgentDatabaseSnapshot, AgentHeartbeat, AgentNodeRecord, AgentSiteSnapshot, AgentTelemetrySnapshot, RemoteTaskRecord } from "@stackpilot/contracts";
-import { AgentDatabaseSnapshotSchema, AgentHealthSchema, AgentNodeRecordSchema, AgentSiteSnapshotSchema, AgentTelemetrySnapshotSchema, RemoteTaskRecordSchema } from "@stackpilot/contracts";
+import { AgentHeartbeatDatabaseSnapshotSchema, AgentHealthSchema, AgentNodeRecordSchema, AgentSiteSnapshotSchema, AgentTelemetrySnapshotSchema, RemoteTaskRecordSchema } from "@stackpilot/contracts";
 import { z } from "zod";
 
 export type EnrollmentState = { enrollmentId: string; tokenDigest: string; nodeName: string; expiresAt: string; usedAt: string | null; revokedAt: string | null };
@@ -10,7 +10,7 @@ export type AgentNodeState = AgentNodeRecord & { telemetry?: AgentTelemetrySnaps
 export const AgentNodeStateSchema = AgentNodeRecordSchema.extend({
   telemetry: AgentTelemetrySnapshotSchema.optional(),
   siteSnapshot: AgentSiteSnapshotSchema.optional(),
-  databaseSnapshot: AgentDatabaseSnapshotSchema.optional(),
+  databaseSnapshot: AgentHeartbeatDatabaseSnapshotSchema.optional(),
   heartbeatHealthStatus: AgentHealthSchema.shape.status.optional(),
 });
 export type AgentNonceConsumption = "accepted" | "replayed" | "unauthorized";

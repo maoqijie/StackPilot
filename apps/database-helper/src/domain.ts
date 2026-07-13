@@ -10,9 +10,14 @@ export const ManagedInstanceSchema = z.object({
   backupDirectory: z.string().min(1).max(512).refine((value) => value.startsWith("/")),
   host: z.enum(["127.0.0.1", "::1"]), username: DatabaseIdentifierSchema, initialDatabase: DatabaseIdentifierSchema,
   historicalSlowQueriesAvailable: z.boolean(), createdAt: z.string().datetime(),
+  operatingSystem: z.enum(["debian12", "ubuntu24.04", "rocky9", "alma9", "fedora42", "alpine3.22", "arch"]).optional(),
+  configDirectory: z.string().min(1).max(512).refine((value) => value.startsWith("/")).optional(),
+  runtimeDirectory: z.string().min(1).max(512).refine((value) => value.startsWith("/")).optional(),
+  toolFamily: z.enum(["postgresql", "mysql", "mariadb"]).optional(),
 }).strict();
 export const InstanceCredentialSchema = z.object({
   instanceId: LocalIdSchema, username: DatabaseIdentifierSchema, password: z.string().min(16).max(512),
+  initialUsername: DatabaseIdentifierSchema.optional(), initialPassword: z.string().min(16).max(512).optional(),
 }).strict();
 
 export type ManagedInstance = z.infer<typeof ManagedInstanceSchema>;

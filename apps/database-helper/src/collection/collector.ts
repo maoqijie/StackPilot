@@ -8,6 +8,7 @@ import type { ManagedInstance } from "../domain.js";
 import type { DatabaseRegistry } from "../state/registry.js";
 import type { QueryClient } from "./queryClient.js";
 import { mysqlInventorySql, mysqlQueriesSql, postgresInventorySql, postgresQueriesSql } from "./sql.js";
+import type { LocalBackupResult } from "../operations/backupScheduler.js";
 
 type Inventory = { version: string; storageBytes: number; activeConnections: number; maxConnections: number; accessMode: "read-write" | "read-only" };
 type Session = Omit<AgentDatabaseQueryUpload["sessions"][number], "instanceLocalId">;
@@ -37,9 +38,15 @@ async function latestBackup(instance: ManagedInstance): Promise<BackupState> {
 }
 
 export class DatabaseCollector {
-  constructor(private readonly registry: DatabaseRegistry, private readonly queries: QueryClient, private readonly readStatfs: FileSystemReader = statfs) {}
+  constructor(
+    private readonly registry: DatabaseRegistry, private readonly queries: QueryClient,
+    private readonly readStatfs: FileSystemReader = statfs,
+    private readonly readScheduledResults: () => Promise<LocalBackupResult[]> = async () => [],
+  ) {}
   async collect() {
     const collectedAt = new Date().toISOString(), instances: AgentDatabaseInstance[] = [], sessions: AgentDatabaseQueryUpload["sessions"] = [], queries: AgentDatabaseQueryUpload["queries"] = [], warnings: string[] = [];
+    const latestPlans = new Map<string, LocalBackupResult>(); for (const result of await this.readScheduledResults()) latestPlans.set(result.planId, result);
+    for (const result of [...latestPlans.values()].filter((item) => item.status === "failed").slice(-10)) warnings.push(`实例 ${result.instanceLocalId} 的本地备份计划 ${result.planId} 执行失败（${result.errorCode ?? "SCHEDULED_BACKUP_FAILED"}）`);
     for (const instance of await this.registry.list()) {
       try {
         const credential = await this.registry.credential(instance.id);
@@ -57,7 +64,8 @@ export class DatabaseCollector {
         instances.push(this.unavailable(instance));
       }
     }
-    const collectionStatus = warnings.length === 0 ? "complete" : instances.length === warnings.length ? "unavailable" : "partial";
+    const unavailableInstances = instances.filter((item) => item.status === "unknown").length;
+    const collectionStatus = warnings.length === 0 ? "complete" : instances.length > 0 && unavailableInstances === instances.length ? "unavailable" : "partial";
     return DatabaseHelperCollectionSchema.parse({
       snapshot: AgentDatabaseSnapshotSchema.parse({ collectedAt, collectionStatus, warnings, instances }),
       queryUpload: AgentDatabaseQueryUploadSchema.parse({ collectedAt, collectionStatus, warnings, sessions, queries }),

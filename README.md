@@ -116,7 +116,7 @@ npm run dev --workspace @stackpilot/web -- --host 0.0.0.0
 
 ## 本地 Controller-Agent 验证
 
-当前 Agent 协议版本为 `1.1`。Controller 同时接受 `1.0` 和 `1.1`，并拒绝不兼容 major；数据库能力只在 `1.1` Agent 与本机 helper 均可用时启用。开发环境先显式生成 30 天本地证书：
+当前 Agent 协议版本为 `1.1`。Controller 仅接受明确列出的 `1.0` 和 `1.1`，其他协议版本均拒绝；数据库能力只在 `1.1` Agent 与本机 helper 均可用时启用。开发环境先显式生成 30 天本地证书：
 
 ```bash
 npm run agent:cert

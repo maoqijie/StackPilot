@@ -29,3 +29,14 @@ test("helper package mapper never exposes a shell command interface", async () =
   assert.match(runner, /execFileAsync\(executable, \[\.\.\.args\]/); assert.doesNotMatch(runner, /exec\(|shell:\s*true|"sh"|"bash"/);
   assert.match(contracts, /z\.discriminatedUnion\("action"/); assert.doesNotMatch(contracts, /command:\s*z\.|path:\s*z\./);
 });
+
+test("helper release contains real install and rollback drivers without simulated success fallbacks", async () => {
+  const operations = await read("apps/database-helper/src/operations/operationService.ts");
+  const provisioner = await read("apps/database-helper/src/operations/provisioner.ts");
+  const restore = await read("apps/database-helper/src/operations/restore.ts");
+  assert.doesNotMatch(operations, /INSTALL_REQUIRES_PROVISIONER|RESTORE_REQUIRES_OFFLINE_DRIVER/);
+  assert.match(provisioner, /await this\.assertAvailable\(plan, selectedPort, request\.name\)/);
+  assert.match(provisioner, /encryptCredentials\(request\.credentialPublicKey/);
+  assert.match(provisioner, /listen_addresses = '\*'/); assert.match(provisioner, /require_secure_transport=ON/);
+  assert.match(restore, /RESTORE_CHECKSUM_MISMATCH/); assert.match(restore, /rollbackExpiresAt/);
+});

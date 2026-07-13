@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { InstanceCredentialSchema, RegistrySchema, type InstanceCredential, type ManagedInstance, HelperError } from "../domain.js";
 
@@ -25,8 +25,10 @@ export class DatabaseRegistry {
     if (credential.instanceId !== instance.id) throw new HelperError("CREDENTIAL_MISMATCH", "凭据与实例不匹配");
     await this.prepare(); const instances = await this.list();
     if (instances.some((item) => item.id === instance.id || item.serviceName === instance.serviceName || item.port === instance.port)) throw new HelperError("INSTANCE_CONFLICT", "实例 ID、服务名或端口已注册");
-    await this.atomicWrite(join(this.credentialDirectory, `${instance.id}.json`), JSON.stringify(InstanceCredentialSchema.parse(credential)), 0o600);
-    await this.atomicWrite(this.registryPath, JSON.stringify({ version: 1, instances: [...instances, instance] }, null, 2), 0o600);
+    const credentialPath = join(this.credentialDirectory, `${instance.id}.json`);
+    await this.atomicWrite(credentialPath, JSON.stringify(InstanceCredentialSchema.parse(credential)), 0o600);
+    try { await this.atomicWrite(this.registryPath, JSON.stringify({ version: 1, instances: [...instances, instance] }, null, 2), 0o600); }
+    catch (error) { await rm(credentialPath, { force: true }); throw error; }
   }
   async credential(id: string) {
     try { return InstanceCredentialSchema.parse(JSON.parse(await readFile(join(this.credentialDirectory, `${id}.json`), "utf8"))); }

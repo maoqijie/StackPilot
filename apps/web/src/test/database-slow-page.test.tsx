@@ -1,7 +1,13 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DatabaseSlowQueriesPage } from "../pages/DatabaseSlowQueriesPage";
+import { fetchDatabaseSlowQueries } from "../api/databasesApi";
+
+vi.mock("../api/databasesApi", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../api/databasesApi")>(),
+  fetchDatabaseSlowQueries: vi.fn(),
+}));
 
 const initialPayload = {
   collectedAt: "2026-07-14T00:00:00.000Z", collectionStatus: "complete" as const, warnings: [], thresholdMs: 1_000,
@@ -10,9 +16,11 @@ const initialPayload = {
 };
 
 describe("database slow queries page", () => {
+  beforeEach(() => { vi.mocked(fetchDatabaseSlowQueries).mockReset(); vi.mocked(fetchDatabaseSlowQueries).mockResolvedValue(initialPayload); });
+
   it("renders real collection freshness and no fake mutation actions", () => {
     render(<DatabaseSlowQueriesPage page="databases-slow" notify={vi.fn()} initialPayload={initialPayload} />);
-    expect(screen.getByText(/数据来源：Controller 本机 PostgreSQL pg_stat_activity/)).toBeInTheDocument();
+    expect(screen.getByText(/数据来自节点采集快照/)).toBeInTheDocument();
     expect(screen.getAllByText("31.25 秒").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /Explain|索引|终止|处理/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "刷新采样" })).not.toBeInTheDocument();
@@ -25,8 +33,8 @@ describe("database slow queries page", () => {
     const drawer = screen.getByRole("dialog", { name: "慢查询详情" });
     expect(drawer.parentElement).toBe(document.body);
     expect(within(drawer).getByText("reporter")).toBeInTheDocument();
-    expect(within(drawer).getByText("暂不可用 / 暂不可用")).toBeInTheDocument();
-    expect(within(drawer).getByText(/pg_stat_statements/)).toBeInTheDocument();
+    expect(within(drawer).getAllByText(/暂不可用/).length).toBeGreaterThan(0);
+    expect(within(drawer).getByText("SELECT * FROM users WHERE id = ?")).toBeInTheDocument();
   });
 
   it("does not present an unavailable collector as a successful zero result", () => {
@@ -34,5 +42,13 @@ describe("database slow queries page", () => {
     expect(screen.getAllByText("暂不可用").length).toBeGreaterThan(0);
     expect(screen.getAllByText("慢查询统计暂不可用").length).toBeGreaterThan(0);
     expect(screen.queryByText("当前慢查询 0")).not.toBeInTheDocument();
+  });
+
+  it("loads a changed time range immediately", async () => {
+    const user = userEvent.setup();
+    render(<DatabaseSlowQueriesPage page="databases-slow" notify={vi.fn()} initialPayload={initialPayload} />);
+    await user.click(screen.getByRole("combobox", { name: /范围/ }));
+    await user.click(screen.getByRole("option", { name: "7d" }));
+    await waitFor(() => expect(fetchDatabaseSlowQueries).toHaveBeenCalledWith("7d", expect.any(AbortSignal)));
   });
 });

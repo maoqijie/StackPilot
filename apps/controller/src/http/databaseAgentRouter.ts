@@ -7,8 +7,9 @@ import { parseSchema } from "./validation.js";
 import { DatabaseRepositoryError } from "../repositories/databaseRepository.js";
 
 async function routeDatabaseAgentRequestInner(context:RequestContext){
-  const service=context.services.databaseInventory;if(!service)throw new ServiceError(503,"NOT_READY","数据库控制面尚未就绪");
   if(!context.agentIdentity)throw new ServiceError(401,"UNAUTHORIZED","Agent 身份不可用");const method=context.request.method??"GET";
+  if(context.agentIdentity.protocolVersion!=="1.1")throw new ServiceError(409,"BAD_REQUEST","数据库 Agent 接口要求协议 1.1");
+  const service=context.services.databaseInventory;if(!service)throw new ServiceError(503,"NOT_READY","数据库控制面尚未就绪");
   if(context.url.pathname==="/api/agent/databases/snapshot"&&method==="POST")service.ingestSnapshot(context.agentIdentity.nodeId,parseSchema(AgentDatabaseSnapshotSchema,context.body,"数据库快照"));
   else if(context.url.pathname==="/api/agent/databases/queries"&&method==="POST")service.ingestQueryUpload(context.agentIdentity.nodeId,parseSchema(AgentDatabaseQueryUploadSchema,context.body,"数据库查询上传"));
   else if(context.url.pathname==="/api/agent/databases/operations/status"&&method==="POST"){

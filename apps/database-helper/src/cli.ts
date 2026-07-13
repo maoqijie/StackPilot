@@ -5,6 +5,10 @@ import { DatabaseEngineSchema } from "@stackpilot/contracts";
 import { loadHelperConfig } from "./config.js";
 import { DatabaseIdentifierSchema, LocalIdSchema, ManagedInstanceSchema } from "./domain.js";
 import { DatabaseRegistry } from "./state/registry.js";
+import { BackupScheduleStore } from "./operations/backupScheduler.js";
+import { BackupSchedulerInstaller } from "./operations/backupSchedulerInstaller.js";
+import { readSupportedOs } from "./platform/osSupport.js";
+import { FixedCommandRunner } from "./platform/runner.js";
 
 const RegisterSchema = z.object({
   id: LocalIdSchema, name: LocalIdSchema, engine: DatabaseEngineSchema, version: z.string().max(80).nullable(),
@@ -23,8 +27,13 @@ async function readStdin(limit = 16 * 1024) {
 
 export async function runCli(argv = process.argv.slice(2), env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env) {
   if (typeof process.getuid === "function" && process.getuid() !== 0) throw new Error("数据库注册 CLI 必须以 root 运行");
-  if (argv.length !== 1 || argv[0] !== "register") throw new Error("Usage: stackpilot-database-helper-cli register < registration.json");
-  const config = loadHelperConfig(env), input = RegisterSchema.parse(JSON.parse(await readStdin()));
+  const config = loadHelperConfig(env), schedules = new BackupScheduleStore(config.stateDir);
+  if (argv[0] === "backup-plan" && argv[1] === "install-scheduler" && argv.length === 2) { const installed = await new BackupSchedulerInstaller(new FixedCommandRunner()).install(await readSupportedOs()); process.stdout.write(`${JSON.stringify({ installed })}\n`); return; }
+  if (argv[0] === "backup-plan" && argv[1] === "results" && argv.length === 2) { process.stdout.write(`${JSON.stringify({ results: await schedules.results() })}\n`); return; }
+  if (argv[0] === "backup-plan" && argv[1] === "remove" && argv.length === 3) { await schedules.remove(argv[2]!); process.stdout.write(`${JSON.stringify({ removed: argv[2] })}\n`); return; }
+  if (argv[0] === "backup-plan" && argv[1] === "sync" && argv.length === 2) { const plan = await schedules.sync(JSON.parse(await readStdin())); process.stdout.write(`${JSON.stringify({ plan })}\n`); return; }
+  if (argv.length !== 1 || argv[0] !== "register") throw new Error("Usage: stackpilot-database-helper-cli register|backup-plan install-scheduler|sync|remove <uuid>|results");
+  const input = RegisterSchema.parse(JSON.parse(await readStdin()));
   const { password, ...registration } = input;
   const instance = ManagedInstanceSchema.parse({ ...registration, backupDirectory: resolve(config.stateDir, "backups", input.id), createdAt: new Date().toISOString() });
   await new DatabaseRegistry(config.stateDir).save(instance, { instanceId: input.id, username: input.username, password });

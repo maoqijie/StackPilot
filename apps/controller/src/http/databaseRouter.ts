@@ -1,5 +1,6 @@
 import {
   BusinessDatabaseBackupPlanResponseSchema, BusinessDatabaseBackupsPayloadSchema, CreateBusinessDatabaseBackupPlanRequestSchema,
+  AgentNodeListResponseSchema,
   CreateDatabaseOperationPlanRequestSchema, DatabaseIdSchema, DatabaseInstanceDetailSchema, DatabaseInstancesPayloadSchema, DatabaseQueryRangeSchema,
   DatabaseOperationPlanResponseSchema, DatabaseOperationResponseSchema, DatabaseSlowQueriesPayloadSchema, DatabaseSlowQueryResponseSchema,
   ExecuteDatabaseOperationPlanRequestSchema, ExplainDatabaseQueryRequestSchema, PathIdSchema, ResolveDatabaseQueryRequestSchema,
@@ -21,11 +22,20 @@ const requireServices=(context:RequestContext)=>{
 function requirePermission(context:RequestContext,permission:Permission,nodeId?:string){context.identity?.require(context.principal,permission,nodeId);}
 function operator(context:RequestContext){if(!context.principal)throw new ServiceError(401,"UNAUTHORIZED","需要登录");return{userId:context.principal.userId,principalType:context.principal.type,nodeScope:context.principal.nodeScope,permissions:context.principal.permissions};}
 function noStore(context:RequestContext){context.response.setHeader("Cache-Control","no-store");}
+const publicNode=(value:Awaited<ReturnType<RequestContext["services"]["nodes"]["list"]>>[number])=>({
+  nodeId:value.nodeId,nodeName:value.nodeName,status:value.status,agentVersion:value.agentVersion,protocolVersion:value.protocolVersion,platform:value.platform,
+  declaredCapabilities:value.declaredCapabilities,allowedCapabilities:value.allowedCapabilities,enrolledAt:value.enrolledAt,lastSeenAt:value.lastSeenAt,revokedAt:value.revokedAt,
+});
 
 async function routeDatabaseRequestInner(context:RequestContext){
   const method=context.request.method??"GET",{parts,response}=context,{inventory,workspace,operations}=requireServices(context);noStore(context);
   requirePermission(context,"databases:read");const scope=context.principal!.nodeScope;
   if(parts.length===2&&method==="GET"){sendJson(response,200,inventory.list(scope),DatabaseInstancesPayloadSchema);return;}
+  if(parts[2]==="install-nodes"&&parts.length===3&&method==="GET"){
+    requirePermission(context,"databases:install");const nodes=(await context.services.nodes.list()).filter((node)=>
+      !node.revokedAt&&(scope==="all"||scope.includes(node.nodeId))&&node.declaredCapabilities.includes("database.install")&&node.allowedCapabilities.includes("database.install"));
+    sendJson(response,200,{nodes:nodes.map(publicNode)},AgentNodeListResponseSchema);return;
+  }
   if(parts[2]==="slow-queries"&&parts.length===3&&method==="GET"){
     const parsed=parseSchema(DatabaseQueryRangeSchema,context.url.searchParams.get("range")??"24h","查询范围");
     const includeSql=Boolean(context.principal?.permissions.has("databases:sql:read"));sendJson(response,200,inventory.slowQueries(scope,parsed,includeSql),DatabaseSlowQueriesPayloadSchema);return;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { detectSupportedOs, packagePlan } from "../../apps/database-helper/dist/platform/osSupport.js";
+import { detectSupportedOs, instancePlatformPlan, packagePlan } from "../../apps/database-helper/dist/platform/osSupport.js";
 import { parseListeningPorts, selectAvailablePort } from "../../apps/database-helper/dist/platform/ports.js";
 import { FixedCommandRunner } from "../../apps/database-helper/dist/platform/runner.js";
 
@@ -32,4 +32,17 @@ test("port selection returns lowest free port and conflicts have no side effects
 test("runner refuses arbitrary executables before spawning", async () => {
   await assert.rejects(() => new FixedCommandRunner().run("sh", ["-c", "id"]), (error) => error.code === "COMMAND_DENIED");
   await assert.rejects(() => new FixedCommandRunner().run("psql", ["bad\0arg"]), (error) => error.code === "ARGUMENT_DENIED");
+});
+
+test("all seven OS drivers expose fixed executable multi-instance plans for every engine", () => {
+  const systems = ["debian12", "ubuntu24.04", "rocky9", "alma9", "fedora42", "alpine3.22", "arch"];
+  for (const os of systems) for (const engine of ["postgresql", "mysql", "mariadb"]) {
+    const packages = packagePlan(os, engine), instance = instancePlatformPlan(os, engine, "orders");
+    assert.ok(["apt-get", "dnf", "apk", "pacman"].includes(packages.manager));
+    assert.match(instance.initExecutable, /^\/usr\/(?:bin|sbin|lib|libexec)\//);
+    assert.match(instance.serverExecutable, /^\/usr\/(?:bin|sbin|lib|libexec)\//);
+    assert.match(instance.serviceName, /^stackpilot-(?:postgresql|mysql|mariadb)-orders$/);
+    assert.equal(instance.serviceManager, os === "alpine3.22" ? "openrc" : "systemd");
+    assert.match(instance.dataDirectory, /^\/var\/lib\/stackpilot-databases\/orders\/data$/);
+  }
 });

@@ -51,9 +51,11 @@ test("agent telemetry remains optional and strictly validates bounded snapshots"
 
 test("database inventory is optional on legacy heartbeats and rejects duplicate instance ids", () => {
   const snapshot = { collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], instances: [{ id: "postgresql.service", name: "postgresql", engine: "postgresql", version: null, host: "node-a", port: null, status: "running", source: "systemd:postgresql.service", latencyMs: null, storageBytes: null, activeConnections: null, maxConnections: null, slowQueryCount: null, backupStatus: "unavailable", lastBackupAt: null, accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null }] };
-  assert.equal(AgentDatabaseSnapshotSchema.safeParse(snapshot).success, true);
-  assert.equal(AgentDatabaseSnapshotSchema.safeParse({ ...snapshot, instances: [snapshot.instances[0], snapshot.instances[0]] }).success, false);
-  assert.equal(AgentHeartbeatSchema.safeParse({ nodeId: crypto.randomUUID(), agentVersion: "0.2.0", protocolVersion: "1.0", timestamp: new Date().toISOString(), platform: "linux", capabilities: ["databases.inventory.read"], health: { status: "healthy", uptimeSeconds: 1 }, databaseSnapshot: snapshot }).success, true);
+  assert.equal(AgentDatabaseSnapshotSchema.safeParse(snapshot).success, false);
+  const heartbeat = AgentHeartbeatSchema.safeParse({ nodeId: crypto.randomUUID(), agentVersion: "0.2.0", protocolVersion: "1.0", timestamp: new Date().toISOString(), platform: "linux", capabilities: ["databases.inventory.read"], health: { status: "healthy", uptimeSeconds: 1 }, databaseSnapshot: snapshot });
+  assert.equal(heartbeat.success, true);
+  if (heartbeat.success) assert.deepEqual(heartbeat.data.databaseSnapshot?.instances[0]?.volumes, []);
+  assert.equal(AgentHeartbeatSchema.safeParse({ nodeId: crypto.randomUUID(), agentVersion: "0.2.0", protocolVersion: "1.0", timestamp: new Date().toISOString(), platform: "linux", capabilities: ["databases.inventory.read"], health: { status: "healthy", uptimeSeconds: 1 }, databaseSnapshot: { ...snapshot, instances: [snapshot.instances[0], snapshot.instances[0]] } }).success, false);
 });
 
 test("database instance payload exposes scoped records with strict freshness fields", () => {
@@ -61,9 +63,9 @@ test("database instance payload exposes scoped records with strict freshness fie
   const instance = {
     id: `database-${"a".repeat(32)}`, nodeId: crypto.randomUUID(), nodeName: "database-node", address: "192.0.2.10",
     collectedAt, freshness: "current", name: "postgresql", engine: "postgresql", version: "16.9", host: "database-node",
-    port: 5432, status: "running", source: "systemd:postgresql.service", latencyMs: null, storageBytes: null,
+    port: 5432, status: "running", source: "systemd:postgresql.service", managed: false, historicalSlowQueriesAvailable: false, latencyMs: null, storageBytes: null,
     activeConnections: null, maxConnections: null, slowQueryCount: null, backupStatus: "unavailable", lastBackupAt: null,
-    accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null,
+    accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null, volumes: [],
   };
   const payload = { collectedAt, collectionStatus: "complete", warnings: [], instances: [instance] };
   assert.equal(DatabaseInstancesPayloadSchema.safeParse(payload).success, true);
@@ -159,7 +161,8 @@ test("file upload contracts reject paths and inconsistent progress", () => {
 test("agent protocol schemas reject incompatible and generic command tasks", () => {
   assert.equal(AGENT_PROTOCOL_VERSION, "1.1");
   assert.equal(isAgentProtocolCompatible("1.0"), true);
-  assert.equal(isAgentProtocolCompatible("1.9"), true);
+  assert.equal(isAgentProtocolCompatible("1.1"), true);
+  assert.equal(isAgentProtocolCompatible("1.9"), false);
   assert.equal(isAgentProtocolCompatible("2.0"), false);
   assert.equal(CreateRemoteTaskRequestSchema.safeParse({ type: "run-shell", parameters: { command: "id" }, expiresInSeconds: 60, idempotencyKey: "generic-command" }).success, false);
   assert.equal(AgentHeartbeatSchema.safeParse({ nodeId: crypto.randomUUID(), agentVersion: "0.1.0", protocolVersion: "1.0", timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 1 }, token: "forbidden" }).success, false);

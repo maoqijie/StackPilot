@@ -25,7 +25,7 @@ export async function routeAgentRequest(context: RequestContext) {
   if (context.url.pathname === "/api/agent/heartbeat" && method === "POST") {
     const input = parseSchema(AgentHeartbeatSchema, context.body, "心跳");
     const result = await context.services.nodes.heartbeat(identity.nodeId, input, context.requestId);
-    if (input.databaseSnapshot && !input.capabilities.includes("database.inventory.read")) {
+    if (input.databaseSnapshot && input.capabilities.includes("databases.inventory.read") && !input.capabilities.includes("database.inventory.read")) {
       context.services.databaseInventory?.ingestSnapshot(identity.nodeId, input.databaseSnapshot);
     }
     sendJson(context.response, 200, result, AgentHeartbeatResponseSchema);

@@ -12,7 +12,7 @@ export const DatabaseVolumeSchema = z.object({
 const normalizeLegacyInstance = (value: unknown) => value && typeof value === "object" ? {
   managed: false, historicalSlowQueriesAvailable: false, volumes: [], ...value,
 } : value;
-const AgentDatabaseInstanceStrictSchema = z.object({
+export const AgentDatabaseInstanceSchema = z.object({
   id: z.string().min(1).max(200), name: z.string().min(1).max(200), engine: DatabaseEngineSchema,
   version: z.string().min(1).max(80).nullable(), host: z.string().min(1).max(253), port: z.number().int().min(1).max(65_535).nullable(),
   status: DatabaseRuntimeStatusSchema, source: z.string().min(1).max(256), managed: z.boolean(), historicalSlowQueriesAvailable: z.boolean(),
@@ -23,7 +23,6 @@ const AgentDatabaseInstanceStrictSchema = z.object({
   owner: z.string().min(1).max(120).nullable(), region: z.string().min(1).max(120).nullable(),
   autoBackup: z.boolean().nullable(), remoteAccess: z.boolean().nullable(), volumes: z.array(DatabaseVolumeSchema).max(256),
 }).strict();
-export const AgentDatabaseInstanceSchema = z.preprocess(normalizeLegacyInstance, AgentDatabaseInstanceStrictSchema);
 export const AgentDatabaseSnapshotSchema = DatabaseCollectionEnvelopeSchema.extend({
   instances: z.array(AgentDatabaseInstanceSchema).max(256),
 }).strict().superRefine((value, context) => {
@@ -33,11 +32,20 @@ export const AgentDatabaseSnapshotSchema = DatabaseCollectionEnvelopeSchema.exte
     ids.add(instance.id);
   });
 });
-const DatabaseInstanceRecordStrictSchema = AgentDatabaseInstanceStrictSchema.extend({
+export const AgentHeartbeatDatabaseSnapshotSchema = DatabaseCollectionEnvelopeSchema.extend({
+  instances: z.array(z.preprocess(normalizeLegacyInstance, AgentDatabaseInstanceSchema)).max(256),
+}).strict().superRefine((value, context) => {
+  const ids = new Set<string>();
+  value.instances.forEach((instance, index) => {
+    if (ids.has(instance.id)) context.addIssue({ code: "custom", path: ["instances", index, "id"], message: "database instance ids must be unique" });
+    ids.add(instance.id);
+  });
+});
+const DatabaseInstanceRecordStrictSchema = AgentDatabaseInstanceSchema.extend({
   id: DatabaseIdSchema, nodeId: z.string().uuid(), nodeName: z.string().min(1).max(200),
   address: z.union([z.ipv4(), z.ipv6()]).nullable(), collectedAt: z.string().datetime(), freshness: DatabaseFreshnessSchema,
 }).strict();
-export const DatabaseInstanceRecordSchema = z.preprocess(normalizeLegacyInstance, DatabaseInstanceRecordStrictSchema);
+export const DatabaseInstanceRecordSchema = DatabaseInstanceRecordStrictSchema;
 export const DatabaseInstancesPayloadSchema = DatabaseCollectionEnvelopeSchema.extend({
   instances: z.array(DatabaseInstanceRecordSchema).max(10_000),
 }).strict();

@@ -4,6 +4,7 @@ import test from "node:test";
 import { AGENT_PROTOCOL_VERSION, agentSignaturePayload } from "@stackpilot/contracts";
 import { EnrollmentService } from "../../apps/controller/dist/modules/enrollments/enrollmentService.js";
 import { routeControlPlaneRequest } from "../../apps/controller/dist/http/controlPlaneRouter.js";
+import { routeAgentRequest } from "../../apps/controller/dist/http/agentRouter.js";
 import { NodeService } from "../../apps/controller/dist/modules/nodes/nodeService.js";
 import { RemoteTaskService, transitionTask } from "../../apps/controller/dist/modules/remote-tasks/remoteTaskService.js";
 import { MemoryAgentControlRepository } from "../../apps/controller/dist/repositories/agentControlRepository.js";
@@ -53,6 +54,16 @@ test("heartbeat persists optional site snapshots and legacy heartbeats preserve 
   assert.deepEqual((await fixture.repository.read()).nodes[0].siteSnapshot, siteSnapshot);
   await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { ...heartbeat, timestamp: new Date().toISOString() }, crypto.randomUUID());
   assert.deepEqual((await fixture.repository.read()).nodes[0].siteSnapshot, siteSnapshot);
+});
+
+test("legacy database heartbeat is ingested only with the declared inventory capability", async () => {
+  const fixture = await enrolledFixture(); const ingested = [];
+  const instance = { id: "postgresql.service", name: "postgresql", engine: "postgresql", version: null, host: "node-a", port: null, status: "running", source: "systemd:postgresql.service", latencyMs: null, storageBytes: null, activeConnections: null, maxConnections: null, slowQueryCount: null, backupStatus: "unavailable", lastBackupAt: null, accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null };
+  const response = () => ({ statusCode: 0, headers: {}, body: "", setHeader(name, value) { this.headers[name] = value; }, end(body = "") { this.body = body; } });
+  const heartbeat = (capabilities) => ({ nodeId: fixture.enrolled.nodeId, agentVersion: "0.2.0", protocolVersion: "1.0", timestamp: new Date().toISOString(), platform: "linux", capabilities, health: { status: "healthy", uptimeSeconds: 10 }, databaseSnapshot: { collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], instances: [instance] } });
+  const context = (body) => ({ request: { method: "POST" }, response: response(), requestId: crypto.randomUUID(), url: new URL("https://controller.test/api/agent/heartbeat"), body, agentIdentity: { nodeId: fixture.enrolled.nodeId, credentialId: fixture.enrolled.credentialId, protocolVersion: "1.0" }, services: { nodes: fixture.nodes, databaseInventory: { ingestSnapshot(nodeId, snapshot) { ingested.push({ nodeId, snapshot }); } } } });
+  await routeAgentRequest(context(heartbeat(["databases.inventory.read"]))); assert.equal(ingested.length, 1); assert.equal(ingested[0].snapshot.instances[0].managed, false);
+  await routeAgentRequest(context(heartbeat(["system.summary.read"]))); assert.equal(ingested.length, 1);
 });
 
 test("node capability authorization accepts only declared Controller-supported capabilities", async () => {

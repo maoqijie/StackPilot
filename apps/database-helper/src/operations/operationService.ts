@@ -7,6 +7,8 @@ import type { DatabaseRegistry } from "../state/registry.js";
 import type { QueryClient } from "../collection/queryClient.js";
 import type { DatabaseBackupService } from "./backup.js";
 import type { OperationJournal } from "../state/operationJournal.js";
+import type { DatabaseProvisioner } from "./provisioner.js";
+import type { DatabaseRestoreService } from "./restore.js";
 
 const quotePg = (value: string) => `"${value.replaceAll('"', '""')}"`;
 const quoteMysql = (value: string) => `\`${value.replaceAll("`", "``")}\``;
@@ -14,7 +16,11 @@ const rejectStatements = /(?:;|--|\/\*|\*\/|\b(?:insert|update|delete|drop|alter
 
 export class DatabaseOperationService {
   private readonly running = new Set<string>();
-  constructor(private readonly registry: DatabaseRegistry, private readonly queries: QueryClient, private readonly backups: DatabaseBackupService, private readonly journal: OperationJournal) {}
+  constructor(
+    private readonly registry: DatabaseRegistry, private readonly queries: QueryClient,
+    private readonly backups: DatabaseBackupService, private readonly journal: OperationJournal,
+    private readonly provisioner: DatabaseProvisioner, private readonly restores: DatabaseRestoreService,
+  ) {}
   async execute(raw: unknown): Promise<AgentDatabaseOperationUpdate> {
     const operation = AgentDatabaseOperationDispatchSchema.parse(raw);
     const cached = await this.journal.begin(operation); if (cached) return cached;
@@ -24,20 +30,32 @@ export class DatabaseOperationService {
     try {
       const credentials = operation.parameters.kind === "install" ? null : await this.registry.credential(operation.parameters.instanceLocalId);
       const instance = operation.parameters.kind === "install" ? null : await this.registry.get(operation.parameters.instanceLocalId);
+      let credentialEnvelope = null; let result = null;
       switch (operation.parameters.kind) {
-        case "install": throw new HelperError("INSTALL_REQUIRES_PROVISIONER", "当前 helper 未配置受验证的发行版实例 provisioner，拒绝伪造安装成功");
-        case "restore": {
-          if (!instance!.managed) throw new HelperError("RESTORE_UNMANAGED_DENIED", "非 StackPilot 受管实例禁止原地恢复");
-          throw new HelperError("RESTORE_REQUIRES_OFFLINE_DRIVER", "当前 helper 未配置离线恢复驱动，未停止服务或修改数据目录");
+        case "install": {
+          const installed = await this.provisioner.install(operation.parameters); credentialEnvelope = installed.credentialEnvelope;
+          result = { kind: "install" as const, instanceLocalId: installed.result.localInstanceId, engine: installed.result.engine, port: installed.result.port, serviceName: installed.result.serviceName };
+          break;
         }
-        case "backup": await this.backups.create(instance!, credentials!, operation.parameters.retentionCount); break;
+        case "restore": {
+          const restored = await this.restores.restore(instance!, credentials!, operation.parameters.restorePointId);
+          result = { kind: "restore" as const, restorePointId: restored.recoveryPointId, health: "healthy" as const, rollbackExpiresAt: restored.rollbackExpiresAt };
+          break;
+        }
+        case "backup": {
+          const manifest = await this.backups.create(instance!, credentials!, operation.parameters.retentionCount);
+          const totalBytes = manifest.files.reduce((sum, file) => sum + file.sizeBytes, 0);
+          const checksum = (await import("node:crypto")).createHash("sha256").update(JSON.stringify(manifest, null, 2)).digest("hex");
+          result = { kind: "backup" as const, restorePointId: manifest.id, createdAt: manifest.createdAt, sizeBytes: totalBytes, checksum, databaseVersion: manifest.databaseVersion ?? "unknown", manifestVersion: manifest.version };
+          break;
+        }
         case "set-read-only": await this.setReadOnly(instance!, credentials!, true); break;
         case "set-read-write": await this.setReadOnly(instance!, credentials!, false); break;
         case "terminate-session": await this.terminate(instance!, credentials!, operation.parameters.sessionId); break;
-        case "explain": await this.explain(instance!, credentials!, operation.parameters.sql); break;
+        case "explain": result = { kind: "explain" as const, ...await this.explain(instance!, credentials!, operation.parameters.sql) }; break;
         case "create-index": await this.createIndex(instance!, credentials!, operation.parameters.table, operation.parameters.columns); break;
       }
-      const update = AgentDatabaseOperationUpdateSchema.parse({ operationId: operation.operationId, version: operation.version, status: "succeeded", errorCode: null, errorMessage: null, credentialEnvelope: null, updatedAt: new Date().toISOString() }); await this.journal.complete(operation, update); return update;
+      const update = AgentDatabaseOperationUpdateSchema.parse({ operationId: operation.operationId, version: operation.version, status: "succeeded", errorCode: null, errorMessage: null, credentialEnvelope, result, updatedAt: new Date().toISOString() }); await this.journal.complete(operation, update); return update;
     } catch (error) {
       const known = error instanceof HelperError; const update = this.failed(operation, known ? error.code : "OPERATION_FAILED", known ? error.message : "数据库操作失败"); await this.journal.complete(operation, update); return update;
     } finally { this.running.delete(operation.operationId); }
@@ -61,7 +79,11 @@ export class DatabaseOperationService {
     const normalized = sql.trim(); if (!/^(?:select|with)\b/i.test(normalized) || rejectStatements.test(normalized)) throw new HelperError("EXPLAIN_SQL_DENIED", "Explain 只接受单条只读 SELECT/CTE");
     const statement = instance.engine === "postgresql" ? `BEGIN READ ONLY; SET LOCAL statement_timeout='5s'; EXPLAIN (FORMAT JSON) ${normalized}; ROLLBACK`
       : `SET SESSION MAX_EXECUTION_TIME=5000; START TRANSACTION READ ONLY; EXPLAIN FORMAT=JSON ${normalized}; ROLLBACK`;
-    await this.queries.execute(instance, credential, statement, 8_000);
+    const plan = await this.queries.execute(instance, credential, statement, 8_000);
+    if (!plan.trim()) throw new HelperError("EXPLAIN_EMPTY", "数据库未返回 Explain 计划");
+    if (Buffer.byteLength(plan, "utf8") > 256 * 1024) throw new HelperError("EXPLAIN_RESULT_LIMIT", "Explain 计划超过 256 KiB 限制");
+    const trimmed = plan.trim(); let format: "json" | "text" = "text"; try { JSON.parse(trimmed); format = "json"; } catch { /* Some clients return command tags around the JSON plan. */ }
+    return { format, plan: trimmed };
   }
   private async createIndex(instance: Awaited<ReturnType<DatabaseRegistry["get"]>>, credential: Awaited<ReturnType<DatabaseRegistry["credential"]>>, table: string, columns: string[]) {
     const quote = instance.engine === "postgresql" ? quotePg : quoteMysql; const name = `sp_${table}_${columns.join("_")}`.slice(0, instance.engine === "postgresql" ? 63 : 64);
@@ -70,7 +92,7 @@ export class DatabaseOperationService {
     await this.queries.execute(instance, credential, sql, 30 * 60_000);
   }
   private failed(operation: AgentDatabaseOperationDispatch, code: string, message: string) {
-    return AgentDatabaseOperationUpdateSchema.parse({ operationId: operation.operationId, version: operation.version, status: "failed", errorCode: code, errorMessage: message, credentialEnvelope: null, updatedAt: new Date().toISOString() });
+    return AgentDatabaseOperationUpdateSchema.parse({ operationId: operation.operationId, version: operation.version, status: "failed", errorCode: code, errorMessage: message, credentialEnvelope: null, result: null, updatedAt: new Date().toISOString() });
   }
   private async reject(operation: AgentDatabaseOperationDispatch, code: string, message: string) {
     const update = this.failed(operation, code, message); await this.journal.complete(operation, update); return update;

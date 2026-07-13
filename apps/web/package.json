@@ -10,6 +10,8 @@
     "prestart": "npm run build --workspace @stackpilot/contracts",
     "start": "vite",
     "prebuild": "npm run build --workspace @stackpilot/contracts",
+    "pretypecheck": "npm run build --workspace @stackpilot/contracts",
+    "typecheck": "tsc -b --pretty false",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",

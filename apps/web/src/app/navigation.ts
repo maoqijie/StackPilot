@@ -228,7 +228,16 @@ function desktopTopbarChrome(page: PageKey): TopbarChrome {
 }
 
 function navItemsForPermissions(permissions: Permission[]) {
-  return permissions.includes("files:read") ? navItems : navItems.filter((item) => item.key !== "files");
+  return navItems.reduce<NavItem[]>((visible, item) => {
+    if (item.key === "files" && !permissions.includes("files:read")) return visible;
+    if (item.key === "databases" && !permissions.includes("databases:read")) return visible;
+    if (item.key !== "databases") return [...visible, item];
+    const children = item.children.filter((child) => {
+      if (child.id === "databases-backups") return permissions.includes("databases:backup");
+      return true;
+    });
+    return [...visible, { ...item, children }];
+  }, []);
 }
 
 function topbarSearchResults(query: string, permissions: Permission[] = []) : TopbarSearchResult[] {

@@ -225,10 +225,10 @@ function DesktopShellContent({
           {activeModule === "sites" && <SitesPage page={page} notify={notify} permissions={user.permissions} />}
           {activeModule === "databases" && (
             page === "databases-backups"
-              ? <DatabaseBackupsPage page={page} notify={notify} canManage={user.permissions.includes("system:backup")} />
+              ? <DatabaseBackupsPage page={page} notify={notify} permissions={user.permissions} />
               : page === "databases-slow"
-                ? <DatabaseSlowQueriesPage page={page} notify={notify} />
-              : <DatabasesPage page={page} setPage={setPage} notify={notify} />
+                ? <DatabaseSlowQueriesPage page={page} notify={notify} permissions={user.permissions} />
+              : <DatabasesPage page={page} setPage={setPage} notify={notify} permissions={user.permissions} />
           )}
           {activeModule === "files" && <FilesModule page={page} notify={notify} permissions={user.permissions} />}
           {page === "terminal-history" && <TerminalHistoryPage notify={notify} />}
@@ -242,7 +242,7 @@ function DesktopShellContent({
           {activeModule === "settings" && (
             page === "settings-proxy"
               ? <SettingsProxyPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} />
-              : <SettingsPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} />
+              : <SettingsPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} permissions={user.permissions} />
           )}
         </div>
         <DesktopFooter />

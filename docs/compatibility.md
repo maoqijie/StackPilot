@@ -5,7 +5,7 @@ StackPilot `0.3.0-preview.1` is a preview release, not a stable production relea
 | Surface | Supported range | Evidence and limits |
 | --- | --- | --- |
 | Controller/Web OS | Debian 12 and Ubuntu 24.04 LTS, x86_64 | systemd units target these distributions; runtime validation is a Linux CI gate |
-| Agent/database-helper OS | Debian 12, Ubuntu 24.04, Rocky/Alma 9, Fedora 42, Alpine 3.22 and Arch, x86_64 | database package, multi-instance, backup and service-manager claims require the pinned per-OS CI integration gates |
+| Agent/database-helper OS | Not yet certified for `0.3.0-preview.1` | drivers target Debian 12, Ubuntu 24.04, Rocky/Alma 9, Fedora 42, Alpine 3.22 and Arch x86_64, but support remains blocked until pinned per-OS install, multi-instance, backup and restore CI gates pass |
 | Containers | Docker Engine 27+ with Compose v2 on Linux x86_64 | images are built and scanned in CI; no arm64 claim yet |
 | Node.js | `22.x`, release build pinned to `22.22.0` | Node 20 remains usable for development but is not a production release target |
 | npm | 10 or 11 with committed lockfile | production installation uses `npm ci` |
@@ -25,8 +25,8 @@ StackPilot follows Semantic Versioning. During `0.x`, a minor version can contai
 | --- | --- | --- | --- | --- |
 | `0.3.x` | `0.1.x` or `0.2.x` | `1.0` | 5 | accepted without database capabilities |
 | `0.3.x` | `0.3.x` | `1.1` | 5 | supported database-capable preview combination |
-| `0.3.x` | any | non-`1.x` | any | rejected before task processing |
-| `0.3.x` | any | `1.x` | 1, 2, 3 or 4 | upgrade required; back up before migration |
-| `0.3.x` | any | `1.x` | greater than 5 | refuse startup/upgrade; newer database cannot be opened safely |
+| `0.3.x` | any | any version other than `1.0` or `1.1` | any | rejected before task processing |
+| `0.3.x` | any | `1.0` or `1.1` | 1, 2, 3 or 4 | upgrade required; back up before migration |
+| `0.3.x` | any | `1.0` or `1.1` | greater than 5 | refuse startup/upgrade; newer database cannot be opened safely |
 
 Schema 5 has no automatic down migration. Rollback to a Controller that only supports an older schema means restoring its verified pre-upgrade backup. Roll out Controller/Web first, then database-helper, then Agent; a protocol `1.1` Agent must not be connected to an older Controller.
