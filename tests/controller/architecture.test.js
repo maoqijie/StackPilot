@@ -41,3 +41,9 @@ test("legacy JavaScript Controller implementation has been removed", async () =>
   const allEntries = await readdir(sourceRoot, { recursive: true });
   assert.equal(allEntries.some((entry) => String(entry).endsWith(".js")), false);
 });
+
+test("site TLS probes do not reuse sessions that omit peer certificate metadata", async () => {
+  const source = await readFile(join(sourceRoot, "platform", "siteCollector.ts"), "utf8");
+  assert.match(source, /new HttpsAgent\(\{ keepAlive: false, maxCachedSessions: 0 \}\)/);
+  assert.match(source, /agent: siteProbeHttpsAgent/);
+});

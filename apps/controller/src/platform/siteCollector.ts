@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
-import { request as httpsRequest } from "node:https";
+import { Agent as HttpsAgent, request as httpsRequest } from "node:https";
 import { hostname } from "node:os";
 import { basename, join } from "node:path";
 import type { TLSSocket } from "node:tls";
@@ -23,6 +23,7 @@ const MAX_CONFIG_FILES = 500;
 const MAX_CONFIG_BYTES = 2 * 1024 * 1024;
 const MAX_SITES = 500;
 const MAX_CONCURRENT_PROBES = 8;
+const siteProbeHttpsAgent = new HttpsAgent({ keepAlive: false, maxCachedSessions: 0 });
 
 function extractServerBlocks(source: string) {
   const cleaned = source.replace(/#[^\r\n]*/g, "");
@@ -147,7 +148,7 @@ function probeListener(domain: string, listener: Listener): Promise<ProbeResult>
       host: "127.0.0.1", port: listener.port, method: "HEAD", path: "/",
       headers: { Host: domain, "User-Agent": "StackPilot-Site-Monitor/1.0" },
       timeout: 1_500,
-      ...(listener.secure ? { servername: domain, rejectUnauthorized: true } : {}),
+      ...(listener.secure ? { agent: siteProbeHttpsAgent, servername: domain, rejectUnauthorized: true } : {}),
     }, (response) => {
       const status: SiteRuntimeStatus = (response.statusCode ?? 500) < 500 ? "running" : "warning";
       const certificate = listener.secure ? certificateDetails(response.socket as TLSSocket) : { certificateExpiresAt: null, certificateIssuer: null };
