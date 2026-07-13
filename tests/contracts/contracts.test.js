@@ -8,6 +8,7 @@ import {
   CreateFileUploadRequestSchema, FileUploadRecordSchema,
   DatabaseSlowQueriesPayloadSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
+  CreateDirectoryRequestSchema, FileNameSchema, FilePathSchema,
 } from "@stackpilot/contracts";
 
 test("shared API constants preserve the existing HTTP contract", () => {
@@ -97,4 +98,12 @@ test("shared schemas validate external request and error contracts at runtime", 
   assert.equal(CreateScheduleJobRequestSchema.safeParse({ name: "backup", cron: "0 4 * * *", command: "true", extra: true }).success, false);
   assert.equal(ApiErrorResponseSchema.safeParse({ code: "BAD_REQUEST", error: "invalid", requestId: "request-1" }).success, true);
   assert.equal(OverviewSummaryPayloadSchema.safeParse({}).success, false);
+});
+
+test("file contracts reject unsafe names and non-absolute paths",()=>{
+  assert.equal(FilePathSchema.safeParse("/var/www").success,true);
+  assert.equal(FilePathSchema.safeParse("../www").success,false);
+  for(const name of [".","..","nested/name","nested\\name","bad\0name"])assert.equal(FileNameSchema.safeParse(name).success,false,name);
+  assert.equal(CreateDirectoryRequestSchema.safeParse({path:"/var/www",name:"site"}).success,true);
+  assert.equal(CreateDirectoryRequestSchema.safeParse({path:"/var/www",name:"site",mode:"0777"}).success,false);
 });

@@ -1,10 +1,10 @@
+import type { PublicUser } from "@stackpilot/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cleanCurrentRouteForPage, collectUrlParams, deleteContextRouteParams, expireTransientRoutes, hasExpiredInteractionParams, hasHashRouteQuery, isStaleTransientRoute, lockedRouteForPage, readPageFromHash, writeRouteState } from "./routing";
 import { DesktopShell, SessionLockOverlay } from "../components/layout/DesktopShell";
 import type { Notify, PageKey, SetPage, ToastState } from "../types/app";
 import { AuthGate } from "../features/auth/AuthGate";
 import { logout } from "../api/authApi";
-import type { PublicUser } from "@stackpilot/contracts";
 
 function AuthenticatedApp({ user }: { user: PublicUser }) {
   const [page, setPageState] = useState<PageKey>(readPageFromHash);
