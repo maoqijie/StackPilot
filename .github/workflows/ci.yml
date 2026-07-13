@@ -23,7 +23,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - name: Set up Node.js 22.22.0
-        uses: actions/setup-node@49933ea5288caeca8643d1e84afbd3f7d6820020
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.22.0
           cache: npm
@@ -52,7 +52,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - name: Set up Node.js 22.22.0
-        uses: actions/setup-node@49933ea5288caeca8643d1e84afbd3f7d6820020
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.22.0
           cache: npm
@@ -117,7 +117,7 @@ jobs:
           chmod 0444 output/ci-secrets/web.crt output/ci-secrets/agent.crt
           sudo chown 101:101 output/ci-secrets/web.key
           sudo chown 10001:10001 output/ci-secrets/agent.key
-          chmod 0400 output/ci-secrets/web.key output/ci-secrets/agent.key
+          sudo chmod 0400 output/ci-secrets/web.key output/ci-secrets/agent.key
           STACKPILOT_TLS_CERT_PATH="$PWD/output/ci-secrets/web.crt" \
           STACKPILOT_TLS_KEY_PATH="$PWD/output/ci-secrets/web.key" \
           STACKPILOT_AGENT_TLS_CERT_PATH="$PWD/output/ci-secrets/agent.crt" \
