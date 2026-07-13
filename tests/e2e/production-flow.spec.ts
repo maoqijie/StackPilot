@@ -5,6 +5,8 @@ import { mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 
 const adminPassword = "e2e administrator password";
+const e2eAgentPort = Number(process.env.STACKPILOT_E2E_AGENT_PORT ?? 19443);
+const e2eRuntime = process.env.STACKPILOT_E2E_RUNTIME ? resolve(process.env.STACKPILOT_E2E_RUNTIME) : resolve("output", "e2e", "runtime");
 let agent: ChildProcess | undefined;
 
 async function login(page: Page, username: string, password: string) {
@@ -48,10 +50,10 @@ test("production HTTPS flow covers identity, Agent lifecycle, task, audit and se
   const agentName = `e2e-node-${testInfo.project.name}-${testInfo.repeatEachIndex}`;
   const enrollment = await api<{ token: string }>(page, "/api/enrollments", "POST", { nodeName: agentName, expiresInSeconds: 300 }, { "X-Reauth-Proof": proof });
   expect(enrollment.status).toBe(201);
-  const state = resolve("output", "e2e", "runtime", `agent-${testInfo.project.name}-${testInfo.repeatEachIndex}`);
+  const state = resolve(e2eRuntime, `agent-${testInfo.project.name}-${testInfo.repeatEachIndex}`);
   rmSync(state, { recursive: true, force: true });
   mkdirSync(state, { recursive: true });
-  agent = spawn(process.execPath, ["apps/agent/dist/main.js"], { cwd: process.cwd(), env: { ...process.env, STACKPILOT_CONTROLLER_URL: "https://127.0.0.1:19443", STACKPILOT_AGENT_CA_PATH: resolve("output", "e2e", "runtime", "controller-ca.crt"), STACKPILOT_AGENT_STATE_DIR: state, STACKPILOT_AGENT_NAME: agentName, STACKPILOT_AGENT_ENROLLMENT_TOKEN: enrollment.body.token, STACKPILOT_AGENT_HEARTBEAT_SECONDS: "5" }, stdio: "ignore" });
+  agent = spawn(process.execPath, ["apps/agent/dist/main.js"], { cwd: process.cwd(), env: { ...process.env, STACKPILOT_CONTROLLER_URL: `https://127.0.0.1:${e2eAgentPort}`, STACKPILOT_AGENT_CA_PATH: resolve(e2eRuntime, "controller-ca.crt"), STACKPILOT_AGENT_STATE_DIR: state, STACKPILOT_AGENT_NAME: agentName, STACKPILOT_AGENT_ENROLLMENT_TOKEN: enrollment.body.token, STACKPILOT_AGENT_HEARTBEAT_SECONDS: "5" }, stdio: "ignore" });
 
   let nodeId = "";
   await expect.poll(async () => { const result = await api<{ nodes: Array<{ nodeId: string; status: string }> }>(page, "/api/nodes"); const node = result.body.nodes.find((item) => item.status === "online"); nodeId = node?.nodeId ?? ""; return node?.status; }, { timeout: 25_000 }).toBe("online");
@@ -79,4 +81,38 @@ test("production HTTPS flow covers identity, Agent lifecycle, task, audit and se
 test("read-only user is denied direct state-changing API calls", async ({ page }) => {
   await login(page, "e2e-reader", "e2e reader password");
   expect((await api(page, "/api/overview/tasks", "POST", {})).status).toBe(403);
+});
+
+test("terminal UI submits and displays a real Agent task", async ({ page }, testInfo) => {
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
+  await login(page, "e2e-admin", adminPassword);
+
+  const proof = await reauthenticate(page);
+  const agentName = `terminal-${testInfo.project.name}`;
+  const enrollment = await api<{ token: string }>(page, "/api/enrollments", "POST", { nodeName: agentName, expiresInSeconds: 300 }, { "X-Reauth-Proof": proof });
+  expect(enrollment.status).toBe(201);
+  const state = resolve(e2eRuntime, `terminal-agent-${testInfo.project.name}`);
+  rmSync(state, { recursive: true, force: true });
+  mkdirSync(state, { recursive: true });
+  agent = spawn(process.execPath, ["apps/agent/dist/main.js"], { cwd: process.cwd(), env: { ...process.env, STACKPILOT_CONTROLLER_URL: `https://127.0.0.1:${e2eAgentPort}`, STACKPILOT_AGENT_CA_PATH: resolve(e2eRuntime, "controller-ca.crt"), STACKPILOT_AGENT_STATE_DIR: state, STACKPILOT_AGENT_NAME: agentName, STACKPILOT_AGENT_ENROLLMENT_TOKEN: enrollment.body.token, STACKPILOT_AGENT_HEARTBEAT_SECONDS: "5" }, stdio: "ignore" });
+  await expect.poll(async () => { const result = await api<{ nodes: Array<{ nodeName: string; status: string }> }>(page, "/api/nodes"); return result.body.nodes.find((item) => item.nodeName === agentName)?.status; }, { timeout: 25_000 }).toBe("online");
+
+  await page.goto("/#terminal");
+  await page.reload();
+  await expect(page.getByText(agentName).first()).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("textbox", { name: "命令输入" }).fill("uptime");
+  await page.getByRole("button", { name: "运行" }).click();
+  const dialog = page.getByRole("alertdialog", { name: "确认执行受控命令" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("当前密码").fill(adminPassword);
+  await dialog.getByRole("button", { name: "确认执行" }).click();
+  await expect(page.getByText("真实任务已提交，等待 Agent 返回结果")).toBeVisible();
+  await expect(page.getByRole("log")).toContainText("hostname:", { timeout: 25_000 });
+
+  const viewport = await page.evaluate(() => ({ inner: window.innerWidth, body: document.body.scrollWidth, root: document.documentElement.scrollWidth }));
+  expect(viewport.body).toBeLessThanOrEqual(viewport.inner);
+  expect(viewport.root).toBeLessThanOrEqual(viewport.inner);
+  expect(consoleErrors).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("terminal-real.png"), fullPage: true });
 });

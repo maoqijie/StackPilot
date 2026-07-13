@@ -276,6 +276,12 @@
 .terminal-command-confirm { border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); }
 .terminal-command-confirm-scrim { backdrop-filter: none; }
 .terminal-command-confirm .confirm-dialog-icon.warning { color: #ca8a04; background: var(--warning-soft); }
+.terminal-command-confirm .confirm-dialog-body { gap: 16px; }
+.terminal-reauth-field { display: grid; gap: 8px; }
+.terminal-reauth-field > span { display: inline-flex; align-items: center; gap: 8px; color: var(--text-soft); font-size: 14px; font-weight: 500; }
+.terminal-reauth-field input { width: 100%; height: var(--control-md); padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--text); background: var(--surface); font: 400 15px/1.4 var(--font-body); }
+.terminal-reauth-field input:focus { border-color: var(--primary); outline: 3px solid rgb(14 165 233 / 12%); }
+.terminal-command-confirm .form-error { margin: 0; color: var(--danger); font-size: 13px; }
 .terminal-disconnect-confirm,
 .terminal-disconnect-confirm:is(:hover, :focus, :focus-visible, :focus-within, :active),
 .terminal-disconnect-confirm .confirm-dialog-icon,

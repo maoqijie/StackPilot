@@ -12,6 +12,8 @@ function ConfirmDialog({
   onClose,
   tone = "danger",
   className,
+  confirmDisabled = false,
+  children,
 }: {
   title: string;
   message: string;
@@ -21,24 +23,31 @@ function ConfirmDialog({
   onClose: () => void;
   tone?: "danger" | "warning";
   className?: string;
+  confirmDisabled?: boolean;
+  children?: React.ReactNode;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
   const titleId = useId();
   const descriptionId = useId();
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusFrame = window.requestAnimationFrame(() => {
-      dialog.querySelector<HTMLElement>("[data-confirm-cancel]")?.focus({ preventScroll: true });
+      dialog.querySelector<HTMLElement>("[data-confirm-initial], [data-confirm-cancel]")?.focus({ preventScroll: true });
     });
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || !document.contains(dialog)) return;
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -72,7 +81,7 @@ function ConfirmDialog({
         : drawerRestoreFallback(dialog);
       restoreTarget?.focus({ preventScroll: true });
     };
-  }, [onClose]);
+  }, []);
 
   return createPortal(
     <>
@@ -94,10 +103,11 @@ function ConfirmDialog({
         <div className="confirm-dialog-body">
           <p id={descriptionId}>{message}</p>
           {detail && <code>{detail}</code>}
+          {children}
         </div>
         <footer>
           <button className="ghost" type="button" data-confirm-cancel onClick={onClose}>取消</button>
-          <button className={tone === "danger" ? "trash-destructive" : "primary"} type="button" onClick={onConfirm}>{confirmLabel}</button>
+          <button className={tone === "danger" ? "trash-destructive" : "primary"} type="button" disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel}</button>
         </footer>
       </div>
     </>,
