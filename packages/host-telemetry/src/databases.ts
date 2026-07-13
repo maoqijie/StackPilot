@@ -26,9 +26,10 @@ function statusForUnit(active: string, sub: string): AgentDatabaseInstance["stat
 
 export function parseSystemdDatabaseUnits(output: string, hostName: string): AgentDatabaseInstance[] {
   const seen = new Set<string>(); const instances: AgentDatabaseInstance[] = [];
+  const hasPostgresCluster = output.split(/\r?\n/).some((line) => /^postgresql@.+\.service\s/.test(line.trim()));
   for (const line of output.split(/\r?\n/)) {
     const columns = line.trim().split(/\s+/); const unit = columns[0] ?? ""; const engine = engineForUnit(unit);
-    if (columns.length < 4 || !engine || seen.has(unit)) continue;
+    if (columns.length < 4 || !engine || seen.has(unit) || unit === "postgresql.service" && hasPostgresCluster) continue;
     seen.add(unit); const template = unit.match(/^[^@]+@(.+)\.service$/)?.[1];
     instances.push({
       id: unit, name: template ? `${engine}-${template}` : engine, engine, version: null, host: hostName, port: null,

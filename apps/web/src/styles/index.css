@@ -1,6 +1,7 @@
 @import "./tokens.css";
 @import "./base.css";
 @import "./shell.css";
+@import "./page-transitions.css";
 @import "./components.css";
 @import "./pages.css";
 @import "./responsive.css";

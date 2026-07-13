@@ -38,7 +38,7 @@ async function fixture() {
   return {database,identity,userId,nodeId,repository,inventory:new DatabaseInventoryService(repository),backups:new DatabaseBackupWorkspaceService(repository)};
 }
 
-test("schema 5 persists scoped snapshots and encrypted expiring SQL",async()=>{
+test("schema 6 persists scoped snapshots and encrypted expiring SQL",async()=>{
   const value=await fixture();try{
     const databasePermissions=value.database.prepare("SELECT permission_key FROM role_permissions WHERE role_id='administrator' AND permission_key LIKE 'databases:%' ORDER BY permission_key").all().map((row)=>row.permission_key);
     assert.deepEqual(databasePermissions,["databases:backup","databases:install","databases:operate","databases:read","databases:restore","databases:sql:read"]);

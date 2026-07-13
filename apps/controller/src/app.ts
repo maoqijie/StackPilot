@@ -54,6 +54,7 @@ import { DatabaseBackupWorkspaceService } from "./modules/databases/databaseBack
 import { DatabaseOperationService } from "./modules/databases/databaseOperationService.js";
 import { DatabaseRetentionService } from "./modules/databases/databaseRetentionService.js";
 import type { AuditRepository } from "./audit/auditRepository.js";
+import { SystemdDatabaseCollector } from "@stackpilot/host-telemetry";
 
 export type AppOptions = {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -91,7 +92,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
     databaseSlowQueries: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
-    databaseInstances: new DatabaseMonitoringService(repository),
+    databaseInstances: new DatabaseMonitoringService(repository, new SystemdDatabaseCollector()),
     sites,
     certificateRenewals,
     files: new FileService(config.fileRoot, config.fileTrashDir, config.fileUploadLimitBytes, repoRoot),

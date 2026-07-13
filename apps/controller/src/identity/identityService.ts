@@ -33,9 +33,14 @@ export class IdentityService {
     this.database.transaction(() => {
       const permission = this.database.prepare("INSERT OR IGNORE INTO permissions(key,risk,description) VALUES(?,?,?)");
       for (const entry of PERMISSIONS) permission.run(...entry);
-      const role = this.database.prepare("INSERT OR IGNORE INTO roles(id,name,description,builtin,created_at) VALUES(?,?,?,?,?)");
-      const mapping = this.database.prepare("INSERT OR IGNORE INTO role_permissions(role_id,permission_key) VALUES(?,?)");
-      for (const [id, name, permissions] of roleDefinitions) { role.run(id, name, `${name}内置角色`, 1, new Date().toISOString()); for (const key of permissions) mapping.run(id, key); }
+      const role = this.database.prepare("INSERT INTO roles(id,name,description,builtin,created_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,builtin=1");
+      const clearMappings = this.database.prepare("DELETE FROM role_permissions WHERE role_id=?");
+      const mapping = this.database.prepare("INSERT INTO role_permissions(role_id,permission_key) VALUES(?,?)");
+      for (const [id, name, permissions] of roleDefinitions) {
+        role.run(id, name, `${name}内置角色`, 1, new Date().toISOString());
+        clearMappings.run(id);
+        for (const key of permissions) mapping.run(id, key);
+      }
     })();
   }
   hasAdministrator(): boolean { return Boolean(this.database.prepare("SELECT 1 FROM user_roles WHERE role_id='administrator' LIMIT 1").get()); }

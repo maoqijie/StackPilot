@@ -238,7 +238,7 @@ npm run test --workspace @stackpilot/agent
 
 ## 生产部署与发布
 
-正式支持的 Controller/Web 运行时为 Debian 12 或 Ubuntu 24.04 x86_64、Node.js 22.x 和 SQLite schema 5。Docker Compose 默认仅公开 HTTPS 443；Controller 8787 位于内部网络，Agent 9443 默认只绑定回环地址。原生 systemd 方案为 Controller、Agent 和 root-only helper 建立独立权限边界，并通过 systemd credential 注入主密钥和 TLS 私钥。Agent/database-helper 的其他发行版能力只有通过固定镜像集成测试后才列入兼容性矩阵。
+正式支持的 Controller/Web 运行时为 Debian 12 或 Ubuntu 24.04 x86_64、Node.js 22.x 和 SQLite schema 6。Docker Compose 默认仅公开 HTTPS 443；Controller 8787 位于内部网络，Agent 9443 默认只绑定回环地址。原生 systemd 方案为 Controller、Agent 和 root-only helper 建立独立权限边界，并通过 systemd credential 注入主密钥和 TLS 私钥。Agent/database-helper 的其他发行版能力只有通过固定镜像集成测试后才列入兼容性矩阵。
 
 - [Docker Compose 安装](docs/installation/docker-compose.md)
 - [systemd 安装](docs/installation/systemd.md)
