@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -14,7 +14,7 @@ import { FakePlatformAdapter } from "./support/fakePlatform.js";
 
 async function fixture(callback) { const root=await mkdtemp(join(tmpdir(),"stackpilot-files-"));try{await callback(root);}finally{await rm(root,{recursive:true,force:true});} }
 
-test("file service persists the real lifecycle under an allowed root",async()=>fixture(async(root)=>{const service=new FileService([root]);assert.equal((await service.list(root)).parentPath,null);await service.createDirectory(root,"site");const file=await service.upload(join(root,"site"),"index.html",Buffer.from("release"));assert.equal((await readFile(file.path,"utf8")),"release");const renamed=await service.rename(file.path,"app.html");assert.equal(renamed.name,"app.html");assert.equal((await service.list(join(root,"site"))).entries[0].name,"app.html");await service.moveToTrash(renamed.path);assert.deepEqual((await service.list(join(root,"site"))).entries,[]);}));
+test("file service persists the real lifecycle under an allowed root",async()=>fixture(async(root)=>{const service=new FileService([root]),previousUmask=process.umask(0o077);try{assert.equal((await service.list(root)).parentPath,null);await service.createDirectory(root,"site");assert.equal((await stat(join(root,"site"))).mode&0o777,0o775);const file=await service.upload(join(root,"site"),"index.html",Buffer.from("release"));assert.equal((await stat(file.path)).mode&0o777,0o664);assert.equal((await readFile(file.path,"utf8")),"release");const renamed=await service.rename(file.path,"app.html");assert.equal(renamed.name,"app.html");assert.equal((await service.list(join(root,"site"))).entries[0].name,"app.html");await service.moveToTrash(renamed.path);assert.deepEqual((await service.list(join(root,"site"))).entries,[]);}finally{process.umask(previousUmask);}}));
 
 test("file service rejects traversal, symlink escape and protected trash names",async()=>fixture(async(root)=>{const outside=await mkdtemp(join(tmpdir(),"stackpilot-outside-"));try{await writeFile(join(outside,"secret"),"secret");await symlink(outside,join(root,"escape"));const service=new FileService([root]);await assert.rejects(service.list(join(root,"..")),/允许范围/);await assert.rejects(service.list(join(root,"escape")),/符号链接/);await assert.rejects(service.createDirectory(root,".stackpilot-trash"),/文件名无效/);}finally{await rm(outside,{recursive:true,force:true});}}));
 
