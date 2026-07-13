@@ -4,8 +4,9 @@ import { DesktopShell, SessionLockOverlay } from "../components/layout/DesktopSh
 import type { Notify, PageKey, SetPage, ToastState } from "../types/app";
 import { AuthGate } from "../features/auth/AuthGate";
 import { logout } from "../api/authApi";
+import type { PublicUser } from "@stackpilot/contracts";
 
-function AuthenticatedApp({ user }: { user: import("@stackpilot/contracts").PublicUser }) {
+function AuthenticatedApp({ user }: { user: PublicUser }) {
   const [page, setPageState] = useState<PageKey>(readPageFromHash);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [topbarUnreadCount, setTopbarUnreadCount] = useState(0);
