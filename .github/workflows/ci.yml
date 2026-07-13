@@ -175,6 +175,7 @@ jobs:
       - name: Scan Web image
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
         with:
+          version: v0.72.0
           image-ref: stackpilot-web:ci
           severity: HIGH,CRITICAL
           ignore-unfixed: false
@@ -182,6 +183,7 @@ jobs:
       - name: Scan Controller image
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
         with:
+          version: v0.72.0
           image-ref: stackpilot-controller:ci
           severity: HIGH,CRITICAL
           ignore-unfixed: false
@@ -189,6 +191,7 @@ jobs:
       - name: Scan Agent image
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
         with:
+          version: v0.72.0
           image-ref: stackpilot-agent:ci
           severity: HIGH,CRITICAL
           ignore-unfixed: false
@@ -196,6 +199,7 @@ jobs:
       - name: Scan deployment configuration
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
         with:
+          version: v0.72.0
           scan-type: config
           scan-ref: deploy
           severity: HIGH,CRITICAL
