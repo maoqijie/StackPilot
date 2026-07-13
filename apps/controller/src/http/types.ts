@@ -21,7 +21,7 @@ import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
 
-export type Services = { overview: OverviewService; hosts: HostMonitoringService; databaseInstances: DatabaseMonitoringService; databaseSlowQueries: DatabaseSlowQueryService; sites: SiteMonitoringService; certificateRenewals: CertificateRenewalService; databaseBackups: DatabaseBackupService; fileManager: FileService; fileUploads?: FileUploadService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService; terminalSnippets: TerminalSnippetService };
+export type Services = { overview: OverviewService; hosts: HostMonitoringService; databaseInstances: DatabaseMonitoringService; databaseSlowQueries: DatabaseSlowQueryService; sites: SiteMonitoringService; certificateRenewals: CertificateRenewalService; databaseBackups: DatabaseBackupService; files: FileService; fileUploads?: FileUploadService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService; terminalSnippets: TerminalSnippetService };
 export type RequestContext = {
   request: IncomingMessage;
   response: ServerResponse;
