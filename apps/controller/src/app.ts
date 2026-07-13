@@ -22,6 +22,7 @@ import { NodeService } from "./modules/nodes/nodeService.js";
 import { HostMonitoringService } from "./modules/hosts/hostMonitoringService.js";
 import { SiteMonitoringService } from "./modules/sites/siteMonitoringService.js";
 import { CertificateRenewalService } from "./modules/sites/certificateRenewalService.js";
+import { DatabaseMonitoringService } from "./modules/databases/databaseMonitoringService.js";
 import { DatabaseBackupService } from "./modules/databases/databaseBackupService.js";
 import { NginxSiteCollector } from "./platform/siteCollector.js";
 import { RemoteTaskService } from "./modules/remote-tasks/remoteTaskService.js";
@@ -76,7 +77,8 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
   return {
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
-    databases: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
+    databaseSlowQueries: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
+    databaseInstances: new DatabaseMonitoringService(repository),
     sites,
     certificateRenewals,
     fileManager: new FileService(config.fileRoots),
