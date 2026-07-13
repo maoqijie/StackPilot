@@ -69,6 +69,9 @@ test("task state machine enforces capability, idempotency, expiry, cancellation 
   let authorizationCount = 0;
   const authorize = () => { authorizationCount += 1; };
   const first = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID(), authorize); const duplicate = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID(), authorize); assert.equal(duplicate.taskId, first.taskId); assert.equal(authorizationCount, 2);
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { ...input, parameters: { includeLoad: true } }, "admin", crypto.randomUUID(), authorize), (error) => error.status === 409);
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "service.status.read", parameters: { serviceName: "nginx" }, expiresInSeconds: 60, idempotencyKey: input.idempotencyKey }, "admin", crypto.randomUUID(), authorize), (error) => error.status === 409);
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, input, "other-user", crypto.randomUUID(), authorize), (error) => error.status === 409);
   const dispatched = await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID()); assert.equal(dispatched.length, 1);
   await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: first.taskId, attempt: 1, status: "running", timestamp: new Date().toISOString() }, crypto.randomUUID());
   assert.equal((await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: first.taskId, attempt: 1, status: "running", timestamp: new Date().toISOString() }, crypto.randomUUID())).status, "running");

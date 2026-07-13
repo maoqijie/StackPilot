@@ -26,6 +26,8 @@ import { DatabaseMonitoringService } from "./modules/databases/databaseMonitorin
 import { DatabaseBackupService } from "./modules/databases/databaseBackupService.js";
 import { NginxSiteCollector } from "./platform/siteCollector.js";
 import { RemoteTaskService } from "./modules/remote-tasks/remoteTaskService.js";
+import { TerminalSnippetService } from "./modules/terminal/terminalSnippetService.js";
+import { MemoryTerminalSnippetRepository, SqliteTerminalSnippetRepository } from "./modules/terminal/terminalSnippetRepository.js";
 import { NativePlatformAdapter } from "./platform/nativeAdapter.js";
 import type { PlatformAdapter } from "./platform/types.js";
 import { FileExportRepository } from "./repositories/exportRepository.js";
@@ -73,6 +75,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
   const sites = new SiteMonitoringService(new NginxSiteCollector(config.nginxConfigDirs), repository);
   const certificateRenewals = new CertificateRenewalService(repository, sites);
   const remoteTasks = new RemoteTaskService(repository);
+  const terminalRepository = database ? new SqliteTerminalSnippetRepository(database) : new MemoryTerminalSnippetRepository();
   const fileUploads = database ? createFileUploadService(database, repoRoot, config) : undefined;
   return {
     overview,
@@ -89,6 +92,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     enrollments: new EnrollmentService(repository),
     nodes: new NodeService(repository),
     remoteTasks,
+    terminalSnippets: new TerminalSnippetService(terminalRepository, remoteTasks),
     ...(fileUploads ? { fileUploads } : {}),
   };
 }

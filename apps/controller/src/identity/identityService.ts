@@ -11,13 +11,14 @@ const argon = { algorithm: Algorithm.Argon2id, memoryCost: 19_456, timeCost: 2, 
 export const PERMISSIONS: ReadonlyArray<[Permission, "low" | "medium" | "high", string]> = [
   ["overview:read","low","读取本机总览"],["overview:operate","medium","执行本机操作"],["schedules:read","low","读取定时任务"],["schedules:write","high","修改定时任务"],
   ["nodes:read","low","读取授权节点"],["nodes:manage","high","注册、轮换、撤销节点或授权高风险能力"],["sites:read","low","读取站点与证书"],["sites:renew","high","续期站点证书"],["tasks:read","low","读取远程任务"],["tasks:create","high","创建远程任务"],["tasks:cancel","medium","取消远程任务"],
+  ["terminal:read","low","读取受控命令片段"],["terminal:execute","high","执行受控命令片段"],
   ["databases:read","low","读取授权节点的数据库实例、运行状态与脱敏慢查询"],
   ["files:read","low","读取文件目录与上传任务"],["files:write","high","创建和管理文件上传"],["files:manage","high","管理网站文件与目录"],
   ["audit:read","low","读取审计日志"],["users:read","low","读取用户"],["users:manage","high","管理用户"],["roles:read","low","读取角色"],["roles:manage","high","管理角色"],["tokens:manage","high","管理 API Token"],["system:backup","high","备份与恢复数据库"],
 ];
 const roleDefinitions = [
   ["administrator","管理员",PERMISSIONS.map(([key]) => key)],
-  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","sites:read","sites:renew","databases:read","files:read","files:write","tasks:read","tasks:create","tasks:cancel"]],
+  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","sites:read","sites:renew","databases:read","files:read","files:write","tasks:read","tasks:create","tasks:cancel","terminal:read","terminal:execute"]],
   ["audit-reader","只读审计员",["overview:read","nodes:read","sites:read","databases:read","tasks:read","audit:read"]],
 ] as const;
 

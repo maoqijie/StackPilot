@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import {
   AGENT_PROTOCOL_VERSION, RemoteTaskEnvelopeSchema, RemoteTaskRecordSchema,
   type AgentCapability, type CreateRemoteTaskRequest, type RemoteTaskRecord, type RemoteTaskStatus, type RemoteTaskStatusUpdate,
@@ -22,6 +23,11 @@ function containsSensitiveKey(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(containsSensitiveKey);
   if (value && typeof value === "object") return Object.entries(value).some(([key, nested]) => sensitiveResultKey.test(key) || containsSensitiveKey(nested));
   return false;
+}
+
+function sameTaskOperation(task: RemoteTaskRecord, input: CreateRemoteTaskRequest, requester: string) {
+  return task.requester === requester && task.type === input.type
+    && isDeepStrictEqual(task.parameters, input.parameters);
 }
 
 function expireTask(task: RemoteTaskRecord, now: string): RemoteTaskStatus | null {
@@ -62,6 +68,9 @@ export class RemoteTaskService {
       const capability = requiredCapability[input.type];
       if (!node.allowedCapabilities.includes(capability) || !node.declaredCapabilities.includes(capability)) throw new ServiceError(403, "FORBIDDEN", "Controller 未授权节点执行该能力或 Agent 未声明该能力");
       const duplicate = state.tasks.find((item) => item.targetNodeId === nodeId && item.idempotencyKey === input.idempotencyKey);
+      if (duplicate) {
+        if (!sameTaskOperation(duplicate, input, requester)) throw new ServiceError(409, "BAD_REQUEST", "幂等键已用于其他远程任务");
+      }
       if (!duplicate && state.tasks.filter((item) => item.targetNodeId === nodeId && !terminal.includes(item.status)).length >= this.queueLimit) throw new ServiceError(409, "BAD_REQUEST", "节点任务队列已满");
       authorize();
       if (duplicate) { created = duplicate; return; }

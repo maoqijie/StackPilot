@@ -1,13 +1,6 @@
 import type { AgentCapability, AgentNodeRecord, CreateRemoteTaskRequest, HostMonitoringRecord, RemoteTaskRecord } from "@stackpilot/contracts";
-import type { LiveTerminalHistory, LiveTerminalSession, LiveTerminalSnippet } from "./liveTypes";
+import type { LiveTerminalHistory, LiveTerminalSession } from "./liveTypes";
 import { formatBackendDateTime } from "../../utils/time";
-
-const liveSnippets: LiveTerminalSnippet[] = [
-  { id: "summary", title: "系统负载", command: "uptime", category: "资源", description: "采集运行时间、CPU、内存和负载摘要。", lastUsed: "未使用", favorite: true },
-  { id: "disk", title: "磁盘占用", command: "df -h", category: "资源", description: "采集 Agent 检测到的全部磁盘卷和容量。", lastUsed: "未使用", favorite: true },
-  { id: "nginx", title: "Nginx 状态", command: "systemctl status nginx --no-pager", category: "服务", description: "通过受控服务探针读取 Nginx ActiveState。", lastUsed: "未使用", favorite: false },
-  { id: "ssh", title: "SSH 状态", command: "systemctl status sshd --no-pager", category: "服务", description: "通过受控服务探针读取 sshd ActiveState。", lastUsed: "未使用", favorite: false },
-];
 
 function terminalKey(command: "df" | "uptime" | "top" | "service") { return `terminal-${command}-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`}`; }
 function commandCapability(command: string): AgentCapability | null { const value = command.trim().replace(/\s+/g, " "); if (/^(?:df(?: -h)?|uptime|top)$/i.test(value)) return "system.summary.read"; return /^systemctl status ([A-Za-z0-9_.@:-]+)( --no-pager)?$/i.test(value) ? "service.status.read" : null; }
@@ -37,4 +30,4 @@ function toHistory(task: RemoteTaskRecord, node?: AgentNodeRecord): LiveTerminal
 function toSessions(nodes: AgentNodeRecord[], hosts: HostMonitoringRecord[], tasks: RemoteTaskRecord[]): LiveTerminalSession[] { return nodes.filter((node) => !node.revokedAt).map((node) => { const host = hosts.find((item) => item.id === node.nodeId); const latest = tasks.find((task) => task.targetNodeId === node.nodeId); return { id: node.nodeId, host: node.nodeName, ip: host?.address ?? "等待 Agent 上报", user: "stackpilot-agent", cwd: "受控任务目录", status: node.status === "online" ? "connected" : "disconnected", latency: node.status === "online" ? "Agent 在线" : "Agent 离线", startedAt: formatBackendDateTime(node.lastSeenAt, "尚未上报"), lastCommand: latest ? taskCommand(latest) : "尚无真实命令", privilege: "user" }; }); }
 function freshness(nodes: AgentNodeRecord[], tasks: RemoteTaskRecord[], hostCollectedAt?: string | null) { const values = [hostCollectedAt, ...nodes.map((node) => node.lastSeenAt), ...tasks.map((task) => task.updatedAt)].filter((value): value is string => Boolean(value)).sort(); return formatBackendDateTime(values.at(-1), "等待后端数据"); }
 
-export { commandCapability, commandRequest, freshness, liveSnippets, supportsCommand, terminalTasks, toHistory, toSessions };
+export { commandCapability, commandRequest, freshness, supportsCommand, terminalTasks, toHistory, toSessions };
