@@ -3,6 +3,7 @@ import type {
   CreateDatabaseOperationPlanRequest, DatabaseBackupJob, DatabaseInstanceRecord, DatabaseOperation, DatabaseOperationPlan,
   DatabaseRestorePoint, DatabaseSession, DatabaseSlowQueryRecord, UpdateBusinessDatabaseBackupPlanRequest, AgentDatabaseOperationUpdate,
   AgentDatabaseOperationDispatch, DatabaseOperationKind,
+  AgentDatabaseBackupPlan, AgentDatabaseScheduledBackupReport,
 } from "@stackpilot/contracts";
 
 export class DatabaseRepositoryError extends Error {
@@ -26,6 +27,8 @@ export interface DatabaseRepository {
   createBackupPlan(input: CreateBusinessDatabaseBackupPlanRequest, now: string): BusinessDatabaseBackupPlan;
   updateBackupPlan(id: string, input: UpdateBusinessDatabaseBackupPlanRequest, now: string): BusinessDatabaseBackupPlan | null;
   listBackupPlans(nodeScope: DatabaseAccess["nodeScope"]): BusinessDatabaseBackupPlan[];
+  listBackupPlansForAgent(nodeId: string): AgentDatabaseBackupPlan[];
+  saveScheduledBackupReports(nodeId: string, reports: AgentDatabaseScheduledBackupReport[]): string[];
   createBackupJob(plan: BusinessDatabaseBackupPlan, operationId: string, now: string): DatabaseBackupJob;
   findBackupJobByOperation(operationId: string): DatabaseBackupJob | null;
   listBackupJobs(nodeScope: DatabaseAccess["nodeScope"]): DatabaseBackupJob[];

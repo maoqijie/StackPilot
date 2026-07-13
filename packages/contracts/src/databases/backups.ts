@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { DatabaseCollectionEnvelopeSchema, DatabaseIdSchema, DatabaseIdempotencyKeySchema, DatabaseOperationStatusSchema } from "./common.js";
+import { DatabaseBackupCronSchema } from "./cron.js";
 
 export const BusinessDatabaseBackupPlanSchema = z.object({
-  id: z.string().uuid(), instanceId: DatabaseIdSchema, name: z.string().min(1).max(120), cron: z.string().min(1).max(120),
+  id: z.string().uuid(), instanceId: DatabaseIdSchema, name: z.string().min(1).max(120), cron: DatabaseBackupCronSchema,
   retentionCount: z.number().int().min(1).max(30), enabled: z.boolean(), version: z.number().int().positive(),
   lastRunAt: z.string().datetime().nullable(), nextRunAt: z.string().datetime().nullable(), createdAt: z.string().datetime(), updatedAt: z.string().datetime(),
 }).strict();
@@ -22,11 +23,11 @@ export const BusinessDatabaseBackupsPayloadSchema = DatabaseCollectionEnvelopeSc
   restorePoints: z.array(DatabaseRestorePointSchema).max(10_000),
 }).strict();
 export const CreateBusinessDatabaseBackupPlanRequestSchema = z.object({
-  instanceId: DatabaseIdSchema, name: z.string().trim().min(1).max(120), cron: z.string().trim().min(1).max(120),
+  instanceId: DatabaseIdSchema, name: z.string().trim().min(1).max(120), cron: DatabaseBackupCronSchema,
   retentionCount: z.number().int().min(1).max(30), enabled: z.boolean().default(true),
 }).strict();
 export const UpdateBusinessDatabaseBackupPlanRequestSchema = z.object({
-  name: z.string().trim().min(1).max(120).optional(), cron: z.string().trim().min(1).max(120).optional(),
+  name: z.string().trim().min(1).max(120).optional(), cron: DatabaseBackupCronSchema.optional(),
   retentionCount: z.number().int().min(1).max(30).optional(), enabled: z.boolean().optional(), version: z.number().int().positive(),
 }).strict().refine((value) => Object.keys(value).some((key) => key !== "version"), { message: "at least one field must be updated" });
 export const RunBusinessDatabaseBackupPlanRequestSchema = z.object({ idempotencyKey: DatabaseIdempotencyKeySchema }).strict();

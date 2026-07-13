@@ -19,9 +19,10 @@ export class SqliteAgentControlRepository implements AgentControlRepository {
   async update(mutate:(state:AgentControlState)=>void):Promise<AgentControlState>{
     const operation=this.queue.catch(()=>undefined).then(async()=>{const state=await this.read();const previousAudits=new Set(state.audits.map(x=>x.eventId));mutate(state);state.nonces=state.nonces.filter(x=>Date.parse(x.expiresAt)>Date.now());state.audits=state.audits.slice(-10_000);
     this.database.transaction(()=>{
-      for(const table of ["agent_credentials","agent_enrollments","agent_nonces","remote_tasks","agent_protocol_audits","agent_nodes"])this.database.exec(`DELETE FROM ${table}`);
+      for(const table of ["agent_credentials","agent_enrollments","agent_nonces","remote_tasks","agent_protocol_audits"])this.database.exec(`DELETE FROM ${table}`);
       for(const x of state.enrollments)this.database.prepare("INSERT INTO agent_enrollments VALUES(?,?,?,?,?,?)").run(x.enrollmentId,x.tokenDigest,x.nodeName,x.expiresAt,x.usedAt,x.revokedAt);
-      for(const x of state.nodes)this.database.prepare("INSERT INTO agent_nodes(node_id,payload,revoked_at,updated_at)VALUES(?,?,?,?)").run(x.nodeId,JSON.stringify(x),x.revokedAt,x.lastSeenAt??x.enrolledAt);
+      for(const x of state.nodes)this.database.prepare(`INSERT INTO agent_nodes(node_id,payload,revoked_at,updated_at)VALUES(?,?,?,?)
+        ON CONFLICT(node_id) DO UPDATE SET payload=excluded.payload,revoked_at=excluded.revoked_at,updated_at=excluded.updated_at`).run(x.nodeId,JSON.stringify(x),x.revokedAt,x.lastSeenAt??x.enrolledAt);
       for(const x of state.credentials)this.database.prepare("INSERT INTO agent_credentials VALUES(?,?,?,?,?,?,?)").run(x.credentialId,x.nodeId,x.publicKey,x.createdAt,x.revokedAt,x.replacedBy,x.rotationId);
       for(const x of state.nonces)this.database.prepare("INSERT INTO agent_nonces VALUES(?,?,?)").run(x.credentialId,x.nonce,x.expiresAt);
       for(const x of state.tasks)this.database.prepare("INSERT INTO remote_tasks(task_id,node_id,payload,status,updated_at)VALUES(?,?,?,?,?)").run(x.taskId,x.targetNodeId,JSON.stringify(x),x.status,x.updatedAt);

@@ -10,6 +10,8 @@ import { DatabaseInventoryService } from "../../apps/controller/dist/modules/dat
 import { DatabaseOperationService } from "../../apps/controller/dist/modules/databases/databaseOperationService.js";
 import { DatabaseRetentionService } from "../../apps/controller/dist/modules/databases/databaseRetentionService.js";
 import { SqliteDatabaseRepository } from "../../apps/controller/dist/repositories/sqliteDatabaseRepository.js";
+import { NodeService } from "../../apps/controller/dist/modules/nodes/nodeService.js";
+import { SqliteAgentControlRepository } from "../../apps/controller/dist/repositories/sqliteAgentControlRepository.js";
 
 const masterKey = Buffer.alloc(32, 9);
 const at = () => new Date().toISOString();
@@ -53,6 +55,15 @@ test("schema 6 persists scoped snapshots and encrypted expiring SQL",async()=>{
   }finally{value.database.close();}
 });
 
+test("node status refresh preserves schema 6 database snapshots and plans",async()=>{
+  const value=await fixture();try{
+    value.inventory.ingestSnapshot(value.nodeId,snapshot());const instance=value.inventory.list("all").instances[0];value.backups.create({instanceId:instance.id,name:"preserved",cron:"0 2 * * *",retentionCount:7,enabled:true},"all");
+    await new NodeService(new SqliteAgentControlRepository(value.database)).list();
+    assert.equal(value.database.prepare("SELECT count(*) count FROM database_instances WHERE node_id=?").get(value.nodeId).count,1);
+    assert.equal(value.database.prepare("SELECT count(*) count FROM database_backup_plans").get().count,1);
+  }finally{value.database.close();}
+});
+
 test("two-phase operations enforce sessions, versions, idempotency and managed boundaries",async()=>{
   const value=await fixture();try{
     value.inventory.ingestSnapshot(value.nodeId,snapshot());value.inventory.ingestQueryUpload(value.nodeId,upload());const instance=value.inventory.list("all").instances[0];
@@ -85,6 +96,22 @@ test("backup plans create persistent queued jobs and Agent updates are node-boun
     const raw=value.database.prepare("SELECT result_ciphertext,result_nonce,result_tag FROM database_operations WHERE id=?").get(first.operationId);assert.ok(Buffer.isBuffer(raw.result_ciphertext));assert.doesNotMatch(raw.result_ciphertext.toString("utf8"),/databaseVersion|16\.9/);
     const point=value.backups.list("all").restorePoints.find((item)=>item.id===result.restorePointId);assert.equal(point?.checksum,result.checksum);assert.equal(point?.sizeBytes,result.sizeBytes);
     const retried=value.repository.updateOperation(value.nodeId,{operationId:first.operationId,version:2,status:"succeeded",errorCode:null,errorMessage:null,credentialEnvelope:null,result,updatedAt:at()});assert.equal(retried.id,completed.id);assert.equal(retried.version,3);
+  }finally{value.database.close();}
+});
+
+test("scheduled backup reports are node-bound, content-idempotent and create restore points transactionally",async()=>{
+  const value=await fixture();try{
+    value.inventory.ingestSnapshot(value.nodeId,snapshot());const instance=value.inventory.list("all").instances[0];
+    const plan=value.backups.create({instanceId:instance.id,name:"offline",cron:"*/5 * * * *",retentionCount:7,enabled:true},"all");
+    assert.deepEqual(value.backups.plansForAgent(value.nodeId),[{id:plan.id,instanceLocalId:"postgres-main",cron:plan.cron,retentionCount:7,enabled:true,version:1,updatedAt:plan.updatedAt}]);
+    const report={reportId:crypto.randomUUID(),planId:plan.id,planVersion:1,instanceLocalId:"postgres-main",scheduledFor:at(),status:"succeeded",result:{kind:"backup",restorePointId:crypto.randomUUID(),createdAt:at(),sizeBytes:8192,checksum:"b".repeat(64),databaseVersion:"16.9",manifestVersion:1},errorCode:null,completedAt:at()};
+    assert.deepEqual(value.backups.saveAgentReports(value.nodeId,[report],"scheduled-report-1"),[report.reportId]);
+    assert.deepEqual(value.backups.saveAgentReports(value.nodeId,[report],"scheduled-report-2"),[report.reportId]);
+    assert.equal(value.database.prepare("SELECT count(*) count FROM database_backup_jobs WHERE scheduled_report_id=?").get(report.reportId).count,1);
+    assert.equal(value.database.prepare("SELECT count(*) count FROM database_restore_points WHERE id=?").get(report.result.restorePointId).count,1);
+    assert.throws(()=>value.backups.saveAgentReports(value.nodeId,[{...report,errorCode:"DIFFERENT"}],"scheduled-conflict"),/不同内容/);
+    assert.throws(()=>value.backups.saveAgentReports(crypto.randomUUID(),[{...report,reportId:crypto.randomUUID()}],"scheduled-node"),/未知计划|实例/);
+    assert.throws(()=>value.backups.saveAgentReports(value.nodeId,[{...report,reportId:crypto.randomUUID(),planVersion:2}],"scheduled-version"),/版本超前/);
   }finally{value.database.close();}
 });
 

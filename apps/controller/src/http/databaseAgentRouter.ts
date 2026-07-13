@@ -1,10 +1,15 @@
-import { AgentDatabaseOperationPollRequestSchema, AgentDatabaseOperationPollResponseSchema, AgentDatabaseOperationStatusResponseSchema, AgentDatabaseOperationUpdateSchema, AgentDatabaseQueryUploadSchema, AgentDatabaseSnapshotSchema, AgentDatabaseUploadResponseSchema } from "@stackpilot/contracts";
+import { AgentDatabaseBackupPlanPollRequestSchema, AgentDatabaseBackupPlanPollResponseSchema, AgentDatabaseOperationPollRequestSchema, AgentDatabaseOperationPollResponseSchema, AgentDatabaseOperationStatusResponseSchema, AgentDatabaseOperationUpdateSchema, AgentDatabaseQueryUploadSchema, AgentDatabaseScheduledBackupResultsRequestSchema, AgentDatabaseScheduledBackupResultsResponseSchema, AgentDatabaseSnapshotSchema, AgentDatabaseUploadResponseSchema } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
 import { ServiceError } from "../modules/serviceError.js";
 import { notFound } from "./errors/ApiError.js";
 import { sendJson } from "./response/json.js";
 import { parseSchema } from "./validation.js";
 import { DatabaseRepositoryError } from "../repositories/databaseRepository.js";
+
+async function requireBackupCapability(context:RequestContext,nodeId:string){
+  const node=(await context.services.nodes.list()).find((item)=>item.nodeId===nodeId&&!item.revokedAt);
+  if(!node||!node.declaredCapabilities.includes("database.backup")||!node.allowedCapabilities.includes("database.backup"))throw new ServiceError(403,"FORBIDDEN","节点未获数据库备份能力授权");
+}
 
 async function routeDatabaseAgentRequestInner(context:RequestContext){
   if(!context.agentIdentity)throw new ServiceError(401,"UNAUTHORIZED","Agent 身份不可用");const method=context.request.method??"GET";
@@ -21,6 +26,18 @@ async function routeDatabaseAgentRequestInner(context:RequestContext){
     const operations=context.services.databaseOperations;if(!operations)throw new ServiceError(503,"NOT_READY","数据库操作控制面尚未就绪");
     const input=parseSchema(AgentDatabaseOperationPollRequestSchema,context.body,"数据库操作拉取请求");
     sendJson(context.response,200,{operations:await operations.poll(context.agentIdentity.nodeId,input.limit),controllerTime:new Date().toISOString()},AgentDatabaseOperationPollResponseSchema);return;
+  }
+  else if(context.url.pathname==="/api/agent/databases/backup-plans/poll"&&method==="POST"){
+    const backups=context.services.databaseWorkspace;if(!backups)throw new ServiceError(503,"NOT_READY","数据库备份控制面尚未就绪");
+    await requireBackupCapability(context,context.agentIdentity.nodeId);
+    parseSchema(AgentDatabaseBackupPlanPollRequestSchema,context.body,"数据库备份计划拉取请求");
+    sendJson(context.response,200,{plans:backups.plansForAgent(context.agentIdentity.nodeId),controllerTime:new Date().toISOString()},AgentDatabaseBackupPlanPollResponseSchema);return;
+  }
+  else if(context.url.pathname==="/api/agent/databases/backup-plans/results"&&method==="POST"){
+    const backups=context.services.databaseWorkspace;if(!backups)throw new ServiceError(503,"NOT_READY","数据库备份控制面尚未就绪");
+    await requireBackupCapability(context,context.agentIdentity.nodeId);
+    const input=parseSchema(AgentDatabaseScheduledBackupResultsRequestSchema,context.body,"数据库本地备份结果");
+    sendJson(context.response,200,{acceptedReportIds:backups.saveAgentReports(context.agentIdentity.nodeId,input.reports,context.requestId),acceptedAt:new Date().toISOString()},AgentDatabaseScheduledBackupResultsResponseSchema);return;
   }
   else throw notFound("Agent 数据库接口不存在");
   sendJson(context.response,202,{acceptedAt:new Date().toISOString()},AgentDatabaseUploadResponseSchema);

@@ -7,7 +7,7 @@ import {
   type CreateBusinessDatabaseBackupPlanRequest, type CreateDatabaseOperationPlanRequest, type DatabaseBackupJob,
   type DatabaseInstanceRecord, type DatabaseOperation, type DatabaseOperationPlan, type DatabaseRestorePoint, type DatabaseSession,
   type DatabaseSlowQueryRecord, type UpdateBusinessDatabaseBackupPlanRequest, type AgentDatabaseOperationUpdate, type DatabaseOperationKind,
-  type DatabaseOperationResult,
+  type AgentDatabaseBackupPlan, type AgentDatabaseScheduledBackupReport, type DatabaseOperationResult,
 } from "@stackpilot/contracts";
 import { decryptValue, deriveKey, encryptValue } from "../security/crypto.js";
 import { DatabaseRepositoryError, type CreatePlanRecord, type DatabaseAccess, type DatabaseRepository } from "./databaseRepository.js";
@@ -124,9 +124,30 @@ export class SqliteDatabaseRepository implements DatabaseRepository {
   listBackupPlans(nodeScope: DatabaseAccess["nodeScope"]): BusinessDatabaseBackupPlan[] {
     const scope=scopeSql(nodeScope);return (this.database.prepare(`SELECT p.* FROM database_backup_plans p JOIN database_instances i ON i.id=p.instance_id WHERE 1=1${scope.clause} ORDER BY p.created_at DESC`).all(...scope.values) as Row[]).map(this.backupPlan);
   }
+  listBackupPlansForAgent(nodeId:string):AgentDatabaseBackupPlan[]{
+    const rows=this.database.prepare(`SELECT p.*,i.local_id FROM database_backup_plans p JOIN database_instances i ON i.id=p.instance_id WHERE i.node_id=? ORDER BY p.created_at`).all(nodeId)as Row[];
+    return rows.map((row)=>({id:row.id as string,instanceLocalId:row.local_id as string,cron:row.cron as string,retentionCount:row.retention_count as number,enabled:Boolean(row.enabled),version:row.version as number,updatedAt:row.updated_at as string}));
+  }
+  saveScheduledBackupReports(nodeId:string,reports:AgentDatabaseScheduledBackupReport[]):string[]{return this.database.transaction(()=>{
+    const accepted:string[]=[];
+    for(const report of reports){
+      const reportHash=createHash("sha256").update(JSON.stringify(report)).digest("hex");
+      const existing=this.database.prepare(`SELECT j.scheduled_report_hash,i.node_id FROM database_backup_jobs j JOIN database_instances i ON i.id=j.instance_id WHERE j.scheduled_report_id=?`).get(report.reportId)as{scheduled_report_hash:string;node_id:string}|undefined;
+      if(existing){if(existing.node_id!==nodeId)throw new DatabaseRepositoryError(403,"FORBIDDEN","本地备份结果不属于当前节点");if(existing.scheduled_report_hash!==reportHash)throw new DatabaseRepositoryError(409,"BAD_REQUEST","本地备份结果 ID 已用于不同内容");accepted.push(report.reportId);continue;}
+      const target=this.database.prepare(`SELECT p.id plan_id,p.instance_id,p.version,i.local_id FROM database_backup_plans p JOIN database_instances i ON i.id=p.instance_id WHERE p.id=? AND i.node_id=?`).get(report.planId,nodeId)as{plan_id:string;instance_id:string;version:number;local_id:string}|undefined;
+      if(!target||target.local_id!==report.instanceLocalId)throw new DatabaseRepositoryError(404,"NOT_FOUND","本地备份结果引用了未知计划或实例");
+      if(report.planVersion>target.version)throw new DatabaseRepositoryError(409,"BAD_REQUEST","本地备份结果计划版本超前于 Controller");
+      const jobId=randomUUID();this.database.prepare(`INSERT INTO database_backup_jobs(id,plan_id,instance_id,operation_id,scheduled_report_id,scheduled_report_hash,status,started_at,completed_at,size_bytes,error_code,manifest_version,checksum,created_at) VALUES(?,?,?,NULL,?,?,?,?,?,?,?,?,?,?)`)
+        .run(jobId,target.plan_id,target.instance_id,report.reportId,reportHash,report.status,report.scheduledFor,report.completedAt,report.result?.sizeBytes??null,report.errorCode,report.result?.manifestVersion??null,report.result?.checksum??null,report.scheduledFor);
+      if(report.status==="succeeded"&&report.result)this.database.prepare(`INSERT INTO database_restore_points(id,job_id,instance_id,created_at,size_bytes,checksum,database_version,manifest_version,verified_at,drill_status,drilled_at) VALUES(?,?,?,?,?,?,?,?,?,'not_started',NULL)`)
+        .run(report.result.restorePointId,jobId,target.instance_id,report.result.createdAt,report.result.sizeBytes,report.result.checksum,report.result.databaseVersion,report.result.manifestVersion,report.completedAt);
+      this.database.prepare("UPDATE database_backup_plans SET last_run_at=CASE WHEN last_run_at IS NULL OR last_run_at<? THEN ? ELSE last_run_at END WHERE id=?").run(report.completedAt,report.completedAt,target.plan_id);
+      accepted.push(report.reportId);
+    }return accepted;
+  })();}
   createBackupJob(plan: BusinessDatabaseBackupPlan, operationId: string, now: string): DatabaseBackupJob {
     const job=DatabaseBackupJobSchema.parse({id:randomUUID(),planId:plan.id,instanceId:plan.instanceId,status:"queued",startedAt:null,completedAt:null,sizeBytes:null,errorCode:null,manifestVersion:null,checksum:null});
-    this.database.transaction(()=>{this.database.prepare("INSERT INTO database_backup_jobs(id,plan_id,instance_id,operation_id,status,created_at)VALUES(?,?,?,?,?,?)").run(job.id,plan.id,plan.instanceId,operationId,job.status,now);this.database.prepare("UPDATE database_backup_plans SET last_run_at=?,updated_at=?,version=version+1 WHERE id=?").run(now,now,plan.id);})();return job;
+    this.database.transaction(()=>{this.database.prepare("INSERT INTO database_backup_jobs(id,plan_id,instance_id,operation_id,status,created_at)VALUES(?,?,?,?,?,?)").run(job.id,plan.id,plan.instanceId,operationId,job.status,now);this.database.prepare("UPDATE database_backup_plans SET last_run_at=? WHERE id=?").run(now,plan.id);})();return job;
   }
   findBackupJobByOperation(operationId:string):DatabaseBackupJob|null{const row=this.database.prepare("SELECT * FROM database_backup_jobs WHERE operation_id=?").get(operationId)as Row|undefined;return row?DatabaseBackupJobSchema.parse({id:row.id,planId:row.plan_id,instanceId:row.instance_id,status:row.status,startedAt:row.started_at,completedAt:row.completed_at,sizeBytes:row.size_bytes,errorCode:row.error_code,manifestVersion:row.manifest_version,checksum:row.checksum}):null;}
   listBackupJobs(nodeScope:DatabaseAccess["nodeScope"]):DatabaseBackupJob[]{const scope=scopeSql(nodeScope);return(this.database.prepare(`SELECT j.* FROM database_backup_jobs j JOIN database_instances i ON i.id=j.instance_id WHERE 1=1${scope.clause} ORDER BY j.created_at DESC LIMIT 10000`).all(...scope.values)as Row[]).map(row=>DatabaseBackupJobSchema.parse({id:row.id,planId:row.plan_id,instanceId:row.instance_id,status:row.status,startedAt:row.started_at,completedAt:row.completed_at,sizeBytes:row.size_bytes,errorCode:row.error_code,manifestVersion:row.manifest_version,checksum:row.checksum}));}

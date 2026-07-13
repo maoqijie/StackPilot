@@ -1,5 +1,7 @@
 import {
-  AgentDatabaseOperationPollResponseSchema, AgentDatabaseOperationUpdateSchema,
+  AgentDatabaseBackupPlanPollResponseSchema, AgentDatabaseOperationPollResponseSchema, AgentDatabaseOperationUpdateSchema,
+  AgentDatabaseScheduledBackupResultsResponseSchema, DatabaseHelperBackupPlansResponseSchema,
+  DatabaseHelperBackupResultAckSchema, DatabaseHelperBackupResultsResponseSchema,
   AGENT_DATABASE_UPLOAD_LIMIT_BYTES, AgentDatabaseQueryUploadSchema, DatabaseHelperCollectionSchema,
   type AgentDatabaseOperationUpdate, type AgentDatabaseQueryUpload,
 } from "@stackpilot/contracts";
@@ -31,7 +33,7 @@ export function boundQueryUpload(upload: AgentDatabaseQueryUpload, limitBytes = 
 }
 
 export class DatabaseAgentRuntime {
-  private collectionRunning = false; private operationRunning = false; private nextCollectionAt = 0;
+  private collectionRunning = false; private operationRunning = false; private backupSyncRunning = false; private nextCollectionAt = 0; private nextBackupSyncAt = 0;
   constructor(private readonly helper: DatabaseHelperClient, private readonly controller: ControllerClient, private readonly identity: AgentIdentity, private readonly intervalMs = 60_000, private readonly outbox: DatabaseOperationOutbox = new MemoryDatabaseOperationOutbox(), private readonly enabled = () => true) {}
   async run(signal?: AbortSignal) {
     while (!signal?.aborted) {
@@ -41,7 +43,32 @@ export class DatabaseAgentRuntime {
   }
   async runCycle() {
     if (!this.enabled()) return;
-    await Promise.allSettled([this.collectIfDue(), this.processOperations()]);
+    await Promise.allSettled([this.collectIfDue(), this.syncBackupPlansIfDue(), this.processOperations()]);
+  }
+  async syncBackupPlansIfDue(now = Date.now()) {
+    if (this.backupSyncRunning || now < this.nextBackupSyncAt) return; this.backupSyncRunning = true;
+    try {
+      for (let batch = 0; batch < 10; batch += 1) {
+        const pending = await this.helper.request({ action: "list-backup-results", limit: 100 });
+        if (!pending.ok) throw new Error(pending.code);
+        const reports = DatabaseHelperBackupResultsResponseSchema.parse(pending.result).reports;
+        if (!reports.length) break;
+        const accepted = AgentDatabaseScheduledBackupResultsResponseSchema.parse(await this.controller.json("/api/agent/databases/backup-plans/results", { reports }, this.identity));
+        const submitted = new Set(reports.map((report) => report.reportId));
+        if (accepted.acceptedReportIds.some((id) => !submitted.has(id))) throw new Error("INVALID_ACCEPTED_BACKUP_REPORT");
+        if (accepted.acceptedReportIds.length) {
+          const acknowledgment = await this.helper.request({ action: "ack-backup-results", reportIds: accepted.acceptedReportIds });
+          if (!acknowledgment.ok) throw new Error(acknowledgment.code);
+          DatabaseHelperBackupResultAckSchema.parse(acknowledgment.result);
+        }
+        if (accepted.acceptedReportIds.length !== reports.length || reports.length < 100) break;
+      }
+      const response = AgentDatabaseBackupPlanPollResponseSchema.parse(await this.controller.json("/api/agent/databases/backup-plans/poll", {}, this.identity));
+      const synced = await this.helper.request({ action: "replace-backup-plans", plans: response.plans });
+      if (!synced.ok) throw new Error(synced.code); DatabaseHelperBackupPlansResponseSchema.parse(synced.result);
+    } catch (error) {
+      agentLogger.log({ level: "warn", time: new Date().toISOString(), message: "Database backup schedule synchronization failed", errorName: error instanceof Error ? error.name : "UnknownError" });
+    } finally { this.nextBackupSyncAt = now + this.intervalMs; this.backupSyncRunning = false; }
   }
   async collectIfDue(now = Date.now()) {
     if (this.collectionRunning || now < this.nextCollectionAt) return;

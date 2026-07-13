@@ -27,6 +27,22 @@ test("database runtime waits for Controller feature negotiation before using hel
   await runtime.runCycle(); assert.equal(helperCalls, 0);
 });
 
+test("backup schedules upload pending reports before replacement and acknowledge only accepted ids", async () => {
+  const reportId=crypto.randomUUID(),planId=crypto.randomUUID(),restorePointId=crypto.randomUUID(),now=new Date().toISOString();
+  const report={reportId,planId,planVersion:1,instanceLocalId:"orders",scheduledFor:now,status:"succeeded",result:{kind:"backup",restorePointId,createdAt:now,sizeBytes:12,checksum:"a".repeat(64),databaseVersion:"16.9",manifestVersion:1},errorCode:null,completedAt:now};
+  const plan={id:planId,instanceLocalId:"orders",cron:"0 2 * * *",retentionCount:7,enabled:true,version:1,updatedAt:now},events=[];
+  const helper={async request(request){events.push(request.action);if(request.action==="list-backup-results")return{ok:true,result:{reports:[report]}};if(request.action==="ack-backup-results")return{ok:true,result:{acknowledgedReportIds:request.reportIds}};return{ok:true,result:{plans:request.plans}};}};
+  const controller={async json(path,body){events.push(path);if(path.endsWith("/results")){assert.deepEqual(body,{reports:[report]});return{acceptedReportIds:[reportId],acceptedAt:now};}return{plans:[plan],controllerTime:now};}};
+  await new DatabaseAgentRuntime(helper,controller,identity).syncBackupPlansIfDue(1_000);
+  assert.deepEqual(events,["list-backup-results","/api/agent/databases/backup-plans/results","ack-backup-results","/api/agent/databases/backup-plans/poll","replace-backup-plans"]);
+});
+
+test("backup reports remain pending when Controller persistence is unavailable",async()=>{
+  const acknowledged=[];const now=new Date().toISOString(),report={reportId:crypto.randomUUID(),planId:crypto.randomUUID(),planVersion:1,instanceLocalId:"orders",scheduledFor:now,status:"failed",result:null,errorCode:"BACKUP_FAILED",completedAt:now};
+  const helper={async request(request){if(request.action==="list-backup-results")return{ok:true,result:{reports:[report]}};if(request.action==="ack-backup-results")acknowledged.push(...request.reportIds);return{ok:true,result:{acknowledgedReportIds:[]}};}};
+  await new DatabaseAgentRuntime(helper,{async json(){throw new Error("offline");}},identity).syncBackupPlansIfDue(1_000);assert.deepEqual(acknowledged,[]);
+});
+
 test("terminal operation update survives delivery failure and is replayed before new work", async () => {
   const operation = { operationId: crypto.randomUUID(), version: 1, kind: "set-read-only", parameters: { kind: "set-read-only", instanceLocalId: "orders" }, idempotencyKey: "readonly-replay", expiresAt: new Date(Date.now() + 60_000).toISOString() };
   const terminal = { operationId: operation.operationId, version: 1, status: "succeeded", errorCode: null, errorMessage: null, credentialEnvelope: null, result: null, updatedAt: new Date().toISOString() };

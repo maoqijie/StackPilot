@@ -14,13 +14,16 @@ test("database-helper uses root-only Unix socket activation with Agent group acc
   assert.doesNotMatch(service + socket, /ListenStream=.*(?:0\.0\.0\.0|\[::\])|TCP|privileged/);
 });
 
-test("OpenRC helper is supervised and installer never starts services implicitly", async () => {
+test("OpenRC helper is supervised and installer enables helper plus local scheduling", async () => {
   const openrc = await read("deploy/openrc/stackpilot-database-helper");
   const installer = await read("deploy/scripts/install-database-helper.sh");
   const mode = (await stat(new URL("../../deploy/scripts/install-database-helper.sh", import.meta.url))).mode;
   assert.ok(mode & 0o100); assert.match(openrc, /supervisor="supervise-daemon"/); assert.match(openrc, /STACKPILOT_DATABASE_HELPER_SOCKET=/);
-  assert.match(installer, /systemctl enable --now stackpilot-database-helper\.socket/);
-  assert.doesNotMatch(installer, /^\s*(?:systemctl (?:start|enable --now)|rc-service .* start)/m);
+  assert.match(installer, /^\s*systemctl enable --now stackpilot-database-helper\.socket$/m);
+  assert.match(installer, /^\s*rc-service stackpilot-database-helper start$/m);
+  assert.match(installer, /backup-plan install-scheduler/);
+  assert.match(installer, /apps\/database-helper\/dist/); assert.match(installer, /packages\/contracts\/dist/);
+  assert.doesNotMatch(installer, /cp -a "\$root\/\."|cp -R "\$root\/\."|copy_path .*\.git|copy_path .*\.env/);
 });
 
 test("helper package mapper never exposes a shell command interface", async () => {

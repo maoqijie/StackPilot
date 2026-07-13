@@ -7,6 +7,7 @@ import { DatabaseInventoryService } from "../../apps/controller/dist/modules/dat
 import { DatabaseOperationService } from "../../apps/controller/dist/modules/databases/databaseOperationService.js";
 import { SqliteDatabaseRepository } from "../../apps/controller/dist/repositories/sqliteDatabaseRepository.js";
 import { routeDatabaseRequest } from "../../apps/controller/dist/http/databaseRouter.js";
+import { routeDatabaseAgentRequest } from "../../apps/controller/dist/http/databaseAgentRouter.js";
 import { NodeService } from "../../apps/controller/dist/modules/nodes/nodeService.js";
 import { SqliteAgentControlRepository } from "../../apps/controller/dist/repositories/sqliteAgentControlRepository.js";
 
@@ -47,5 +48,18 @@ test("database install node list uses database permissions and node scope",async
     const request=context(value,{path:"/api/databases/install-nodes",principal:install});await routeDatabaseRequest(request);
     assert.equal(request.response.statusCode,200);assert.deepEqual(JSON.parse(request.response.body).nodes.map((node)=>node.nodeId),[value.nodeId]);
     const denied=context(value,{path:"/api/databases/install-nodes",principal:{...install,permissions:new Set(["databases:read"])} });await assert.rejects(()=>routeDatabaseRequest(denied),/权限不足/);
+  }finally{value.database.close();}
+});
+
+test("signed Agent backup endpoints require capability and persist offline reports",async()=>{
+  const value=await fixture();try{
+    const instance=value.services.databaseInventory.list("all").instances[0],plan=value.services.databaseWorkspace.create({instanceId:instance.id,name:"offline",cron:"*/5 * * * *",retentionCount:7,enabled:true},"all");
+    const agentContext=(path,body)=>{const request=context(value,{path,method:"POST",body,principal:undefined});return{...request,agentIdentity:{nodeId:value.nodeId,credentialId:crypto.randomUUID(),protocolVersion:"1.1"}};};
+    await assert.rejects(()=>routeDatabaseAgentRequest(agentContext("/api/agent/databases/backup-plans/poll",{})),/未获数据库备份能力授权/);
+    value.database.prepare("UPDATE agent_nodes SET payload=json_set(payload,'$.declaredCapabilities',json('[\"database.backup\"]'),'$.allowedCapabilities',json('[\"database.backup\"]')) WHERE node_id=?").run(value.nodeId);
+    const poll=agentContext("/api/agent/databases/backup-plans/poll",{});await routeDatabaseAgentRequest(poll);assert.deepEqual(JSON.parse(poll.response.body).plans.map((item)=>item.id),[plan.id]);
+    const now=new Date().toISOString(),report={reportId:crypto.randomUUID(),planId:plan.id,planVersion:1,instanceLocalId:"postgres-main",scheduledFor:now,status:"failed",result:null,errorCode:"CAPACITY_UNKNOWN",completedAt:now};
+    const result=agentContext("/api/agent/databases/backup-plans/results",{reports:[report]});await routeDatabaseAgentRequest(result);assert.deepEqual(JSON.parse(result.response.body).acceptedReportIds,[report.reportId]);
+    assert.equal(value.database.prepare("SELECT status FROM database_backup_jobs WHERE scheduled_report_id=?").get(report.reportId).status,"failed");
   }finally{value.database.close();}
 });

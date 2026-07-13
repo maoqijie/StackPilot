@@ -9,8 +9,8 @@ import {
   ExecuteTerminalSnippetRequestSchema, TerminalSnippetListResponseSchema,
   AgentSiteSnapshotSchema, CertificateRenewalTaskParametersSchema, CreateCertificateRenewalRequestSchema,
   CreateFileUploadRequestSchema, ResumableFileUploadRecordSchema,
-  AgentDatabaseOperationUpdateSchema, AgentDatabaseQueryUploadSchema,
-  BusinessDatabaseBackupsPayloadSchema, CreateDatabaseOperationPlanRequestSchema, DatabaseOperationPlanSchema,
+  AgentDatabaseBackupPlanPollResponseSchema, AgentDatabaseOperationUpdateSchema, AgentDatabaseQueryUploadSchema, AgentDatabaseScheduledBackupResultsRequestSchema,
+  BusinessDatabaseBackupsPayloadSchema, CreateBusinessDatabaseBackupPlanRequestSchema, CreateDatabaseOperationPlanRequestSchema, DatabaseOperationPlanSchema,
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, ExecuteDatabaseOperationPlanRequestSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
@@ -127,6 +127,7 @@ test("database contracts strictly validate inventory, SQL uploads, backups and t
   assert.equal(AgentDatabaseQueryUploadSchema.safeParse({collectedAt,collectionStatus:"complete",warnings:[],sessions:[],queries:[query]}).success,true);
   assert.equal(AgentDatabaseQueryUploadSchema.safeParse({collectedAt,collectionStatus:"complete",warnings:[],sessions:[],queries:[{...query,sql:"x".repeat(2001)}]}).success,false);
   assert.equal(BusinessDatabaseBackupsPayloadSchema.safeParse({collectedAt,collectionStatus:"complete",warnings:[],plans:[],jobs:[],restorePoints:[]}).success,true);
+  assert.equal(CreateBusinessDatabaseBackupPlanRequestSchema.safeParse({instanceId:"database-"+"a".repeat(32),name:"bad",cron:"@daily",retentionCount:7,enabled:true}).success,false);
   const nodeId=crypto.randomUUID();
   assert.equal(CreateDatabaseOperationPlanRequestSchema.safeParse({kind:"install",nodeId,engine:"postgresql",name:"app",port:null,initialDatabase:"app",credentialPublicKey:"x".repeat(64)}).success,true);
   assert.equal(CreateDatabaseOperationPlanRequestSchema.safeParse({kind:"create-index",instanceId:"database-"+"a".repeat(32),queryId:"q",table:"users;drop",columns:["email"]}).success,false);
@@ -134,6 +135,10 @@ test("database contracts strictly validate inventory, SQL uploads, backups and t
   assert.equal(DatabaseOperationPlanSchema.safeParse(plan).success,true);
   assert.equal(ExecuteDatabaseOperationPlanRequestSchema.safeParse({planId:plan.id,version:1,idempotencyKey:"execute-001"}).success,true);
   assert.equal(AgentDatabaseOperationUpdateSchema.safeParse({operationId:crypto.randomUUID(),version:1,status:"failed",errorCode:null,errorMessage:"failed",credentialEnvelope:null,updatedAt:collectedAt}).success,false);
+  const backupPlan={id:crypto.randomUUID(),instanceLocalId:"orders",cron:"0 2 * * *",retentionCount:7,enabled:true,version:1,updatedAt:collectedAt};
+  assert.equal(AgentDatabaseBackupPlanPollResponseSchema.safeParse({plans:[backupPlan,{...backupPlan}],controllerTime:collectedAt}).success,false);
+  const report={reportId:crypto.randomUUID(),planId:backupPlan.id,planVersion:1,instanceLocalId:"orders",scheduledFor:collectedAt,status:"failed",result:null,errorCode:"BACKUP_FAILED",completedAt:collectedAt};
+  assert.equal(AgentDatabaseScheduledBackupResultsRequestSchema.safeParse({reports:[report,{...report}]}).success,false);
 });
 
 test("identity schemas reject privilege fields and invalid node scopes", () => {

@@ -31,7 +31,7 @@ export const ExecuteDatabaseOperationPlanRequestSchema = z.object({
 export const DatabaseCredentialEnvelopeSchema = z.object({
   algorithm: z.literal("RSA-OAEP-256"), ciphertext: z.string().min(1).max(32_768), expiresAt: z.string().datetime(),
 }).strict();
-const DatabaseBackupOperationResultSchema = z.object({
+export const DatabaseBackupOperationResultSchema = z.object({
   kind: z.literal("backup"), restorePointId: z.string().uuid(), createdAt: z.string().datetime(),
   sizeBytes: z.number().int().nonnegative().safe(), checksum: z.string().regex(/^[a-f0-9]{64}$/),
   databaseVersion: z.string().min(1).max(80), manifestVersion: z.number().int().positive(),
@@ -77,3 +77,4 @@ export type ExecuteDatabaseOperationPlanRequest = z.infer<typeof ExecuteDatabase
 export type DatabaseOperation = z.infer<typeof DatabaseOperationSchema>;
 export type DatabaseOperationKind = z.infer<typeof DatabaseOperationKindSchema>;
 export type DatabaseOperationResult = z.infer<typeof DatabaseOperationResultSchema>;
+export type DatabaseBackupOperationResult = z.infer<typeof DatabaseBackupOperationResultSchema>;

@@ -7,6 +7,7 @@ import { DatabaseIdentifierSchema, LocalIdSchema, ManagedInstanceSchema } from "
 import { DatabaseRegistry } from "./state/registry.js";
 import { BackupScheduleStore } from "./operations/backupScheduler.js";
 import { BackupSchedulerInstaller } from "./operations/backupSchedulerInstaller.js";
+import { acquireProcessLock } from "./operations/instanceLock.js";
 import { readSupportedOs } from "./platform/osSupport.js";
 import { FixedCommandRunner } from "./platform/runner.js";
 
@@ -30,9 +31,10 @@ export async function runCli(argv = process.argv.slice(2), env: NodeJS.ProcessEn
   const config = loadHelperConfig(env), schedules = new BackupScheduleStore(config.stateDir);
   if (argv[0] === "backup-plan" && argv[1] === "install-scheduler" && argv.length === 2) { const installed = await new BackupSchedulerInstaller(new FixedCommandRunner()).install(await readSupportedOs()); process.stdout.write(`${JSON.stringify({ installed })}\n`); return; }
   if (argv[0] === "backup-plan" && argv[1] === "results" && argv.length === 2) { process.stdout.write(`${JSON.stringify({ results: await schedules.results() })}\n`); return; }
-  if (argv[0] === "backup-plan" && argv[1] === "remove" && argv.length === 3) { await schedules.remove(argv[2]!); process.stdout.write(`${JSON.stringify({ removed: argv[2] })}\n`); return; }
-  if (argv[0] === "backup-plan" && argv[1] === "sync" && argv.length === 2) { const plan = await schedules.sync(JSON.parse(await readStdin())); process.stdout.write(`${JSON.stringify({ plan })}\n`); return; }
-  if (argv.length !== 1 || argv[0] !== "register") throw new Error("Usage: stackpilot-database-helper-cli register|backup-plan install-scheduler|sync|remove <uuid>|results");
+  if (argv[0] === "backup-plan" && argv[1] === "replace" && argv.length === 2) { const release=await acquireProcessLock(config.stateDir,".backup-scheduler.lock");let plans;try{plans=await schedules.replace(JSON.parse(await readStdin(512 * 1024)));}finally{await release();}process.stdout.write(`${JSON.stringify({ plans })}\n`); return; }
+  if (argv[0] === "backup-plan" && argv[1] === "remove" && argv.length === 3) { const release=await acquireProcessLock(config.stateDir,".backup-scheduler.lock");try{await schedules.remove(argv[2]!);}finally{await release();}process.stdout.write(`${JSON.stringify({ removed: argv[2] })}\n`); return; }
+  if (argv[0] === "backup-plan" && argv[1] === "sync" && argv.length === 2) { const release=await acquireProcessLock(config.stateDir,".backup-scheduler.lock");let plan;try{plan=await schedules.sync(JSON.parse(await readStdin()));}finally{await release();}process.stdout.write(`${JSON.stringify({ plan })}\n`); return; }
+  if (argv.length !== 1 || argv[0] !== "register") throw new Error("Usage: stackpilot-database-helper-cli register|backup-plan install-scheduler|replace|sync|remove <uuid>|results");
   const input = RegisterSchema.parse(JSON.parse(await readStdin()));
   const { password, ...registration } = input;
   const instance = ManagedInstanceSchema.parse({ ...registration, backupDirectory: resolve(config.stateDir, "backups", input.id), createdAt: new Date().toISOString() });

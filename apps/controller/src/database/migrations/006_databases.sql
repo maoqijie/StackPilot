@@ -53,6 +53,8 @@ CREATE TABLE database_backup_jobs (
   plan_id TEXT REFERENCES database_backup_plans(id) ON DELETE SET NULL,
   instance_id TEXT NOT NULL REFERENCES database_instances(id) ON DELETE CASCADE,
   operation_id TEXT UNIQUE,
+  scheduled_report_id TEXT UNIQUE,
+  scheduled_report_hash TEXT,
   status TEXT NOT NULL CHECK(status IN ('queued','running','succeeded','failed','cancelled')),
   started_at TEXT,
   completed_at TEXT,

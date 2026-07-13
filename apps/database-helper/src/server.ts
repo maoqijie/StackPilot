@@ -6,15 +6,22 @@ import {
 } from "@stackpilot/contracts";
 import type { DatabaseCollector } from "./collection/collector.js";
 import type { DatabaseOperationService } from "./operations/operationService.js";
+import type { BackupScheduleStore } from "./operations/backupScheduler.js";
+import { acquireProcessLock } from "./operations/instanceLock.js";
 import { HelperError } from "./domain.js";
 
-const MAX_REQUEST_BYTES = 96 * 1024;
+const MAX_REQUEST_BYTES = 512 * 1024;
 export class DatabaseHelperServer {
-  constructor(private readonly collector: DatabaseCollector, private readonly operations: DatabaseOperationService) {}
+  constructor(private readonly collector: DatabaseCollector, private readonly operations: DatabaseOperationService, private readonly schedules: BackupScheduleStore) {}
   async handle(raw: unknown): Promise<DatabaseHelperResponse> {
     try {
       const request = DatabaseHelperRequestSchema.parse(raw);
-      const result = request.action === "collect" ? await this.collector.collect() : await this.operations.execute(request.operation);
+      let result;
+      if (request.action === "collect") result = await this.collector.collect();
+      else if (request.action === "execute") result = await this.operations.execute(request.operation);
+      else if (request.action === "replace-backup-plans") result = await this.withScheduleLock(async () => ({ plans: await this.schedules.replace(request.plans) }));
+      else if (request.action === "list-backup-results") result = { reports: (await this.schedules.results()).slice(0, request.limit) };
+      else result = await this.withScheduleLock(async () => ({ acknowledgedReportIds: await this.schedules.acknowledge(request.reportIds) }));
       return DatabaseHelperResponseSchema.parse({ ok: true, result });
     } catch (error) {
       const code = error instanceof HelperError ? error.code : error instanceof SyntaxError || (error as { name?: string }).name === "ZodError" ? "INVALID_REQUEST" : "HELPER_FAILED";
@@ -22,6 +29,7 @@ export class DatabaseHelperServer {
       return { ok: false, code, error: message };
     }
   }
+  private async withScheduleLock<T>(action:()=>Promise<T>){const release=await acquireProcessLock(this.schedules.stateDir,".backup-scheduler.lock");try{return await action();}finally{await release();}}
   listen(options: { path: string; fd?: number; gid?: number }) {
     const server = createServer({ allowHalfOpen: true }, (socket) => this.connection(socket));
     if (options.fd !== undefined) server.listen({ fd: options.fd });

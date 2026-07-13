@@ -9,7 +9,8 @@ import { DatabaseHelperClient } from "../../apps/agent/dist/databases/helperClie
 test("Unix socket exchanges one strict bounded request without exposing arbitrary actions", async () => {
   const directory = await mkdtemp(join(tmpdir(), "stackpilot-helper-socket-")), path = join(directory, "helper.sock");
   const collection = { snapshot: { collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], instances: [] }, queryUpload: { collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], sessions: [], queries: [] } };
-  const server = new DatabaseHelperServer({ async collect() { return collection; } }, { async execute() { throw new Error("unexpected"); } });
+  const schedules = { async replace(plans) { return plans; }, async results() { return []; }, async acknowledge(ids) { return ids; } };
+  const server = new DatabaseHelperServer({ async collect() { return collection; } }, { async execute() { throw new Error("unexpected"); } }, schedules);
   const socket = server.listen({ path });
   try {
     await new Promise((resolve, reject) => { socket.once("listening", resolve); socket.once("error", reject); });

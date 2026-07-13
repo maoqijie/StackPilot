@@ -21,9 +21,11 @@ test("scheduled backups run without a Controller, remain idempotent per minute a
   let backups = 0; const registry = { async get() { return { id: "orders" }; }, async credential() { return { instanceId: "orders" }; } };
   const service = { async create(_instance, _credential, retention) { backups += 1; assert.equal(retention, 7); return { id: restorePointId }; } };
   try {
+    service.create = async (_instance, _credential, retention) => { backups += 1; assert.equal(retention, 7); return { id: restorePointId, createdAt: new Date().toISOString(), databaseVersion: "16.9", version: 1, files: [{ sizeBytes: 12 }] }; };
     await store.sync(plan); const executor = new ScheduledBackupExecutor(store, registry, service), now = new Date(2026, 6, 14, 12, 0, 42);
     assert.equal((await executor.runDue(now))[0].status, "succeeded"); assert.deepEqual(await executor.runDue(now), []); assert.equal(backups, 1);
-    const results = await store.results(); assert.equal(results[0].restorePointId, restorePointId); assert.equal(results[0].scheduledFor, new Date(2026, 6, 14, 12, 0, 0).toISOString());
+    const results = await store.results(); assert.equal(results[0].result.restorePointId, restorePointId); assert.equal(results[0].scheduledFor, new Date(2026, 6, 14, 12, 0, 0).toISOString());
+    await store.acknowledge([results[0].reportId]); assert.deepEqual(await store.results(), []); assert.deepEqual(await executor.runDue(now), []);
     assert.equal((await stat(join(root, "backup-schedules.json"))).mode & 0o777, 0o600);
     await assert.rejects(() => store.sync({ ...plan, version: 1 }), (error) => error.code === "BACKUP_PLAN_VERSION_CONFLICT");
   } finally { await rm(root, { recursive: true, force: true }); }

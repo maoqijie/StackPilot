@@ -24,7 +24,7 @@ export function createDatabaseHelper(env: NodeJS.ProcessEnv | Record<string, str
   const backups = new DatabaseBackupService(runner, queries), journal = new OperationJournal(join(config.stateDir, "operation-journal.json"));
   const provisioner = new DatabaseProvisioner(config.stateDir, registry, runner, queries);
   const restores = new DatabaseRestoreService(runner, queries, provisioner);
-  return { config, journal, server: new DatabaseHelperServer(collector, new DatabaseOperationService(registry, queries, backups, journal, provisioner, restores)) };
+  return { config, journal, server: new DatabaseHelperServer(collector, new DatabaseOperationService(registry, queries, backups, journal, provisioner, restores), schedules) };
 }
 
 const isMainModule = process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);

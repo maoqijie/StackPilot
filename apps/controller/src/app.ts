@@ -106,7 +106,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     terminalSnippets: new TerminalSnippetService(terminalRepository, remoteTasks),
     ...(databaseRepository ? {
       databaseInventory: new DatabaseInventoryService(databaseRepository),
-      databaseWorkspace: new DatabaseBackupWorkspaceService(databaseRepository),
+      databaseWorkspace: new DatabaseBackupWorkspaceService(databaseRepository, audit),
       databaseOperations: new DatabaseOperationService(databaseRepository, nodes, audit),
       databaseRetention: new DatabaseRetentionService(databaseRepository),
     } : {}),
