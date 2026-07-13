@@ -9,3 +9,8 @@ CREATE TABLE terminal_snippet_preferences (
 
 CREATE INDEX terminal_snippet_preferences_user_updated_idx
   ON terminal_snippet_preferences(user_id, updated_at DESC);
+
+UPDATE release_metadata
+SET schema_version = 4,
+    upgraded_at = CURRENT_TIMESTAMP
+WHERE singleton = 1;

@@ -21,6 +21,7 @@ import { EnrollmentService } from "./modules/enrollments/enrollmentService.js";
 import { NodeService } from "./modules/nodes/nodeService.js";
 import { HostMonitoringService } from "./modules/hosts/hostMonitoringService.js";
 import { SiteMonitoringService } from "./modules/sites/siteMonitoringService.js";
+import { DatabaseBackupService } from "./modules/databases/databaseBackupService.js";
 import { NginxSiteCollector } from "./platform/siteCollector.js";
 import { RemoteTaskService } from "./modules/remote-tasks/remoteTaskService.js";
 import { TerminalSnippetService } from "./modules/terminal/terminalSnippetService.js";
@@ -40,6 +41,10 @@ import { loadOrCreateAuditKey } from "./security/secretStore.js";
 import { openDatabase } from "./database/database.js";
 import { SqliteAgentControlRepository } from "./repositories/sqliteAgentControlRepository.js";
 import { requestSource } from "./http/trustedProxy.js";
+import { FileUploadRepository } from "./repositories/fileUploadRepository.js";
+import { FileUploadService } from "./modules/files/fileUploadService.js";
+import { DatabaseSlowQueryService } from "./modules/databases/databaseSlowQueryService.js";
+import { PostgresSlowQueryCollector } from "./platform/postgresSlowQueryCollector.js";
 
 export type AppOptions = {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -54,6 +59,11 @@ export type AppOptions = {
   identity?: IdentityService | null;
 };
 
+function createFileUploadService(database: Database.Database, repoRoot: string, config: ControllerConfig): FileUploadService {
+  const uploadRoot = isAbsolute(config.uploadRoot) ? config.uploadRoot : resolve(repoRoot, config.uploadRoot);
+  return new FileUploadService(new FileUploadRepository(database), uploadRoot, config.uploadMaxBytes, config.uploadChunkMaxBytes);
+}
+
 export function createControllerServices(platform: PlatformAdapter, repoRoot: string, config: ControllerConfig, agentRepository?: AgentControlRepository, database: Database.Database | null = null): Services {
   const state = new MemoryTaskStateRepository();
   const exports = new FileExportRepository(repoRoot);
@@ -61,10 +71,13 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
   const overview = new OverviewService(platform, state, repository);
   const remoteTasks = new RemoteTaskService(repository);
   const terminalRepository = database ? new SqliteTerminalSnippetRepository(database) : new MemoryTerminalSnippetRepository();
+  const files = database ? createFileUploadService(database, repoRoot, config) : undefined;
   return {
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
+    databases: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
     sites: new SiteMonitoringService(new NginxSiteCollector(config.nginxConfigDirs)),
+    databaseBackups: new DatabaseBackupService(database, isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath), config, repoRoot),
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
     schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform),
@@ -72,6 +85,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     nodes: new NodeService(repository),
     remoteTasks,
     terminalSnippets: new TerminalSnippetService(terminalRepository, remoteTasks),
+    ...(files ? { files } : {}),
   };
 }
 
@@ -91,6 +105,7 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
   const identity = options.identity === undefined ? (database && config.masterKey ? new IdentityService(database, loadOrCreateAuditKey(database,parseMasterKey(config.masterKey)), config.sessionSeconds) : null) : options.identity;
   const agentRepository = options.agentRepository ?? (database ? new SqliteAgentControlRepository(database,identity?.audit) : undefined);
   const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, database);
+  if (!services.files && database) services.files = createFileUploadService(database, repoRoot, config);
   const logger = options.logger ?? consoleLogger;
   const surface = options.surface ?? "all";
 
@@ -115,13 +130,14 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
       const isHealthPath = url.pathname === "/healthz" || url.pathname === "/readyz";
       const isLoginPath = url.pathname === "/api/auth/login";
       const isSessionStatusPath = url.pathname === "/api/auth/session";
+      const isFileChunkPath = /^\/api\/file-uploads\/[0-9a-f-]+\/chunks$/i.test(url.pathname) && method === "POST";
       if (surface === "agent" && !isAgentPath && !isHealthPath) throw new ServiceError(404, "NOT_FOUND", "接口不存在");
       if (isAgentPath && (!("encrypted" in request.socket) || request.socket.encrypted !== true)) throw new ServiceError(426, "BAD_REQUEST", "Agent API 要求 TLS");
       if (surface === "management" && isAgentPath) throw new ServiceError(426, "BAD_REQUEST", "Agent API 仅在 TLS 监听器可用");
       principal = !isAgentPath && !isHealthPath && !isLoginPath && !isSessionStatusPath ? authenticateUser(request, identity) : isSessionStatusPath && identity ? (()=>{try{return authenticateUser(request,identity);}catch{return undefined;}})() : undefined;
       if (!isAgentPath && isWriteMethod(method) && !isLoginPath && principal && identity) requireCsrf(request, principal, identity, config.allowedOrigins);
       const bodyLimit = url.pathname === "/api/agent/heartbeat" ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
-      const parsedBody = isWriteMethod(method) ? await readJsonRequest(request, bodyLimit) : { value: {}, raw: Buffer.alloc(0) };
+      const parsedBody = isWriteMethod(method) && !isFileChunkPath ? await readJsonRequest(request, bodyLimit) : { value: {}, raw: Buffer.alloc(0) };
       const parts = url.pathname.split("/").filter(Boolean);
       const authenticatedAgent = isAgentPath && url.pathname !== "/api/agent/enroll"
         ? await authenticateAgentRequest(request, `${url.pathname}${url.search}`, parsedBody.raw, services.nodes)

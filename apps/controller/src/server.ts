@@ -39,7 +39,7 @@ if (isMainModule) {
     const database=openDatabase(databasePath);
     const identity=new IdentityService(database,loadOrCreateAuditKey(database,parseMasterKey(config.masterKey)),config.sessionSeconds);
     const agentRepository=new SqliteAgentControlRepository(database,identity.audit);
-    const services = createControllerServices(platform, repoRoot, config,agentRepository,database);
+    const services = createControllerServices(platform, repoRoot, config, agentRepository, database);
     const appOptions={ config, services, platform, repoRoot,database,identity,agentRepository };
     const server = createStackPilotServer(appOptions);
 

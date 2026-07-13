@@ -35,7 +35,10 @@ function ConfirmDialog({
     if (!dialog) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusFrame = window.requestAnimationFrame(() => {
-      dialog.querySelector<HTMLElement>("[data-confirm-cancel]")?.focus({ preventScroll: true });
+      if (!dialog.contains(document.activeElement)) {
+        dialog.querySelector<HTMLElement>("[data-confirm-autofocus]")
+          ?.focus({ preventScroll: true });
+      }
     });
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -101,7 +104,7 @@ function ConfirmDialog({
           {children}
         </div>
         <footer>
-          <button className="ghost" type="button" data-confirm-cancel onClick={onClose}>取消</button>
+          <button className="ghost" type="button" data-confirm-autofocus onClick={onClose}>取消</button>
           <button className={tone === "danger" ? "trash-destructive" : "primary"} type="button" disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel}</button>
         </footer>
       </div>

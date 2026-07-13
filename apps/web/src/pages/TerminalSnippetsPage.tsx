@@ -47,7 +47,6 @@ function TerminalSnippetsPage({ notify }: { notify: Notify }) {
   const [executionTaskId, setExecutionTaskId] = useState<string | null>(null);
   const selected = selectedId ? snippets.find((snippet) => snippet.id === selectedId) ?? null : null;
   const pending = pendingId ? snippets.find((snippet) => snippet.id === pendingId) ?? null : null;
-  const executionTask = executionTaskId ? tasks.find((task) => task.taskId === executionTaskId) ?? null : null;
   const categories = ["全部", ...new Set(snippets.map((snippet) => snippet.category))];
   const filtered = snippets.filter((snippet) => {
     const query = search.trim().toLowerCase();
@@ -57,14 +56,14 @@ function TerminalSnippetsPage({ notify }: { notify: Notify }) {
   const onlineNodes = nodes.filter((node) => node.status === "online");
   const effectiveNodeId = targetNodeId || onlineNodes[0]?.nodeId || nodes[0]?.nodeId || "";
   const effectiveNode = nodes.find((node) => node.nodeId === effectiveNodeId) ?? null;
-  const nodeOptions = useMemo(() => nodes.map((node) => `${node.nodeName} · ${node.status === "online" ? "在线" : "离线"}`), [nodes]);
-  const selectedNodeOption = effectiveNode ? `${effectiveNode.nodeName} · ${effectiveNode.status === "online" ? "在线" : "离线"}` : "暂无 Agent";
-  const latestTask = executionTask ?? tasks.find((task) => task.idempotencyKey.startsWith("terminal-")) ?? null;
-
-  const selectNode = (label: string) => {
-    const node = nodes.find((candidate) => label.startsWith(`${candidate.nodeName} ·`));
-    if (node) setTargetNodeId(node.nodeId);
-  };
+  const executionTask = executionTaskId ? tasks.find((task) => task.taskId === executionTaskId && task.targetNodeId === effectiveNodeId) ?? null : null;
+  const nodeOptions = useMemo(() => nodes.map((node) => ({
+    value: node.nodeId,
+    label: `${node.nodeName} · ${node.status === "online" ? "在线" : "离线"} · ${node.nodeId.slice(0, 8)}`,
+  })), [nodes]);
+  const latestTask = executionTask ?? tasks
+    .filter((task) => task.targetNodeId === effectiveNodeId && task.idempotencyKey.startsWith("terminal:"))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
   const copy = (value: string) => void navigator.clipboard.writeText(value).then(() => notify("命令已复制", "info")).catch(() => notify("复制失败，请检查浏览器剪贴板权限", "danger"));
   const run = (snippet: TerminalSnippetRecord) => {
     if (!effectiveNode) { notify("当前授权范围内没有 Agent 节点", "danger"); return; }
@@ -73,7 +72,8 @@ function TerminalSnippetsPage({ notify }: { notify: Notify }) {
   };
   const confirmExecution = async () => {
     const currentPassword = passwordRef.current?.value ?? password;
-    if (!pending || !effectiveNode || !currentPassword) return;
+    if (!pending || !effectiveNode) return;
+    if (!currentPassword) { notify("请输入当前账号密码", "danger"); passwordRef.current?.focus(); return; }
     setExecuting(true);
     try {
       const proof = await reauthenticate(currentPassword);
@@ -96,7 +96,7 @@ function TerminalSnippetsPage({ notify }: { notify: Notify }) {
       subtitle={loading ? "正在从 Controller 加载受控命令片段" : `片段、收藏和任务状态来自真实后端 · 更新于 ${formatBackendDateTime(collectedAt)}`}
       page="terminal-snippets"
       className="terminal-page terminal-snippets-live-page"
-      filters={<><ModuleSearch value={search} placeholder="搜索命令、分类或说明" onChange={setSearch} /><FieldSelect label="分类" value={category} options={categories} onChange={setCategory} /><FieldSelect label="目标 Agent" value={selectedNodeOption} options={nodeOptions} onChange={selectNode} /></>}
+      filters={<><ModuleSearch value={search} placeholder="搜索命令、分类或说明" onChange={setSearch} /><FieldSelect label="分类" value={category} options={categories} onChange={setCategory} /><FieldSelect label="目标 Agent" value={effectiveNodeId || "暂无 Agent"} options={nodeOptions} onChange={setTargetNodeId} /></>}
       metrics={<><MetricTile icon={TerminalSquare} label="受控片段" value={`${snippets.length}`} tone="blue" /><MetricTile icon={Server} label="在线 Agent" value={`${onlineNodes.length}`} tone={onlineNodes.length ? "green" : "gray"} /><MetricTile icon={Shield} label="可执行" value={`${snippets.filter((snippet) => effectiveNode && availableFor(effectiveNode, snippet)).length}`} tone="green" /></>}
     >
       {loading && <span className="sr-only" role="status" aria-live="polite">正在从 /api/terminal/snippets 加载真实片段</span>}
@@ -127,7 +127,7 @@ function TerminalSnippetsPage({ notify }: { notify: Notify }) {
     {selected && <DetailDrawer title={selected.title} subtitle={`${selected.category} · ${riskLabel[selected.risk]}`} className="terminal-snippet-drawer" modal onClose={() => setSelectedId(null)} actions={<><button className="ghost" type="button" onClick={() => copy(selected.command)}><Copy size={15} />复制命令</button><button className="primary" type="button" disabled={!effectiveNode || !selected.executable || !availableFor(effectiveNode, selected)} onClick={() => run(selected)}><Play size={15} />{selected.executable ? "执行受控任务" : "尚未接入"}</button></>}>
       <div className="terminal-snippet-detail"><div className={`terminal-snippet-notice ${selected.risk === "danger" ? "danger" : selected.risk === "change" ? "warning" : "safe"}`}>{selected.risk === "read" ? <Shield size={20} /> : <AlertTriangle size={20} />}<span><strong>{selected.executable ? "受控 Agent 任务" : "仅供检查，禁止执行"}</strong><p>{selected.executable ? "Controller 将按片段 ID 映射结构化能力，浏览器不会提交任意 Shell。" : selected.description}</p></span></div><section><h2>命令展示</h2><code>{selected.command}</code></section><dl><div><dt>说明</dt><dd>{selected.description}</dd></div><div><dt>片段版本</dt><dd>{selected.version}</dd></div><div><dt>所需能力</dt><dd>{selected.requiredCapability ?? "未开放"}</dd></div><div><dt>目标 Agent</dt><dd>{effectiveNode?.nodeName ?? "暂无"}</dd></div><div><dt>最近使用</dt><dd>{formatBackendDateTime(selected.lastUsedAt, "尚未执行")}</dd></div></dl></div>
     </DetailDrawer>}
-    {pending && effectiveNode && <ConfirmDialog title="确认执行受控命令" message={`将在 ${effectiveNode.nodeName} 上执行 ${pending.title}。请输入当前账号密码完成一次性重新认证。`} detail={pending.command} confirmLabel={executing ? "提交中" : "确认执行"} tone="warning" className="terminal-snippet-confirm" confirmDisabled={executing || !password} onClose={closeExecutionDialog} onConfirm={() => void confirmExecution()}><label className="terminal-snippet-password"><span>当前账号密码</span><input ref={passwordRef} autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label></ConfirmDialog>}
+    {pending && effectiveNode && <ConfirmDialog title="确认执行受控命令" message={`将在 ${effectiveNode.nodeName}（${effectiveNode.nodeId.slice(0, 8)}）上执行 ${pending.title}。请输入当前账号密码完成一次性重新认证。`} detail={pending.command} confirmLabel={executing ? "提交中" : "确认执行"} tone="warning" className="terminal-snippet-confirm" confirmDisabled={executing} onClose={closeExecutionDialog} onConfirm={() => void confirmExecution()}><label className="terminal-snippet-password"><span>当前账号密码</span><input ref={passwordRef} autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label></ConfirmDialog>}
   </>;
 }
 

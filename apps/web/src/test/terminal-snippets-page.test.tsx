@@ -49,6 +49,21 @@ describe("terminal snippets real backend page", () => {
     expect(await screen.findByText("等待 Agent")).toBeInTheDocument();
   });
 
+  it("uses the stable node ID when two Agents share the same name", async () => {
+    const secondNode = { ...node, nodeId: "44444444-4444-4444-8444-444444444444" };
+    vi.mocked(fetchTerminalNodes).mockResolvedValue({ nodes: [node, secondNode] });
+    const user = userEvent.setup(); render(<TerminalSnippetsPage notify={vi.fn()} />);
+    await screen.findByText("系统资源概览");
+    await user.click(screen.getByRole("combobox", { name: "目标 Agent agent-sg-01 · 在线 · 11111111" }));
+    await user.click(screen.getByRole("option", { name: "agent-sg-01 · 在线 · 44444444" }));
+    await user.click(screen.getByRole("button", { name: "执行 系统资源概览" }));
+    const dialog = screen.getByRole("alertdialog", { name: "确认执行受控命令" });
+    await user.type(within(dialog).getByLabelText("当前账号密码"), "correct password");
+    await user.click(within(dialog).getByRole("button", { name: "确认执行" }));
+    await waitFor(() => expect(executeTerminalSnippet).toHaveBeenCalled());
+    expect(vi.mocked(executeTerminalSnippet).mock.calls[0][1].nodeId).toBe(secondNode.nodeId);
+  });
+
   it("keeps dangerous snippets inspectable but never executable", async () => {
     const user = userEvent.setup(); render(<TerminalSnippetsPage notify={vi.fn()} />);
     expect(await screen.findByRole("button", { name: "执行 清理临时缓存" })).toBeDisabled();

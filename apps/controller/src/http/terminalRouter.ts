@@ -1,11 +1,17 @@
 import {
-  ExecuteTerminalSnippetRequestSchema, ExecuteTerminalSnippetResponseSchema, TerminalSnippetIdSchema,
-  TerminalSnippetListResponseSchema, TerminalSnippetRecordSchema, UpdateTerminalSnippetFavoriteRequestSchema,
+  AgentNodeListResponseSchema, ExecuteTerminalSnippetRequestSchema, ExecuteTerminalSnippetResponseSchema, RemoteTaskListResponseSchema,
+  TerminalSnippetIdSchema, TerminalSnippetListResponseSchema, TerminalSnippetRecordSchema, UpdateTerminalSnippetFavoriteRequestSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
 import { notFound } from "./errors/ApiError.js";
 import { sendJson } from "./response/json.js";
 import { parseSchema } from "./validation.js";
+
+const publicNode = (value: Awaited<ReturnType<RequestContext["services"]["nodes"]["list"]>>[number]) => ({
+  nodeId: value.nodeId, nodeName: value.nodeName, status: value.status, agentVersion: value.agentVersion,
+  protocolVersion: value.protocolVersion, platform: value.platform, declaredCapabilities: value.declaredCapabilities,
+  allowedCapabilities: value.allowedCapabilities, enrolledAt: value.enrolledAt, lastSeenAt: value.lastSeenAt, revokedAt: value.revokedAt,
+});
 
 function snippetId(context: RequestContext) {
   try { return parseSchema(TerminalSnippetIdSchema, decodeURIComponent(context.parts[3] ?? ""), "命令片段 ID"); }
@@ -20,6 +26,18 @@ export async function routeTerminalRequest(context: RequestContext) {
   if (context.parts.length === 3 && context.parts[2] === "snippets" && method === "GET") {
     identity?.require(principal, "terminal:read");
     sendJson(context.response, 200, context.services.terminalSnippets.list(userId), TerminalSnippetListResponseSchema); return;
+  }
+  if (context.parts.length === 3 && context.parts[2] === "nodes" && method === "GET") {
+    identity?.require(principal, "terminal:read");
+    const nodes = await context.services.nodes.list();
+    const scoped = principal?.nodeScope === "all" ? nodes : nodes.filter((node) => principal?.nodeScope.includes(node.nodeId));
+    sendJson(context.response, 200, { nodes: scoped.map(publicNode) }, AgentNodeListResponseSchema); return;
+  }
+  if (context.parts.length === 3 && context.parts[2] === "tasks" && method === "GET") {
+    identity?.require(principal, "terminal:read");
+    const tasks = await context.services.remoteTasks.list();
+    const scoped = principal?.nodeScope === "all" ? tasks : tasks.filter((task) => principal?.nodeScope.includes(task.targetNodeId));
+    sendJson(context.response, 200, { tasks: scoped.filter((task) => task.requester === `user:${userId}` && task.idempotencyKey.startsWith("terminal:")) }, RemoteTaskListResponseSchema); return;
   }
   if (context.parts.length === 5 && context.parts[2] === "snippets" && context.parts[4] === "favorite" && method === "PATCH") {
     identity?.require(principal, "terminal:read");

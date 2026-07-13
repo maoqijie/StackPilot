@@ -10,11 +10,11 @@ export function fetchTerminalSnippets(signal?: AbortSignal) {
 }
 
 export function fetchTerminalNodes(signal?: AbortSignal) {
-  return requestJson<unknown>("/nodes", { signal }).then((payload) => AgentNodeListResponseSchema.parse(payload));
+  return requestJson<unknown>("/terminal/nodes", { signal }).then((payload) => AgentNodeListResponseSchema.parse(payload));
 }
 
 export function fetchTerminalTasks(signal?: AbortSignal) {
-  return requestJson<unknown>("/remote-tasks", { signal }).then((payload) => RemoteTaskListResponseSchema.parse(payload));
+  return requestJson<unknown>("/terminal/tasks", { signal }).then((payload) => RemoteTaskListResponseSchema.parse(payload));
 }
 
 export function updateTerminalSnippetFavorite(snippetId: string, favorite: boolean, signal?: AbortSignal) {

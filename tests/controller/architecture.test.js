@@ -50,5 +50,5 @@ test("site TLS probes do not reuse sessions that omit peer certificate metadata"
 
 test("production server injects SQLite into terminal snippet services", async () => {
   const source = await readFile(join(sourceRoot, "server.ts"), "utf8");
-  assert.match(source, /createControllerServices\(platform, repoRoot, config,agentRepository,database\)/);
+  assert.match(source, /createControllerServices\(platform,\s*repoRoot,\s*config,\s*agentRepository,\s*database\)/);
 });

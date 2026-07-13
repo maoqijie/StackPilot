@@ -18,6 +18,8 @@ test("terminal snippets persist preferences and only execute catalog-mapped Agen
   const database = openDatabase(":memory:");
   const identity = new IdentityService(database, Buffer.alloc(32, 4));
   await identity.createInitialAdministrator("admin", "Administrator", password);
+  const administrator = (await identity.login("admin", password, "test", "terminal-test")).principal;
+  const terminalReadToken = identity.createApiToken(administrator, { name: "terminal-read", permissions: ["terminal:read"], nodeScope: "all", expiresAt: null }).token;
   const repository = new MemoryAgentControlRepository();
   const now = new Date().toISOString();
   await repository.update((state) => state.nodes.push({ nodeId, nodeName: "terminal-node", status: "online", agentVersion: "0.2.0", protocolVersion: "1.0", platform: "linux", declaredCapabilities: ["system.summary.read"], allowedCapabilities: ["system.summary.read"], enrolledAt: now, lastSeenAt: now, revokedAt: null }));
@@ -34,6 +36,9 @@ test("terminal snippets persist preferences and only execute catalog-mapped Agen
     assert.equal(catalog.snippets.some((snippet) => snippet.id === "system-resource-summary" && snippet.executable), true);
     assert.equal(catalog.snippets.some((snippet) => snippet.id === "clear-temporary-cache" && !snippet.executable), true);
     assert.doesNotMatch(JSON.stringify(catalog), /panel-se-01|10\.0\.0\.11/);
+    assert.equal((await fetch(`${base}/api/nodes`, { headers: { Authorization: `Bearer ${terminalReadToken}` } })).status, 403);
+    const terminalNodes = await fetch(`${base}/api/terminal/nodes`, { headers: { Authorization: `Bearer ${terminalReadToken}` } });
+    assert.equal(terminalNodes.status, 200); assert.deepEqual((await terminalNodes.json()).nodes.map((node) => node.nodeId), [nodeId]);
 
     const writeHeaders = { Origin: origin, Cookie: session, "X-CSRF-Token": loginBody.csrfToken, "Content-Type": "application/json" };
     assert.equal((await fetch(`${base}/api/terminal/snippets/system-resource-summary/favorite`, { method: "PATCH", headers: { Cookie: session, Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ favorite: true }) })).status, 403);
@@ -49,6 +54,9 @@ test("terminal snippets persist preferences and only execute catalog-mapped Agen
     const execution = await fetch(`${base}/api/terminal/snippets/system-resource-summary/executions`, { method: "POST", headers: { ...writeHeaders, "X-Reauth-Proof": reauth.proof }, body: JSON.stringify(request) });
     assert.equal(execution.status, 201); const body = await execution.json();
     assert.equal(body.task.type, "system.summary.read"); assert.deepEqual(body.task.parameters, { includeLoad: true });
+    assert.match(body.task.idempotencyKey, /^terminal:/);
     assert.equal(body.snippet.lastUsedAt !== null, true); assert.doesNotMatch(JSON.stringify(body.task), /df -h|uptime|command/);
+    const terminalTasks = await fetch(`${base}/api/terminal/tasks`, { headers: { Authorization: `Bearer ${terminalReadToken}` } });
+    assert.equal(terminalTasks.status, 200); assert.deepEqual((await terminalTasks.json()).tasks.map((task) => task.taskId), [body.task.taskId]);
   } finally { server.close(); await once(server, "close"); database.close(); }
 });

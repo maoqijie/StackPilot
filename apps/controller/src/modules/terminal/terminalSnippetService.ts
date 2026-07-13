@@ -1,4 +1,5 @@
 import { CreateRemoteTaskRequestSchema, type ExecuteTerminalSnippetRequest, type TerminalSnippetRecord } from "@stackpilot/contracts";
+import { createHash } from "node:crypto";
 import type { RemoteTaskService } from "../remote-tasks/remoteTaskService.js";
 import { ServiceError } from "../serviceError.js";
 import { terminalSnippetCatalog, type CatalogSnippet } from "./terminalSnippetCatalog.js";
@@ -37,7 +38,8 @@ export class TerminalSnippetService {
     const snippet = this.catalogSnippet(snippetId);
     if (!snippet.executable || !snippet.task) throw new ServiceError(409, "BAD_REQUEST", "该命令片段没有可执行的受控 Agent 能力");
     if (snippet.version !== input.snippetVersion) throw new ServiceError(409, "BAD_REQUEST", "命令片段版本已变化，请刷新后重试");
-    const taskRequest = CreateRemoteTaskRequestSchema.parse({ ...snippet.task, idempotencyKey: input.idempotencyKey });
+    const operationKey = createHash("sha256").update(`${userId}\0${snippetId}\0${input.idempotencyKey}`).digest("hex");
+    const taskRequest = CreateRemoteTaskRequestSchema.parse({ ...snippet.task, idempotencyKey: `terminal:${operationKey}` });
     const task = await this.tasks.create(input.nodeId, taskRequest, `user:${userId}`, traceId);
     const now = new Date().toISOString();
     this.repository.markUsed(userId, snippetId, now);
