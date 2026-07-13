@@ -3,6 +3,7 @@ import { createHash, generateKeyPairSync, randomBytes, sign } from "node:crypto"
 import test from "node:test";
 import { AGENT_PROTOCOL_VERSION, agentSignaturePayload } from "@stackpilot/contracts";
 import { EnrollmentService } from "../../apps/controller/dist/modules/enrollments/enrollmentService.js";
+import { routeControlPlaneRequest } from "../../apps/controller/dist/http/controlPlaneRouter.js";
 import { NodeService } from "../../apps/controller/dist/modules/nodes/nodeService.js";
 import { RemoteTaskService, transitionTask } from "../../apps/controller/dist/modules/remote-tasks/remoteTaskService.js";
 import { MemoryAgentControlRepository } from "../../apps/controller/dist/repositories/agentControlRepository.js";
@@ -117,4 +118,37 @@ test("task expiry, queue limits and audit redaction are persisted", async () => 
   await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "queue-task-three" }, "admin", crypto.randomUUID()), /队列已满/);
   const state = await fixture.repository.read(); assert.ok(state.audits.some((event) => event.event === "task.expired" && event.taskId === first.taskId));
   const redacted = state.audits.find((event) => event.event === "redaction.test"); assert.equal(redacted.parameters.nested.authorization, "[REDACTED]"); assert.equal(redacted.parameters.nested.safe, "visible");
+});
+
+test("read-only task history derives expiry without updating stored state or audit", async () => {
+  const fixture = await enrolledFixture();
+  const created = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "read-only-expired-task" }, "admin", crypto.randomUUID());
+  await fixture.repository.update((state) => { state.tasks.find((item) => item.taskId === created.taskId).expiresAt = new Date(Date.now() - 1).toISOString(); });
+  const originalUpdate = fixture.repository.update.bind(fixture.repository); let updateCalls = 0;
+  fixture.repository.update = (...args) => { updateCalls += 1; return originalUpdate(...args); };
+
+  const displayed = (await fixture.tasks.listReadOnly()).find((item) => item.taskId === created.taskId);
+  assert.equal(displayed.status, "expired"); assert.equal(displayed.errorCode, "TASK_EXPIRED"); assert.equal(updateCalls, 0);
+  const storedBeforeReconciliation = await fixture.repository.read();
+  assert.equal(storedBeforeReconciliation.tasks.find((item) => item.taskId === created.taskId).status, "queued");
+  assert.equal(storedBeforeReconciliation.audits.some((event) => event.event === "task.expired" && event.taskId === created.taskId), false);
+
+  assert.equal((await fixture.tasks.list()).find((item) => item.taskId === created.taskId).status, "expired"); assert.equal(updateCalls, 1);
+  const storedAfterReconciliation = await fixture.repository.read();
+  assert.equal(storedAfterReconciliation.audits.some((event) => event.event === "task.expired" && event.taskId === created.taskId), true);
+});
+
+test("GET remote task history uses the read-only service path", async () => {
+  const fixture = await enrolledFixture();
+  const created = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "http-read-only-expired-task" }, "admin", crypto.randomUUID());
+  await fixture.repository.update((state) => { state.tasks.find((item) => item.taskId === created.taskId).expiresAt = new Date(Date.now() - 1).toISOString(); });
+  const originalUpdate = fixture.repository.update.bind(fixture.repository); let updateCalls = 0;
+  fixture.repository.update = (...args) => { updateCalls += 1; return originalUpdate(...args); };
+  const response = { statusCode: 0, headers: {}, body: "", setHeader(name, value) { this.headers[name] = value; }, end(body = "") { this.body = body; } };
+
+  await routeControlPlaneRequest({ request: { method: "GET", headers: {} }, response, parts: ["api", "remote-tasks"], services: { remoteTasks: fixture.tasks }, identity: null, principal: { nodeScope: "all" } });
+
+  assert.equal(response.statusCode, 200); assert.equal(updateCalls, 0);
+  const payload = JSON.parse(response.body); assert.equal(payload.tasks[0].status, "expired"); assert.equal(payload.tasks[0].errorCode, "TASK_EXPIRED");
+  const stored = await fixture.repository.read(); assert.equal(stored.tasks[0].status, "queued"); assert.equal(stored.audits.some((event) => event.event === "task.expired"), false);
 });

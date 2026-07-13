@@ -58,13 +58,13 @@ test("production HTTPS flow covers identity, Agent lifecycle, task, audit and se
   let nodeId = "";
   await expect.poll(async () => { const result = await api<{ nodes: Array<{ nodeId: string; nodeName: string; status: string }> }>(page, "/api/nodes"); const node = result.body.nodes.find((item) => item.nodeName === agentName); nodeId = node?.nodeId ?? ""; return node?.status; }, { timeout: 25_000 }).toBe("online");
   const taskProof = await reauthenticate(page);
-  const task = await api<{ taskId: string }>(page, `/api/nodes/${nodeId}/tasks`, "POST", { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 30, idempotencyKey: `e2e-summary-${testInfo.project.name}` }, { "X-Reauth-Proof": taskProof });
+  const task = await api<{ taskId: string }>(page, `/api/nodes/${nodeId}/tasks`, "POST", { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 30, idempotencyKey: `e2e-summary-${testInfo.project.name}-${testInfo.repeatEachIndex}` }, { "X-Reauth-Proof": taskProof });
   expect(task.status).toBe(201);
   await expect.poll(async () => { const result = await api<{ tasks: Array<{ taskId: string; status: string }> }>(page, "/api/remote-tasks"); return result.body.tasks.find((item) => item.taskId === task.body.taskId)?.status; }, { timeout: 25_000 }).toBe("succeeded");
 
   await stopAgent();
   const expireProof = await reauthenticate(page);
-  const expiring = await api<{ taskId: string }>(page, `/api/nodes/${nodeId}/tasks`, "POST", { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 5, idempotencyKey: `e2e-expire-${testInfo.project.name}` }, { "X-Reauth-Proof": expireProof });
+  const expiring = await api<{ taskId: string }>(page, `/api/nodes/${nodeId}/tasks`, "POST", { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 5, idempotencyKey: `e2e-expire-${testInfo.project.name}-${testInfo.repeatEachIndex}` }, { "X-Reauth-Proof": expireProof });
   await expect.poll(async () => { const result = await api<{ tasks: Array<{ taskId: string; status: string }> }>(page, "/api/remote-tasks"); return result.body.tasks.find((item) => item.taskId === expiring.body.taskId)?.status; }, { timeout: 15_000 }).toBe("expired");
 
   const revokeProof = await reauthenticate(page);
@@ -89,7 +89,7 @@ test("terminal UI submits and displays a real Agent task", async ({ page }, test
   await login(page, "e2e-admin", adminPassword);
 
   const proof = await reauthenticate(page);
-  const agentName = `terminal-${testInfo.project.name}`;
+  const agentName = `terminal-${testInfo.project.name}-${testInfo.repeatEachIndex}`;
   const enrollment = await api<{ token: string }>(page, "/api/enrollments", "POST", { nodeName: agentName, expiresInSeconds: 300 }, { "X-Reauth-Proof": proof });
   expect(enrollment.status).toBe(201);
   const state = resolve(e2eRuntime, `terminal-agent-${testInfo.project.name}`);
@@ -100,7 +100,9 @@ test("terminal UI submits and displays a real Agent task", async ({ page }, test
 
   await page.goto("/#terminal");
   await page.reload();
-  await expect(page.getByText(agentName).first()).toBeVisible({ timeout: 15_000 });
+  const target = page.getByRole("button", { name: `切换终端目标 ${agentName}` });
+  await expect(target).toBeVisible({ timeout: 15_000 });
+  await target.click();
   await page.getByRole("textbox", { name: "命令输入" }).fill("uptime");
   await page.getByRole("button", { name: "运行" }).click();
   const dialog = page.getByRole("alertdialog", { name: "确认执行受控命令" });

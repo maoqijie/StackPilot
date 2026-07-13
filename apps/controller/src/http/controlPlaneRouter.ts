@@ -48,7 +48,7 @@ export async function routeControlPlaneRequest(context: RequestContext) {
     sendJson(context.response, 201, await context.services.remoteTasks.create(nodeId, input, `user:${principal?.userId}`, context.requestId), RemoteTaskRecordSchema); return;
   }
   if (context.parts[1] === "remote-tasks" && context.parts.length === 2 && method === "GET") {
-    identity?.require(principal,"tasks:read");const tasks=await context.services.remoteTasks.list();sendJson(context.response, 200, { tasks: principal?.nodeScope==="all"?tasks:tasks.filter(task=>principal?.nodeScope.includes(task.targetNodeId)) }, RemoteTaskListResponseSchema); return;
+    identity?.require(principal,"tasks:read");const tasks=await context.services.remoteTasks.listReadOnly();const scoped=principal?.nodeScope==="all"?tasks:tasks.filter(task=>principal?.nodeScope.includes(task.targetNodeId));sendJson(context.response, 200, { tasks: scoped.sort((left,right)=>Date.parse(right.updatedAt)-Date.parse(left.updatedAt)).slice(0,200), collectedAt: new Date().toISOString() }, RemoteTaskListResponseSchema); return;
   }
   if (context.parts[1] === "remote-tasks" && context.parts[3] === "cancel" && context.parts.length === 4 && method === "POST") {
     identity?.require(principal,"tasks:cancel");

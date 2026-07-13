@@ -24,6 +24,13 @@ function containsSensitiveKey(value: unknown): boolean {
   return false;
 }
 
+function expireTask(task: RemoteTaskRecord, now: string): RemoteTaskStatus | null {
+  if (terminal.includes(task.status) || Date.parse(task.expiresAt) > Date.parse(now)) return null;
+  const previous = task.status;
+  task.status = "expired"; task.updatedAt = now; task.errorCode = "TASK_EXPIRED";
+  return previous;
+}
+
 export function transitionTask(task: RemoteTaskRecord, next: RemoteTaskStatus, now = new Date().toISOString()) {
   if (!transitions[task.status].includes(next)) throw new ServiceError(409, "BAD_REQUEST", `任务状态不能从 ${task.status} 转换为 ${next}`);
   task.status = next; task.updatedAt = now;
@@ -34,8 +41,8 @@ export class RemoteTaskService {
 
   private reconcile(state: { tasks: RemoteTaskRecord[]; audits: AuditEvent[] }, traceId: string = randomUUID(), now = new Date().toISOString()) {
     for (const task of state.tasks) {
-      if (!terminal.includes(task.status) && Date.parse(task.expiresAt) <= Date.parse(now)) {
-        const previous = task.status; task.status = "expired"; task.updatedAt = now; task.errorCode = "TASK_EXPIRED";
+      const previous = expireTask(task, now);
+      if (previous) {
         state.audits.push(audit({ requester: "controller", nodeId: task.targetNodeId, taskId: task.taskId, event: "task.expired", taskType: task.type, parameters: null, fromStatus: previous, toStatus: "expired", resultSummary: null, traceId })); continue;
       }
       if (task.status === "dispatched" && Date.parse(now) - Date.parse(task.updatedAt) > 30_000 && task.attempt < task.maxAttempts) {
@@ -78,6 +85,13 @@ export class RemoteTaskService {
   async list(nodeId?: string) {
     const state = await this.repository.update((next) => this.reconcile(next));
     return nodeId ? state.tasks.filter((item) => item.targetNodeId === nodeId) : state.tasks;
+  }
+
+  async listReadOnly(nodeId?: string) {
+    const tasks = structuredClone((await this.repository.read()).tasks);
+    const now = new Date().toISOString();
+    for (const task of tasks) expireTask(task, now);
+    return nodeId ? tasks.filter((item) => item.targetNodeId === nodeId) : tasks;
   }
 
   async poll(nodeId: string, traceId: string) {

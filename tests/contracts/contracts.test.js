@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   API_CLIENT_PREFIX, API_ROOT_SEGMENTS, ApiErrorResponseSchema, CreateScheduleJobRequestSchema,
   OverviewSummaryPayloadSchema, PathIdSchema, WRITE_METHODS,
-  AGENT_PROTOCOL_VERSION, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, CreateRemoteTaskRequestSchema, isAgentProtocolCompatible,
+  AGENT_PROTOCOL_VERSION, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, CreateRemoteTaskRequestSchema, RemoteTaskListResponseSchema, isAgentProtocolCompatible,
   SiteRuntimePayloadSchema,
   AgentSiteSnapshotSchema, CertificateRenewalTaskParametersSchema, CreateCertificateRenewalRequestSchema,
   CreateFileUploadRequestSchema, FileUploadRecordSchema,
@@ -16,6 +16,11 @@ test("shared API constants preserve the existing HTTP contract", () => {
   assert.equal(API_CLIENT_PREFIX, "/api");
   assert.deepEqual(API_ROOT_SEGMENTS, ["api", "overview"]);
   assert.deepEqual(WRITE_METHODS, ["POST", "PATCH", "DELETE"]);
+});
+
+test("remote task history accepts collection timestamps from upgraded Controllers", () => {
+  assert.equal(RemoteTaskListResponseSchema.safeParse({ tasks: [], collectedAt: new Date().toISOString() }).success, true);
+  assert.equal(RemoteTaskListResponseSchema.safeParse({ tasks: [] }).success, true);
 });
 
 test("agent telemetry remains optional and strictly validates bounded snapshots", () => {
