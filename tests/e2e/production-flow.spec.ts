@@ -12,7 +12,7 @@ async function login(page: Page, username: string, password: string) {
   await page.getByRole("textbox", { name: "用户名" }).fill(username);
   await page.getByRole("textbox", { name: "密码" }).fill(password);
   await page.getByRole("button", { name: "登录" }).click();
-  await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "实时工作台状态" })).toBeVisible();
 }
 
 async function api<T>(page: Page, path: string, method = "GET", body?: unknown, headers: Record<string, string> = {}) {

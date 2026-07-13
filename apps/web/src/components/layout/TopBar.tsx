@@ -104,7 +104,7 @@ function TopBar({
   }, [interactionsDisabled]);
 
   return (
-    <header className={`cloud-header ${chrome.white ? "is-surface" : ""}`}>
+    <header className={`cloud-header ${chrome.white ? "is-surface" : ""} ${chrome.showBreadcrumb ? "" : "without-context"}`}>
       {chrome.showBreadcrumb && (
         <div className="cloud-header-context" aria-label="当前位置">
           <span>{meta.breadcrumb}</span>

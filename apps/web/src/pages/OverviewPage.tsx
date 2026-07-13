@@ -86,11 +86,7 @@ function OverviewPage({ setPage, notify }: { setPage: SetPage; notify: Notify })
   return (
     <div className="overview-page">
       <header className="overview-page-head">
-        <div>
-          <span>Operations overview</span>
-          <h1>工作台</h1>
-          <p>基础设施、任务与风险的实时运行视图</p>
-        </div>
+        <h1 className="sr-only">工作台</h1>
         <span className="overview-freshness"><StatusLight tone={error ? "red" : loading ? "blue" : healthTone} />{loading ? "正在采集" : error ? "采集异常" : `更新于 ${formatBackendDateTime(overviewCollectedAt(overview), "刚刚")}`}</span>
       </header>
       <section className="workbench-hero" aria-label="实时工作台状态">

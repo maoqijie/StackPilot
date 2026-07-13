@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { desktopTopbarChrome } from "../app/navigation";
 import { TopBar } from "../components/layout/TopBar";
 import { ThemeProvider } from "../theme/ThemeProvider";
 import { THEME_STORAGE_KEY, useTheme } from "../theme/theme";
@@ -54,5 +55,45 @@ describe("theme provider", () => {
     expect(document.documentElement.style.colorScheme).toBe("dark");
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
     expect(screen.getByRole("button", { name: "切换到浅色主题" })).toBeInTheDocument();
+  });
+
+  it("removes the overview location context without affecting other pages", () => {
+    const { rerender } = render(
+      <ThemeProvider>
+        <TopBar
+          page="overview"
+          setPage={vi.fn()}
+          chrome={desktopTopbarChrome("overview")}
+          notify={vi.fn()}
+          unreadCount={0}
+          setUnreadCount={vi.fn()}
+          overview={null}
+          interactionsDisabled={false}
+          onLogout={vi.fn()}
+        />
+      </ThemeProvider>,
+    );
+
+    expect(screen.queryByLabelText("当前位置")).not.toBeInTheDocument();
+    expect(document.querySelector(".cloud-header")).toHaveClass("without-context");
+
+    rerender(
+      <ThemeProvider>
+        <TopBar
+          page="hosts"
+          setPage={vi.fn()}
+          chrome={desktopTopbarChrome("hosts")}
+          notify={vi.fn()}
+          unreadCount={0}
+          setUnreadCount={vi.fn()}
+          overview={null}
+          interactionsDisabled={false}
+          onLogout={vi.fn()}
+        />
+      </ThemeProvider>,
+    );
+
+    expect(screen.getByLabelText("当前位置")).toHaveTextContent("资源管理主机");
+    expect(document.querySelector(".cloud-header")).not.toHaveClass("without-context");
   });
 });

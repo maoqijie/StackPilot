@@ -25,6 +25,11 @@
   gap: 24px;
 }
 
+.overview-page > .overview-page-head {
+  margin-bottom: 24px;
+  justify-content: flex-end;
+}
+
 .overview-page-head > div,
 :is(.module-page-overview-health, .module-page-overview-tasks, .module-page-overview-risks) > .page-head > div:first-child {
   min-width: 0;

@@ -107,7 +107,7 @@ function DesktopShellContent({
   onLogout: () => void;
 }) {
   const activeModule = navPageFor(page);
-  const topbarChrome = desktopTopbarChrome();
+  const topbarChrome = desktopTopbarChrome(page);
   const [isNarrowSidebar, setIsNarrowSidebar] = useState(() => (
     typeof window !== "undefined" && window.matchMedia("(max-width: 773px)").matches
   ));

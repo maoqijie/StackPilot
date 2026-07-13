@@ -215,10 +215,10 @@ function activeNavEntryForPage(page: PageKey) {
   return { parent, child };
 }
 
-function desktopTopbarChrome(): TopbarChrome {
+function desktopTopbarChrome(page: PageKey): TopbarChrome {
   return {
     white: true,
-    showBreadcrumb: true,
+    showBreadcrumb: page !== "overview",
     showCompactSearch: true,
     showStatus: true,
     showActivity: true,
