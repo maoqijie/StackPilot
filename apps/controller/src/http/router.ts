@@ -3,8 +3,8 @@ import {
   OverviewCheckUpdatesResponseSchema, OverviewHealthRefreshResponseSchema, OverviewNodeMutationResponseSchema,
   OverviewRisksPayloadSchema, OverviewRisksScanResponseSchema, OverviewSummaryPayloadSchema,
   OverviewTasksPayloadSchema, OverviewTasksRefreshResponseSchema, PathIdSchema,
-  HostMonitoringPayloadSchema, ReadinessResponseSchema, RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
-  SiteRuntimePayloadSchema, DatabaseSlowQueriesPayloadSchema,
+  DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, HostMonitoringPayloadSchema, ReadinessResponseSchema,
+  RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema, SiteRuntimePayloadSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
@@ -57,9 +57,14 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     const canReadNodes = Boolean(context.principal?.permissions.has("nodes:read"));
     sendJson(response,200,await services.hosts.getHosts(canReadNodes&&(nodeScope==="all"||nodeScope.length>0),nodeScope),HostMonitoringPayloadSchema);return;
   }
+  if (context.url.pathname === "/api/databases" && method === "GET") {
+    context.identity?.require(context.principal, "databases:read");
+    sendJson(response, 200, await services.databaseInstances.getInstances({ nodeScope: context.principal?.nodeScope ?? [] }), DatabaseInstancesPayloadSchema);
+    return;
+  }
   if (context.url.pathname === "/api/databases/slow-queries" && method === "GET") {
     context.identity?.require(context.principal, "databases:read");
-    sendJson(response, 200, await services.databases.getSlowQueries(), DatabaseSlowQueriesPayloadSchema);
+    sendJson(response, 200, await services.databaseSlowQueries.getSlowQueries(), DatabaseSlowQueriesPayloadSchema);
     return;
   }
   if (context.url.pathname === "/api/sites" && method === "GET") {

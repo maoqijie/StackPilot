@@ -1,13 +1,13 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { AgentCapability, AgentHeartbeat, AgentNodeRecord, AgentTelemetrySnapshot, RemoteTaskRecord } from "@stackpilot/contracts";
-import { AgentHealthSchema, AgentNodeRecordSchema, AgentTelemetrySnapshotSchema, RemoteTaskRecordSchema } from "@stackpilot/contracts";
+import type { AgentCapability, AgentDatabaseSnapshot, AgentHeartbeat, AgentNodeRecord, AgentTelemetrySnapshot, RemoteTaskRecord } from "@stackpilot/contracts";
+import { AgentDatabaseSnapshotSchema, AgentHealthSchema, AgentNodeRecordSchema, AgentTelemetrySnapshotSchema, RemoteTaskRecordSchema } from "@stackpilot/contracts";
 import { z } from "zod";
 
 export type EnrollmentState = { enrollmentId: string; tokenDigest: string; nodeName: string; expiresAt: string; usedAt: string | null; revokedAt: string | null };
 export type AgentCredentialState = { credentialId: string; nodeId: string; publicKey: string; createdAt: string; revokedAt: string | null; replacedBy: string | null; rotationId: string | null };
-export type AgentNodeState = AgentNodeRecord & { telemetry?: AgentTelemetrySnapshot; heartbeatHealthStatus?: AgentHeartbeat["health"]["status"] };
-export const AgentNodeStateSchema = AgentNodeRecordSchema.extend({ telemetry: AgentTelemetrySnapshotSchema.optional(), heartbeatHealthStatus: AgentHealthSchema.shape.status.optional() });
+export type AgentNodeState = AgentNodeRecord & { telemetry?: AgentTelemetrySnapshot; databaseSnapshot?: AgentDatabaseSnapshot; heartbeatHealthStatus?: AgentHeartbeat["health"]["status"] };
+export const AgentNodeStateSchema = AgentNodeRecordSchema.extend({ telemetry: AgentTelemetrySnapshotSchema.optional(), databaseSnapshot: AgentDatabaseSnapshotSchema.optional(), heartbeatHealthStatus: AgentHealthSchema.shape.status.optional() });
 export type AgentNonceConsumption = "accepted" | "replayed" | "unauthorized";
 export type AgentNonceRequest = {
   nodeId: string;
@@ -125,4 +125,4 @@ export class FileAgentControlRepository implements AgentControlRepository {
   }
 }
 
-export const CONTROLLER_ALLOWED_AGENT_CAPABILITIES: readonly AgentCapability[] = ["system.summary.read", "service.status.read"];
+export const CONTROLLER_ALLOWED_AGENT_CAPABILITIES: readonly AgentCapability[] = ["system.summary.read", "service.status.read", "databases.inventory.read"];

@@ -21,6 +21,7 @@ import { EnrollmentService } from "./modules/enrollments/enrollmentService.js";
 import { NodeService } from "./modules/nodes/nodeService.js";
 import { HostMonitoringService } from "./modules/hosts/hostMonitoringService.js";
 import { SiteMonitoringService } from "./modules/sites/siteMonitoringService.js";
+import { DatabaseMonitoringService } from "./modules/databases/databaseMonitoringService.js";
 import { DatabaseBackupService } from "./modules/databases/databaseBackupService.js";
 import { NginxSiteCollector } from "./platform/siteCollector.js";
 import { RemoteTaskService } from "./modules/remote-tasks/remoteTaskService.js";
@@ -72,8 +73,9 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
   return {
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
-    databases: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
+    databaseSlowQueries: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
     sites: new SiteMonitoringService(new NginxSiteCollector(config.nginxConfigDirs)),
+    databaseInstances: new DatabaseMonitoringService(repository),
     fileManager: new FileService(config.fileRoots),
     databaseBackups: new DatabaseBackupService(database, isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath), config, repoRoot),
     tasks: new TaskService(overview, state, exports),

@@ -3,11 +3,13 @@ import test from "node:test";
 import {
   API_CLIENT_PREFIX, API_ROOT_SEGMENTS, ApiErrorResponseSchema, CreateScheduleJobRequestSchema,
   OverviewSummaryPayloadSchema, PathIdSchema, WRITE_METHODS,
-  AGENT_PROTOCOL_VERSION, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, CreateRemoteTaskRequestSchema, RemoteTaskListResponseSchema, isAgentProtocolCompatible,
+  AGENT_PROTOCOL_VERSION, AgentDatabaseSnapshotSchema, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema,
+  CreateRemoteTaskRequestSchema, RemoteTaskListResponseSchema, isAgentProtocolCompatible,
   SiteRuntimePayloadSchema,
   CreateFileUploadRequestSchema, FileUploadRecordSchema,
-  DatabaseSlowQueriesPayloadSchema,
+  DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
+  PermissionSchema,
   CreateDirectoryRequestSchema, FileNameSchema, FilePathSchema,
 } from "@stackpilot/contracts";
 
@@ -43,6 +45,28 @@ test("agent telemetry remains optional and strictly validates bounded snapshots"
   assert.equal(AgentTelemetrySnapshotSchema.safeParse({ ...telemetry, disks: unsafeAggregate }).success, false);
 });
 
+test("database inventory is optional on legacy heartbeats and rejects duplicate instance ids", () => {
+  const snapshot = { collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], instances: [{ id: "postgresql.service", name: "postgresql", engine: "postgresql", version: null, host: "node-a", port: null, status: "running", source: "systemd:postgresql.service", latencyMs: null, storageBytes: null, activeConnections: null, maxConnections: null, slowQueryCount: null, backupStatus: "unavailable", lastBackupAt: null, accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null }] };
+  assert.equal(AgentDatabaseSnapshotSchema.safeParse(snapshot).success, true);
+  assert.equal(AgentDatabaseSnapshotSchema.safeParse({ ...snapshot, instances: [snapshot.instances[0], snapshot.instances[0]] }).success, false);
+  assert.equal(AgentHeartbeatSchema.safeParse({ nodeId: crypto.randomUUID(), agentVersion: "0.2.0", protocolVersion: "1.0", timestamp: new Date().toISOString(), platform: "linux", capabilities: ["databases.inventory.read"], health: { status: "healthy", uptimeSeconds: 1 }, databaseSnapshot: snapshot }).success, true);
+});
+
+test("database instance payload exposes scoped records with strict freshness fields", () => {
+  const collectedAt = new Date().toISOString();
+  const instance = {
+    id: `database-${"a".repeat(32)}`, nodeId: crypto.randomUUID(), nodeName: "database-node", address: "192.0.2.10",
+    collectedAt, freshness: "current", name: "postgresql", engine: "postgresql", version: "16.9", host: "database-node",
+    port: 5432, status: "running", source: "systemd:postgresql.service", latencyMs: null, storageBytes: null,
+    activeConnections: null, maxConnections: null, slowQueryCount: null, backupStatus: "unavailable", lastBackupAt: null,
+    accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null,
+  };
+  const payload = { collectedAt, collectionStatus: "complete", warnings: [], instances: [instance] };
+  assert.equal(DatabaseInstancesPayloadSchema.safeParse(payload).success, true);
+  assert.equal(DatabaseInstancesPayloadSchema.safeParse({ ...payload, instances: [{ ...instance, freshness: "unknown" }] }).success, false);
+  assert.equal(DatabaseInstancesPayloadSchema.safeParse({ ...payload, clientCollectedAt: collectedAt }).success, false);
+});
+
 test("host monitoring contract preserves raw nullable metrics", () => {
   const host = { id: "controller-local", source: "controller", name: "controller", platform: "linux", address: null, environment: "未分类", owner: "未分配", connectionStatus: "local", healthStatus: "unknown", telemetryFreshness: "current", telemetryCollectedAt: null, lastSeenAt: null, cpuPercent: null, memory: null, disk: null, uptimeSeconds: null, backup: null, services: [], version: "0.2.0", latency: null, updateStatus: null };
   assert.equal(HostMonitoringRecordSchema.safeParse(host).success, true);
@@ -76,6 +100,8 @@ test("identity schemas reject privilege fields and invalid node scopes", () => {
   assert.equal(CreateApiTokenRequestSchema.safeParse({ name: "reader", permissions: ["overview:read"], nodeScope: "all", expiresAt: null }).success, true);
   assert.equal(CreateApiTokenRequestSchema.safeParse({ name: "bad", permissions: ["unknown:permission"], nodeScope: "all", expiresAt: null }).success, false);
   assert.equal(UpdateUserAccessRequestSchema.safeParse({ roleIds: ["operator"], nodeScope: ["not-a-uuid"], disabled: false }).success, false);
+  assert.equal(PermissionSchema.safeParse("databases:read").success, true);
+  assert.equal(PermissionSchema.safeParse("files:manage").success, true);
 });
 
 test("file upload contracts reject paths and inconsistent progress", () => {
