@@ -8,6 +8,7 @@ import { IdentityService } from "../../apps/controller/dist/identity/identitySer
 import { DatabaseBackupWorkspaceService } from "../../apps/controller/dist/modules/databases/databaseBackupWorkspaceService.js";
 import { DatabaseInventoryService } from "../../apps/controller/dist/modules/databases/databaseInventoryService.js";
 import { DatabaseOperationService } from "../../apps/controller/dist/modules/databases/databaseOperationService.js";
+import { DatabaseRetentionService } from "../../apps/controller/dist/modules/databases/databaseRetentionService.js";
 import { SqliteDatabaseRepository } from "../../apps/controller/dist/repositories/sqliteDatabaseRepository.js";
 
 const masterKey = Buffer.alloc(32, 9);
@@ -79,8 +80,11 @@ test("backup plans create persistent queued jobs and Agent updates are node-boun
     assert.throws(()=>value.repository.updateOperation(crypto.randomUUID(),{operationId:first.operationId,version:1,status:"running",errorCode:null,errorMessage:null,credentialEnvelope:null,updatedAt:at()}),/不存在/);
     const [dispatch]=value.repository.pollOperations(value.nodeId,4,["backup"]);assert.equal(dispatch.kind,"backup");assert.equal(dispatch.parameters.retentionCount,7);assert.equal(dispatch.version,2);
     const running=value.repository.updateOperation(value.nodeId,{operationId:first.operationId,version:2,status:"running",errorCode:null,errorMessage:null,credentialEnvelope:null,updatedAt:at()});assert.equal(running.status,"running");assert.equal(running.version,2);
-    const completed=value.repository.updateOperation(value.nodeId,{operationId:first.operationId,version:2,status:"succeeded",errorCode:null,errorMessage:null,credentialEnvelope:null,updatedAt:at()});assert.equal(completed.status,"succeeded");assert.equal(completed.version,3);
-    const retried=value.repository.updateOperation(value.nodeId,{operationId:first.operationId,version:2,status:"succeeded",errorCode:null,errorMessage:null,credentialEnvelope:null,updatedAt:at()});assert.equal(retried.id,completed.id);assert.equal(retried.version,3);
+    const result={kind:"backup",restorePointId:crypto.randomUUID(),createdAt:at(),sizeBytes:4096,checksum:"a".repeat(64),databaseVersion:"16.9",manifestVersion:1};
+    const completed=value.repository.updateOperation(value.nodeId,{operationId:first.operationId,version:2,status:"succeeded",errorCode:null,errorMessage:null,credentialEnvelope:null,result,updatedAt:at()});assert.equal(completed.status,"succeeded");assert.equal(completed.version,3);assert.deepEqual(completed.result,result);
+    const raw=value.database.prepare("SELECT result_ciphertext,result_nonce,result_tag FROM database_operations WHERE id=?").get(first.operationId);assert.ok(Buffer.isBuffer(raw.result_ciphertext));assert.doesNotMatch(raw.result_ciphertext.toString("utf8"),/databaseVersion|16\.9/);
+    const point=value.backups.list("all").restorePoints.find((item)=>item.id===result.restorePointId);assert.equal(point?.checksum,result.checksum);assert.equal(point?.sizeBytes,result.sizeBytes);
+    const retried=value.repository.updateOperation(value.nodeId,{operationId:first.operationId,version:2,status:"succeeded",errorCode:null,errorMessage:null,credentialEnvelope:null,result,updatedAt:at()});assert.equal(retried.id,completed.id);assert.equal(retried.version,3);
   }finally{value.database.close();}
 });
 
@@ -90,5 +94,33 @@ test("non-managed instances reject in-place restore plans",async()=>{
     const service=new DatabaseOperationService(value.repository,{list:async()=>[{nodeId:value.nodeId,revokedAt:null}]});
     const operator={userId:value.userId,principalType:"session",nodeScope:"all",permissions:new Set(["databases:restore"])};
     await assert.rejects(()=>service.createPlan({kind:"restore",instanceId:instance.id,restorePointId:crypto.randomUUID()},operator,"restore-request"),/非 StackPilot 受管实例/);
+  }finally{value.database.close();}
+});
+
+test("retention maintenance erases expired SQL and one-time credential ciphertext",async()=>{
+  const value=await fixture();try{
+    value.inventory.ingestSnapshot(value.nodeId,snapshot());value.inventory.ingestQueryUpload(value.nodeId,upload());
+    const expired=new Date(Date.now()-1_000).toISOString();
+    value.database.prepare("UPDATE database_slow_queries SET sql_expires_at=?").run(expired);
+    value.database.prepare("INSERT INTO database_operations(id,node_id,kind,status,version,requested_by,request_id,idempotency_key,credential_ciphertext,credential_expires_at,created_at,updated_at,expires_at) VALUES(?,?,?,'succeeded',1,?,?,?,?,?,?,?,?)")
+      .run(crypto.randomUUID(),value.nodeId,"install",value.userId,"retention-request","retention-key","encrypted-once",expired,at(),at(),at());
+    const retention=new DatabaseRetentionService(value.repository);const repeated=retention.run(at());retention.shutdown();
+    assert.deepEqual(repeated,{sql:0,credentials:0,operationResults:0});
+    assert.equal(value.database.prepare("SELECT sql_ciphertext FROM database_slow_queries").get().sql_ciphertext,null);
+    const credential=value.database.prepare("SELECT credential_ciphertext,credential_expires_at FROM database_operations WHERE idempotency_key='retention-key'").get();assert.deepEqual(credential,{credential_ciphertext:null,credential_expires_at:null});
+  }finally{value.database.close();}
+});
+
+test("Explain results are encrypted and erased after seven days",async()=>{
+  const value=await fixture();try{
+    value.inventory.ingestSnapshot(value.nodeId,snapshot());value.inventory.ingestQueryUpload(value.nodeId,upload());
+    const instance=value.inventory.list("all").instances[0],query=value.inventory.slowQueries("all","24h",false).queries[0];
+    const operation=value.repository.createDirectOperation("explain",value.nodeId,instance.id,value.userId,"explain-result-001","explain-request",at(),{queryId:query.id});
+    const [dispatch]=value.repository.pollOperations(value.nodeId,1,["explain"]),updatedAt=at(),plan="Seq Scan on customers Filter: private@example.com";
+    const completed=value.repository.updateOperation(value.nodeId,{operationId:operation.id,version:dispatch.version,status:"succeeded",errorCode:null,errorMessage:null,credentialEnvelope:null,result:{kind:"explain",format:"text",plan},updatedAt});
+    assert.equal(completed.result?.kind,"explain");assert.equal(completed.result?.plan,plan);
+    const raw=value.database.prepare("SELECT result_ciphertext,result_expires_at FROM database_operations WHERE id=?").get(operation.id);assert.ok(Buffer.isBuffer(raw.result_ciphertext));assert.doesNotMatch(raw.result_ciphertext.toString("utf8"),/private@example/);assert.ok(Date.parse(raw.result_expires_at)>Date.parse(updatedAt)+6*86_400_000);
+    value.database.prepare("UPDATE database_operations SET result_expires_at=? WHERE id=?").run(new Date(Date.now()-1_000).toISOString(),operation.id);
+    assert.equal(value.repository.purgeExpiredSensitiveData(at()).operationResults,1);assert.equal(value.repository.findOperation(operation.id,"all").result,null);
   }finally{value.database.close();}
 });

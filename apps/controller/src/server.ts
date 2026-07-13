@@ -57,7 +57,7 @@ if (isMainModule) {
 
     for (const signal of ["SIGINT", "SIGTERM"] as const) {
       process.once(signal, () => {
-        services.sites.shutdown();let remaining=agentServer?2:1;const closed=()=>{remaining-=1;if(remaining===0){database.close();process.exit(0);}};
+        services.sites.shutdown();services.databaseRetention?.shutdown();let remaining=agentServer?2:1;const closed=()=>{remaining-=1;if(remaining===0){database.close();process.exit(0);}};
         agentServer?.close(closed);
         server.close(closed);
       });

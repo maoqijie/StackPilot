@@ -20,6 +20,7 @@ import type { DatabaseSlowQueryService } from "../modules/databases/databaseSlow
 import type { DatabaseInventoryService } from "../modules/databases/databaseInventoryService.js";
 import type { DatabaseBackupWorkspaceService } from "../modules/databases/databaseBackupWorkspaceService.js";
 import type { DatabaseOperationService } from "../modules/databases/databaseOperationService.js";
+import type { DatabaseRetentionService } from "../modules/databases/databaseRetentionService.js";
 import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
@@ -32,6 +33,7 @@ export type Services = {
   databaseInventory?: DatabaseInventoryService;
   databaseWorkspace?: DatabaseBackupWorkspaceService;
   databaseOperations?: DatabaseOperationService;
+  databaseRetention?: DatabaseRetentionService;
   sites: SiteMonitoringService;
   certificateRenewals: CertificateRenewalService;
   databaseBackups: DatabaseBackupService;
@@ -59,5 +61,5 @@ export type RequestContext = {
   rawBody: Buffer;
   identity: IdentityService | null;
   principal?: Principal;
-  agentIdentity?: { nodeId: string; credentialId: string };
+  agentIdentity?: { nodeId: string; credentialId: string; protocolVersion: string };
 };

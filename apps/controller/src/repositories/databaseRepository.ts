@@ -39,4 +39,5 @@ export interface DatabaseRepository {
   pollOperations(nodeId: string, limit: number, allowedKinds: readonly DatabaseOperationKind[]): AgentDatabaseOperationDispatch[];
   updateOperation(nodeId: string, update: AgentDatabaseOperationUpdate): DatabaseOperation;
   purgeExpiredSql(now: string): number;
+  purgeExpiredSensitiveData(now: string): { sql: number; credentials: number; operationResults: number };
 }

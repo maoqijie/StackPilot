@@ -31,22 +31,44 @@ export const ExecuteDatabaseOperationPlanRequestSchema = z.object({
 export const DatabaseCredentialEnvelopeSchema = z.object({
   algorithm: z.literal("RSA-OAEP-256"), ciphertext: z.string().min(1).max(32_768), expiresAt: z.string().datetime(),
 }).strict();
+const DatabaseBackupOperationResultSchema = z.object({
+  kind: z.literal("backup"), restorePointId: z.string().uuid(), createdAt: z.string().datetime(),
+  sizeBytes: z.number().int().nonnegative().safe(), checksum: z.string().regex(/^[a-f0-9]{64}$/),
+  databaseVersion: z.string().min(1).max(80), manifestVersion: z.number().int().positive(),
+}).strict();
+const DatabaseExplainOperationResultSchema = z.object({
+  kind: z.literal("explain"), format: z.enum(["json", "text"]), plan: z.string().min(1).max(262_144),
+}).strict();
+const DatabaseInstallOperationResultSchema = z.object({
+  kind: z.literal("install"), instanceLocalId: z.string().min(1).max(80).regex(/^[A-Za-z0-9_-]+$/),
+  engine: DatabaseEngineSchema, port: z.number().int().min(1).max(65_535),
+  serviceName: z.string().min(1).max(120).regex(/^[A-Za-z0-9_.@:-]+$/),
+}).strict();
+const DatabaseRestoreOperationResultSchema = z.object({
+  kind: z.literal("restore"), restorePointId: z.string().uuid(), health: z.literal("healthy"),
+  rollbackExpiresAt: z.string().datetime(),
+}).strict();
+export const DatabaseOperationResultSchema = z.discriminatedUnion("kind", [
+  DatabaseBackupOperationResultSchema, DatabaseExplainOperationResultSchema,
+  DatabaseInstallOperationResultSchema, DatabaseRestoreOperationResultSchema,
+]);
 export const DatabaseOperationSchema = z.object({
   id: z.string().uuid(), kind: DatabaseOperationKindSchema, nodeId: z.string().uuid(), instanceId: DatabaseIdSchema.nullable(),
   status: DatabaseOperationStatusSchema, version: z.number().int().positive(), errorCode: z.string().min(1).max(100).nullable(),
   errorMessage: z.string().min(1).max(500).nullable(), requestedBy: z.string().uuid(), requestId: z.string().min(1).max(160),
   createdAt: z.string().datetime(), updatedAt: z.string().datetime(), completedAt: z.string().datetime().nullable(),
-  credentialEnvelope: DatabaseCredentialEnvelopeSchema.nullable(),
+  credentialEnvelope: DatabaseCredentialEnvelopeSchema.nullable(), result: DatabaseOperationResultSchema.nullable().default(null),
 }).strict();
 export const DatabaseOperationResponseSchema = z.object({ operation: DatabaseOperationSchema }).strict();
 export const DatabaseOperationPlanResponseSchema = z.object({ plan: DatabaseOperationPlanSchema }).strict();
 export const AgentDatabaseOperationUpdateSchema = z.object({
   operationId: z.string().uuid(), version: z.number().int().positive(), status: z.enum(["running", "succeeded", "failed"]),
   errorCode: z.string().min(1).max(100).nullable(), errorMessage: z.string().min(1).max(500).nullable(),
-  credentialEnvelope: DatabaseCredentialEnvelopeSchema.nullable(), updatedAt: z.string().datetime(),
+  credentialEnvelope: DatabaseCredentialEnvelopeSchema.nullable(), result: DatabaseOperationResultSchema.nullable().default(null), updatedAt: z.string().datetime(),
 }).strict().superRefine((value, context) => {
   if (value.status === "failed" && !value.errorCode) context.addIssue({ code:"custom",path:["errorCode"],message:"failed operation requires errorCode" });
   if (value.credentialEnvelope && value.status !== "succeeded") context.addIssue({ code:"custom",path:["credentialEnvelope"],message:"credentials require succeeded status" });
+  if (value.result && value.status !== "succeeded") context.addIssue({ code:"custom",path:["result"],message:"operation result requires succeeded status" });
 });
 
 export type CreateDatabaseOperationPlanRequest = z.infer<typeof CreateDatabaseOperationPlanRequestSchema>;
@@ -54,3 +76,4 @@ export type DatabaseOperationPlan = z.infer<typeof DatabaseOperationPlanSchema>;
 export type ExecuteDatabaseOperationPlanRequest = z.infer<typeof ExecuteDatabaseOperationPlanRequestSchema>;
 export type DatabaseOperation = z.infer<typeof DatabaseOperationSchema>;
 export type DatabaseOperationKind = z.infer<typeof DatabaseOperationKindSchema>;
+export type DatabaseOperationResult = z.infer<typeof DatabaseOperationResultSchema>;

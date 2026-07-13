@@ -52,6 +52,7 @@ import { SqliteDatabaseRepository } from "./repositories/sqliteDatabaseRepositor
 import { DatabaseInventoryService } from "./modules/databases/databaseInventoryService.js";
 import { DatabaseBackupWorkspaceService } from "./modules/databases/databaseBackupWorkspaceService.js";
 import { DatabaseOperationService } from "./modules/databases/databaseOperationService.js";
+import { DatabaseRetentionService } from "./modules/databases/databaseRetentionService.js";
 import type { AuditRepository } from "./audit/auditRepository.js";
 
 export type AppOptions = {
@@ -106,6 +107,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
       databaseInventory: new DatabaseInventoryService(databaseRepository),
       databaseWorkspace: new DatabaseBackupWorkspaceService(databaseRepository),
       databaseOperations: new DatabaseOperationService(databaseRepository, nodes, audit),
+      databaseRetention: new DatabaseRetentionService(databaseRepository),
     } : {}),
     ...(fileUploads ? { fileUploads } : {}),
   };
@@ -168,7 +170,7 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
       const authenticatedAgent = isAgentPath && url.pathname !== "/api/agent/enroll"
         ? await authenticateAgentRequest(request, `${url.pathname}${url.search}`, parsedBody.raw, services.nodes)
         : undefined;
-      const context = { request, response, requestId, url, parts, config, services, platform, logger, body: parsedBody.value, rawBody: parsedBody.raw, identity, ...(principal ? { principal } : {}), ...(authenticatedAgent ? { agentIdentity: { nodeId: authenticatedAgent.nodeId, credentialId: authenticatedAgent.credential.credentialId } } : {}) };
+      const context = { request, response, requestId, url, parts, config, services, platform, logger, body: parsedBody.value, rawBody: parsedBody.raw, identity, ...(principal ? { principal } : {}), ...(authenticatedAgent ? { agentIdentity: { nodeId: authenticatedAgent.nodeId, credentialId: authenticatedAgent.credential.credentialId, protocolVersion: authenticatedAgent.protocolVersion } } : {}) };
       if (isAgentPath) await routeAgentRequest(context);
       else await routeRequest(context);
     } catch (error) {
