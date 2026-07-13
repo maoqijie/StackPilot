@@ -849,6 +849,10 @@
   justify-content: flex-end;
 }
 
+.module-page-overview-tasks > .module-head-actions-only > div:last-child {
+  margin-left: auto;
+}
+
 :is(.module-page-overview-health, .module-page-overview-tasks, .module-page-overview-risks) .module-main {
   gap: 24px;
 }

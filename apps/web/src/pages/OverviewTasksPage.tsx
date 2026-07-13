@@ -125,7 +125,7 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
   return (
     <ModulePageShell
       title={pageData?.title ?? "任务流"}
-      subtitle={loading ? "正在加载设备任务与自动化执行记录" : pageData?.subtitle ?? "集中查看任务队列、状态与执行日志"}
+      hideHeading
       page="overview-tasks"
       viewContext={pageData?.context ?? false}
       actions={(

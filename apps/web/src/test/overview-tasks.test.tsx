@@ -62,7 +62,11 @@ describe("overview tasks workbench", () => {
     render(<OverviewTasksPage notify={notify} setPage={setPage} />);
 
     expect(await screen.findByText("备份数据库")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "任务流" })).toHaveClass("sr-only");
+    expect(screen.queryByText("整台设备任务信号由后端实时采集")).not.toBeInTheDocument();
     expect(screen.getByText("采集于 2026/07/12 12:30:10")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新建计划任务" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /刷新|重新采集/ })).not.toBeInTheDocument();
     expect(screen.getByText("成功", { selector: ".task-row-result > strong" })).toBeInTheDocument();
   });
