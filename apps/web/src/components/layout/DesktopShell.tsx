@@ -1,3 +1,4 @@
+import type { PublicUser } from "@stackpilot/contracts";
 import { Lock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { desktopTopbarChrome, navPageFor } from "../../app/navigation";
@@ -97,6 +98,7 @@ function DesktopShellContent({
   setTopbarUnreadCount,
   sessionLocked,
   onLogout,
+  user,
 }: {
   page: PageKey;
   setPage: SetPage;
@@ -105,6 +107,7 @@ function DesktopShellContent({
   setTopbarUnreadCount: React.Dispatch<React.SetStateAction<number>>;
   sessionLocked: boolean;
   onLogout: () => void;
+  user: PublicUser;
 }) {
   const activeModule = navPageFor(page);
   const topbarChrome = desktopTopbarChrome(page);
@@ -225,7 +228,7 @@ function DesktopShellContent({
                 ? <DatabaseSlowQueriesPage page={page} setPage={setPage} notify={notify} />
               : <DatabasesPage page={page} setPage={setPage} notify={notify} />
           )}
-          {activeModule === "files" && <FilesModule page={page} notify={notify} />}
+          {activeModule === "files" && <FilesModule page={page} notify={notify} permissions={user.permissions} />}
           {activeModule === "terminal" && <TerminalPage page={page} notify={notify} />}
           {activeModule === "systemd" && <SystemdPage page={page} notify={notify} />}
           {activeModule === "firewall" && <FirewallPage page={page} notify={notify} />}
