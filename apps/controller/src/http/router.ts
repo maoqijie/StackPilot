@@ -5,6 +5,7 @@ import {
   OverviewTasksPayloadSchema, OverviewTasksRefreshResponseSchema, PathIdSchema,
   HostMonitoringPayloadSchema, ReadinessResponseSchema, RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
   CreateCertificateRenewalRequestSchema, CertificateRenewalBatchSchema,
+  DatabaseSlowQueriesPayloadSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
@@ -16,6 +17,8 @@ import { routeControlPlaneRequest } from "./controlPlaneRouter.js";
 import { routeIdentityRequest } from "./identityRouter.js";
 import type { OverviewAccess } from "../modules/overview/overviewService.js";
 import { routeSiteRequest } from "./siteRouter.js";
+import { routeDatabaseBackupRequest } from "./databaseBackupRouter.js";
+import { routeFileRequest } from "./fileRouter.js";
 
 function idAt(context: RequestContext, index: number) {
   try {
@@ -48,6 +51,8 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     await routeControlPlaneRequest(context); return;
   }
   if (parts[0] === "api" && ["site-plans", "site-operations"].includes(parts[1] ?? "")) { await routeSiteRequest(context); return; }
+  if (parts[0] === "api" && parts[1] === "database-backups") { await routeDatabaseBackupRequest(context); return; }
+  if (parts[0] === "api" && parts[1] === "file-uploads") { await routeFileRequest(context); return; }
   if (context.url.pathname === "/api/hosts" && method === "GET") {
     context.identity?.require(context.principal, "overview:read");
     const nodeScope = context.principal?.nodeScope ?? [];
@@ -59,6 +64,11 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     context.identity?.consumeReauth(context.principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);
     const input=parseSchema(CreateCertificateRenewalRequestSchema,context.body,"证书续期");
     sendJson(response,202,await services.certificateRenewals.create(input,{nodeScope:context.principal?.nodeScope??[]},`user:${context.principal?.userId}`,context.requestId),CertificateRenewalBatchSchema);return;
+  }
+  if (context.url.pathname === "/api/databases/slow-queries" && method === "GET") {
+    context.identity?.require(context.principal, "databases:read");
+    sendJson(response, 200, await services.databases.getSlowQueries(), DatabaseSlowQueriesPayloadSchema);
+    return;
   }
   if (parts[0] === "api" && parts[1] === "sites" && parts[2] === "certificate-renewals" && parts.length === 4 && method === "GET") {
     context.identity?.require(context.principal,"sites:read");

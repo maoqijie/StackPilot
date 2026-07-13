@@ -3,6 +3,8 @@ import { z } from "zod";
 export const PermissionSchema = z.enum([
   "overview:read", "overview:operate", "schedules:read", "schedules:write", "nodes:read", "nodes:manage",
   "sites:read", "sites:logs", "sites:deploy", "sites:operate", "sites:renew",
+  "files:read", "files:write",
+  "databases:read",
   "tasks:read", "tasks:create", "tasks:cancel", "audit:read", "users:read", "users:manage", "roles:read", "roles:manage", "tokens:manage", "system:backup",
 ]);
 export type Permission = z.infer<typeof PermissionSchema>;

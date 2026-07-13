@@ -30,7 +30,7 @@ async function reauthenticate(page: Page) {
 }
 
 async function stopAgent() {
-  if (agent && !agent.killed) { agent.kill("SIGTERM"); await once(agent, "exit"); }
+  if (agent && agent.exitCode === null && agent.signalCode === null && !agent.killed) { agent.kill("SIGTERM"); await once(agent, "exit"); }
   agent = undefined;
 }
 test.afterEach(stopAgent);
@@ -51,7 +51,8 @@ test("production HTTPS flow covers identity, Agent lifecycle, task, audit and se
   const state = resolve("output", "e2e", "runtime", `agent-${testInfo.project.name}-${testInfo.repeatEachIndex}`);
   rmSync(state, { recursive: true, force: true });
   mkdirSync(state, { recursive: true });
-  agent = spawn(process.execPath, ["apps/agent/dist/main.js"], { cwd: process.cwd(), env: { ...process.env, STACKPILOT_CONTROLLER_URL: "https://127.0.0.1:19443", STACKPILOT_AGENT_CA_PATH: resolve("output", "e2e", "runtime", "controller-ca.crt"), STACKPILOT_AGENT_STATE_DIR: state, STACKPILOT_AGENT_NAME: agentName, STACKPILOT_AGENT_ENROLLMENT_TOKEN: enrollment.body.token, STACKPILOT_AGENT_HEARTBEAT_SECONDS: "5" }, stdio: "ignore" });
+  const agentPort = Number(process.env.STACKPILOT_E2E_AGENT_PORT ?? 19_443);
+  agent = spawn(process.execPath, ["apps/agent/dist/main.js"], { cwd: process.cwd(), env: { ...process.env, STACKPILOT_CONTROLLER_URL: `https://127.0.0.1:${agentPort}`, STACKPILOT_AGENT_CA_PATH: resolve("output", "e2e", "runtime", "controller-ca.crt"), STACKPILOT_AGENT_STATE_DIR: state, STACKPILOT_AGENT_NAME: agentName, STACKPILOT_AGENT_ENROLLMENT_TOKEN: enrollment.body.token, STACKPILOT_AGENT_HEARTBEAT_SECONDS: "5" }, stdio: "ignore" });
 
   let nodeId = "";
   await expect.poll(async () => { const result = await api<{ nodes: Array<{ nodeId: string; status: string }> }>(page, "/api/nodes"); const node = result.body.nodes.find((item) => item.status === "online"); nodeId = node?.nodeId ?? ""; return node?.status; }, { timeout: 25_000 }).toBe("online");

@@ -33,6 +33,7 @@ const pageMeta: Record<string, PageMeta> = {
   sites: { title: "网站", breadcrumb: "应用管理", search: "搜索域名、服务、证书..." },
   "sites-create": { title: "部署站点", breadcrumb: "网站", search: "搜索部署计划..." },
   databases: { title: "数据库管理", breadcrumb: "资源管理", search: "搜索数据库名称" },
+  "databases-backups": { title: "备份恢复", breadcrumb: "数据库", search: "搜索备份文件" },
   files: { title: "文件", breadcrumb: "资源管理", search: "搜索文件名、路径、类型..." },
   terminal: { title: "终端", breadcrumb: "运维工具", search: "搜索会话主机或命令..." },
   systemd: { title: "systemd 服务", breadcrumb: "系统管理", search: "搜索服务、主机、状态..." },
@@ -88,7 +89,7 @@ const navItems: NavItem[] = [
     icon: Database,
     children: [
       { id: "databases-instances", label: "实例列表", meta: "资源列表" },
-      { id: "databases-backups", label: "备份计划", meta: "计划管理" },
+      { id: "databases-backups", label: "备份恢复", meta: "文件管理" },
       { id: "databases-slow", label: "慢查询", meta: "查询分析" },
     ],
   },

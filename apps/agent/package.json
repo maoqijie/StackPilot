@@ -11,7 +11,7 @@
     "typecheck": "npm run build --workspace @stackpilot/host-telemetry && tsc --noEmit",
     "build": "npm run build --workspace @stackpilot/host-telemetry && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
     "lint": "eslint src",
-    "test": "npm run build && node --test ../../tests/agent/*.test.js"
+    "test": "npm run build && npm run build --workspace @stackpilot/cert-helper && node --test ../../tests/agent/*.test.js"
   },
   "dependencies": { "@stackpilot/contracts": "0.2.0-preview.6", "@stackpilot/host-telemetry": "0.2.0-preview.6", "zod": "^4.4.3" },
   "devDependencies": { "@types/node": "^25.9.3", "tsx": "^4.23.0", "typescript": "^5.9.3" }

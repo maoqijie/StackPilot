@@ -15,6 +15,10 @@ import { FakePlatformAdapter } from "../../controller/support/fakePlatform.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const runtime = join(root, "output", "e2e", "runtime");
+const webPort = Number(process.env.STACKPILOT_E2E_WEB_PORT ?? 18_443);
+const managementPort = Number(process.env.STACKPILOT_E2E_MANAGEMENT_PORT ?? 18_787);
+const agentPort = Number(process.env.STACKPILOT_E2E_AGENT_PORT ?? 19_443);
+const webOrigin = `https://127.0.0.1:${webPort}`;
 rmSync(runtime, { recursive: true, force: true });
 mkdirSync(runtime, { recursive: true });
 
@@ -33,9 +37,9 @@ const keyPath = join(runtime, "controller.key");
 await Promise.all([writeFile(certPath, certificate.cert), writeFile(keyPath, certificate.private)]);
 
 const config = loadControllerConfig({
-  HOST: "127.0.0.1", PORT: "18787", STACKPILOT_DATABASE_PATH: join(runtime, "stackpilot.sqlite3"),
+  HOST: "127.0.0.1", PORT: String(managementPort), STACKPILOT_DATABASE_PATH: join(runtime, "stackpilot.sqlite3"),
   STACKPILOT_MASTER_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", STACKPILOT_COOKIE_SECURE: "1", STACKPILOT_PRODUCTION: "1",
-  STACKPILOT_ALLOWED_ORIGINS: "https://127.0.0.1:18443", STACKPILOT_AGENT_HOST: "127.0.0.1", STACKPILOT_AGENT_PORT: "19443",
+  STACKPILOT_ALLOWED_ORIGINS: webOrigin, STACKPILOT_AGENT_HOST: "127.0.0.1", STACKPILOT_AGENT_PORT: String(agentPort),
   STACKPILOT_AGENT_TLS_CERT_PATH: certPath, STACKPILOT_AGENT_TLS_KEY_PATH: keyPath,
   STACKPILOT_AGENT_STATE_PATH: join(runtime, "legacy.json"), STACKPILOT_TRUSTED_PROXIES: "127.0.0.1/32",
 });
@@ -50,12 +54,12 @@ const repository = new SqliteAgentControlRepository(database, identity.audit);
 const platform = new FakePlatformAdapter();
 const collectFixtureSnapshot = platform.collectSnapshot.bind(platform);
 platform.collectSnapshot = async () => ({ ...await collectFixtureSnapshot(), platformLabel: "win32 10.0" });
-const services = createControllerServices(platform, root, config, repository);
+const services = createControllerServices(platform, root, config, repository, database);
 const options = { config, database, identity, agentRepository: repository, platform, services, repoRoot: root };
 const management = createStackPilotServer(options);
 const agent = createStackPilotAgentServer({ cert: certificate.cert, key: certificate.private }, options);
-management.listen(18787, "127.0.0.1");
-agent.listen(19443, "127.0.0.1");
+management.listen(managementPort, "127.0.0.1");
+agent.listen(agentPort, "127.0.0.1");
 
 const mime = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon" };
 const webRoot = join(root, "apps", "web", "dist");
@@ -64,7 +68,7 @@ const proxy = createHttpsServer({ cert: certificate.cert, key: certificate.priva
   response.setHeader("X-Content-Type-Options", "nosniff");
   response.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-/IiHTQllMEt1knsqzjwvVGxsMxXaQ7ZdISgkRO6D6NI='; connect-src 'self'; frame-ancestors 'none'");
   if (request.url?.startsWith("/api/") || request.url === "/healthz" || request.url === "/readyz") {
-    const upstream = httpRequest({ host: "127.0.0.1", port: 18787, path: request.url, method: request.method, headers: { ...request.headers, host: "127.0.0.1:18787", forwarded: `for=${request.socket.remoteAddress};proto=https;host=127.0.0.1:18443`, "x-forwarded-for": request.socket.remoteAddress ?? "", "x-forwarded-proto": "https" } }, (upstreamResponse) => {
+    const upstream = httpRequest({ host: "127.0.0.1", port: managementPort, path: request.url, method: request.method, headers: { ...request.headers, host: `127.0.0.1:${managementPort}`, forwarded: `for=${request.socket.remoteAddress};proto=https;host=127.0.0.1:${webPort}`, "x-forwarded-for": request.socket.remoteAddress ?? "", "x-forwarded-proto": "https" } }, (upstreamResponse) => {
       response.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers);
       upstreamResponse.pipe(response);
     });
@@ -78,7 +82,7 @@ const proxy = createHttpsServer({ cert: certificate.cert, key: certificate.priva
   response.setHeader("Content-Type", mime[extname(path)] ?? "application/octet-stream");
   createReadStream(path).pipe(response);
 });
-proxy.listen(18443, "127.0.0.1", () => process.stdout.write("StackPilot E2E production fixture ready\n"));
+proxy.listen(webPort, "127.0.0.1", () => process.stdout.write("StackPilot E2E production fixture ready\n"));
 
 const close = () => { proxy.close(); agent.close(); management.close(() => database.close()); };
 process.once("SIGTERM", close);

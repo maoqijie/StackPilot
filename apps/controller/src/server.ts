@@ -42,7 +42,7 @@ if (isMainModule) {
     const secrets=new SecretStore(database,parseMasterKey(config.masterKey));
     const agentRepository=new SqliteAgentControlRepository(database,identity.audit,secrets);
     const siteRepository=new SqliteSiteManagementRepository(database,secrets);
-    const services = createControllerServices(platform, repoRoot, config,agentRepository,siteRepository);
+    const services = createControllerServices(platform, repoRoot, config,agentRepository,database,siteRepository);
     await services.certificateRenewals.startup();
     const appOptions={ config, services, platform, repoRoot,database,identity,agentRepository };
     const server = createStackPilotServer(appOptions);

@@ -48,6 +48,7 @@ services:
       STACKPILOT_TRUSTED_PROXIES: ${STACKPILOT_TRUSTED_PROXIES:-172.30.20.0/24}
       STACKPILOT_COOKIE_SECURE: "1"
       STACKPILOT_PRODUCTION: "1"
+      STACKPILOT_UPLOAD_ROOT: /var/lib/stackpilot/uploads
     secrets:
       - controller-master-key
     volumes:

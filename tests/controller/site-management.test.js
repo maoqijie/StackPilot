@@ -131,7 +131,7 @@ test("site management HTTP endpoints enforce permission, CSRF, one-time reauthen
   await identity.createInitialAdministrator("admin", "Administrator", "correct horse battery staple");
   const config = loadControllerConfig({ STACKPILOT_COOKIE_SECURE: "0", STACKPILOT_ALLOWED_ORIGINS: "http://127.0.0.1:5173" });
   const siteRepository = new SqliteSiteManagementRepository(database, new SecretStore(database, Buffer.alloc(32, 8)));
-  const services = createControllerServices(new FakePlatformAdapter(), process.cwd(), config, new MemoryAgentControlRepository(), siteRepository);
+  const services = createControllerServices(new FakePlatformAdapter(), process.cwd(), config, new MemoryAgentControlRepository(), database, siteRepository);
   services.siteManagement = new SiteManagementService(siteRepository, services.sites, services.certificateRenewals, { dispatch: async () => crypto.randomUUID(), reconcile: async () => null });
   const server = createStackPilotServer({ config, services, database, identity });
   server.listen(0, "127.0.0.1"); await once(server, "listening");
