@@ -9,6 +9,7 @@ import {
 import { z } from "zod";
 import { ServiceError } from "../serviceError.js";
 import { FileStorageSafety, isWithin, type StableDirectory } from "./fileStorageSafety.js";
+import { isCleanRestoreConflict, restoreMarker, restoreWithoutOverwrite } from "./fileRestore.js";
 
 const TRASH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const TRASH_MAINTENANCE_MS = 60 * 60 * 1000;
@@ -202,8 +203,8 @@ export class FileService {
   private async recoverRestore(row: TrashMeta) {
     const rows = await this.trashMetadata(); const stored = this.storedPath(row); const target = this.safety.requestedPath(row.originalPath);
     const [hasStored, hasTarget] = await Promise.all([this.exists(stored), this.exists(target)]); const recorded = rows.some((item) => item.id === row.id);
-    if (!hasStored && hasTarget) { if (recorded) await this.saveTrash(rows.filter((item) => item.id !== row.id)); return; }
-    if (hasStored && !hasTarget && recorded) return;
+    if (!hasStored && hasTarget) { if (row.kind === "directory") await rm(restoreMarker(target, row.id), { force: true }); if (recorded) await this.saveTrash(rows.filter((item) => item.id !== row.id)); return; }
+    if (hasStored && recorded) { await restoreWithoutOverwrite(stored, target, row); await this.saveTrash(rows.filter((item) => item.id !== row.id)); return; }
     throw metadataError("回收站恢复");
   }
 
@@ -277,10 +278,10 @@ export class FileService {
       await this.ensureStorage(); const rows = await this.trashMetadata(); const row = rows.find((item) => item.id === id);
       if (!row) throw new ServiceError(404, "NOT_FOUND", "回收站项目不存在");
       return this.safety.withStableParent(row.originalPath, async (parent, target) => {
-        await this.assertMissing(target.operationPath); const stored = this.storedPath(row);
-        await this.saveTransaction({ operation: "restore", row }); await rename(stored, target.operationPath);
-        try { await Promise.all([this.syncDirectory(this.trashRoot), this.syncDirectory(parent.operationPath)]); await this.safety.assertStableDirectory(parent); await this.saveTrash(rows.filter((item) => item.id !== id)); await this.clearTransaction(); }
-        catch (error) { try { await rename(target.operationPath, stored); await this.clearTransaction(); } catch { /* Leave the journal for startup recovery. */ } throw error; }
+        const stored = this.storedPath(row); await this.saveTransaction({ operation: "restore", row });
+        try { await restoreWithoutOverwrite(stored, target.operationPath, row); }
+        catch (error) { if (isCleanRestoreConflict(error) && await this.exists(stored)) await this.clearTransaction(); throw error; }
+        await Promise.all([this.syncDirectory(this.trashRoot), this.syncDirectory(parent.operationPath)]); await this.safety.assertStableDirectory(parent); await this.saveTrash(rows.filter((item) => item.id !== id)); await this.clearTransaction();
         return this.toEntry(target.operationPath, target.absolutePath);
       });
     });
