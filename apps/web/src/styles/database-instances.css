@@ -107,6 +107,14 @@
   box-shadow: none;
 }
 
+.module-page-databases .module-table-pagination,
+.module-page-databases .module-table-pagination button,
+.module-page-databases .module-table-pagination button:is(:hover, :focus-visible, :active) {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
 .module-page-databases .module-table :is(th, td) {
   border: 0;
 }
