@@ -225,7 +225,7 @@ function DesktopShellContent({
             page === "databases-backups"
               ? <DatabaseBackupsPage page={page} notify={notify} canManage={user.permissions.includes("system:backup")} />
               : page === "databases-slow"
-                ? <DatabaseSlowQueriesPage page={page} setPage={setPage} notify={notify} />
+                ? <DatabaseSlowQueriesPage page={page} notify={notify} />
               : <DatabasesPage page={page} setPage={setPage} notify={notify} />
           )}
           {activeModule === "files" && <FilesModule page={page} notify={notify} permissions={user.permissions} />}

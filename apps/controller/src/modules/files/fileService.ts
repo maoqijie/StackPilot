@@ -14,7 +14,7 @@ export class FileService {
   private mutation = Promise.resolve();
   constructor(private readonly roots: readonly string[]) { if (!roots.length || roots.some((root) => !isAbsolute(root))) throw new Error("文件根目录必须是绝对路径"); }
   private async mutate<T>(operation:()=>Promise<T>):Promise<T>{const previous=this.mutation;let release!:()=>void;this.mutation=new Promise<void>((resolve)=>{release=resolve;});await previous;try{return await operation();}finally{release();}}
-  private normalized(value: string) { if (!isAbsolute(value) || value.includes("\0")) throw new ServiceError(400,"BAD_REQUEST","文件路径无效"); return normalize(value); }
+  private normalized(value: string) { if (!isAbsolute(value) || value.includes("\0")) throw new ServiceError(400,"BAD_REQUEST","文件路径无效");const path=normalize(value);if(path.split(sep).includes(".stackpilot-trash"))throw new ServiceError(403,"FORBIDDEN","文件回收目录不可直接访问");return path; }
   private async rootFor(path: string) { const matches=await Promise.all(this.roots.map(async(item)=>{const configuredRoot=resolve(item);try{const realRoot=await realpath(configuredRoot);return isInside(configuredRoot,path)||isInside(realRoot,path)?{configuredRoot,realRoot}:null;}catch{return null;}}));const root=matches.filter((item):item is {configuredRoot:string;realRoot:string}=>Boolean(item)).sort((a,b)=>b.realRoot.length-a.realRoot.length)[0];if(!root)throw new ServiceError(403,"FORBIDDEN","文件路径超出允许范围");return root; }
   private async existing(value: string): Promise<RootMatch> {
     const absolutePath=this.normalized(value),{configuredRoot,realRoot}=await this.rootFor(absolutePath);let realTarget:string;

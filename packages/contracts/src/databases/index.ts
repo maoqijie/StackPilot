@@ -88,3 +88,28 @@ export type AgentDatabaseInstance = z.infer<typeof AgentDatabaseInstanceSchema>;
 export type AgentDatabaseSnapshot = z.infer<typeof AgentDatabaseSnapshotSchema>;
 export type DatabaseInstanceRecord = z.infer<typeof DatabaseInstanceRecordSchema>;
 export type DatabaseInstancesPayload = z.infer<typeof DatabaseInstancesPayloadSchema>;
+
+export const DatabaseSlowQueryRecordSchema = z.object({
+  id: z.string().min(1).max(160), instanceId: z.string().min(1).max(160), database: z.string().min(1).max(128),
+  fingerprint: z.string().min(1).max(160), sql: z.string().min(1).max(2_000), durationMs: z.number().int().nonnegative().safe(),
+  calls: z.number().int().nonnegative().safe().nullable(), p95Ms: z.number().int().nonnegative().safe().nullable(),
+  rowsExamined: z.number().int().nonnegative().safe().nullable(), risk: z.enum(["high", "medium", "low"]),
+  state: z.enum(["active", "waiting"]), owner: z.string().min(1).max(128).nullable(), startedAt: z.string().datetime(),
+  lastSeenAt: z.string().datetime(), sessionId: z.string().min(1).max(80).nullable(), waitEvent: z.string().min(1).max(160).nullable(),
+}).strict();
+
+export const DatabaseSlowQueryInstanceSchema = z.object({
+  id: z.string().min(1).max(160), name: z.string().min(1).max(128), engine: z.string().min(1).max(128),
+  host: z.string().min(1).max(253), port: z.number().int().min(1).max(65_535),
+  activeConnections: z.number().int().nonnegative().safe(), slowQueryCount: z.number().int().nonnegative().safe(), collectedAt: z.string().datetime(),
+}).strict();
+
+export const DatabaseSlowQueriesPayloadSchema = z.object({
+  collectedAt: z.string().datetime(), collectionStatus: z.enum(["complete", "partial", "unavailable"]),
+  warnings: z.array(z.string().min(1).max(256)).max(20), thresholdMs: z.number().int().positive().safe(),
+  instances: z.array(DatabaseSlowQueryInstanceSchema).max(10_000), queries: z.array(DatabaseSlowQueryRecordSchema).max(10_000),
+}).strict();
+
+export type DatabaseSlowQueryRecord = z.infer<typeof DatabaseSlowQueryRecordSchema>;
+export type DatabaseSlowQueryInstance = z.infer<typeof DatabaseSlowQueryInstanceSchema>;
+export type DatabaseSlowQueriesPayload = z.infer<typeof DatabaseSlowQueriesPayloadSchema>;

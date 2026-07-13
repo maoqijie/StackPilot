@@ -4,7 +4,7 @@ import {
   OverviewRisksPayloadSchema, OverviewRisksScanResponseSchema, OverviewSummaryPayloadSchema,
   OverviewTasksPayloadSchema, OverviewTasksRefreshResponseSchema, PathIdSchema,
   HostMonitoringPayloadSchema, ReadinessResponseSchema, RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
-  SiteRuntimePayloadSchema,
+  SiteRuntimePayloadSchema, DatabaseSlowQueriesPayloadSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
@@ -56,6 +56,11 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     const nodeScope = context.principal?.nodeScope ?? [];
     const canReadNodes = Boolean(context.principal?.permissions.has("nodes:read"));
     sendJson(response,200,await services.hosts.getHosts(canReadNodes&&(nodeScope==="all"||nodeScope.length>0),nodeScope),HostMonitoringPayloadSchema);return;
+  }
+  if (context.url.pathname === "/api/databases/slow-queries" && method === "GET") {
+    context.identity?.require(context.principal, "databases:read");
+    sendJson(response, 200, await services.databases.getSlowQueries(), DatabaseSlowQueriesPayloadSchema);
+    return;
   }
   if (context.url.pathname === "/api/sites" && method === "GET") {
     context.identity?.require(context.principal, "overview:read");

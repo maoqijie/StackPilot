@@ -6,6 +6,7 @@ import {
   AGENT_PROTOCOL_VERSION, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, CreateRemoteTaskRequestSchema, isAgentProtocolCompatible,
   SiteRuntimePayloadSchema,
   CreateFileUploadRequestSchema, FileUploadRecordSchema,
+  DatabaseSlowQueriesPayloadSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   CreateDirectoryRequestSchema, FileNameSchema, FilePathSchema,
 } from "@stackpilot/contracts";
@@ -53,6 +54,16 @@ test("site runtime contract keeps collection provenance and nullable measurement
   assert.equal(SiteRuntimePayloadSchema.safeParse(payload).success, true);
   assert.equal(SiteRuntimePayloadSchema.safeParse({ ...payload, clientCollectedAt: payload.collectedAt }).success, false);
   assert.equal(SiteRuntimePayloadSchema.safeParse({ ...payload, sites: [{ ...payload.sites[0], latencyMs: -1 }] }).success, false);
+});
+
+test("database slow-query contract preserves nullable historical statistics", () => {
+  const collectedAt = new Date().toISOString();
+  const payload = { collectedAt, collectionStatus: "complete", warnings: [], thresholdMs: 1_000,
+    instances: [{ id: "postgres-orders", name: "orders", engine: "PostgreSQL 16", host: "Controller 本机", port: 5432, activeConnections: 3, slowQueryCount: 1, collectedAt }],
+    queries: [{ id: "query-1", instanceId: "postgres-orders", database: "orders", fingerprint: "pg-1", sql: "SELECT ?", durationMs: 1_250, calls: null, p95Ms: null, rowsExamined: null, risk: "low", state: "active", owner: "reader", startedAt: collectedAt, lastSeenAt: collectedAt, sessionId: "91", waitEvent: null }] };
+  assert.equal(DatabaseSlowQueriesPayloadSchema.safeParse(payload).success, true);
+  assert.equal(DatabaseSlowQueriesPayloadSchema.safeParse({ ...payload, thresholdMs: 0 }).success, false);
+  assert.equal(DatabaseSlowQueriesPayloadSchema.safeParse({ ...payload, queries: [{ ...payload.queries[0], sql: "x".repeat(2_001) }] }).success, false);
 });
 
 test("identity schemas reject privilege fields and invalid node scopes", () => {
