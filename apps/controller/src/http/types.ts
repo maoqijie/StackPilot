@@ -12,11 +12,12 @@ import type { SiteMonitoringService } from "../modules/sites/siteMonitoringServi
 import type { DatabaseBackupService } from "../modules/databases/databaseBackupService.js";
 import type { RemoteTaskService } from "../modules/remote-tasks/remoteTaskService.js";
 import type { FileUploadService } from "../modules/files/fileUploadService.js";
+import type { DatabaseSlowQueryService } from "../modules/databases/databaseSlowQueryService.js";
 import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
 
-export type Services = { overview: OverviewService; hosts: HostMonitoringService; sites: SiteMonitoringService; databaseBackups: DatabaseBackupService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService; files?: FileUploadService };
+export type Services = { overview: OverviewService; hosts: HostMonitoringService; databases: DatabaseSlowQueryService; sites: SiteMonitoringService; databaseBackups: DatabaseBackupService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService; files?: FileUploadService };
 export type RequestContext = {
   request: IncomingMessage;
   response: ServerResponse;
