@@ -62,7 +62,8 @@ services:
         read_only: true
     networks: [control]
     read_only: true
-    tmpfs: [/tmp:size=16m,uid=10001,gid=10001,mode=0700]
+    tmpfs:
+      - /tmp:size=16m,uid=10001,gid=10001,mode=0700
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     init: true
@@ -89,7 +90,8 @@ services:
       - agent-state:/var/lib/stackpilot-agent
     networks: [control]
     read_only: true
-    tmpfs: [/tmp:size=8m,uid=10002,gid=10002,mode=0700]
+    tmpfs:
+      - /tmp:size=8m,uid=10002,gid=10002,mode=0700
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     init: true

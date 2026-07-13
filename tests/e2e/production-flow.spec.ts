@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 
 const adminPassword = "e2e administrator password";
@@ -45,11 +45,13 @@ test("production HTTPS flow covers identity, Agent lifecycle, task, audit and se
   await expect(page.getByText(/Windows 等效/).first()).toBeVisible();
 
   const proof = await reauthenticate(page);
-  const enrollment = await api<{ token: string }>(page, "/api/enrollments", "POST", { nodeName: `e2e-node-${testInfo.project.name}`, expiresInSeconds: 300 }, { "X-Reauth-Proof": proof });
+  const agentName = `e2e-node-${testInfo.project.name}-${testInfo.repeatEachIndex}`;
+  const enrollment = await api<{ token: string }>(page, "/api/enrollments", "POST", { nodeName: agentName, expiresInSeconds: 300 }, { "X-Reauth-Proof": proof });
   expect(enrollment.status).toBe(201);
-  const state = resolve("output", "e2e", "runtime", `agent-${testInfo.project.name}`);
+  const state = resolve("output", "e2e", "runtime", `agent-${testInfo.project.name}-${testInfo.repeatEachIndex}`);
+  rmSync(state, { recursive: true, force: true });
   mkdirSync(state, { recursive: true });
-  agent = spawn(process.execPath, ["apps/agent/dist/main.js"], { cwd: process.cwd(), env: { ...process.env, STACKPILOT_CONTROLLER_URL: "https://127.0.0.1:19443", STACKPILOT_AGENT_CA_PATH: resolve("output", "e2e", "runtime", "controller-ca.crt"), STACKPILOT_AGENT_STATE_DIR: state, STACKPILOT_AGENT_NAME: `e2e-node-${testInfo.project.name}`, STACKPILOT_AGENT_ENROLLMENT_TOKEN: enrollment.body.token, STACKPILOT_AGENT_HEARTBEAT_SECONDS: "5" }, stdio: "ignore" });
+  agent = spawn(process.execPath, ["apps/agent/dist/main.js"], { cwd: process.cwd(), env: { ...process.env, STACKPILOT_CONTROLLER_URL: "https://127.0.0.1:19443", STACKPILOT_AGENT_CA_PATH: resolve("output", "e2e", "runtime", "controller-ca.crt"), STACKPILOT_AGENT_STATE_DIR: state, STACKPILOT_AGENT_NAME: agentName, STACKPILOT_AGENT_ENROLLMENT_TOKEN: enrollment.body.token, STACKPILOT_AGENT_HEARTBEAT_SECONDS: "5" }, stdio: "ignore" });
 
   let nodeId = "";
   await expect.poll(async () => { const result = await api<{ nodes: Array<{ nodeId: string; status: string }> }>(page, "/api/nodes"); const node = result.body.nodes.find((item) => item.status === "online"); nodeId = node?.nodeId ?? ""; return node?.status; }, { timeout: 25_000 }).toBe("online");

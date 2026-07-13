@@ -24,7 +24,7 @@ jobs:
       - name: Check out tagged source
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - name: Set up Node.js 22.22.0
-        uses: actions/setup-node@49933ea5288caeca8643d1e84afbd3f7d6820020
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.22.0
           cache: npm
@@ -92,6 +92,7 @@ jobs:
       - name: Scan published images
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
         with:
+          version: v0.72.0
           image-ref: ghcr.io/${{ github.repository_owner }}/stackpilot-controller@${{ steps.controller.outputs.digest }}
           severity: HIGH,CRITICAL
           ignore-unfixed: false
@@ -99,6 +100,7 @@ jobs:
       - name: Scan published Web image
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
         with:
+          version: v0.72.0
           image-ref: ghcr.io/${{ github.repository_owner }}/stackpilot-web@${{ steps.web.outputs.digest }}
           severity: HIGH,CRITICAL
           ignore-unfixed: false
@@ -106,6 +108,7 @@ jobs:
       - name: Scan published Agent image
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
         with:
+          version: v0.72.0
           image-ref: ghcr.io/${{ github.repository_owner }}/stackpilot-agent@${{ steps.agent.outputs.digest }}
           severity: HIGH,CRITICAL
           ignore-unfixed: false

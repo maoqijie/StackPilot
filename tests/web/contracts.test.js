@@ -27,3 +27,9 @@ test("Vite proxies API and health routes to the Controller", async () => {
   assert.match(config, /"\/api": apiProxy/);
   assert.match(config, /"\/healthz": apiProxy/);
 });
+
+test("Web tests rely on the jsdom environment instead of unsupported Node options", async () => {
+  const packageJson = JSON.parse(await readFile(new URL("../../apps/web/package.json", import.meta.url), "utf8"));
+  assert.match(packageJson.scripts.test, /^vitest run/);
+  assert.doesNotMatch(packageJson.scripts.test, /NODE_OPTIONS|webstorage/);
+});
