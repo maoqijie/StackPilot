@@ -138,6 +138,7 @@ SELECT 'administrator', key FROM permissions WHERE key IN (
 );
 
 UPDATE release_metadata
-SET schema_version = 4,
+SET application_version = '0.3.0-preview.1',
+    schema_version = 5,
     upgraded_at = CURRENT_TIMESTAMP
 WHERE singleton = 1;

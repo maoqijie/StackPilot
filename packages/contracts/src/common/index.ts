@@ -7,6 +7,7 @@ export const WRITE_METHODS = ["POST", "PATCH", "DELETE"] as const;
 export const ApiErrorCodeSchema = z.enum([
   "BAD_REQUEST",
   "UNAUTHORIZED",
+  "REAUTHENTICATION_FAILED",
   "FORBIDDEN",
   "NOT_FOUND",
   "PAYLOAD_TOO_LARGE",

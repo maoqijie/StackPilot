@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { openDatabase } from "../../apps/controller/dist/database/database.js";
-import { migrateDatabase } from "../../apps/controller/dist/database/migrator.js";
-import { readFile } from "node:fs/promises";
 import { IdentityService } from "../../apps/controller/dist/identity/identityService.js";
 import { DatabaseBackupWorkspaceService } from "../../apps/controller/dist/modules/databases/databaseBackupWorkspaceService.js";
 import { DatabaseInventoryService } from "../../apps/controller/dist/modules/databases/databaseInventoryService.js";
@@ -10,11 +8,10 @@ import { DatabaseOperationService } from "../../apps/controller/dist/modules/dat
 import { SqliteDatabaseRepository } from "../../apps/controller/dist/repositories/sqliteDatabaseRepository.js";
 import { routeDatabaseRequest } from "../../apps/controller/dist/http/databaseRouter.js";
 
-const migrationUrl=new URL("../../apps/controller/src/database/migrations/004_databases.sql",import.meta.url);
 function response(){return{statusCode:0,headers:new Map(),body:"",setHeader(name,value){this.headers.set(name.toLowerCase(),value);},end(body=""){this.body=String(body);}};}
 
 async function fixture(){
-  const database=openDatabase(":memory:");migrateDatabase(database,[{version:4,name:"databases",sql:await readFile(migrationUrl,"utf8")}]);const identity=new IdentityService(database,Buffer.alloc(32,3));
+  const database=openDatabase(":memory:");const identity=new IdentityService(database,Buffer.alloc(32,3));
   await identity.createInitialAdministrator("admin","Admin","correct horse battery staple");const principal=(await identity.login("admin","correct horse battery staple","test","ua")).principal;
   const nodeId=crypto.randomUUID(),now=new Date().toISOString(),node={nodeId,nodeName:"db-node",status:"online",agentVersion:"0.3.0",protocolVersion:"1.1",platform:"linux",declaredCapabilities:[],allowedCapabilities:[],enrolledAt:now,lastSeenAt:now,revokedAt:null};database.prepare("INSERT INTO agent_nodes(node_id,payload,revoked_at,updated_at)VALUES(?,?,NULL,?)").run(nodeId,JSON.stringify(node),now);
   const repository=new SqliteDatabaseRepository(database,Buffer.alloc(32,5)),inventory=new DatabaseInventoryService(repository);inventory.ingestSnapshot(nodeId,{collectedAt:now,collectionStatus:"complete",warnings:[],instances:[{id:"postgres-main",name:"main",engine:"postgresql",version:"16.9",host:"db-node",port:5432,status:"running",source:"postgresql",managed:true,historicalSlowQueriesAvailable:true,latencyMs:1,storageBytes:100,activeConnections:1,maxConnections:100,slowQueryCount:1,backupStatus:"pending",lastBackupAt:null,accessMode:"read-write",owner:null,region:null,autoBackup:false,remoteAccess:true,volumes:[]}]});

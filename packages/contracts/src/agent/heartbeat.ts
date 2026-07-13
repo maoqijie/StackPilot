@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { AgentDatabaseSnapshotSchema } from "../databases/index.js";
+import { AgentSiteSnapshotSchema } from "../sites/index.js";
 import { ProtocolVersionSchema } from "../versioning/index.js";
 import { AgentCapabilitiesSchema, AgentPlatformSchema } from "./capabilities.js";
 const PercentSchema = z.number().finite().min(0).max(100);
@@ -64,6 +66,8 @@ export const AgentHeartbeatSchema = z.object({
   capabilities: AgentCapabilitiesSchema,
   health: AgentHealthSchema,
   telemetry: AgentTelemetrySnapshotSchema.optional(),
+  siteSnapshot: AgentSiteSnapshotSchema.optional(),
+  databaseSnapshot: AgentDatabaseSnapshotSchema.optional(),
 }).strict();
 
 export const AgentHeartbeatResponseSchema = z.object({

@@ -3,6 +3,7 @@ import { createHash, generateKeyPairSync, randomBytes, sign } from "node:crypto"
 import test from "node:test";
 import { AGENT_PROTOCOL_VERSION, agentSignaturePayload } from "@stackpilot/contracts";
 import { EnrollmentService } from "../../apps/controller/dist/modules/enrollments/enrollmentService.js";
+import { routeControlPlaneRequest } from "../../apps/controller/dist/http/controlPlaneRouter.js";
 import { NodeService } from "../../apps/controller/dist/modules/nodes/nodeService.js";
 import { RemoteTaskService, transitionTask } from "../../apps/controller/dist/modules/remote-tasks/remoteTaskService.js";
 import { MemoryAgentControlRepository } from "../../apps/controller/dist/repositories/agentControlRepository.js";
@@ -44,10 +45,33 @@ test("heartbeat controls online/offline lifecycle and node revocation rejects id
   await fixture.nodes.revoke(fixture.enrolled.nodeId, "admin", crypto.randomUUID()); assert.equal((await fixture.nodes.list())[0].status, "revoked");
 });
 
+test("heartbeat persists optional site snapshots and legacy heartbeats preserve the last snapshot", async () => {
+  const fixture = await enrolledFixture();
+  const heartbeat = { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["sites.inventory.read"], health: { status: "healthy", uptimeSeconds: 10 } };
+  const siteSnapshot = { collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], sites: [] };
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { ...heartbeat, siteSnapshot }, crypto.randomUUID());
+  assert.deepEqual((await fixture.repository.read()).nodes[0].siteSnapshot, siteSnapshot);
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { ...heartbeat, timestamp: new Date().toISOString() }, crypto.randomUUID());
+  assert.deepEqual((await fixture.repository.read()).nodes[0].siteSnapshot, siteSnapshot);
+});
+
+test("node capability authorization accepts only declared Controller-supported capabilities", async () => {
+  const fixture = await enrolledFixture();
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read", "sites.certificates.renew"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID());
+  const updated = await fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["sites.certificates.renew"], "admin", crypto.randomUUID());
+  assert.deepEqual(updated.allowedCapabilities, ["sites.certificates.renew"]);
+  await assert.rejects(() => fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["service.status.read"], "admin", crypto.randomUUID()), /已声明/);
+});
+
 test("task state machine enforces capability, idempotency, expiry, cancellation and queue limit", async () => {
   const fixture = await enrolledFixture(); await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read", "service.status.read"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID());
   const input = { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "idempotent-summary-a" };
-  const first = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID()); const duplicate = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID()); assert.equal(duplicate.taskId, first.taskId);
+  let authorizationCount = 0;
+  const authorize = () => { authorizationCount += 1; };
+  const first = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID(), authorize); const duplicate = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID(), authorize); assert.equal(duplicate.taskId, first.taskId); assert.equal(authorizationCount, 2);
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { ...input, parameters: { includeLoad: true } }, "admin", crypto.randomUUID(), authorize), (error) => error.status === 409);
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "service.status.read", parameters: { serviceName: "nginx" }, expiresInSeconds: 60, idempotencyKey: input.idempotencyKey }, "admin", crypto.randomUUID(), authorize), (error) => error.status === 409);
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, input, "other-user", crypto.randomUUID(), authorize), (error) => error.status === 409);
   const dispatched = await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID()); assert.equal(dispatched.length, 1);
   await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: first.taskId, attempt: 1, status: "running", timestamp: new Date().toISOString() }, crypto.randomUUID());
   assert.equal((await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: first.taskId, attempt: 1, status: "running", timestamp: new Date().toISOString() }, crypto.randomUUID())).status, "running");
@@ -84,9 +108,11 @@ test("task results reject sensitive fields and oversized output", async () => {
 test("Controller policy and Agent declaration are both required for a task", async () => {
   const fixture = await enrolledFixture();
   await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 1 } }, crypto.randomUUID());
-  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "service.status.read", parameters: { serviceName: "sshd" }, expiresInSeconds: 60, idempotencyKey: "missing-agent-capability" }, "admin", crypto.randomUUID()), (error) => error.status === 403);
+  let authorizationCount = 0;
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "service.status.read", parameters: { serviceName: "sshd" }, expiresInSeconds: 60, idempotencyKey: "missing-agent-capability" }, "admin", crypto.randomUUID(), () => { authorizationCount += 1; }), (error) => error.status === 403);
   await fixture.repository.update((state) => { state.nodes[0].allowedCapabilities = []; });
-  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "missing-controller-policy" }, "admin", crypto.randomUUID()), (error) => error.status === 403);
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "missing-controller-policy" }, "admin", crypto.randomUUID(), () => { authorizationCount += 1; }), (error) => error.status === 403);
+  assert.equal(authorizationCount, 0);
 });
 
 test("task expiry, queue limits and audit redaction are persisted", async () => {
@@ -94,9 +120,43 @@ test("task expiry, queue limits and audit redaction are persisted", async () => 
   const first = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "expire-task-one" }, "admin", crypto.randomUUID());
   await fixture.repository.update((state) => { state.tasks.find((item) => item.taskId === first.taskId).expiresAt = new Date(Date.now() - 1).toISOString(); state.audits.push({ eventId: crypto.randomUUID(), timestamp: new Date().toISOString(), requester: "test", nodeId: fixture.enrolled.nodeId, taskId: first.taskId, event: "redaction.test", taskType: "system.summary.read", parameters: { nested: { authorization: "Bearer secret", safe: "visible" } }, fromStatus: null, toStatus: null, resultSummary: "ok", traceId: crypto.randomUUID() }); });
   assert.equal((await fixture.tasks.list()).find((item) => item.taskId === first.taskId).status, "expired");
-  await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "queue-task-one" }, "admin", crypto.randomUUID());
+  const queued = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "queue-task-one" }, "admin", crypto.randomUUID());
   await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "queue-task-two" }, "admin", crypto.randomUUID());
+  assert.equal((await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "queue-task-one" }, "admin", crypto.randomUUID())).taskId, queued.taskId);
   await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "queue-task-three" }, "admin", crypto.randomUUID()), /队列已满/);
   const state = await fixture.repository.read(); assert.ok(state.audits.some((event) => event.event === "task.expired" && event.taskId === first.taskId));
   const redacted = state.audits.find((event) => event.event === "redaction.test"); assert.equal(redacted.parameters.nested.authorization, "[REDACTED]"); assert.equal(redacted.parameters.nested.safe, "visible");
+});
+
+test("read-only task history derives expiry without updating stored state or audit", async () => {
+  const fixture = await enrolledFixture();
+  const created = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "read-only-expired-task" }, "admin", crypto.randomUUID());
+  await fixture.repository.update((state) => { state.tasks.find((item) => item.taskId === created.taskId).expiresAt = new Date(Date.now() - 1).toISOString(); });
+  const originalUpdate = fixture.repository.update.bind(fixture.repository); let updateCalls = 0;
+  fixture.repository.update = (...args) => { updateCalls += 1; return originalUpdate(...args); };
+
+  const displayed = (await fixture.tasks.listReadOnly()).find((item) => item.taskId === created.taskId);
+  assert.equal(displayed.status, "expired"); assert.equal(displayed.errorCode, "TASK_EXPIRED"); assert.equal(updateCalls, 0);
+  const storedBeforeReconciliation = await fixture.repository.read();
+  assert.equal(storedBeforeReconciliation.tasks.find((item) => item.taskId === created.taskId).status, "queued");
+  assert.equal(storedBeforeReconciliation.audits.some((event) => event.event === "task.expired" && event.taskId === created.taskId), false);
+
+  assert.equal((await fixture.tasks.list()).find((item) => item.taskId === created.taskId).status, "expired"); assert.equal(updateCalls, 1);
+  const storedAfterReconciliation = await fixture.repository.read();
+  assert.equal(storedAfterReconciliation.audits.some((event) => event.event === "task.expired" && event.taskId === created.taskId), true);
+});
+
+test("GET remote task history uses the read-only service path", async () => {
+  const fixture = await enrolledFixture();
+  const created = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "http-read-only-expired-task" }, "admin", crypto.randomUUID());
+  await fixture.repository.update((state) => { state.tasks.find((item) => item.taskId === created.taskId).expiresAt = new Date(Date.now() - 1).toISOString(); });
+  const originalUpdate = fixture.repository.update.bind(fixture.repository); let updateCalls = 0;
+  fixture.repository.update = (...args) => { updateCalls += 1; return originalUpdate(...args); };
+  const response = { statusCode: 0, headers: {}, body: "", setHeader(name, value) { this.headers[name] = value; }, end(body = "") { this.body = body; } };
+
+  await routeControlPlaneRequest({ request: { method: "GET", headers: {} }, response, parts: ["api", "remote-tasks"], services: { remoteTasks: fixture.tasks }, identity: null, principal: { nodeScope: "all" } });
+
+  assert.equal(response.statusCode, 200); assert.equal(updateCalls, 0);
+  const payload = JSON.parse(response.body); assert.equal(payload.tasks[0].status, "expired"); assert.equal(payload.tasks[0].errorCode, "TASK_EXPIRED");
+  const stored = await fixture.repository.read(); assert.equal(stored.tasks[0].status, "queued"); assert.equal(stored.audits.some((event) => event.event === "task.expired"), false);
 });

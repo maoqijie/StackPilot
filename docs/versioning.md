@@ -2,6 +2,6 @@
 
 Current version: `0.3.0-preview.1`. StackPilot uses Semantic Versioning, but this is preview software and not a stable production release. `0.x` minor releases may contain breaking changes; prerelease labels do not carry a support SLA.
 
-Controller and Web versions must match. Controller-Agent compatibility is independently negotiated through protocol major 1: Controller `0.3.x` accepts legacy protocol `1.0` Agents and database-capable protocol `1.1` Agents, but database capabilities require the latter. Database schema 4 can be upgraded directly from schema 1, 2 or 3. There is no automatic down migration.
+Controller and Web versions must match. Controller-Agent compatibility is independently negotiated through protocol major 1: Controller `0.3.x` accepts legacy protocol `1.0` Agents and database-capable protocol `1.1` Agents, but database capabilities require the latter. Database schema 5 can be upgraded directly from schema 1, 2, 3 or 4. There is no automatic down migration.
 
 The normative platform, browser, Agent and schema table is [compatibility.md](compatibility.md). Tags and GitHub release artifacts are authoritative; a package version in an untagged checkout is not a release.

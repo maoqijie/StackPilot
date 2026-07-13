@@ -21,9 +21,13 @@ import { EnrollmentService } from "./modules/enrollments/enrollmentService.js";
 import { NodeService } from "./modules/nodes/nodeService.js";
 import { HostMonitoringService } from "./modules/hosts/hostMonitoringService.js";
 import { SiteMonitoringService } from "./modules/sites/siteMonitoringService.js";
+import { CertificateRenewalService } from "./modules/sites/certificateRenewalService.js";
+import { DatabaseMonitoringService } from "./modules/databases/databaseMonitoringService.js";
 import { DatabaseBackupService } from "./modules/databases/databaseBackupService.js";
 import { NginxSiteCollector } from "./platform/siteCollector.js";
 import { RemoteTaskService } from "./modules/remote-tasks/remoteTaskService.js";
+import { TerminalSnippetService } from "./modules/terminal/terminalSnippetService.js";
+import { MemoryTerminalSnippetRepository, SqliteTerminalSnippetRepository } from "./modules/terminal/terminalSnippetRepository.js";
 import { NativePlatformAdapter } from "./platform/nativeAdapter.js";
 import type { PlatformAdapter } from "./platform/types.js";
 import { FileExportRepository } from "./repositories/exportRepository.js";
@@ -44,6 +48,11 @@ import { FileUploadRepository } from "./repositories/fileUploadRepository.js";
 import { FileUploadService } from "./modules/files/fileUploadService.js";
 import { DatabaseSlowQueryService } from "./modules/databases/databaseSlowQueryService.js";
 import { PostgresSlowQueryCollector } from "./platform/postgresSlowQueryCollector.js";
+import { SqliteDatabaseRepository } from "./repositories/sqliteDatabaseRepository.js";
+import { DatabaseInventoryService } from "./modules/databases/databaseInventoryService.js";
+import { DatabaseBackupWorkspaceService } from "./modules/databases/databaseBackupWorkspaceService.js";
+import { DatabaseOperationService } from "./modules/databases/databaseOperationService.js";
+import type { AuditRepository } from "./audit/auditRepository.js";
 
 export type AppOptions = {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -63,25 +72,41 @@ function createFileUploadService(database: Database.Database, repoRoot: string, 
   return new FileUploadService(new FileUploadRepository(database), uploadRoot, config.uploadMaxBytes, config.uploadChunkMaxBytes);
 }
 
-export function createControllerServices(platform: PlatformAdapter, repoRoot: string, config: ControllerConfig, agentRepository?: AgentControlRepository, database: Database.Database | null = null): Services {
+export function createControllerServices(platform: PlatformAdapter, repoRoot: string, config: ControllerConfig, agentRepository?: AgentControlRepository, database: Database.Database | null = null, audit?: AuditRepository): Services {
   const state = new MemoryTaskStateRepository();
   const exports = new FileExportRepository(repoRoot);
   const repository = agentRepository ?? new FileAgentControlRepository(isAbsolute(config.agentStatePath) ? config.agentStatePath : resolve(repoRoot, config.agentStatePath));
   const overview = new OverviewService(platform, state, repository);
+  const sites = new SiteMonitoringService(new NginxSiteCollector(config.nginxConfigDirs), repository);
+  const certificateRenewals = new CertificateRenewalService(repository, sites);
+  const remoteTasks = new RemoteTaskService(repository);
+  const terminalRepository = database ? new SqliteTerminalSnippetRepository(database) : new MemoryTerminalSnippetRepository();
   const fileUploads = database ? createFileUploadService(database, repoRoot, config) : undefined;
+  const databaseRepository = database && config.masterKey
+    ? new SqliteDatabaseRepository(database, parseMasterKey(config.masterKey))
+    : undefined;
+  const nodes = new NodeService(repository);
   return {
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
-    databases: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
-    sites: new SiteMonitoringService(new NginxSiteCollector(config.nginxConfigDirs)),
+    databaseSlowQueries: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
+    databaseInstances: new DatabaseMonitoringService(repository),
+    sites,
+    certificateRenewals,
     fileManager: new FileService(config.fileRoots),
     databaseBackups: new DatabaseBackupService(database, isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath), config, repoRoot),
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
     schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform),
     enrollments: new EnrollmentService(repository),
-    nodes: new NodeService(repository),
-    remoteTasks: new RemoteTaskService(repository),
+    nodes,
+    remoteTasks,
+    terminalSnippets: new TerminalSnippetService(terminalRepository, remoteTasks),
+    ...(databaseRepository ? {
+      databaseInventory: new DatabaseInventoryService(databaseRepository),
+      databaseWorkspace: new DatabaseBackupWorkspaceService(databaseRepository),
+      databaseOperations: new DatabaseOperationService(databaseRepository, nodes, audit),
+    } : {}),
     ...(fileUploads ? { fileUploads } : {}),
   };
 }
@@ -101,7 +126,7 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
   const database = options.database ?? (config.masterKey ? openDatabase(isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath)) : null);
   const identity = options.identity === undefined ? (database && config.masterKey ? new IdentityService(database, loadOrCreateAuditKey(database,parseMasterKey(config.masterKey)), config.sessionSeconds) : null) : options.identity;
   const agentRepository = options.agentRepository ?? (database ? new SqliteAgentControlRepository(database,identity?.audit) : undefined);
-  const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, database);
+  const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, database, identity?.audit);
   if (!services.fileUploads && database) services.fileUploads = createFileUploadService(database, repoRoot, config);
   const logger = options.logger ?? consoleLogger;
   const surface = options.surface ?? "all";
@@ -135,7 +160,8 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
       if (!isAgentPath && isWriteMethod(method) && !isLoginPath && principal && identity) requireCsrf(request, principal, identity, config.allowedOrigins);
       const isFileUpload = url.pathname === "/api/files/upload" && method === "POST";
       if (isFileUpload) identity?.require(principal, "files:manage");
-      const bodyLimit = isFileUpload ? config.fileUploadLimitBytes : url.pathname === "/api/agent/heartbeat" ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
+      const isLargeAgentPayload = url.pathname === "/api/agent/heartbeat" || url.pathname.startsWith("/api/agent/databases/");
+      const bodyLimit = isFileUpload ? config.fileUploadLimitBytes : isLargeAgentPayload ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
       const parsedBody = isWriteMethod(method) && !isFileChunkPath ? await readJsonRequest(request, bodyLimit, isFileUpload) : { value: {}, raw: Buffer.alloc(0) };
       const parts = url.pathname.split("/").filter(Boolean);
       const authenticatedAgent = isAgentPath && url.pathname !== "/api/agent/enroll"

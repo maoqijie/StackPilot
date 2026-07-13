@@ -3,8 +3,9 @@ import {
   OverviewCheckUpdatesResponseSchema, OverviewHealthRefreshResponseSchema, OverviewNodeMutationResponseSchema,
   OverviewRisksPayloadSchema, OverviewRisksScanResponseSchema, OverviewSummaryPayloadSchema,
   OverviewTasksPayloadSchema, OverviewTasksRefreshResponseSchema, PathIdSchema,
-  HostMonitoringPayloadSchema, ReadinessResponseSchema, RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
-  SiteRuntimePayloadSchema, DatabaseSlowQueriesPayloadSchema,
+  CreateCertificateRenewalRequestSchema, CertificateRenewalBatchSchema, SiteRuntimePayloadSchema,
+  DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, HostMonitoringPayloadSchema, ReadinessResponseSchema,
+  RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
@@ -14,9 +15,11 @@ import { sendJson } from "./response/json.js";
 import { parseSchema } from "./validation.js";
 import { routeControlPlaneRequest } from "./controlPlaneRouter.js";
 import { routeIdentityRequest } from "./identityRouter.js";
+import { routeTerminalRequest } from "./terminalRouter.js";
 import type { OverviewAccess } from "../modules/overview/overviewService.js";
 import { routeDatabaseBackupRequest } from "./databaseBackupRouter.js";
 import { routeFileManagerRequest, routeFileUploadRequest } from "./fileRouter.js";
+import { routeDatabaseRequest } from "./databaseRouter.js";
 
 function idAt(context: RequestContext, index: number) {
   try {
@@ -34,6 +37,17 @@ export async function routeRequest(context: RequestContext): Promise<void> {
   const { request, response, parts, services } = context;
   const method = request.method ?? "GET";
   if (parts[0] === "api" && parts[1] === "files") { await routeFileManagerRequest(context); return; }
+  if (parts[0] === "api" && parts[1] === "databases" && services.databaseInventory && services.databaseWorkspace && services.databaseOperations) { await routeDatabaseRequest(context); return; }
+  if (context.url.pathname === "/api/databases" && method === "GET") {
+    context.identity?.require(context.principal, "databases:read");
+    sendJson(response, 200, await services.databaseInstances.getInstances({ nodeScope: context.principal?.nodeScope ?? [] }), DatabaseInstancesPayloadSchema);
+    return;
+  }
+  if (context.url.pathname === "/api/databases/slow-queries" && method === "GET" && [...context.url.searchParams.keys()].every((key) => key === "range")) {
+    context.identity?.require(context.principal, "databases:read");
+    sendJson(response, 200, await services.databaseSlowQueries.getSlowQueries(), DatabaseSlowQueriesPayloadSchema);
+    return;
+  }
   if (context.url.searchParams.size > 0) throw new ApiError(400, "BAD_REQUEST", "查询参数无效：当前接口不接受查询参数");
 
   if (context.url.pathname === "/healthz" && method === "GET") {
@@ -49,6 +63,7 @@ export async function routeRequest(context: RequestContext): Promise<void> {
   if (parts[0] === "api" && ["enrollments", "nodes", "remote-tasks"].includes(parts[1] ?? "")) {
     await routeControlPlaneRequest(context); return;
   }
+  if (parts[0] === "api" && parts[1] === "terminal") { await routeTerminalRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "database-backups") { await routeDatabaseBackupRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "file-uploads") { await routeFileUploadRequest(context); return; }
   if (context.url.pathname === "/api/hosts" && method === "GET") {
@@ -57,14 +72,19 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     const canReadNodes = Boolean(context.principal?.permissions.has("nodes:read"));
     sendJson(response,200,await services.hosts.getHosts(canReadNodes&&(nodeScope==="all"||nodeScope.length>0),nodeScope),HostMonitoringPayloadSchema);return;
   }
-  if (context.url.pathname === "/api/databases/slow-queries" && method === "GET") {
-    context.identity?.require(context.principal, "databases:read");
-    sendJson(response, 200, await services.databases.getSlowQueries(), DatabaseSlowQueriesPayloadSchema);
-    return;
+  if (context.url.pathname === "/api/sites/certificate-renewals" && method === "POST") {
+    context.identity?.require(context.principal,"sites:renew");
+    context.identity?.consumeReauth(context.principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);
+    const input=parseSchema(CreateCertificateRenewalRequestSchema,context.body,"证书续期");
+    sendJson(response,202,await services.certificateRenewals.create(input,{nodeScope:context.principal?.nodeScope??[]},`user:${context.principal?.userId}`,context.requestId),CertificateRenewalBatchSchema);return;
+  }
+  if (parts[0] === "api" && parts[1] === "sites" && parts[2] === "certificate-renewals" && parts.length === 4 && method === "GET") {
+    context.identity?.require(context.principal,"sites:read");
+    sendJson(response,200,await services.certificateRenewals.get(idAt(context,3),{nodeScope:context.principal?.nodeScope??[]}),CertificateRenewalBatchSchema);return;
   }
   if (context.url.pathname === "/api/sites" && method === "GET") {
-    context.identity?.require(context.principal, "overview:read");
-    sendJson(response, 200, await services.sites.getSites(), SiteRuntimePayloadSchema);
+    context.identity?.require(context.principal, "sites:read");
+    sendJson(response, 200, await services.sites.getSites({ nodeScope: context.principal?.nodeScope ?? [] }), SiteRuntimePayloadSchema);
     return;
   }
   if (parts[0] !== "api" || parts[1] !== "overview") throw notFound();

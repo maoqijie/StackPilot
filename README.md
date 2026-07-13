@@ -154,12 +154,13 @@ npm run dev:agent
 
 需要轮换单个 Agent身份时，在该 Agent下一次启动前设置 `STACKPILOT_AGENT_ROTATE_CREDENTIAL=1`。Agent会先安全保存 pending 私钥，再用当前身份执行带 rotation ID 的幂等轮换；响应丢失时可继续同一轮换，成功后旧凭据立即撤销。管理员撤销节点后，旧身份和轮换恢复路径都会被拒绝。
 
-初始任务注册表仅支持：
+Agent 任务注册表支持：
 
 - `system.summary.read`：读取主机名、平台、CPU/内存、运行时间和可选负载摘要；
-- `service.status.read`：使用固定平台程序和固定参数形式查询单个服务状态。
+- `service.status.read`：使用固定平台程序和固定参数形式查询单个服务状态；
+- `sites.certificates.renew`：仅 Linux 且管理员显式授权，通过本地 root helper 续期 Nginx/Certbot 证书。
 
-不存在通用 Shell、脚本正文或动态可执行路径。Agent 默认拒绝以 root 运行，初始任务不需要 sudo。节点列表和任务状态位于 `/api/nodes` 与 `/api/remote-tasks`，要求用户会话或具备相应权限和节点范围的 API Token。
+不存在通用 Shell、脚本正文或动态可执行路径。Agent 默认拒绝以 root 运行。Linux Agent 每 60 秒采集一次 Nginx 站点与公开 PEM 证书，从不读取私钥；可选续期通过 systemd Unix Socket root helper 完成，只接受 opaque 证书 ID 和固定命令。Docker Agent 只支持清单采集，不直接续期宿主证书。节点列表和任务状态位于 `/api/nodes` 与 `/api/remote-tasks`，要求用户会话或具备相应权限和节点范围的 API Token。
 
 发现安全漏洞时不要创建公开 Issue。请遵循 [SECURITY.md](SECURITY.md)；仓库维护者还需要在 GitHub 设置中启用 Private Vulnerability Reporting，当前没有已验证的安全邮箱。
 
@@ -230,11 +231,11 @@ npm run build --workspace @stackpilot/agent
 npm run test --workspace @stackpilot/agent
 ```
 
-`apps/agent` 是独立非 root 进程，仅包含两个结构化只读任务；不存在通用 Shell。生产部署必须使用私有 Agent 网络、独立节点身份与真实 CA 证书。
+`apps/agent` 是独立非 root 进程，使用结构化任务且不存在通用 Shell。`apps/cert-helper` 是仅供原生 Linux Nginx/Certbot 使用的最小 root helper，通过本地 systemd Socket 激活。生产部署必须使用私有 Agent 网络、独立节点身份与真实 CA 证书。
 
 ## 生产部署与发布
 
-正式支持的 Controller/Web 运行时为 Debian 12 或 Ubuntu 24.04 x86_64、Node.js 22.x 和 SQLite schema 4。Agent/database-helper 的数据库能力另支持 Rocky/Alma 9、Fedora 42、Alpine 3.22 和 Arch；准确边界以兼容性矩阵和对应 CI 集成测试为准。
+正式支持的 Controller/Web 运行时为 Debian 12 或 Ubuntu 24.04 x86_64、Node.js 22.x 和 SQLite schema 5。Docker Compose 默认仅公开 HTTPS 443；Controller 8787 位于内部网络，Agent 9443 默认只绑定回环地址。原生 systemd 方案为 Controller、Agent 和 root-only helper 建立独立权限边界，并通过 systemd credential 注入主密钥和 TLS 私钥。Agent/database-helper 的其他发行版能力只有通过固定镜像集成测试后才列入兼容性矩阵。
 
 - [Docker Compose 安装](docs/installation/docker-compose.md)
 - [systemd 安装](docs/installation/systemd.md)

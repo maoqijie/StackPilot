@@ -1,18 +1,15 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   AgentDatabaseQueryUploadSchema, AgentDatabaseSnapshotSchema, CreateDatabaseOperationPlanRequestSchema,
 } from "@stackpilot/contracts";
 import { openDatabase } from "../../apps/controller/dist/database/database.js";
-import { migrateDatabase } from "../../apps/controller/dist/database/migrator.js";
 import { IdentityService } from "../../apps/controller/dist/identity/identityService.js";
 import { DatabaseBackupWorkspaceService } from "../../apps/controller/dist/modules/databases/databaseBackupWorkspaceService.js";
 import { DatabaseInventoryService } from "../../apps/controller/dist/modules/databases/databaseInventoryService.js";
 import { DatabaseOperationService } from "../../apps/controller/dist/modules/databases/databaseOperationService.js";
 import { SqliteDatabaseRepository } from "../../apps/controller/dist/repositories/sqliteDatabaseRepository.js";
 
-const migrationUrl = new URL("../../apps/controller/src/database/migrations/004_databases.sql", import.meta.url);
 const masterKey = Buffer.alloc(32, 9);
 const at = () => new Date().toISOString();
 const snapshot = (managed = true) => AgentDatabaseSnapshotSchema.parse({
@@ -31,7 +28,6 @@ const upload = () => AgentDatabaseQueryUploadSchema.parse({
 
 async function fixture() {
   const database=openDatabase(":memory:");
-  migrateDatabase(database,[{version:4,name:"databases",sql:await readFile(migrationUrl,"utf8")}]);
   const identity=new IdentityService(database,Buffer.alloc(32,4));
   const userId=await identity.createInitialAdministrator("admin","Administrator","correct horse battery staple");
   const nodeId=crypto.randomUUID(),now=at();
@@ -41,7 +37,7 @@ async function fixture() {
   return {database,identity,userId,nodeId,repository,inventory:new DatabaseInventoryService(repository),backups:new DatabaseBackupWorkspaceService(repository)};
 }
 
-test("schema 4 persists scoped snapshots and encrypted expiring SQL",async()=>{
+test("schema 5 persists scoped snapshots and encrypted expiring SQL",async()=>{
   const value=await fixture();try{
     const databasePermissions=value.database.prepare("SELECT permission_key FROM role_permissions WHERE role_id='administrator' AND permission_key LIKE 'databases:%' ORDER BY permission_key").all().map((row)=>row.permission_key);
     assert.deepEqual(databasePermissions,["databases:backup","databases:install","databases:operate","databases:read","databases:restore","databases:sql:read"]);

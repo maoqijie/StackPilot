@@ -32,12 +32,16 @@ export function boundQueryUpload(upload: AgentDatabaseQueryUpload, limitBytes = 
 
 export class DatabaseAgentRuntime {
   private collectionRunning = false; private operationRunning = false; private nextCollectionAt = 0;
-  constructor(private readonly helper: DatabaseHelperClient, private readonly controller: ControllerClient, private readonly identity: AgentIdentity, private readonly intervalMs = 60_000, private readonly outbox: DatabaseOperationOutbox = new MemoryDatabaseOperationOutbox()) {}
+  constructor(private readonly helper: DatabaseHelperClient, private readonly controller: ControllerClient, private readonly identity: AgentIdentity, private readonly intervalMs = 60_000, private readonly outbox: DatabaseOperationOutbox = new MemoryDatabaseOperationOutbox(), private readonly enabled = () => true) {}
   async run(signal?: AbortSignal) {
     while (!signal?.aborted) {
-      await Promise.allSettled([this.collectIfDue(), this.processOperations()]);
+      await this.runCycle();
       await sleep(10_000, signal);
     }
+  }
+  async runCycle() {
+    if (!this.enabled()) return;
+    await Promise.allSettled([this.collectIfDue(), this.processOperations()]);
   }
   async collectIfDue(now = Date.now()) {
     if (this.collectionRunning || now < this.nextCollectionAt) return;

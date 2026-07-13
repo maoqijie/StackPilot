@@ -1,6 +1,7 @@
 import {
   AgentNodeListResponseSchema, CancelRemoteTaskRequestSchema, CreateEnrollmentRequestSchema,
   CreateRemoteTaskRequestSchema, EnrollmentCredentialSchema, PathIdSchema, RemoteTaskListResponseSchema, RemoteTaskRecordSchema, ApiNoticeSchema,
+  AgentNodeRecordSchema, UpdateNodeCapabilitiesRequestSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
 import { notFound } from "./errors/ApiError.js";
@@ -35,13 +36,20 @@ export async function routeControlPlaneRequest(context: RequestContext) {
     const nodeId=id(context,2);identity?.require(principal,"nodes:manage",nodeId);identity?.consumeReauth(principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);await context.services.nodes.revoke(nodeId, `user:${principal?.userId}`, context.requestId);
     sendJson(context.response, 200, { message: "节点及其凭据已撤销", tone: "warning" }, ApiNoticeSchema); return;
   }
+  if (context.parts[1] === "nodes" && context.parts[3] === "capabilities" && context.parts.length === 4 && method === "PATCH") {
+    const nodeId=id(context,2);identity?.require(principal,"nodes:manage",nodeId);identity?.consumeReauth(principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);
+    const input=parseSchema(UpdateNodeCapabilitiesRequestSchema,context.body,"节点能力");
+    sendJson(context.response,200,publicNode(await context.services.nodes.updateCapabilities(nodeId,input.allowedCapabilities,`user:${principal?.userId}`,context.requestId)),AgentNodeRecordSchema);return;
+  }
   if (context.parts[1] === "nodes" && context.parts[3] === "tasks" && context.parts.length === 4 && method === "POST") {
-    const nodeId=id(context,2);identity?.require(principal,"tasks:create",nodeId);identity?.consumeReauth(principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);
+    const nodeId=id(context,2);identity?.require(principal,"tasks:create",nodeId);
     const input = parseSchema(CreateRemoteTaskRequestSchema, context.body, "远程任务");
-    sendJson(context.response, 201, await context.services.remoteTasks.create(nodeId, input, `user:${principal?.userId}`, context.requestId), RemoteTaskRecordSchema); return;
+    if (input.type === "sites.certificates.renew") throw notFound("证书续期任务只能通过证书续期接口创建");
+    const authorize=()=>identity?.consumeReauth(principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);
+    sendJson(context.response, 201, await context.services.remoteTasks.create(nodeId, input, `user:${principal?.userId}`, context.requestId, authorize), RemoteTaskRecordSchema); return;
   }
   if (context.parts[1] === "remote-tasks" && context.parts.length === 2 && method === "GET") {
-    identity?.require(principal,"tasks:read");const tasks=await context.services.remoteTasks.list();sendJson(context.response, 200, { tasks: principal?.nodeScope==="all"?tasks:tasks.filter(task=>principal?.nodeScope.includes(task.targetNodeId)) }, RemoteTaskListResponseSchema); return;
+    identity?.require(principal,"tasks:read");const tasks=await context.services.remoteTasks.listReadOnly();const scoped=principal?.nodeScope==="all"?tasks:tasks.filter(task=>principal?.nodeScope.includes(task.targetNodeId));sendJson(context.response, 200, { tasks: scoped.sort((left,right)=>Date.parse(right.updatedAt)-Date.parse(left.updatedAt)).slice(0,200), collectedAt: new Date().toISOString() }, RemoteTaskListResponseSchema); return;
   }
   if (context.parts[1] === "remote-tasks" && context.parts[3] === "cancel" && context.parts.length === 4 && method === "POST") {
     identity?.require(principal,"tasks:cancel");

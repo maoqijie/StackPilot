@@ -4,6 +4,15 @@ import { DatabaseHelperResponseSchema, type DatabaseHelperRequest, type Database
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
 export class DatabaseHelperClient {
   constructor(private readonly socketPath: string) {}
+  available(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const socket = createConnection(this.socketPath);
+      socket.setTimeout(1_000, () => socket.destroy());
+      socket.once("connect", () => { socket.destroy(); resolve(true); });
+      socket.once("error", () => resolve(false));
+      socket.once("timeout", () => resolve(false));
+    });
+  }
   request(request: DatabaseHelperRequest): Promise<DatabaseHelperResponse> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = []; let size = 0; const socket = createConnection(this.socketPath);

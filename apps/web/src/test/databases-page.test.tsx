@@ -1,49 +1,105 @@
-import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchDatabases } from "../api/databasesApi";
+import type { DatabaseInstanceRecord, DatabaseInstancesPayload } from "../api/databasesApi";
 import { DatabasesPage } from "../pages/DatabasesPage";
 import type { Notify, SetPage } from "../types/app";
 
-describe("database instances page", () => {
-  const setPage = vi.fn() as unknown as SetPage;
-  const notify = vi.fn() as unknown as Notify;
+vi.mock("../api/databasesApi", () => ({ fetchDatabases: vi.fn() }));
 
-  it("shows honest freshness and does not expose a manual refresh action", () => {
+const collectedAt = "2026-07-14T00:00:00.000Z";
+function database(overrides: Partial<DatabaseInstanceRecord> = {}): DatabaseInstanceRecord {
+  return {
+    id: `database-${"a".repeat(32)}`, nodeId: "11111111-1111-4111-8111-111111111111", nodeName: "db-node-01",
+    name: "postgresql-16-main", engine: "postgresql", version: null, host: "db-node-01", address: "10.0.0.8", port: null,
+    status: "running", source: "systemd:postgresql@16-main.service", latencyMs: null, storageBytes: null,
+    activeConnections: null, maxConnections: null, slowQueryCount: null, backupStatus: "unavailable", lastBackupAt: null,
+    accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null,
+    collectedAt, freshness: "current", ...overrides,
+  };
+}
+function payload(instances: DatabaseInstanceRecord[], overrides: Partial<DatabaseInstancesPayload> = {}): DatabaseInstancesPayload {
+  return { collectedAt, collectionStatus: "complete", warnings: [], instances, ...overrides };
+}
+
+describe("database instances live page", () => {
+  const setPage = vi.fn() as unknown as SetPage; const notify = vi.fn() as unknown as Notify;
+  beforeEach(() => { vi.mocked(fetchDatabases).mockReset(); vi.mocked(fetchDatabases).mockResolvedValue(payload([database()])); Object.defineProperty(document, "hidden", { configurable: true, value: false }); });
+  afterEach(() => { vi.useRealTimers(); Object.defineProperty(document, "hidden", { configurable: true, value: false }); });
+
+  it("loads backend data without exposing mock write actions", async () => {
     const { container } = render(<DatabasesPage page="databases-instances" setPage={setPage} notify={notify} />);
-
+    expect((await screen.findAllByTitle("postgresql-16-main")).length).toBeGreaterThan(0);
     expect(container.firstElementChild).toHaveClass("module-page-databases-instances", "module-page-databases");
-    expect(screen.getByText(/采集时间不可用，当前显示本地会话数据/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "刷新" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("备份成功率 75%")).toBeInTheDocument();
+    expect(screen.getByText(/后端采集于/)).toBeInTheDocument();
+    expect(screen.getByLabelText("备份成功率 待采集")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /创建数据库|立即备份|设为只读|清空慢查询|刷新/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("prod-postgres-01")).not.toBeInTheDocument();
+    expect(screen.getByText("等待采集")).toBeInTheDocument();
+    expect(screen.queryByText("连接正常")).not.toBeInTheDocument();
   });
 
-  it("keeps status understandable without color and opens complete detail by stable id", async () => {
-    const user = userEvent.setup();
+  it("treats stale running snapshots as expired alerts", async () => {
+    vi.mocked(fetchDatabases).mockResolvedValue(payload([database({ freshness: "stale" })], { collectionStatus: "partial" }));
     render(<DatabasesPage page="databases" setPage={setPage} notify={notify} />);
-
-    expect(screen.getAllByText("延迟 560ms").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("失败").length).toBeGreaterThan(0);
-
-    await user.click(screen.getAllByRole("button", { name: "查看 analytics-mysql-01 详情" })[0]);
-
-    const drawer = screen.getByRole("region", { name: "数据库详情" });
-    expect(drawer.parentElement).toBe(document.body);
-    expect(within(drawer).getByText("analytics-mysql-01")).toBeInTheDocument();
-    expect(within(drawer).getByText("10.0.13.15:3306")).toBeInTheDocument();
-    expect(within(drawer).getByText("34.5 GB · 96 / 140")).toBeInTheDocument();
-    expect(within(drawer).getByText("香港")).toBeInTheDocument();
-    expect(within(drawer).getByText("不可用 · 本地会话数据")).toBeInTheDocument();
+    expect((await screen.findAllByText("数据已过期")).length).toBeGreaterThan(0);
+    expect(screen.getByText("告警 1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: "状态 全部" }));
+    fireEvent.click(screen.getByRole("option", { name: "正常" }));
+    expect(screen.getAllByText("没有匹配的真实数据库实例，系统将继续自动采集")).toHaveLength(2);
   });
 
-  it("preserves the active search while opening and closing a detail drawer", async () => {
-    const user = userEvent.setup();
+  it("shows initial errors and retries without falling back to fixtures", async () => {
+    vi.mocked(fetchDatabases).mockRejectedValueOnce(new Error("数据库采集不可用")).mockResolvedValueOnce(payload([database()]));
     render(<DatabasesPage page="databases" setPage={setPage} notify={notify} />);
+    expect(await screen.findByText("数据库采集不可用")).toBeInTheDocument();
+    expect(screen.getAllByText("实时采集失败，未显示示例数据库")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect((await screen.findAllByTitle("postgresql-16-main")).length).toBeGreaterThan(0);
+  });
 
-    const search = screen.getByPlaceholderText("搜索数据库、主机、负责人或权限");
-    await user.type(search, "billing-mysql-02");
-    await user.click(screen.getAllByRole("button", { name: "查看 billing-mysql-02 详情" })[0]);
-    await user.click(within(screen.getByRole("region", { name: "数据库详情" })).getByRole("button", { name: "关闭详情" }));
+  it("polls every ten seconds, keeps filters and updates an open stable detail", async () => {
+    vi.useFakeTimers();
+    vi.mocked(fetchDatabases)
+      .mockResolvedValueOnce(payload([database(), database({ id: `database-${"b".repeat(32)}`, name: "mysql" })]))
+      .mockResolvedValueOnce(payload([database({ source: "systemd:refreshed.service", port: 5432 }), database({ id: `database-${"b".repeat(32)}`, name: "mysql" })], { collectedAt: "2026-07-14T00:00:10.000Z" }))
+      .mockRejectedValueOnce(new Error("瞬时失败"));
+    render(<DatabasesPage page="databases" setPage={setPage} notify={notify} />);
+    await act(async () => undefined);
+    const search = screen.getByPlaceholderText("搜索数据库、主机、节点或权限");
+    fireEvent.change(search, { target: { value: "postgresql" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "查看 postgresql-16-main 详情" })[0]!);
+    const drawer = screen.getByRole("dialog", { name: "数据库详情" });
+    expect(document.querySelector(".module-main")).toHaveAttribute("inert");
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(fetchDatabases).toHaveBeenCalledTimes(2); expect(search).toHaveValue("postgresql");
+    expect(within(drawer).getByText("systemd:refreshed.service")).toBeInTheDocument();
+    expect(within(drawer).getByText("10.0.0.8:5432")).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(fetchDatabases).toHaveBeenCalledTimes(3); expect(within(drawer).getByText("systemd:refreshed.service")).toBeInTheDocument();
+  });
 
-    expect(search).toHaveValue("billing-mysql-02");
+  it("closes stale details when a refreshed stable id disappears", async () => {
+    vi.useFakeTimers(); vi.mocked(fetchDatabases).mockResolvedValueOnce(payload([database()])).mockResolvedValueOnce(payload([], { collectedAt: "2026-07-14T00:00:10.000Z" }));
+    render(<DatabasesPage page="databases" setPage={setPage} notify={notify} />); await act(async () => undefined);
+    fireEvent.click(screen.getAllByRole("button", { name: "查看 postgresql-16-main 详情" })[0]!);
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(screen.queryByRole("dialog", { name: "数据库详情" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("没有匹配的真实数据库实例，系统将继续自动采集")).toHaveLength(2);
+  });
+
+  it("paginates large inventories without rendering every row twice", async () => {
+    const instances = Array.from({ length: 101 }, (_, index) => database({
+      id: `database-${index.toString(16).padStart(32, "0")}`,
+      name: `database-${index}`,
+    }));
+    vi.mocked(fetchDatabases).mockResolvedValue(payload(instances));
+    render(<DatabasesPage page="databases" setPage={setPage} notify={notify} />);
+    expect((await screen.findAllByTitle("database-0"))).toHaveLength(2);
+    expect(screen.queryByTitle("database-100")).not.toBeInTheDocument();
+    expect(screen.getByText("第 1 / 2 页 · 共 101 条")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+    expect(screen.getAllByTitle("database-100")).toHaveLength(2);
+    expect(screen.queryByTitle("database-0")).not.toBeInTheDocument();
   });
 });

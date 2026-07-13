@@ -70,6 +70,19 @@
   gap: 64px;
 }
 
+.module-page-databases .database-collection-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+  font: 500 12px/1.4 var(--font-body);
+}
+
+.module-page-databases .database-error-state {
+  margin: 0;
+}
+
 .module-page-databases .module-view-context {
   box-shadow: none;
 }
@@ -91,6 +104,14 @@
 }
 
 .module-page-databases .module-table-wrap {
+  box-shadow: none;
+}
+
+.module-page-databases .module-table-pagination,
+.module-page-databases .module-table-pagination button,
+.module-page-databases .module-table-pagination button:is(:hover, :focus-visible, :active) {
+  border: 0;
+  outline: 0;
   box-shadow: none;
 }
 

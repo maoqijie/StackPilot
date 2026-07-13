@@ -12,13 +12,13 @@ export const DatabaseVolumeSchema = z.object({
 export const AgentDatabaseInstanceSchema = z.object({
   id: z.string().min(1).max(200), name: z.string().min(1).max(200), engine: DatabaseEngineSchema,
   version: z.string().min(1).max(80).nullable(), host: z.string().min(1).max(253), port: z.number().int().min(1).max(65_535).nullable(),
-  status: DatabaseRuntimeStatusSchema, source: z.string().min(1).max(256), managed: z.boolean(), historicalSlowQueriesAvailable: z.boolean(),
+  status: DatabaseRuntimeStatusSchema, source: z.string().min(1).max(256), managed: z.boolean().default(false), historicalSlowQueriesAvailable: z.boolean().default(false),
   latencyMs: z.number().int().nonnegative().safe().nullable(), storageBytes: nullableBytes,
   activeConnections: z.number().int().nonnegative().safe().nullable(), maxConnections: z.number().int().positive().safe().nullable(),
   slowQueryCount: z.number().int().nonnegative().safe().nullable(), backupStatus: DatabaseInstanceBackupStatusSchema,
   lastBackupAt: z.string().datetime().nullable(), accessMode: DatabaseAccessModeSchema,
   owner: z.string().min(1).max(120).nullable(), region: z.string().min(1).max(120).nullable(),
-  autoBackup: z.boolean().nullable(), remoteAccess: z.boolean().nullable(), volumes: z.array(DatabaseVolumeSchema).max(256),
+  autoBackup: z.boolean().nullable(), remoteAccess: z.boolean().nullable(), volumes: z.array(DatabaseVolumeSchema).max(256).default([]),
 }).strict();
 export const AgentDatabaseSnapshotSchema = DatabaseCollectionEnvelopeSchema.extend({
   instances: z.array(AgentDatabaseInstanceSchema).max(256),
@@ -30,7 +30,7 @@ export const AgentDatabaseSnapshotSchema = DatabaseCollectionEnvelopeSchema.exte
   });
 });
 export const DatabaseInstanceRecordSchema = AgentDatabaseInstanceSchema.extend({
-  id: DatabaseIdSchema, localId: z.string().min(1).max(200), nodeId: z.string().uuid(), nodeName: z.string().min(1).max(200),
+  id: DatabaseIdSchema, nodeId: z.string().uuid(), nodeName: z.string().min(1).max(200),
   address: z.union([z.ipv4(), z.ipv6()]).nullable(), collectedAt: z.string().datetime(), freshness: DatabaseFreshnessSchema,
 }).strict();
 export const DatabaseInstancesPayloadSchema = DatabaseCollectionEnvelopeSchema.extend({

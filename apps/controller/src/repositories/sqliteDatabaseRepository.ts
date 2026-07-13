@@ -34,7 +34,7 @@ export class SqliteDatabaseRepository implements DatabaseRepository {
       const nodeName = node.nodeName ?? node.telemetry?.hostname ?? nodeId;
       const address = node.telemetry?.primaryIp ?? null;
       for (const item of snapshot.instances) {
-        const record = DatabaseInstanceRecordSchema.parse({ ...item, id: instanceId(nodeId, item.id), localId: item.id, nodeId, nodeName, address, collectedAt: snapshot.collectedAt, freshness: "current" });
+        const record = DatabaseInstanceRecordSchema.parse({ ...item, id: instanceId(nodeId, item.id), nodeId, nodeName, address, collectedAt: snapshot.collectedAt, freshness: "current" });
         this.database.prepare(`INSERT INTO database_instances(id,node_id,local_id,snapshot,managed,collected_at,updated_at) VALUES(?,?,?,?,?,?,?)
           ON CONFLICT(node_id,local_id) DO UPDATE SET snapshot=excluded.snapshot,managed=excluded.managed,collected_at=excluded.collected_at,updated_at=excluded.updated_at`)
           .run(record.id, nodeId, item.id, JSON.stringify(record), item.managed ? 1 : 0, snapshot.collectedAt, now);
