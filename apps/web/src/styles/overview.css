@@ -1060,9 +1060,6 @@
   border-color: transparent;
 }
 
-.module-page-overview-tasks .module-filter-line,
-.module-page-overview-tasks .module-view-context,
-.module-page-overview-tasks .module-view-context em,
 .module-page-overview-tasks .module-metrics article,
 .module-page-overview-tasks .module-table-wrap,
 .module-page-overview-tasks .module-card-row {
@@ -1075,42 +1072,6 @@
 .module-page-overview-tasks .ghost:active,
 .module-page-overview-tasks .ghost:focus-visible {
   border: 0;
-}
-
-.module-page-overview-tasks .module-filter-line {
-  background: var(--surface);
-  box-shadow: var(--shadow-subtle);
-}
-
-.module-page-overview-tasks .module-view-context {
-  background: var(--primary-soft);
-  box-shadow: var(--shadow-subtle);
-}
-
-.module-page-overview-tasks .module-view-context > div:last-child {
-  gap: 12px;
-}
-
-.module-page-overview-tasks .module-view-context em {
-  padding: 4px 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.module-page-overview-tasks .deploy-tabs {
-  padding: 4px;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.module-page-overview-tasks .deploy-tabs button {
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  font-weight: 500;
 }
 
 .module-page-overview-tasks .module-metrics article {

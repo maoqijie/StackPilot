@@ -59,11 +59,18 @@ describe("overview tasks workbench", () => {
   it("shows backend freshness and keeps refresh automatic", async () => {
     vi.mocked(fetchOverviewTasks).mockResolvedValue(payload);
 
-    render(<OverviewTasksPage notify={notify} setPage={setPage} />);
+    const { container } = render(<OverviewTasksPage notify={notify} setPage={setPage} />);
 
     expect(await screen.findByText("备份数据库")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "任务流" })).toHaveClass("sr-only");
     expect(screen.queryByText("整台设备任务信号由后端实时采集")).not.toBeInTheDocument();
+    expect(screen.queryByText("工作台 / 设备任务")).not.toBeInTheDocument();
+    expect(screen.queryByText("设备采集 1 条")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "全部" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "成功" })).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("搜索任务")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-filter-line")).not.toBeInTheDocument();
     expect(screen.getByText("采集于 2026/07/12 12:30:10")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "导出" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新建计划任务" })).toBeInTheDocument();
@@ -71,7 +78,7 @@ describe("overview tasks workbench", () => {
     expect(screen.getByText("成功", { selector: ".task-row-result > strong" })).toBeInTheDocument();
   });
 
-  it("preserves search and an open task by stable id across polling", async () => {
+  it("preserves an open task by stable id across polling", async () => {
     vi.useFakeTimers();
     vi.mocked(fetchOverviewTasks)
       .mockResolvedValueOnce(payload)
@@ -79,7 +86,6 @@ describe("overview tasks workbench", () => {
 
     render(<OverviewTasksPage notify={notify} setPage={setPage} />);
     await act(async () => undefined);
-    fireEvent.change(screen.getByPlaceholderText("搜索任务"), { target: { value: "备份" } });
     fireEvent.click(screen.getByRole("button", { name: "日志" }));
     expect(screen.getByRole("dialog", { name: "备份数据库" })).toBeInTheDocument();
 
@@ -88,7 +94,7 @@ describe("overview tasks workbench", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByDisplayValue("备份")).toBeInTheDocument();
+    expect(screen.getByText("备份数据库", { selector: ".task-row-primary > strong" })).toBeInTheDocument();
     expect(within(screen.getByRole("dialog", { name: "备份数据库" })).getByText("19 秒")).toBeInTheDocument();
     expect(notify).not.toHaveBeenCalled();
   });

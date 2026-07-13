@@ -15,7 +15,7 @@ import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { setQuickRoute } from "../app/routing";
 import { ModulePageShell } from "../components/layout/ModulePageShell";
-import { MetricTile, ModuleSearch } from "../components/ui/Cards";
+import { MetricTile } from "../components/ui/Cards";
 import { DetailDrawer } from "../components/ui/DetailDrawer";
 import { useOptionalOverviewData } from "../features/overview/OverviewDataProvider";
 import { overviewMetricIcons, reportApiError, taskTone } from "../features/overview/model";
@@ -39,22 +39,12 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
   const [localPageData, setLocalPageData] = useState<OverviewTaskPageData | null>(null);
   const [localLoading, setLocalLoading] = useState(true);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [tab, setTab] = useState("all");
-  const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const rows = shared?.overview?.tasks ?? localRows;
   const pageData = shared?.overview?.taskPage ?? localPageData;
   const loading = shared ? shared.loading && !shared.overview : localLoading;
   const loadError = shared?.error ?? localError;
-  const activeFilter = pageData?.filters.find((filter) => filter.id === tab) ?? pageData?.filters[0];
   const selected = rows.find((row) => row.id === selectedId) ?? null;
-  const filteredRows = rows.filter((row) => {
-    const query = search.trim().toLowerCase();
-    const searchText = [row.type, row.title, row.target, row.status, row.priority, row.operator, row.source, row.duration, ...row.logs].join(" ").toLowerCase();
-    const matchSearch = !query || searchText.includes(query);
-    const matchTab = !activeFilter || activeFilter.statuses.length === 0 || activeFilter.statuses.includes(row.status);
-    return matchSearch && matchTab;
-  });
   const overviewMetricIconForTask = (icon: OverviewMetricIcon) => overviewMetricIcons[icon] ?? CalendarDays;
 
   const syncTasks = useCallback((payload: Awaited<ReturnType<typeof fetchOverviewTasks>>) => {
@@ -127,22 +117,12 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
       title={pageData?.title ?? "任务流"}
       hideHeading
       page="overview-tasks"
-      viewContext={pageData?.context ?? false}
+      viewContext={false}
       actions={(
         <>
           <span className="task-page-freshness" role="status"><Clock3 size={14} aria-hidden="true" />{freshness ? `采集于 ${formatBackendDateTime(freshness)}` : "等待采集"}</span>
           <button className="ghost" type="button" onClick={exportTasksFromApi}><Download size={14} /> 导出</button>
           <button className="ghost" type="button" onClick={openScheduleCreate}><Plus size={14} /> 新建计划任务</button>
-        </>
-      )}
-      filters={(
-        <>
-          <div className="deploy-tabs" aria-label="任务状态筛选">
-            {(pageData?.filters ?? []).map((item) => (
-              <button key={item.id} className={activeFilter?.id === item.id ? "active" : ""} type="button" aria-pressed={activeFilter?.id === item.id} onClick={() => setTab(item.id)}>{item.label}</button>
-            ))}
-          </div>
-          <ModuleSearch value={search} placeholder={pageData?.searchPlaceholder ?? "搜索后端返回的任务"} onChange={setSearch} />
         </>
       )}
       metrics={<>{(pageData?.metrics ?? []).map((metric) => <MetricTile key={metric.label} icon={overviewMetricIconForTask(metric.icon)} label={metric.label} value={metric.value} tone={metric.tone} />)}</>}
@@ -169,9 +149,8 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
         <header className="task-workflow-head">
           <div>
             <strong>任务执行记录</strong>
-            <span>{loading ? "正在采集" : `${filteredRows.length} 条结果`}</span>
+            <span>{loading ? "正在采集" : `${rows.length} 条结果`}</span>
           </div>
-          {activeFilter && <span>{activeFilter.label}</span>}
         </header>
 
         {loading && rows.length === 0 && (
@@ -184,10 +163,10 @@ function OverviewTasksPage({ notify, setPage }: { notify: Notify; setPage: SetPa
             <button className="ghost small" type="button" onClick={() => void retry()}><RefreshCw size={14} /> 重试</button>
           </div>
         )}
-        {!loading && !loadError && filteredRows.length === 0 && (
-          <div className="task-page-state" role="status"><Clock3 size={20} />没有匹配的任务，自动采集将继续运行</div>
+        {!loading && !loadError && rows.length === 0 && (
+          <div className="task-page-state" role="status"><Clock3 size={20} />暂无任务，自动采集将继续运行</div>
         )}
-        {!loadError && filteredRows.map((row) => (
+        {!loadError && rows.map((row) => (
           <TaskWorkflowRow
             key={row.id}
             task={row}
