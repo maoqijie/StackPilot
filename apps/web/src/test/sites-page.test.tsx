@@ -1,78 +1,140 @@
-import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchSites } from "../api/sitesApi";
+import type { SiteRuntimePayload, SiteRuntimeRecord } from "../api/sitesApi";
 import { SitesPage } from "../pages/SitesPage";
 
-describe("sites page", () => {
-  it("uses semantic status labels and does not expose a fake refresh action", () => {
-    render(<SitesPage page="sites" notify={vi.fn()} />);
+vi.mock("../api/sitesApi", () => ({ fetchSites: vi.fn() }));
 
-    expect(screen.queryByRole("button", { name: "刷新" })).not.toBeInTheDocument();
-    expect(screen.getAllByText("运行中").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("告警").length).toBeGreaterThan(0);
-    expect(screen.getAllByTitle("api.stackpilot.local")[0]).toHaveTextContent("api.stackpilot.local");
+const collectedAt = "2026-07-13T12:30:00.000Z";
+
+function site(overrides: Partial<SiteRuntimeRecord> = {}): SiteRuntimeRecord {
+  return {
+    id: "site-api",
+    domain: "api.example.com",
+    status: "running",
+    runtime: "反向代理",
+    host: "controller-01",
+    upstream: "http://127.0.0.1:3000",
+    source: "Nginx · api.conf",
+    latencyMs: 38,
+    certificateExpiresAt: "2026-09-10T00:00:00.000Z",
+    certificateIssuer: "Let's Encrypt",
+    trafficBytes: null,
+    ...overrides,
+  };
+}
+
+function payload(sites: SiteRuntimeRecord[], overrides: Partial<SiteRuntimePayload> = {}): SiteRuntimePayload {
+  return { collectedAt, collectionStatus: "complete", warnings: [], sites, ...overrides };
+}
+
+describe("sites live monitoring page", () => {
+  const notify = vi.fn();
+
+  beforeEach(() => {
+    notify.mockClear();
+    vi.mocked(fetchSites).mockReset();
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
   });
 
-  it("includes warning sites in the default running view", () => {
-    render(<SitesPage page="sites-running" notify={vi.fn()} />);
-
-    expect(screen.getAllByText("告警").length).toBeGreaterThan(0);
-    expect(screen.getAllByTitle("admin.example.com").length).toBeGreaterThan(0);
-    expect(screen.getByText("等待接入采集")).toBeInTheDocument();
-    expect(screen.getByText("活跃站点")).toBeInTheDocument();
-    expect(screen.queryByTitle("docs.example.com")).not.toBeInTheDocument();
+  afterEach(() => {
+    vi.useRealTimers();
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
   });
 
-  it("opens logs in a body-level detail surface and preserves the active search", async () => {
-    const user = userEvent.setup();
-    render(<SitesPage page="sites" notify={vi.fn()} />);
-    const search = screen.getByPlaceholderText("搜索域名、上游或负责人");
+  it("shows an initial error and retries without falling back to demo sites", async () => {
+    vi.mocked(fetchSites)
+      .mockRejectedValueOnce(new Error("站点采集不可用"))
+      .mockResolvedValueOnce(payload([site()]));
 
-    await user.type(search, "api.stackpilot.local");
-    await user.click(screen.getAllByRole("button", { name: "查看网站 api.stackpilot.local 日志" })[0]);
+    render(<SitesPage page="sites" notify={notify} />);
+    expect(await screen.findByText("站点采集不可用")).toBeInTheDocument();
+    expect(screen.getAllByText("实时采集失败，未显示示例站点")).toHaveLength(2);
+    expect(screen.queryByText("api.stackpilot.local")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
 
-    const drawer = screen.getByRole("region", { name: "访问日志" });
+    expect((await screen.findAllByTitle("api.example.com")).length).toBeGreaterThan(0);
+    expect(notify).toHaveBeenCalledWith("站点采集不可用", "danger");
+  });
+
+  it("polls every ten seconds, keeps filters, and retains data after a background failure", async () => {
+    vi.useFakeTimers();
+    vi.mocked(fetchSites)
+      .mockResolvedValueOnce(payload([site(), site({ id: "site-admin", domain: "admin.example.com" })]))
+      .mockResolvedValueOnce(payload([site({ latencyMs: 64 }), site({ id: "site-admin", domain: "admin.example.com" })], { collectedAt: "2026-07-13T12:30:10.000Z" }))
+      .mockRejectedValueOnce(new Error("瞬时失败"));
+
+    render(<SitesPage page="sites-running" notify={notify} />);
+    await act(async () => undefined);
+    const search = screen.getByPlaceholderText("搜索域名、上游、主机或数据源");
+    fireEvent.change(search, { target: { value: "api.example.com" } });
+    expect(screen.queryByTitle("admin.example.com")).not.toBeInTheDocument();
+
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(fetchSites).toHaveBeenCalledTimes(2);
+    expect(search).toHaveValue("api.example.com");
+    expect(screen.getAllByText("64ms").length).toBeGreaterThan(0);
+
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(fetchSites).toHaveBeenCalledTimes(3);
+    expect(screen.getAllByText("64ms").length).toBeGreaterThan(0);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("shows backend freshness and labels unknown or missing measurements as unavailable", async () => {
+    vi.mocked(fetchSites).mockResolvedValue(payload([site({
+      status: "unknown",
+      upstream: null,
+      latencyMs: null,
+      certificateExpiresAt: null,
+      certificateIssuer: null,
+      trafficBytes: null,
+    })], { collectionStatus: "partial", warnings: ["证书探测不完整"] }));
+
+    render(<SitesPage page="sites" notify={notify} />);
+    expect((await screen.findAllByText("待采集")).length).toBeGreaterThan(0);
+    expect(screen.getByText(/部分采集 · 后端采集于/)).toBeInTheDocument();
+    expect(screen.getByText(/证书探测不完整/)).toBeInTheDocument();
+    expect(screen.getAllByText("暂不可用").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /刷新|添加|启动|停止|续期/ })).not.toBeInTheDocument();
+  });
+
+  it("derives an open runtime detail from the latest polling snapshot", async () => {
+    vi.useFakeTimers();
+    vi.mocked(fetchSites)
+      .mockResolvedValueOnce(payload([site()]))
+      .mockResolvedValueOnce(payload([site({ latencyMs: 91, source: "Nginx · refreshed.conf" })], { collectedAt: "2026-07-13T12:30:10.000Z" }))
+      .mockResolvedValueOnce(payload([], { collectedAt: "2026-07-13T12:30:20.000Z" }));
+
+    render(<SitesPage page="sites-runtime" notify={notify} />);
+    await act(async () => undefined);
+    fireEvent.click(screen.getByRole("button", { name: "查看 反向代理 运行时详情" }));
+    const drawer = screen.getByRole("region", { name: "反向代理" });
     expect(drawer.parentElement).toBe(document.body);
-    expect(drawer).toHaveClass("site-log-drawer");
-    expect(within(drawer).getByText("api.stackpilot.local")).toBeInTheDocument();
-    expect(search).toHaveValue("api.stackpilot.local");
+    expect(within(drawer).getAllByText(/38ms/).length).toBeGreaterThan(0);
+
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(within(drawer).getAllByText(/91ms/).length).toBeGreaterThan(0);
+    expect(within(drawer).getByText(/refreshed\.conf/)).toBeInTheDocument();
+
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(screen.queryByRole("region", { name: "反向代理" })).not.toBeInTheDocument();
   });
 
-  it("presents the certificate queue as a focused risk workflow", async () => {
-    const user = userEvent.setup();
-    render(<SitesPage page="sites-cert" notify={vi.fn()} />);
+  it("pauses polling while hidden and refreshes immediately when visible again", async () => {
+    vi.useFakeTimers();
+    vi.mocked(fetchSites).mockResolvedValue(payload([site()]));
+    render(<SitesPage page="sites" notify={notify} />);
+    await act(async () => undefined);
 
-    expect(screen.queryByRole("button", { name: "刷新" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "添加网站" })).not.toBeInTheDocument();
-    expect(screen.getByText("等待接入采集")).toBeInTheDocument();
-    expect(screen.getAllByText("紧急").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("临近到期").length).toBeGreaterThan(0);
-    const desktopRows = screen.getByRole("table").querySelectorAll("tbody tr");
-    expect(desktopRows[0]).toHaveTextContent("admin.example.com");
-    expect(desktopRows[1]).toHaveTextContent("shop.example.com");
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await act(async () => { vi.advanceTimersByTime(30_000); });
+    expect(fetchSites).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getAllByRole("button", { name: "查看 admin.example.com 的证书详情" })[0]);
-    const drawer = screen.getByRole("region", { name: "证书详情" });
-    expect(drawer.parentElement).toBe(document.body);
-    expect(within(drawer).getByText("证书剩余 4 天")).toBeInTheDocument();
-    expect(within(drawer).getByText("手动确认")).toBeInTheDocument();
-  });
-
-  it("presents runtime health with text and opens complete group details", async () => {
-    const user = userEvent.setup();
-    render(<SitesPage page="sites-runtime" notify={vi.fn()} />);
-
-    expect(screen.queryByRole("button", { name: "刷新" })).not.toBeInTheDocument();
-    expect(screen.getByText("数据来源：当前站点清单")).toBeInTheDocument();
-    expect(screen.getByText("实时采集尚未接入，页面不会显示虚假的刷新时间。")).toBeInTheDocument();
-    expect(screen.getAllByText("健康").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("告警").length).toBeGreaterThan(0);
-
-    await user.click(screen.getByRole("button", { name: "查看 Node 20 运行时详情" }));
-    const drawer = screen.getByRole("region", { name: "Node 20" });
-    expect(drawer.parentElement).toBe(document.body);
-    expect(within(drawer).getByText("容量与风险")).toBeInTheDocument();
-    expect(within(drawer).getByText("站点实例")).toBeInTheDocument();
-    expect(within(drawer).getByText("api.stackpilot.local")).toBeInTheDocument();
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); await Promise.resolve(); });
+    expect(fetchSites).toHaveBeenCalledTimes(2);
   });
 });

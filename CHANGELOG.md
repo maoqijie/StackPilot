@@ -6,6 +6,8 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 ### Changed
 
+- Replaced the website demo inventory and simulated actions with authenticated Nginx discovery, loopback health probes, certificate metadata and silent 10-second polling from `GET /api/sites`.
+- Made unavailable site traffic, certificate and latency data explicit, and removed unsupported create, start/stop, renewal and access-log success simulations.
 - Refined database instance, backup and slow-query workflows with stable operational summaries, focused details and responsive action layouts.
 - Added clearer file upload, recycle-bin and terminal-session interactions, including keyboard-accessible confirmation dialogs and complete terminal session drawers.
 - Split database, file and terminal visual treatments into focused CloudPulse styles and expanded corresponding page-level UI tests.

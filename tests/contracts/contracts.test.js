@@ -4,6 +4,7 @@ import {
   API_CLIENT_PREFIX, API_ROOT_SEGMENTS, ApiErrorResponseSchema, CreateScheduleJobRequestSchema,
   OverviewSummaryPayloadSchema, PathIdSchema, WRITE_METHODS,
   AGENT_PROTOCOL_VERSION, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, CreateRemoteTaskRequestSchema, isAgentProtocolCompatible,
+  SiteRuntimePayloadSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
 } from "@stackpilot/contracts";
 
@@ -39,6 +40,17 @@ test("host monitoring contract preserves raw nullable metrics", () => {
   assert.equal(HostMonitoringRecordSchema.safeParse(host).success, true);
   assert.equal(HostMonitoringRecordSchema.safeParse({ ...host, memory: { totalBytes: 100, usedBytes: 101, percent: 50 } }).success, false);
   assert.equal(HostMonitoringRecordSchema.safeParse({ ...host, cpuPercent: 101 }).success, false);
+});
+
+test("site runtime contract keeps collection provenance and nullable measurements explicit", () => {
+  const payload = { collectedAt: new Date().toISOString(), collectionStatus: "partial", warnings: ["one unreadable config"], sites: [{
+    id: "nginx-site", domain: "app.example.com", status: "running", runtime: "反向代理", host: "controller-1",
+    upstream: "http://127.0.0.1:3000", source: "Nginx · app.conf", latencyMs: 12,
+    certificateExpiresAt: null, certificateIssuer: null, trafficBytes: null,
+  }] };
+  assert.equal(SiteRuntimePayloadSchema.safeParse(payload).success, true);
+  assert.equal(SiteRuntimePayloadSchema.safeParse({ ...payload, clientCollectedAt: payload.collectedAt }).success, false);
+  assert.equal(SiteRuntimePayloadSchema.safeParse({ ...payload, sites: [{ ...payload.sites[0], latencyMs: -1 }] }).success, false);
 });
 
 test("identity schemas reject privilege fields and invalid node scopes", () => {

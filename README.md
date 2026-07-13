@@ -92,6 +92,7 @@ npm run dev --workspace @stackpilot/web -- --host 0.0.0.0
 | `STACKPILOT_JSON_BODY_LIMIT_BYTES` | `65536` | 管理端 JSON 请求体字节上限，超限返回 `413`；严格校验的 Agent API 为遥测保留最多 `1 MiB`。 |
 | `STACKPILOT_ENABLE_CRONTAB_WRITE` | `0` | 危险开关；只有精确设置为 `1` 才允许 crontab 写入、修改、删除和立即执行。 |
 | `STACKPILOT_BACKUP_DIRS` | 未配置 | 可选备份目录列表，供本机平台采集使用。 |
+| `STACKPILOT_NGINX_CONFIG_DIRS` | `/etc/nginx/conf.d,/etc/nginx/sites-enabled` | 逗号分隔的只读 Nginx 配置目录，供站点运行时自动发现使用。 |
 | `STACKPILOT_NODE_RESTART_COMMAND` | 未配置 | 受控兼容开关；配置后允许已认证的本机节点重启入口执行该命令。 |
 | `STACKPILOT_API_PROXY_TARGET` | `http://127.0.0.1:8787` | 仅用于覆盖 Web 开发代理目标；不改变 Controller 安全边界。 |
 | `STACKPILOT_AGENT_PORT` | `9443` | HTTPS Agent API 端口。只有同时配置证书和私钥路径才启动。 |

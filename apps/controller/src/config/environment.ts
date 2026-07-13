@@ -38,6 +38,7 @@ const environmentSchema = z.object({
   STACKPILOT_ENABLE_CRONTAB_WRITE: z.enum(["0", "1"]).default("0"),
   STACKPILOT_JSON_BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(64 * 1024),
   STACKPILOT_BACKUP_DIRS: z.string().optional(),
+  STACKPILOT_NGINX_CONFIG_DIRS: z.string().optional(),
   STACKPILOT_NODE_RESTART_COMMAND: z.string().optional(),
   STACKPILOT_AGENT_PORT: z.coerce.number().int().min(1).max(65535).default(9443),
   STACKPILOT_AGENT_HOST: z.string().min(1).default(DEFAULT_CONTROLLER_HOST),
@@ -60,6 +61,7 @@ export type ControllerConfig = {
   crontabWriteEnabled: boolean;
   jsonBodyLimitBytes: number;
   backupDirs?: string;
+  nginxConfigDirs: string[];
   restartCommand?: string;
   agentPort: number;
   agentHost: string;
@@ -89,6 +91,7 @@ export function loadControllerConfig(env: NodeJS.ProcessEnv | Record<string, str
     crontabWriteEnabled: parsed.STACKPILOT_ENABLE_CRONTAB_WRITE === "1",
     jsonBodyLimitBytes: parsed.STACKPILOT_JSON_BODY_LIMIT_BYTES,
     ...(parsed.STACKPILOT_BACKUP_DIRS ? { backupDirs: parsed.STACKPILOT_BACKUP_DIRS } : {}),
+    nginxConfigDirs: (parsed.STACKPILOT_NGINX_CONFIG_DIRS ?? "/etc/nginx/conf.d,/etc/nginx/sites-enabled").split(",").map((value) => value.trim()).filter(Boolean),
     ...(parsed.STACKPILOT_NODE_RESTART_COMMAND ? { restartCommand: parsed.STACKPILOT_NODE_RESTART_COMMAND } : {}),
     agentPort: parsed.STACKPILOT_AGENT_PORT,
     agentHost: parsed.STACKPILOT_AGENT_HOST,
