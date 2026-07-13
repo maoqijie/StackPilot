@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import {
   access,
   lstat,
+  link,
   mkdir,
   open,
   readFile,
@@ -10,6 +11,7 @@ import {
   realpath,
   rename,
   rm,
+  unlink,
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import type { FileEntry, FileListPayload } from "@stackpilot/contracts";
@@ -94,14 +96,20 @@ export class FileService {
       const stats = await handle.stat();
       if (!stats.isDirectory()) throw new ServiceError(400, "BAD_REQUEST", "请求路径不是目录");
       const operationPath = process.platform === "linux" ? `/proc/self/fd/${handle.fd}` : match.absolutePath;
-      if (process.platform === "linux") {
-        const openedPath = await realpath(operationPath);
-        if (openedPath !== match.absolutePath || !isInside(match.realRoot, openedPath)) {
-          throw new ServiceError(409, "BAD_REQUEST", "目录在操作前发生变化，请重试");
-        }
-      }
-      return await operation({ ...match, operationPath });
+      const directory = { ...match, operationPath };
+      await this.assertStableDirectory(directory);
+      return await operation(directory);
     } finally { await handle.close(); }
+  }
+
+  private async assertStableDirectory(directory: StableDirectory): Promise<void> {
+    if (process.platform !== "linux") return;
+    let openedPath: string;
+    try { openedPath = await realpath(directory.operationPath); }
+    catch { throw new ServiceError(409, "BAD_REQUEST", "目录在操作前发生变化，请重试"); }
+    if (openedPath !== directory.absolutePath || !isInside(directory.realRoot, openedPath)) {
+      throw new ServiceError(409, "BAD_REQUEST", "目录在操作前发生变化，请重试");
+    }
   }
 
   private async withStableDirectory<T>(value: string, operation: (directory: StableDirectory) => Promise<T>): Promise<T> {
@@ -154,6 +162,7 @@ export class FileService {
 
   async list(value: string): Promise<FileListPayload> {
     return this.withStableDirectory(value, async (directory) => {
+      await this.assertStableDirectory(directory);
       const names = (await readdir(directory.operationPath)).filter((name) => name !== ".stackpilot-trash");
       if (names.length > 5000) throw new ServiceError(413, "PAYLOAD_TOO_LARGE", "目录项目超过 5000 个");
       const entries = await Promise.all(names.map((name) => this.entry(
@@ -161,6 +170,7 @@ export class FileService {
         join(directory.absolutePath, name),
         directory.absolutePath,
       )));
+      await this.assertStableDirectory(directory);
       entries.sort((a, b) => a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "directory" ? -1 : 1);
       return {
         rootPath: directory.configuredRoot,
@@ -178,6 +188,7 @@ export class FileService {
       const childName = validName(name);
       const operationPath = join(parent.operationPath, childName);
       const publicPath = join(parent.absolutePath, childName);
+      await this.assertStableDirectory(parent);
       try { await mkdir(operationPath, { mode: 0o775 }); }
       catch (error) {
         if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new ServiceError(409, "BAD_REQUEST", "同名项目已存在");
@@ -186,6 +197,8 @@ export class FileService {
       const handle = await open(operationPath, constants.O_RDONLY | constants.O_DIRECTORY | (constants.O_NOFOLLOW ?? 0));
       try { await handle.chmod(0o775); }
       finally { await handle.close(); }
+      try { await this.assertStableDirectory(parent); }
+      catch (error) { await rm(operationPath).catch(() => undefined); throw error; }
       return this.entry(operationPath, publicPath, parent.absolutePath);
     }));
   }
@@ -196,6 +209,7 @@ export class FileService {
       const operationPath = join(parent.operationPath, childName);
       const publicPath = join(parent.absolutePath, childName);
       let handle;
+      await this.assertStableDirectory(parent);
       try {
         handle = await open(
           operationPath,
@@ -210,6 +224,8 @@ export class FileService {
         await handle.writeFile(content);
         await handle.chmod(0o664);
       } finally { await handle.close(); }
+      try { await this.assertStableDirectory(parent); }
+      catch (error) { await rm(operationPath, { force: true }).catch(() => undefined); throw error; }
       return this.entry(operationPath, publicPath, parent.absolutePath);
     }));
   }
@@ -219,11 +235,30 @@ export class FileService {
       const sourceName = basename(path);
       const source = await this.stableChild(parent, sourceName);
       if (source.absolutePath === source.realRoot) throw new ServiceError(403, "FORBIDDEN", "不能重命名文件根目录");
+      const sourceOperationPath = join(parent.operationPath, sourceName);
+      const sourceStats = await lstat(sourceOperationPath);
+      if (!sourceStats.isFile()) throw new ServiceError(409, "BAD_REQUEST", "当前版本仅支持重命名普通文件");
       const targetName = validName(newName);
       const targetOperationPath = join(parent.operationPath, targetName);
-      try { await lstat(targetOperationPath); throw new ServiceError(409, "BAD_REQUEST", "同名项目已存在"); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-      await rename(join(parent.operationPath, sourceName), targetOperationPath);
+      await this.assertStableDirectory(parent);
+      try { await link(sourceOperationPath, targetOperationPath); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new ServiceError(409, "BAD_REQUEST", "同名项目已存在");
+        throw error;
+      }
+      try {
+        await this.assertStableDirectory(parent);
+        await unlink(sourceOperationPath);
+        await this.assertStableDirectory(parent);
+      } catch (error) {
+        try {
+          await link(targetOperationPath, sourceOperationPath).catch((reason) => {
+            if ((reason as NodeJS.ErrnoException).code !== "EEXIST") throw reason;
+          });
+          await unlink(targetOperationPath);
+        } catch { /* Preserve both names rather than risking data loss. */ }
+        throw error;
+      }
       return this.entry(targetOperationPath, join(parent.absolutePath, targetName), parent.absolutePath);
     }));
   }
@@ -233,9 +268,11 @@ export class FileService {
       const sourceName = basename(path);
       const source = await this.stableChild(parent, sourceName);
       if (source.absolutePath === source.realRoot) throw new ServiceError(403, "FORBIDDEN", "不能删除文件根目录");
+      await this.assertStableDirectory(parent);
       return this.withStableDirectory(source.realRoot, async (root) => {
         const trashPath = join(root.absolutePath, ".stackpilot-trash");
         const trashOperationPath = join(root.operationPath, ".stackpilot-trash");
+        await this.assertStableDirectory(root);
         try {
           const stats = await lstat(trashOperationPath);
           if (!stats.isDirectory() || stats.isSymbolicLink()) throw new ServiceError(403, "FORBIDDEN", "文件回收目录不安全");
@@ -247,9 +284,19 @@ export class FileService {
         return this.withOpenedDirectory(trashMatch, trashOperationPath, async (trash) => {
           const bucketName = randomUUID();
           const bucket = join(trash.operationPath, bucketName);
+          await this.assertStableDirectory(parent);
+          await this.assertStableDirectory(trash);
           await mkdir(bucket, { mode: 0o700 });
-          try { await rename(join(parent.operationPath, sourceName), join(bucket, sourceName)); }
-          catch (error) { await rm(bucket, { recursive: true, force: true }); throw error; }
+          const trashedPath = join(bucket, sourceName);
+          try {
+            await rename(join(parent.operationPath, sourceName), trashedPath);
+            await this.assertStableDirectory(parent);
+            await this.assertStableDirectory(trash);
+          } catch (error) {
+            await rename(trashedPath, join(parent.operationPath, sourceName)).catch(() => undefined);
+            await rm(bucket, { recursive: true, force: true }).catch(() => undefined);
+            throw error;
+          }
           return sourceName;
         });
       });
