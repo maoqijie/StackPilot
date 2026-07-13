@@ -115,4 +115,26 @@ describe("theme provider", () => {
     expect(screen.getByLabelText("当前位置")).toHaveTextContent("资源管理主机");
     expect(document.querySelector(".cloud-header")).not.toHaveClass("without-context");
   });
+
+  it("filters protected global-search destinations by permission", () => {
+    render(
+      <ThemeProvider>
+        <TopBar
+          page="sites"
+          setPage={vi.fn()}
+          chrome={desktopTopbarChrome("sites")}
+          notify={vi.fn()}
+          unreadCount={0}
+          setUnreadCount={vi.fn()}
+          overview={null}
+          interactionsDisabled={false}
+          permissions={["sites:read"]}
+          onLogout={vi.fn()}
+        />
+      </ThemeProvider>,
+    );
+    fireEvent.change(screen.getByRole("combobox", { name: "全局搜索" }), { target: { value: "部署站点" } });
+    expect(screen.getByText("没有匹配结果")).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /部署站点/ })).not.toBeInTheDocument();
+  });
 });

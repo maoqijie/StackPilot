@@ -11,7 +11,15 @@ const transitions: Record<RemoteTaskStatus, readonly RemoteTaskStatus[]> = {
   queued: ["dispatched", "cancelled", "expired"], dispatched: ["running", "queued", "succeeded", "failed", "cancelled", "expired"],
   running: ["succeeded", "failed", "cancelled", "expired"], succeeded: [], failed: ["queued"], cancelled: [], expired: [],
 };
-const requiredCapability: Record<CreateRemoteTaskRequest["type"], AgentCapability> = { "system.summary.read": "system.summary.read", "service.status.read": "service.status.read" };
+const requiredCapability: Record<CreateRemoteTaskRequest["type"], AgentCapability> = {
+  "system.summary.read": "system.summary.read",
+  "service.status.read": "service.status.read",
+  "sites.plan.prepare": "sites.deploy",
+  "sites.plan.activate": "sites.deploy",
+  "sites.lifecycle.update": "sites.lifecycle.manage",
+  "sites.logs.read": "sites.logs.read",
+  "sites.certificates.renew": "sites.certificates.renew",
+};
 const audit = (event: Omit<AuditEvent, "eventId" | "timestamp">): AuditEvent => ({ eventId: randomUUID(), timestamp: new Date().toISOString(), ...event });
 const sensitiveResultKey = /authorization|cookie|token|secret|password|private|environment|stdout|stderr/i;
 function containsSensitiveKey(value: unknown): boolean {
@@ -43,7 +51,7 @@ export class RemoteTaskService {
   }
 
   async create(nodeId: string, input: CreateRemoteTaskRequest, requester: string, traceId: string) {
-    let created: RemoteTaskRecord | null = null;
+    let created: RemoteTaskRecord | undefined;
     await this.repository.update((state) => {
       this.reconcile(state, traceId);
       const node = state.nodes.find((item) => item.nodeId === nodeId);
@@ -57,14 +65,18 @@ export class RemoteTaskService {
       created = RemoteTaskRecordSchema.parse({
         protocolVersion: AGENT_PROTOCOL_VERSION, taskId: randomUUID(), type: input.type, targetNodeId: nodeId,
         parameters: input.parameters, createdAt: now, expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
-        idempotencyKey: input.idempotencyKey, requester, traceId, requiredCapability: capability, attempt: 0, maxAttempts: 3,
-        status: "queued", updatedAt: now, result: null, errorCode: null, retryable: true, nextAttemptAt: null,
+        idempotencyKey: input.idempotencyKey, requester, traceId, requiredCapability: capability, attempt: 0,
+        maxAttempts: input.type.startsWith("sites.") ? 1 : 3,
+        status: "queued", updatedAt: now, result: null, errorCode: null,
+        retryable: !input.type.startsWith("sites."), nextAttemptAt: null,
       });
       state.tasks.push(created);
-      state.audits.push(audit({ requester, nodeId, taskId: created.taskId, event: "task.created", taskType: input.type, parameters: input.parameters, fromStatus: null, toStatus: "queued", resultSummary: null, traceId }));
+      const parameters = input.parameters as Record<string, unknown>;
+      const identifiers = Object.fromEntries(["operationId", "planId", "siteId", "batchId"].flatMap((key) => typeof parameters[key] === "string" ? [[key, parameters[key]]] : []));
+      state.audits.push(audit({ requester, nodeId, taskId: created.taskId, event: "task.created", taskType: input.type, parameters: identifiers, fromStatus: null, toStatus: "queued", resultSummary: null, traceId }));
     });
     if (!created) throw new ServiceError(500, "INTERNAL_ERROR", "任务状态未保存");
-    return created;
+    return created as RemoteTaskRecord;
   }
 
   async list(nodeId?: string) {
@@ -80,7 +92,7 @@ export class RemoteTaskService {
       for (const task of state.tasks.filter((item) => item.targetNodeId === nodeId && item.status === "queued" && (!item.nextAttemptAt || Date.parse(item.nextAttemptAt) <= Date.now())).slice(0, 10)) {
         if (!node.allowedCapabilities.includes(task.requiredCapability) || !node.declaredCapabilities.includes(task.requiredCapability)) { task.status = "cancelled"; task.errorCode = "CAPABILITY_REVOKED"; continue; }
         transitionTask(task, "dispatched"); task.attempt += 1; dispatched.push(structuredClone(task));
-        state.audits.push(audit({ requester: `agent:${nodeId}`, nodeId, taskId: task.taskId, event: "task.dispatched", taskType: task.type, parameters: task.parameters, fromStatus: "queued", toStatus: "dispatched", resultSummary: null, traceId }));
+        state.audits.push(audit({ requester: `agent:${nodeId}`, nodeId, taskId: task.taskId, event: "task.dispatched", taskType: task.type, parameters: null, fromStatus: "queued", toStatus: "dispatched", resultSummary: null, traceId }));
       }
     });
     return dispatched.map((task) => RemoteTaskEnvelopeSchema.parse({

@@ -1,3 +1,4 @@
+import type { PublicUser } from "@stackpilot/contracts";
 import { Lock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { desktopTopbarChrome, navPageFor } from "../../app/navigation";
@@ -97,6 +98,7 @@ function DesktopShellContent({
   setTopbarUnreadCount,
   sessionLocked,
   onLogout,
+  user,
 }: {
   page: PageKey;
   setPage: SetPage;
@@ -105,6 +107,7 @@ function DesktopShellContent({
   setTopbarUnreadCount: React.Dispatch<React.SetStateAction<number>>;
   sessionLocked: boolean;
   onLogout: () => void;
+  user: PublicUser;
 }) {
   const activeModule = navPageFor(page);
   const topbarChrome = desktopTopbarChrome(page);
@@ -208,16 +211,17 @@ function DesktopShellContent({
         onNavigate={() => {
           if (isNarrowSidebar) setSidebarCollapsed(true);
         }}
+        permissions={user.permissions}
       />
       <div className="desktop-main" inert={sidebarOverlayOpen} aria-hidden={sidebarOverlayOpen ? "true" : undefined}>
-        <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={overview} interactionsDisabled={sessionLocked} onLogout={onLogout} />
+        <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={overview} interactionsDisabled={sessionLocked} permissions={user.permissions} onLogout={onLogout} />
         <div className="desktop-content" ref={desktopContentRef}>
           {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
           {page === "overview-health" && <OverviewHealthPage notify={notify} />}
           {page === "overview-tasks" && <OverviewTasksPage notify={notify} setPage={setPage} />}
           {page === "overview-risks" && <OverviewRisksPage notify={notify} />}
           {activeModule === "hosts" && <HostsPage page={page} notify={notify} />}
-          {activeModule === "sites" && <SitesPage page={page} notify={notify} />}
+          {activeModule === "sites" && <SitesPage page={page} notify={notify} permissions={user.permissions} />}
           {activeModule === "databases" && (
             page === "databases-backups"
               ? <DatabaseBackupsPage page={page} notify={notify} />

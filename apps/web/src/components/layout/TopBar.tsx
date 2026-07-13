@@ -1,4 +1,5 @@
 import type { OverviewSummaryPayload } from "../../api/overviewApi";
+import type { Permission } from "@stackpilot/contracts";
 import { Bell, ChevronDown, CircleHelp, FileClock, KeyRound, LogOut, Moon, Search, Sun, UserRound, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { resolvePageMeta, topbarSearchResults } from "../../app/navigation";
@@ -16,6 +17,7 @@ function TopBar({
   setUnreadCount,
   overview,
   interactionsDisabled,
+  permissions,
   onLogout,
 }: {
   page: PageKey;
@@ -26,6 +28,7 @@ function TopBar({
   setUnreadCount: React.Dispatch<React.SetStateAction<number>>;
   overview: OverviewSummaryPayload | null;
   interactionsDisabled: boolean;
+  permissions?: Permission[];
   onLogout: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -39,7 +42,7 @@ function TopBar({
   const userTriggerRef = useRef<HTMLButtonElement>(null);
   const { theme, toggleTheme } = useTheme();
   const meta = resolvePageMeta(page);
-  const results = topbarSearchResults(query);
+  const results = topbarSearchResults(query, permissions);
   const selectedIndex = results.length ? Math.min(activeIndex, results.length - 1) : 0;
   const visibleSearchOpen = searchOpen && !interactionsDisabled;
   const freshness = overview ? formatBackendDateTime(overviewCollectedAt(overview), "等待首次采集") : "等待首次采集";

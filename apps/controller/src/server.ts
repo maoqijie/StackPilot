@@ -10,9 +10,10 @@ import { loadControllerConfig } from "./config/environment.js";
 import { NativePlatformAdapter } from "./platform/nativeAdapter.js";
 import { openDatabase } from "./database/database.js";
 import { IdentityService } from "./identity/identityService.js";
-import { loadOrCreateAuditKey } from "./security/secretStore.js";
+import { loadOrCreateAuditKey, SecretStore } from "./security/secretStore.js";
 import { parseMasterKey } from "./security/crypto.js";
 import { SqliteAgentControlRepository } from "./repositories/sqliteAgentControlRepository.js";
+import { SqliteSiteManagementRepository } from "./modules/sites/siteManagementRepository.js";
 
 function assertLegacyStateImported(config:ReturnType<typeof loadControllerConfig>,repoRoot:string):void{const legacyPath=isAbsolute(config.agentStatePath)?config.agentStatePath:resolve(repoRoot,config.agentStatePath);if(!existsSync(legacyPath))return;const digest=createHash("sha256").update(readFileSync(legacyPath)).digest("hex");const databasePath=isAbsolute(config.databasePath)?config.databasePath:resolve(repoRoot,config.databasePath);const database=openDatabase(databasePath);const imported=database.prepare("SELECT 1 FROM legacy_imports WHERE source_path=? AND source_digest=?").get(legacyPath,digest);database.close();if(!imported)throw new Error("Legacy Agent state must be explicitly imported before startup");}
 
@@ -38,8 +39,11 @@ if (isMainModule) {
     const databasePath=isAbsolute(config.databasePath)?config.databasePath:resolve(repoRoot,config.databasePath);
     const database=openDatabase(databasePath);
     const identity=new IdentityService(database,loadOrCreateAuditKey(database,parseMasterKey(config.masterKey)),config.sessionSeconds);
-    const agentRepository=new SqliteAgentControlRepository(database,identity.audit);
-    const services = createControllerServices(platform, repoRoot, config,agentRepository);
+    const secrets=new SecretStore(database,parseMasterKey(config.masterKey));
+    const agentRepository=new SqliteAgentControlRepository(database,identity.audit,secrets);
+    const siteRepository=new SqliteSiteManagementRepository(database,secrets);
+    const services = createControllerServices(platform, repoRoot, config,agentRepository,siteRepository);
+    await services.certificateRenewals.startup();
     const appOptions={ config, services, platform, repoRoot,database,identity,agentRepository };
     const server = createStackPilotServer(appOptions);
 

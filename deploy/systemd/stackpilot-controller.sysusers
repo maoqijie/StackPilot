@@ -1,2 +1,3 @@
+g stackpilot-cert -
 u stackpilot-controller - "StackPilot Controller" /var/lib/stackpilot-controller /usr/sbin/nologin
-
+m stackpilot-controller stackpilot-cert

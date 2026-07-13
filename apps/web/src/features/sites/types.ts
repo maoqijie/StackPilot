@@ -1,3 +1,5 @@
+import type { SiteCertificate, SiteRuntimeRecord } from "@stackpilot/contracts";
+
 type SiteRecord = {
   id: string;
   domain: string;
@@ -43,6 +45,23 @@ type SiteRuntimeView = {
   traffic: string;
   latencyMs: number | null;
   latency: string;
+  nodeId: string;
+  collectedAt: string;
+  freshness: SiteRuntimeRecord["freshness"];
+  certificate: SiteCertificate;
+  renewal: SiteRuntimeRecord["renewal"];
+  manageability: SiteRuntimeRecord["manageability"];
+  managementReason: string | null;
+  protected: boolean;
+  version: number;
+  desiredState: SiteRuntimeRecord["desiredState"];
 };
 
-export type { SiteRecord, SiteRuntimeGroup, SiteRuntimeView };
+type CertificateRenewalSelection = {
+  siteIds: string[];
+  mode: "single" | "batch";
+  executeCount: number;
+  skipCount: number;
+};
+
+export type { CertificateRenewalSelection, SiteRecord, SiteRuntimeGroup, SiteRuntimeView };

@@ -21,6 +21,7 @@ import { EnrollmentService } from "./modules/enrollments/enrollmentService.js";
 import { NodeService } from "./modules/nodes/nodeService.js";
 import { HostMonitoringService } from "./modules/hosts/hostMonitoringService.js";
 import { SiteMonitoringService } from "./modules/sites/siteMonitoringService.js";
+import { CertificateRenewalService } from "./modules/sites/certificateRenewalService.js";
 import { NginxSiteCollector } from "./platform/siteCollector.js";
 import { RemoteTaskService } from "./modules/remote-tasks/remoteTaskService.js";
 import { NativePlatformAdapter } from "./platform/nativeAdapter.js";
@@ -38,6 +39,9 @@ import { loadOrCreateAuditKey } from "./security/secretStore.js";
 import { openDatabase } from "./database/database.js";
 import { SqliteAgentControlRepository } from "./repositories/sqliteAgentControlRepository.js";
 import { requestSource } from "./http/trustedProxy.js";
+import { SecretStore } from "./security/secretStore.js";
+import { MemorySiteManagementRepository, SqliteSiteManagementRepository, type SiteManagementRepository } from "./modules/sites/siteManagementRepository.js";
+import { RemoteSiteExecutor, SiteManagementService } from "./modules/sites/siteManagementService.js";
 
 export type AppOptions = {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -52,21 +56,27 @@ export type AppOptions = {
   identity?: IdentityService | null;
 };
 
-export function createControllerServices(platform: PlatformAdapter, repoRoot: string, config: ControllerConfig, agentRepository?: AgentControlRepository): Services {
+export function createControllerServices(platform: PlatformAdapter, repoRoot: string, config: ControllerConfig, agentRepository?: AgentControlRepository, siteRepository?: SiteManagementRepository): Services {
   const state = new MemoryTaskStateRepository();
   const exports = new FileExportRepository(repoRoot);
   const repository = agentRepository ?? new FileAgentControlRepository(isAbsolute(config.agentStatePath) ? config.agentStatePath : resolve(repoRoot, config.agentStatePath));
   const overview = new OverviewService(platform, state, repository);
+  const sites = new SiteMonitoringService(new NginxSiteCollector(config.nginxConfigDirs), repository);
+  const certificateRenewals = new CertificateRenewalService(repository, sites);
+  const remoteTasks = new RemoteTaskService(repository);
+  const managementRepository = siteRepository ?? new MemorySiteManagementRepository();
   return {
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
-    sites: new SiteMonitoringService(new NginxSiteCollector(config.nginxConfigDirs)),
+    sites,
+    siteManagement: new SiteManagementService(managementRepository, sites, certificateRenewals, new RemoteSiteExecutor(remoteTasks, managementRepository), config.protectedSiteIds),
+    certificateRenewals,
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
     schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform),
     enrollments: new EnrollmentService(repository),
     nodes: new NodeService(repository),
-    remoteTasks: new RemoteTaskService(repository),
+    remoteTasks,
   };
 }
 
@@ -84,8 +94,10 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
   const platform = options.platform ?? new NativePlatformAdapter(config, repoRoot);
   const database = options.database ?? (config.masterKey ? openDatabase(isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath)) : null);
   const identity = options.identity === undefined ? (database && config.masterKey ? new IdentityService(database, loadOrCreateAuditKey(database,parseMasterKey(config.masterKey)), config.sessionSeconds) : null) : options.identity;
-  const agentRepository = options.agentRepository ?? (database ? new SqliteAgentControlRepository(database,identity?.audit) : undefined);
-  const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository);
+  const secrets = database && config.masterKey ? new SecretStore(database, parseMasterKey(config.masterKey)) : undefined;
+  const agentRepository = options.agentRepository ?? (database ? new SqliteAgentControlRepository(database,identity?.audit,secrets) : undefined);
+  const siteRepository = database && secrets ? new SqliteSiteManagementRepository(database, secrets) : undefined;
+  const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, siteRepository);
   const logger = options.logger ?? consoleLogger;
   const surface = options.surface ?? "all";
 

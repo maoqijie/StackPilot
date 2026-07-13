@@ -5,6 +5,7 @@ import { firewallPagePreset } from "../features/firewall/validation";
 import { schedulePagePreset } from "../features/schedule/model";
 import { sitesPagePreset } from "../features/sites/model";
 import { aclPagePreset, auditPagePreset, databasePagePreset, deployPagePreset, settingsPagePreset, systemdPagePreset, terminalPagePreset } from "./pagePresets";
+import type { Permission } from "@stackpilot/contracts";
 import type { PageKey, PageMeta, ParentPageKey, ViewContext } from "../types/app";
 
 const parentPageKeys = [
@@ -30,6 +31,7 @@ const pageMeta: Record<string, PageMeta> = {
   "overview-risks": { title: "风险中心", breadcrumb: "工作台", search: "搜索风险、主机、对象..." },
   hosts: { title: "主机", breadcrumb: "资源管理", search: "搜索主机名、IP、环境..." },
   sites: { title: "网站", breadcrumb: "应用管理", search: "搜索域名、服务、证书..." },
+  "sites-create": { title: "部署站点", breadcrumb: "网站", search: "搜索部署计划..." },
   databases: { title: "数据库管理", breadcrumb: "资源管理", search: "搜索数据库名称" },
   files: { title: "文件", breadcrumb: "资源管理", search: "搜索文件名、路径、类型..." },
   terminal: { title: "终端", breadcrumb: "运维工具", search: "搜索会话主机或命令..." },
@@ -74,6 +76,7 @@ const navItems: NavItem[] = [
     label: "网站",
     icon: Globe2,
     children: [
+      { id: "sites-create", label: "部署站点", meta: "Git 计划" },
       { id: "sites-running", label: "运行中站点", meta: "站点列表" },
       { id: "sites-cert", label: "证书续期", meta: "续期检查" },
       { id: "sites-runtime", label: "服务分组", meta: "Node / PHP" },
@@ -225,7 +228,7 @@ function desktopTopbarChrome(page: PageKey): TopbarChrome {
   };
 }
 
-function topbarSearchResults(query: string): TopbarSearchResult[] {
+function topbarSearchResults(query: string, permissions?: readonly Permission[]): TopbarSearchResult[] {
   const normalized = query.trim().toLowerCase();
   const entries: TopbarSearchResult[] = navItems.flatMap((item) => [
     { id: item.key, label: item.label, detail: resolvePageMeta(item.key).breadcrumb, page: item.key, kind: "模块" },
@@ -243,7 +246,7 @@ function topbarSearchResults(query: string): TopbarSearchResult[] {
     { id: "quick-create-rule", label: "新增防火墙规则", detail: "打开防火墙规则列表", page: "firewall", kind: "动作" },
     { id: "quick-audit-export", label: "导出审计日志", detail: "进入审计导出记录", page: "audit-export", kind: "动作" },
   ];
-  const allEntries = [...entries, ...quickActions];
+  const allEntries = [...entries, ...quickActions].filter((item) => item.page !== "sites-create" || permissions?.includes("sites:deploy") !== false);
   if (!normalized) return allEntries.slice(0, 6);
   return allEntries
     .filter((item) => `${item.label} ${item.detail} ${item.kind}`.toLowerCase().includes(normalized))

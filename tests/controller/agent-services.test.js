@@ -44,6 +44,24 @@ test("heartbeat controls online/offline lifecycle and node revocation rejects id
   await fixture.nodes.revoke(fixture.enrolled.nodeId, "admin", crypto.randomUUID()); assert.equal((await fixture.nodes.list())[0].status, "revoked");
 });
 
+test("heartbeat persists optional site snapshots and legacy heartbeats preserve the last snapshot", async () => {
+  const fixture = await enrolledFixture();
+  const heartbeat = { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["sites.inventory.read"], health: { status: "healthy", uptimeSeconds: 10 } };
+  const siteSnapshot = { collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], sites: [] };
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { ...heartbeat, siteSnapshot }, crypto.randomUUID());
+  assert.deepEqual((await fixture.repository.read()).nodes[0].siteSnapshot, siteSnapshot);
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { ...heartbeat, timestamp: new Date().toISOString() }, crypto.randomUUID());
+  assert.deepEqual((await fixture.repository.read()).nodes[0].siteSnapshot, siteSnapshot);
+});
+
+test("node capability authorization accepts only declared Controller-supported capabilities", async () => {
+  const fixture = await enrolledFixture();
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read", "sites.certificates.renew"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID());
+  const updated = await fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["sites.certificates.renew"], "admin", crypto.randomUUID());
+  assert.deepEqual(updated.allowedCapabilities, ["sites.certificates.renew"]);
+  await assert.rejects(() => fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["service.status.read"], "admin", crypto.randomUUID()), /已声明/);
+});
+
 test("task state machine enforces capability, idempotency, expiry, cancellation and queue limit", async () => {
   const fixture = await enrolledFixture(); await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read", "service.status.read"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID());
   const input = { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "idempotent-summary-a" };

@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronLeft, CloudCog, Menu } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import type { Permission } from "@stackpilot/contracts";
 import { activeChildForPage, navChildMetaText, navItems, navPageFor } from "../../app/navigation";
 import type { NavChild, NavItem } from "./types";
 import type { PageKey, SetPage } from "../../types/app";
@@ -12,6 +13,7 @@ function Sidebar({
   onToggleCollapsed,
   onExpandCollapsed,
   onNavigate,
+  permissions,
 }: {
   page: PageKey;
   setPage: SetPage;
@@ -19,6 +21,7 @@ function Sidebar({
   onToggleCollapsed: () => void;
   onExpandCollapsed: () => void;
   onNavigate: () => void;
+  permissions: Permission[];
 }) {
   const activeParent = navPageFor(page);
   const activeChild = activeChildForPage(page);
@@ -91,6 +94,7 @@ function Sidebar({
 
       <nav className="cloud-sidebar-nav" aria-label="主导航">
         {navItems.map((item) => {
+          const children = item.children.filter((child) => child.id !== "sites-create" || permissions.includes("sites:deploy"));
           const Icon = item.icon;
           const isActiveParent = item.key === activeParent;
           const isExactPage = item.key === page;
@@ -123,10 +127,10 @@ function Sidebar({
                 className="cloud-sidebar-children"
                 id={`cloud-sidebar-children-${item.key}`}
                 aria-hidden={!isOpen}
-                style={{ "--cloud-sidebar-children-height": `${item.children.length * 52}px` } as CSSProperties}
+                style={{ "--cloud-sidebar-children-height": `${children.length * 52}px` } as CSSProperties}
               >
                 <div className="cloud-sidebar-children-inner">
-                  {item.children.map((child) => {
+                  {children.map((child) => {
                     const metaText = navChildMetaText(child);
                     const isActiveChild = activeChild === child.id;
                     return (

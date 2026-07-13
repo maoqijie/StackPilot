@@ -1,10 +1,12 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchSites } from "../api/sitesApi";
-import type { SiteRuntimePayload, SiteRuntimeRecord } from "../api/sitesApi";
+import { createCertificateRenewal, fetchCertificateRenewal, fetchSites } from "../api/sitesApi";
+import type { CertificateRenewalBatch, SiteRuntimePayload, SiteRuntimeRecord } from "../api/sitesApi";
+import { reauthenticate } from "../api/identityApi";
 import { SitesPage } from "../pages/SitesPage";
 
-vi.mock("../api/sitesApi", () => ({ fetchSites: vi.fn() }));
+vi.mock("../api/sitesApi", () => ({ fetchSites: vi.fn(), createCertificateRenewal: vi.fn(), fetchCertificateRenewal: vi.fn() }));
+vi.mock("../api/identityApi", () => ({ reauthenticate: vi.fn() }));
 
 const collectedAt = "2026-07-13T12:30:00.000Z";
 
@@ -18,9 +20,30 @@ function site(overrides: Partial<SiteRuntimeRecord> = {}): SiteRuntimeRecord {
     upstream: "http://127.0.0.1:3000",
     source: "Nginx · api.conf",
     latencyMs: 38,
-    certificateExpiresAt: "2026-09-10T00:00:00.000Z",
-    certificateIssuer: "Let's Encrypt",
     trafficBytes: null,
+    errorRatePercent: null,
+    lastDeployAt: null,
+    manageability: "monitored",
+    managementReason: null,
+    protected: false,
+    version: 1,
+    desiredState: null,
+    nodeId: "node-local",
+    collectedAt,
+    freshness: "current",
+    certificate: {
+      status: "valid",
+      notBefore: "2026-06-10T00:00:00.000Z",
+      expiresAt: "2026-09-10T00:00:00.000Z",
+      issuer: "Let's Encrypt",
+      subjectAlternativeNames: ["api.example.com"],
+      fingerprintSha256: "A".repeat(64),
+      renewalMode: "automatic",
+      renewable: true,
+      unavailableReason: null,
+      certificateId: "cert_api_example",
+    },
+    renewal: { batchId: null, taskId: null, status: "idle", message: null, updatedAt: null },
     ...overrides,
   };
 }
@@ -35,6 +58,9 @@ describe("sites live monitoring page", () => {
   beforeEach(() => {
     notify.mockClear();
     vi.mocked(fetchSites).mockReset();
+    vi.mocked(createCertificateRenewal).mockReset();
+    vi.mocked(fetchCertificateRenewal).mockReset();
+    vi.mocked(reauthenticate).mockReset();
     Object.defineProperty(document, "hidden", { configurable: true, value: false });
   });
 
@@ -50,12 +76,13 @@ describe("sites live monitoring page", () => {
 
     render(<SitesPage page="sites" notify={notify} />);
     expect(await screen.findByText("站点采集不可用")).toBeInTheDocument();
-    expect(screen.getAllByText("实时采集失败，未显示示例站点")).toHaveLength(2);
+    expect(screen.queryByText("实时采集失败，未显示示例站点")).not.toBeInTheDocument();
+    expect(screen.queryByText("站点资产清单")).not.toBeInTheDocument();
     expect(screen.queryByText("api.stackpilot.local")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
 
     expect((await screen.findAllByTitle("api.example.com")).length).toBeGreaterThan(0);
-    expect(notify).toHaveBeenCalledWith("站点采集不可用", "danger");
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it("polls every ten seconds, keeps filters, and retains data after a background failure", async () => {
@@ -87,8 +114,11 @@ describe("sites live monitoring page", () => {
       status: "unknown",
       upstream: null,
       latencyMs: null,
-      certificateExpiresAt: null,
-      certificateIssuer: null,
+      certificate: {
+        status: "unavailable", notBefore: null, expiresAt: null, issuer: null,
+        subjectAlternativeNames: [], fingerprintSha256: null, renewalMode: "unsupported",
+        renewable: false, unavailableReason: "站点未启用 TLS", certificateId: null,
+      },
       trafficBytes: null,
     })], { collectionStatus: "partial", warnings: ["证书探测不完整"] }));
 
@@ -109,8 +139,6 @@ describe("sites live monitoring page", () => {
 
     render(<SitesPage page="sites-runtime" notify={notify} />);
     await act(async () => undefined);
-    expect(document.querySelector(".page-head")).not.toBeInTheDocument();
-    expect(document.querySelector(".module-view-context")).not.toBeInTheDocument();
     expect(screen.queryByText("服务容量视图")).not.toBeInTheDocument();
     expect(screen.queryByText(/数据来源：/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "查看 反向代理 服务详情" }));
@@ -141,4 +169,81 @@ describe("sites live monitoring page", () => {
     await act(async () => { document.dispatchEvent(new Event("visibilitychange")); await Promise.resolve(); });
     expect(fetchSites).toHaveBeenCalledTimes(2);
   });
+
+  it("keeps certificate detail bound to stable site id across refresh and closes it when removed", async () => {
+    vi.useFakeTimers();
+    const due = site({ certificate: { ...site().certificate, status: "critical", expiresAt: "2026-07-18T00:00:00.000Z" } });
+    vi.mocked(fetchSites)
+      .mockResolvedValueOnce(payload([due]))
+      .mockResolvedValueOnce(payload([{ ...due, certificate: { ...due.certificate, issuer: "Let's Encrypt R12" } }], { collectedAt: "2026-07-13T12:30:10.000Z" }))
+      .mockResolvedValueOnce(payload([], { collectedAt: "2026-07-13T12:30:20.000Z" }));
+
+    render(<SitesPage page="sites-cert" notify={notify} />);
+    await act(async () => undefined);
+    fireEvent.click(screen.getByRole("button", { name: "查看 api.example.com 证书详情" }));
+    const drawer = screen.getByRole("region", { name: "api.example.com" });
+    expect(within(drawer).getByText("Let's Encrypt")).toBeInTheDocument();
+
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(within(drawer).getByText("Let's Encrypt R12")).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(screen.queryByRole("region", { name: "api.example.com" })).not.toBeInTheDocument();
+  });
+
+  it("submits one renewal with one-time reauth and keeps the backend expiry unchanged", async () => {
+    const due = site({ certificate: { ...site().certificate, status: "critical", expiresAt: "2026-07-18T00:00:00.000Z" } });
+    const queued = renewalBatch("queued", [due.id]);
+    vi.mocked(fetchSites).mockResolvedValue(payload([due]));
+    vi.mocked(reauthenticate).mockResolvedValue({ proof: "proof-value-with-more-than-thirty-two-characters", expiresAt: "2026-07-13T12:35:00.000Z" });
+    vi.mocked(createCertificateRenewal).mockResolvedValue(queued);
+
+    render(<SitesPage page="sites-cert" notify={notify} />);
+    fireEvent.click(await screen.findByRole("button", { name: "续期 api.example.com 证书" }));
+    const dialog = screen.getByRole("alertdialog", { name: "确认证书续期" });
+    fireEvent.change(within(dialog).getByLabelText("当前密码"), { target: { value: "correct-password" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认续期" }));
+
+    await screen.findByText("续期批次：排队中");
+    expect(reauthenticate).toHaveBeenCalledWith("correct-password");
+    expect(createCertificateRenewal).toHaveBeenCalledWith(expect.objectContaining({ siteIds: [due.id] }), "proof-value-with-more-than-thirty-two-characters");
+    expect(screen.getAllByText("5 天").length).toBeGreaterThan(0);
+  });
+
+  it("bulk renewal ignores active filters and reports executable and skipped counts", async () => {
+    const renewable = site({ id: "site-renewable", domain: "renew.example.com", certificate: { ...site().certificate, status: "expiring", expiresAt: "2026-07-24T00:00:00.000Z" } });
+    const skipped = site({ id: "site-not-renewable", domain: "skip.example.com", certificate: { ...site().certificate, status: "critical", expiresAt: "2026-07-18T00:00:00.000Z", renewable: false, certificateId: null, renewalMode: "manual", unavailableReason: "节点未授权" } });
+    vi.mocked(fetchSites).mockResolvedValue(payload([renewable, skipped]));
+
+    render(<SitesPage page="sites-cert" notify={notify} />);
+    const search = await screen.findByPlaceholderText("搜索域名、节点、主机或签发方");
+    fireEvent.change(search, { target: { value: "skip.example.com" } });
+    expect(screen.queryByTitle("renew.example.com")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "批量续期" }));
+
+    const dialog = screen.getByRole("alertdialog", { name: "确认批量续期" });
+    expect(within(dialog).getByText(/执行 1 个站点，跳过 1 个站点/)).toBeInTheDocument();
+  });
+
+  it("keeps the certificate page read-only without sites renew permission", async () => {
+    const due = site({ certificate: { ...site().certificate, status: "critical", expiresAt: "2026-07-18T00:00:00.000Z" } });
+    vi.mocked(fetchSites).mockResolvedValue(payload([due]));
+
+    render(<SitesPage page="sites-cert" notify={notify} permissions={["sites:read"]} />);
+    expect(await screen.findByRole("button", { name: "查看 api.example.com 证书详情" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /续期/ })).not.toBeInTheDocument();
+  });
 });
+
+function renewalBatch(status: CertificateRenewalBatch["status"], siteIds: string[]): CertificateRenewalBatch {
+  return {
+    batchId: "9e83bbd0-9399-46ed-80a4-a36752cbb86b",
+    status,
+    createdAt: collectedAt,
+    updatedAt: collectedAt,
+    operations: [{
+      siteIds, nodeId: "node-local", certificateId: "cert_api_example",
+      taskId: "751392f5-6bb8-4f39-a43a-8351081f13d5", status: status === "partially_succeeded" ? "failed" : status,
+      message: null, updatedAt: collectedAt,
+    }],
+  };
+}

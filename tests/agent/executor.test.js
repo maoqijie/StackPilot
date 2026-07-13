@@ -6,14 +6,25 @@ import test from "node:test";
 import { AGENT_PROTOCOL_VERSION } from "@stackpilot/contracts";
 import { TaskExecutor } from "../../apps/agent/dist/tasks/executor.js";
 import { taskRegistry } from "../../apps/agent/dist/tasks/registry.js";
+import { activeAgentCapabilities } from "../../apps/agent/dist/capabilities/index.js";
 
 const nodeId = "11111111-1111-4111-8111-111111111111";
 const task = (overrides = {}) => ({ protocolVersion: AGENT_PROTOCOL_VERSION, taskId: "22222222-2222-4222-8222-222222222222", type: "system.summary.read", targetNodeId: nodeId, parameters: { includeLoad: false }, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), idempotencyKey: "summary-once-123", requester: "test", traceId: "33333333-3333-4333-8333-333333333333", requiredCapability: "system.summary.read", attempt: 1, maxAttempts: 3, ...overrides });
 
-test("task registry exposes only two structured read-only handlers", () => {
-  assert.deepEqual(Object.keys(taskRegistry).sort(), ["service.status.read", "system.summary.read"]);
-  assert.ok(Object.values(taskRegistry).every((definition) => definition.cancellable && definition.maxOutputBytes <= 16_384));
+test("task registry exposes only structured handlers and keeps renewal non-retryable", () => {
+  assert.deepEqual(Object.keys(taskRegistry).sort(), ["service.status.read", "sites.certificates.renew", "sites.lifecycle.update", "sites.logs.read", "sites.plan.activate", "sites.plan.prepare", "system.summary.read"]);
+  assert.ok(Object.values(taskRegistry).every((definition) => definition.maxOutputBytes <= 16_384));
   assert.ok(Object.keys(taskRegistry).every((name) => !/shell|exec|command/i.test(name)));
+  assert.equal(taskRegistry["sites.certificates.renew"].retryable, false); assert.deepEqual(taskRegistry["sites.certificates.renew"].platforms, ["linux"]); assert.equal(taskRegistry["sites.certificates.renew"].timeoutMs, 600_000);
+  assert.equal(taskRegistry["sites.plan.prepare"].capability, "sites.deploy"); assert.equal(taskRegistry["sites.plan.prepare"].retryable, false);
+  assert.equal(taskRegistry["sites.lifecycle.update"].capability, "sites.lifecycle.manage"); assert.equal(taskRegistry["sites.lifecycle.update"].retryable, false);
+  assert.equal(taskRegistry["sites.logs.read"].capability, "sites.logs.read"); assert.equal(taskRegistry["sites.logs.read"].retryable, false);
+});
+
+test("high-risk renewal capability is declared only on Linux with a reachable helper", () => {
+  assert.deepEqual(activeAgentCapabilities("linux", false), ["system.summary.read", "service.status.read", "sites.inventory.read"]);
+  assert.deepEqual(activeAgentCapabilities("darwin", true), ["system.summary.read", "service.status.read", "sites.inventory.read"]);
+  assert.deepEqual(activeAgentCapabilities("linux", true), ["system.summary.read", "service.status.read", "sites.inventory.read", "sites.logs.read", "sites.deploy", "sites.lifecycle.manage", "sites.certificates.renew", "runtime.install"]);
 });
 
 test("executor validates target, expiry, capability and unknown types", async () => {

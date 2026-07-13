@@ -9,12 +9,14 @@ import type { EnrollmentService } from "../modules/enrollments/enrollmentService
 import type { NodeService } from "../modules/nodes/nodeService.js";
 import type { HostMonitoringService } from "../modules/hosts/hostMonitoringService.js";
 import type { SiteMonitoringService } from "../modules/sites/siteMonitoringService.js";
+import type { CertificateRenewalService } from "../modules/sites/certificateRenewalService.js";
+import type { SiteManagementService } from "../modules/sites/siteManagementService.js";
 import type { RemoteTaskService } from "../modules/remote-tasks/remoteTaskService.js";
 import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
 
-export type Services = { overview: OverviewService; hosts: HostMonitoringService; sites: SiteMonitoringService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService };
+export type Services = { overview: OverviewService; hosts: HostMonitoringService; sites: SiteMonitoringService; siteManagement: SiteManagementService; certificateRenewals: CertificateRenewalService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService };
 export type RequestContext = {
   request: IncomingMessage;
   response: ServerResponse;
