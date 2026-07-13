@@ -46,7 +46,6 @@ import { requestSource } from "./http/trustedProxy.js";
 import { FileService } from "./modules/files/fileService.js";
 import { FileUploadRepository } from "./repositories/fileUploadRepository.js";
 import { FileUploadService } from "./modules/files/fileUploadService.js";
-import { FileTrashService } from "./modules/files/fileTrashService.js";
 import { DatabaseSlowQueryService } from "./modules/databases/databaseSlowQueryService.js";
 import { PostgresSlowQueryCollector } from "./platform/postgresSlowQueryCollector.js";
 
@@ -77,9 +76,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
   const certificateRenewals = new CertificateRenewalService(repository, sites);
   const remoteTasks = new RemoteTaskService(repository);
   const terminalRepository = database ? new SqliteTerminalSnippetRepository(database) : new MemoryTerminalSnippetRepository();
-  const fileManager = new FileService(config.fileRoots);
   const fileUploads = database ? createFileUploadService(database, repoRoot, config) : undefined;
-  const fileTrash = database ? new FileTrashService(database, fileManager) : undefined;
   return {
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
@@ -87,7 +84,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     databaseInstances: new DatabaseMonitoringService(repository),
     sites,
     certificateRenewals,
-    fileManager,
+    files: new FileService(config.fileRoot, config.fileTrashDir, config.fileUploadLimitBytes, repoRoot),
     databaseBackups: new DatabaseBackupService(database, isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath), config, repoRoot),
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
@@ -97,7 +94,6 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     remoteTasks,
     terminalSnippets: new TerminalSnippetService(terminalRepository, remoteTasks),
     ...(fileUploads ? { fileUploads } : {}),
-    ...(fileTrash ? { fileTrash } : {}),
   };
 }
 
@@ -118,7 +114,6 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
   const agentRepository = options.agentRepository ?? (database ? new SqliteAgentControlRepository(database,identity?.audit) : undefined);
   const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, database);
   if (!services.fileUploads && database) services.fileUploads = createFileUploadService(database, repoRoot, config);
-  if (!services.fileTrash && database) services.fileTrash = new FileTrashService(database, services.fileManager);
   const logger = options.logger ?? consoleLogger;
   const surface = options.surface ?? "all";
 
@@ -143,16 +138,17 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
       const isHealthPath = url.pathname === "/healthz" || url.pathname === "/readyz";
       const isLoginPath = url.pathname === "/api/auth/login";
       const isSessionStatusPath = url.pathname === "/api/auth/session";
-      const isFileChunkPath = /^\/api\/file-uploads\/[0-9a-f-]+\/chunks$/i.test(url.pathname) && method === "POST";
+      const isFileChunkPath = /^\/api\/resumable-file-uploads\/[0-9a-f-]+\/chunks$/i.test(url.pathname) && method === "POST";
       if (surface === "agent" && !isAgentPath && !isHealthPath) throw new ServiceError(404, "NOT_FOUND", "接口不存在");
       if (isAgentPath && (!("encrypted" in request.socket) || request.socket.encrypted !== true)) throw new ServiceError(426, "BAD_REQUEST", "Agent API 要求 TLS");
       if (surface === "management" && isAgentPath) throw new ServiceError(426, "BAD_REQUEST", "Agent API 仅在 TLS 监听器可用");
       principal = !isAgentPath && !isHealthPath && !isLoginPath && !isSessionStatusPath ? authenticateUser(request, identity) : isSessionStatusPath && identity ? (()=>{try{return authenticateUser(request,identity);}catch{return undefined;}})() : undefined;
       if (!isAgentPath && isWriteMethod(method) && !isLoginPath && principal && identity) requireCsrf(request, principal, identity, config.allowedOrigins);
-      const isFileUpload = url.pathname === "/api/files/upload" && method === "POST";
-      if (isFileUpload) identity?.require(principal, "files:manage");
-      const bodyLimit = isFileUpload ? config.fileUploadLimitBytes : url.pathname === "/api/agent/heartbeat" ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
-      const parsedBody = isWriteMethod(method) && !isFileChunkPath ? await readJsonRequest(request, bodyLimit, isFileUpload) : { value: {}, raw: Buffer.alloc(0) };
+      const isFileUpload = url.pathname === "/api/file-uploads" && method === "POST";
+      if (isFileUpload) identity?.require(principal, "files:write");
+      const bodyLimit = url.pathname === "/api/agent/heartbeat" ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
+      const parsedBody = isFileUpload ? { value: {}, raw: Buffer.alloc(0) }
+        : isWriteMethod(method) && !isFileChunkPath ? await readJsonRequest(request, bodyLimit) : { value: {}, raw: Buffer.alloc(0) };
       const parts = url.pathname.split("/").filter(Boolean);
       const authenticatedAgent = isAgentPath && url.pathname !== "/api/agent/enroll"
         ? await authenticateAgentRequest(request, `${url.pathname}${url.search}`, parsedBody.raw, services.nodes)

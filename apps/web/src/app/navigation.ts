@@ -6,6 +6,7 @@ import { schedulePagePreset } from "../features/schedule/model";
 import { sitesPagePreset } from "../features/sites/model";
 import { aclPagePreset, auditPagePreset, databasePagePreset, deployPagePreset, settingsPagePreset, systemdPagePreset, terminalPagePreset } from "./pagePresets";
 import type { PageKey, PageMeta, ParentPageKey, ViewContext } from "../types/app";
+import type { Permission } from "@stackpilot/contracts";
 
 const parentPageKeys = [
   "overview",
@@ -95,7 +96,7 @@ const navItems: NavItem[] = [
     label: "文件",
     icon: Folder,
     children: [
-      { id: "files-www", label: "站点目录", meta: "/var/www" },
+      { id: "files-www", label: "受管目录", meta: "虚拟根 /" },
       { id: "files-upload", label: "上传队列", meta: "传输记录" },
       { id: "files-trash", label: "回收站", meta: "7 天保留" },
     ],
@@ -226,9 +227,13 @@ function desktopTopbarChrome(page: PageKey): TopbarChrome {
   };
 }
 
-function topbarSearchResults(query: string): TopbarSearchResult[] {
+function navItemsForPermissions(permissions: Permission[]) {
+  return permissions.includes("files:read") ? navItems : navItems.filter((item) => item.key !== "files");
+}
+
+function topbarSearchResults(query: string, permissions: Permission[] = []) : TopbarSearchResult[] {
   const normalized = query.trim().toLowerCase();
-  const entries: TopbarSearchResult[] = navItems.flatMap((item) => [
+  const entries: TopbarSearchResult[] = navItemsForPermissions(permissions).flatMap((item) => [
     { id: item.key, label: item.label, detail: resolvePageMeta(item.key).breadcrumb, page: item.key, kind: "模块" },
     ...item.children.map((child) => ({
       id: child.page ?? child.id,
@@ -333,4 +338,4 @@ function resolvePageMeta(page: PageKey): PageMeta {
   return pageMeta.overview;
 }
 
-export { parentPageKeys, pageMeta, navItems, overviewChildPages, navPageFor, activeChildForPage, navChildMetaText, activeNavEntryForPage, desktopTopbarChrome, topbarSearchResults, viewContextForPage, resolvePageMeta };
+export { parentPageKeys, pageMeta, navItems, navItemsForPermissions, overviewChildPages, navPageFor, activeChildForPage, navChildMetaText, activeNavEntryForPage, desktopTopbarChrome, topbarSearchResults, viewContextForPage, resolvePageMeta };

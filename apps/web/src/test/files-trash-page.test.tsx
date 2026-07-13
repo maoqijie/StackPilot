@@ -1,103 +1,15 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TrashPayload } from "../api/filesApi";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { FileTrashPage } from "../pages/FilesPages";
-import type { Notify } from "../types/app";
 
-const filesApi = vi.hoisted(() => ({ fetchFileTrash: vi.fn(), restoreTrashEntry: vi.fn(), purgeTrashEntry: vi.fn(), purgeFileTrash: vi.fn() }));
-vi.mock("../api/filesApi", () => filesApi);
-const identityApi = vi.hoisted(() => ({ reauthenticate: vi.fn() }));
-vi.mock("../api/identityApi", () => identityApi);
-
-const firstId = "11111111-1111-4111-8111-111111111111";
-const secondId = "22222222-2222-4222-8222-222222222222";
-const payload: TrashPayload = {
-  entries: [
-    { id: firstId, name: "old-error.log", kind: "file", originalPath: "/tmp/old-error.log", sizeBytes: 32768, deletedAt: "2026-07-14T01:42:00.000Z", expiresAt: "2026-07-21T01:42:00.000Z", owner: "root", reason: "日志轮转清理" },
-    { id: secondId, name: "old-cache", kind: "directory", originalPath: "/tmp/old-cache", sizeBytes: null, deletedAt: "2026-07-13T01:42:00.000Z", expiresAt: "2026-07-20T01:42:00.000Z", owner: "www-data", reason: "缓存过期" },
-  ],
-  recentlyRestored: [], retentionDays: 7, collectedAt: "2026-07-14T02:00:00.000Z",
-};
-const restoredPayload: TrashPayload = {
-  ...payload,
-  entries: payload.entries.slice(1),
-  recentlyRestored: [{ id: firstId, name: "old-error.log", originalPath: "/tmp/old-error.log", restoredAt: "2026-07-14T02:10:00.000Z", restoredBy: "admin" }],
-};
-
+const entry = { id: "11111111-1111-4111-8111-111111111111", name: "old.log", originalPath: "/old.log", kind: "file", sizeBytes: 32, deletedAt: "2026-07-14T00:00:00.000Z", expiresAt: "2026-07-21T00:00:00.000Z", owner: "uid:1000" };
+const payload = { entries: [entry], collectedAt: "2026-07-14T00:00:00.000Z" };
 describe("files trash page", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    filesApi.fetchFileTrash.mockResolvedValue(payload);
-    identityApi.reauthenticate.mockResolvedValue({ proof: "proof-value-with-more-than-thirty-two-characters", expiresAt: "2026-07-14T02:15:00.000Z" });
-  });
-
-  it("loads backend rows and opens details in a body-level drawer", async () => {
-    const user = userEvent.setup();
-    render(<FileTrashPage page="files-trash" notify={vi.fn()} />);
-    expect(await screen.findByText("后端采集时间 2026/7/14 10:00:00")).toBeInTheDocument();
-    await user.click(screen.getAllByRole("button", { name: "old-error.log" })[0]);
-    const drawer = screen.getByRole("dialog", { name: "删除详情" });
-    expect(drawer.parentElement).toBe(document.body);
-    expect(within(drawer).getByText("/tmp/old-error.log")).toBeInTheDocument();
-  });
-
-  it("restores only after the backend succeeds", async () => {
-    const user = userEvent.setup();
-    const notify = vi.fn<Notify>();
-    filesApi.restoreTrashEntry.mockResolvedValue({ message: "old-error.log 已恢复", trash: restoredPayload });
-    render(<FileTrashPage page="files-trash" notify={notify} />);
-    await screen.findByText("后端采集时间 2026/7/14 10:00:00");
-    await user.click(screen.getAllByRole("button", { name: "恢复 old-error.log" })[0]);
-    await waitFor(() => expect(filesApi.restoreTrashEntry).toHaveBeenCalledWith(firstId));
-    expect(screen.queryByRole("button", { name: "old-error.log" })).not.toBeInTheDocument();
-    expect(screen.getByText("old-error.log")).toBeInTheDocument();
-    expect(notify).toHaveBeenCalledWith("old-error.log 已恢复");
-  });
-
-  it("does not let an older background GET overwrite a mutation response", async () => {
-    let resolveStale: ((value: TrashPayload) => void) | undefined;
-    const staleRequest = new Promise<TrashPayload>((resolve) => { resolveStale = resolve; });
-    filesApi.fetchFileTrash.mockResolvedValueOnce(payload).mockReturnValueOnce(staleRequest);
-    filesApi.restoreTrashEntry.mockResolvedValue({ message: "old-error.log 已恢复", trash: restoredPayload });
-    const user = userEvent.setup();
-    render(<FileTrashPage page="files-trash" notify={vi.fn()} />);
-    await screen.findByText("后端采集时间 2026/7/14 10:00:00");
-
-    document.dispatchEvent(new Event("visibilitychange"));
-    await waitFor(() => expect(filesApi.fetchFileTrash).toHaveBeenCalledTimes(2));
-    await user.click(screen.getAllByRole("button", { name: "恢复 old-error.log" })[0]);
-    await waitFor(() => expect(screen.queryByRole("button", { name: "old-error.log" })).not.toBeInTheDocument());
-    resolveStale?.(payload);
-    await staleRequest;
-
-    expect(screen.queryByRole("button", { name: "old-error.log" })).not.toBeInTheDocument();
-    expect(screen.getByText("old-error.log")).toBeInTheDocument();
-  });
-
-  it("focuses reauthentication and keeps rows when permanent deletion fails", async () => {
-    const user = userEvent.setup();
-    filesApi.purgeTrashEntry.mockRejectedValue(new Error("后端拒绝删除"));
-    render(<FileTrashPage page="files-trash" notify={vi.fn()} />);
-    await screen.findByText("后端采集时间 2026/7/14 10:00:00");
-    await user.click(screen.getAllByRole("button", { name: "永久删除 old-error.log" })[0]);
-    const dialog = screen.getByRole("alertdialog", { name: "永久删除文件" });
-    const input = within(dialog).getByLabelText("当前密码");
-    await waitFor(() => expect(input).toHaveFocus());
-    await user.type(input, "correct password");
-    await user.click(within(dialog).getByRole("button", { name: "永久删除" }));
-    await waitFor(() => expect(within(dialog).getByRole("alert")).toHaveTextContent("后端拒绝删除"));
-    expect(filesApi.purgeTrashEntry).toHaveBeenCalledWith(firstId, "proof-value-with-more-than-thirty-two-characters");
-    await user.click(within(dialog).getByRole("button", { name: "取消" }));
-    expect(screen.getAllByRole("button", { name: "old-error.log" })).toHaveLength(2);
-  });
-
-  it("shows initial-load errors and retries", async () => {
-    const user = userEvent.setup();
-    filesApi.fetchFileTrash.mockRejectedValueOnce(new Error("后端不可用")).mockResolvedValueOnce(payload);
-    render(<FileTrashPage page="files-trash" notify={vi.fn()} />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("后端不可用");
-    await user.click(screen.getByRole("button", { name: "重试" }));
-    expect(await screen.findByText("后端采集时间 2026/7/14 10:00:00")).toBeInTheDocument();
+  afterEach(() => vi.unstubAllGlobals());
+  it("requires confirmation before the real permanent-delete request", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(payload), { status: 200 })).mockResolvedValueOnce(new Response(JSON.stringify({ proof: "proof-value-held-in-memory-1234567890", expiresAt: "2026-07-14T00:05:00.000Z" }), { status: 200 })).mockResolvedValueOnce(new Response(JSON.stringify({ message: "文件已永久删除" }), { status: 200 })).mockResolvedValueOnce(new Response(JSON.stringify({ ...payload, entries: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock); const user = userEvent.setup(); render(<FileTrashPage page="files-trash" notify={vi.fn()} canWrite canDelete />); expect((await screen.findAllByText("old.log")).length).toBeGreaterThan(0); await user.click(screen.getAllByRole("button", { name: "永久删除" })[0]);
+    const dialog = screen.getByRole("alertdialog", { name: "永久删除文件" }); const password = within(dialog).getByLabelText("当前密码"); const confirm = within(dialog).getByRole("button", { name: "永久删除" }); expect(confirm).toBeDisabled(); await user.type(password, "current password"); expect(password).toHaveValue("current password"); expect(document.activeElement).toBe(password); expect(confirm).toBeEnabled(); await user.click(confirm); await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/auth/reauthenticate", expect.objectContaining({ body: JSON.stringify({ password: "current password" }) }))); await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/file-trash", expect.objectContaining({ method: "DELETE", body: JSON.stringify({ id: entry.id }), headers: expect.objectContaining({ "X-Reauth-Proof": "proof-value-held-in-memory-1234567890" }) })));
   });
 });

@@ -1,62 +1,46 @@
-import { FileListPayloadSchema, FileMutationResponseSchema } from "@stackpilot/contracts";
-import type { FileListPayload } from "@stackpilot/contracts";
 import {
-  CreateFileUploadRequestSchema, FileUploadClearResponseSchema, FileUploadChunkResponseSchema,
-  FileUploadListResponseSchema, FileUploadMutationResponseSchema, TrashMutationResponseSchema, TrashPayloadSchema,
-  type CreateFileUploadRequest, type FileUploadListResponse, type FileUploadRecord,
-  type TrashMutationResponse, type TrashPayload,
+  API_CLIENT_PREFIX,
+  FileListPayloadSchema,
+  FileMutationResponseSchema,
+  FileTrashPayloadSchema,
+  FileUploadResponseSchema,
+  FileUploadsPayloadSchema,
+  type FileListPayload,
+  type FileTrashPayload,
+  type FileUploadsPayload,
 } from "@stackpilot/contracts";
 import { getCsrfToken, requestJson, responseError } from "./client";
 
-export type { RestoredTrashEntry, TrashEntry, TrashPayload } from "@stackpilot/contracts";
+export type { FileEntry, TrashFileEntry, FileUploadRecord } from "@stackpilot/contracts";
 
-export function fetchFileTrash(signal?: AbortSignal) {
-  return requestJson<TrashPayload>("/files/trash", { signal }).then((payload) => TrashPayloadSchema.parse(payload));
-}
+export const fetchFiles = (path: string, signal?: AbortSignal): Promise<FileListPayload> => requestJson(`/files?path=${encodeURIComponent(path)}`, { signal }).then(FileListPayloadSchema.parse);
+export const createDirectory = (parentPath: string, name: string) => requestJson("/files/directories", { method: "POST", body: JSON.stringify({ parentPath, name }) }).then(FileMutationResponseSchema.parse);
+export const renameFile = (path: string, name: string) => requestJson("/files/rename", { method: "PATCH", body: JSON.stringify({ path, name }) }).then(FileMutationResponseSchema.parse);
+export const trashFile = (path: string) => requestJson("/files/trash", { method: "POST", body: JSON.stringify({ path }) }).then(FileMutationResponseSchema.parse);
+export const deleteFile = trashFile;
+export const fetchTrash = (signal?: AbortSignal): Promise<FileTrashPayload> => requestJson("/file-trash", { signal }).then(FileTrashPayloadSchema.parse);
+export const restoreTrashFile = (id: string) => requestJson("/file-trash/restore", { method: "POST", body: JSON.stringify({ id }) }).then(FileMutationResponseSchema.parse);
+export const purgeTrashFile = (id: string, proof: string) => requestJson("/file-trash", { method: "DELETE", headers: { "X-Reauth-Proof": proof }, body: JSON.stringify({ id }) }).then(FileMutationResponseSchema.parse);
+export const emptyTrash = (proof: string) => requestJson("/file-trash", { method: "DELETE", headers: { "X-Reauth-Proof": proof }, body: JSON.stringify({ empty: true }) }).then(FileMutationResponseSchema.parse);
+export const fetchUploads = (signal?: AbortSignal): Promise<FileUploadsPayload> => requestJson("/file-uploads", { signal }).then(FileUploadsPayloadSchema.parse);
 
-export function restoreTrashEntry(id: string) {
-  return requestJson<TrashMutationResponse>(`/files/trash/${encodeURIComponent(id)}/restore`, { method: "POST", body: "{}" }).then((payload) => TrashMutationResponseSchema.parse(payload));
-}
-
-export function purgeTrashEntry(id: string, reauthProof: string) {
-  return requestJson<TrashMutationResponse>(`/files/trash/${encodeURIComponent(id)}`, { method: "DELETE", body: "{}", headers: { "X-Reauth-Proof": reauthProof } }).then((payload) => TrashMutationResponseSchema.parse(payload));
-}
-
-export function purgeFileTrash(reauthProof: string) {
-  return requestJson<TrashMutationResponse>("/files/trash/purge", { method: "DELETE", body: "{}", headers: { "X-Reauth-Proof": reauthProof } }).then((payload) => TrashMutationResponseSchema.parse(payload));
-}
-
-export async function listFileUploads(signal?: AbortSignal): Promise<FileUploadListResponse> {
-  return FileUploadListResponseSchema.parse(await requestJson("/file-uploads", { signal }));
-}
-export async function createFileUpload(input: CreateFileUploadRequest): Promise<FileUploadRecord> {
-  const body = CreateFileUploadRequestSchema.parse(input);
-  const response = await requestJson("/file-uploads", { method: "POST", body: JSON.stringify(body) });
-  return FileUploadMutationResponseSchema.parse(response).upload;
-}
-export async function completeFileUpload(id: string, signal?: AbortSignal): Promise<FileUploadRecord> {
-  const response = await requestJson(`/file-uploads/${encodeURIComponent(id)}/complete`, { method: "POST", body: "{}", signal });
-  return FileUploadMutationResponseSchema.parse(response).upload;
-}
-export async function cancelFileUpload(id: string): Promise<FileUploadRecord> {
-  const response = await requestJson(`/file-uploads/${encodeURIComponent(id)}`, { method: "DELETE", body: "{}" });
-  return FileUploadMutationResponseSchema.parse(response).upload;
-}
-export async function clearCompletedFileUploads(): Promise<number> {
-  const response = await requestJson("/file-uploads/clear-completed", { method: "POST", body: "{}" });
-  return FileUploadClearResponseSchema.parse(response).removed;
-}
-export async function uploadFileChunk(id: string, offset: number, chunk: Blob, signal?: AbortSignal): Promise<FileUploadRecord> {
-  const response = await fetch(`/api/file-uploads/${encodeURIComponent(id)}/chunks`, {
-    method: "POST", credentials: "include", body: chunk, signal,
-    headers: { "Content-Type": "application/octet-stream", "Upload-Offset": String(offset), "X-CSRF-Token": getCsrfToken() },
+export function uploadFile(file: File, targetPath: string, signal?: AbortSignal): Promise<ReturnType<typeof FileUploadResponseSchema.parse>>;
+export function uploadFile(targetPath: string, file: File, signal?: AbortSignal): Promise<ReturnType<typeof FileUploadResponseSchema.parse>>;
+export async function uploadFile(fileOrPath: File | string, pathOrFile: string | File, signal?: AbortSignal) {
+  const file = fileOrPath instanceof File ? fileOrPath : pathOrFile as File;
+  const targetPath = typeof fileOrPath === "string" ? fileOrPath : pathOrFile as string;
+  const response = await fetch(`${API_CLIENT_PREFIX}/file-uploads`, {
+    method: "POST",
+    credentials: "include",
+    signal,
+    body: file,
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "X-CSRF-Token": getCsrfToken(),
+      "X-File-Name": encodeURIComponent(file.name),
+      "X-File-Target-Path": encodeURIComponent(targetPath),
+    },
   });
   if (!response.ok) throw await responseError(response);
-  return FileUploadChunkResponseSchema.parse(await response.json()).upload;
+  return FileUploadResponseSchema.parse(await response.json());
 }
-
-export function fetchFiles(path:string,signal?:AbortSignal):Promise<FileListPayload>{return requestJson(`/files?path=${encodeURIComponent(path)}`,{signal}).then((value)=>FileListPayloadSchema.parse(value));}
-export function createDirectory(path:string,name:string){return requestJson("/files/directories",{method:"POST",body:JSON.stringify({path,name})}).then((value)=>FileMutationResponseSchema.parse(value));}
-export function renameFile(path:string,newName:string){return requestJson("/files/rename",{method:"PATCH",body:JSON.stringify({path,newName})}).then((value)=>FileMutationResponseSchema.parse(value));}
-export function deleteFile(path:string){return requestJson("/files",{method:"DELETE",body:JSON.stringify({path})}).then((value)=>FileMutationResponseSchema.parse(value));}
-export function uploadFile(path:string,file:File){return requestJson("/files/upload",{method:"POST",body:file,headers:{"Content-Type":"application/octet-stream","X-File-Path":path,"X-File-Name":encodeURIComponent(file.name)}}).then((value)=>FileMutationResponseSchema.parse(value));}

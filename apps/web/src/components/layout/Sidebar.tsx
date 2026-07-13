@@ -1,7 +1,8 @@
 import { ChevronDown, ChevronLeft, CloudCog, Menu } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { activeChildForPage, navChildMetaText, navItems, navPageFor } from "../../app/navigation";
+import { activeChildForPage, navChildMetaText, navItemsForPermissions, navPageFor } from "../../app/navigation";
+import type { Permission } from "@stackpilot/contracts";
 import type { NavChild, NavItem } from "./types";
 import type { PageKey, SetPage } from "../../types/app";
 
@@ -12,6 +13,7 @@ function Sidebar({
   onToggleCollapsed,
   onExpandCollapsed,
   onNavigate,
+  permissions,
 }: {
   page: PageKey;
   setPage: SetPage;
@@ -19,6 +21,7 @@ function Sidebar({
   onToggleCollapsed: () => void;
   onExpandCollapsed: () => void;
   onNavigate: () => void;
+  permissions: Permission[];
 }) {
   const activeParent = navPageFor(page);
   const activeChild = activeChildForPage(page);
@@ -90,7 +93,7 @@ function Sidebar({
       </div>
 
       <nav className="cloud-sidebar-nav" aria-label="主导航">
-        {navItems.map((item) => {
+        {navItemsForPermissions(permissions).map((item) => {
           const Icon = item.icon;
           const isActiveParent = item.key === activeParent;
           const isExactPage = item.key === page;

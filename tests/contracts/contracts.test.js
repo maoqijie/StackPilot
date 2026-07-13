@@ -8,12 +8,11 @@ import {
   SiteRuntimePayloadSchema,
   ExecuteTerminalSnippetRequestSchema, TerminalSnippetListResponseSchema,
   AgentSiteSnapshotSchema, CertificateRenewalTaskParametersSchema, CreateCertificateRenewalRequestSchema,
-  CreateFileUploadRequestSchema, FileUploadRecordSchema,
-  TrashMutationResponseSchema, TrashPayloadSchema,
+  CreateFileUploadRequestSchema, ResumableFileUploadRecordSchema,
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
-  CreateDirectoryRequestSchema, FileNameSchema, FilePathSchema,
+  CreateDirectoryRequestSchema,
 } from "@stackpilot/contracts";
 
 test("shared API constants preserve the existing HTTP contract", () => {
@@ -121,7 +120,7 @@ test("identity schemas reject privilege fields and invalid node scopes", () => {
   assert.equal(CreateApiTokenRequestSchema.safeParse({ name: "bad", permissions: ["unknown:permission"], nodeScope: "all", expiresAt: null }).success, false);
   assert.equal(UpdateUserAccessRequestSchema.safeParse({ roleIds: ["operator"], nodeScope: ["not-a-uuid"], disabled: false }).success, false);
   assert.equal(PermissionSchema.safeParse("databases:read").success, true);
-  assert.equal(PermissionSchema.safeParse("files:manage").success, true);
+  assert.equal(PermissionSchema.safeParse("files:delete").success, true);
   assert.equal(PermissionSchema.safeParse("terminal:read").success, true);
   assert.equal(PermissionSchema.safeParse("terminal:execute").success, true);
 });
@@ -133,18 +132,8 @@ test("file upload contracts reject paths and inconsistent progress", () => {
   assert.equal(CreateFileUploadRequestSchema.safeParse({ ...request, fileName: "../secret" }).success, false);
   assert.equal(CreateFileUploadRequestSchema.safeParse({ ...request, sizeBytes: 0 }).success, true);
   const record = { id: crypto.randomUUID(), fileName: request.fileName, targetDirectory: request.targetDirectory, targetPath: "releases/2026/artifact.zip", sizeBytes: request.sizeBytes, contentType: request.contentType, receivedBytes: 10, status: "completed", owner: "Admin", sha256: "a".repeat(64), errorMessage: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), completedAt: new Date().toISOString() };
-  assert.equal(FileUploadRecordSchema.safeParse(record).success, true);
-  assert.equal(FileUploadRecordSchema.safeParse({ ...record, receivedBytes: 9 }).success, false);
-});
-
-test("file trash contracts expose lifecycle data without quarantine paths", () => {
-  const now = new Date().toISOString();
-  const entry = { id: crypto.randomUUID(), name: "old.log", kind: "file", originalPath: "/var/www/old.log", sizeBytes: 12, deletedAt: now, expiresAt: now, owner: "Admin", reason: "从文件管理删除" };
-  const trash = { entries: [entry], recentlyRestored: [], retentionDays: 7, collectedAt: now };
-  assert.equal(TrashPayloadSchema.safeParse(trash).success, true);
-  assert.equal(TrashPayloadSchema.safeParse({ ...trash, entries: [{ ...entry, quarantinePath: "/var/www/.stackpilot-trash/private" }] }).success, false);
-  assert.equal(TrashPayloadSchema.safeParse({ ...trash, entries: [{ ...entry, originalPath: "../old.log" }] }).success, false);
-  assert.equal(TrashMutationResponseSchema.safeParse({ message: "old.log 已恢复", trash }).success, true);
+  assert.equal(ResumableFileUploadRecordSchema.safeParse(record).success, true);
+  assert.equal(ResumableFileUploadRecordSchema.safeParse({ ...record, receivedBytes: 9 }).success, false);
 });
 
 test("agent protocol schemas reject incompatible and generic command tasks", () => {
@@ -172,10 +161,9 @@ test("terminal snippet contracts reject browser-supplied commands", () => {
   assert.equal(ExecuteTerminalSnippetRequestSchema.safeParse({ ...request, command: "id" }).success, false);
 });
 
-test("file contracts reject unsafe names and non-absolute paths",()=>{
-  assert.equal(FilePathSchema.safeParse("/var/www").success,true);
-  assert.equal(FilePathSchema.safeParse("../www").success,false);
-  for(const name of [".","..","nested/name","nested\\name","bad\0name"])assert.equal(FileNameSchema.safeParse(name).success,false,name);
-  assert.equal(CreateDirectoryRequestSchema.safeParse({path:"/var/www",name:"site"}).success,true);
-  assert.equal(CreateDirectoryRequestSchema.safeParse({path:"/var/www",name:"site",mode:"0777"}).success,false);
+test("file contracts reject unsafe names and non-virtual paths",()=>{
+  assert.equal(CreateDirectoryRequestSchema.safeParse({parentPath:"/var/www",name:"site"}).success,true);
+  assert.equal(CreateDirectoryRequestSchema.safeParse({parentPath:"../www",name:"site"}).success,false);
+  for(const name of [".","..","nested/name","nested\\name","bad\0name"])assert.equal(CreateDirectoryRequestSchema.safeParse({parentPath:"/",name}).success,false,name);
+  assert.equal(CreateDirectoryRequestSchema.safeParse({parentPath:"/var/www",name:"site",mode:"0777"}).success,false);
 });

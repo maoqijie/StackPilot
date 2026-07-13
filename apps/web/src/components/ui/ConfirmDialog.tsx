@@ -12,6 +12,7 @@ function ConfirmDialog({
   onClose,
   tone = "danger",
   className,
+  busy = false,
   confirmDisabled = false,
   children,
 }: {
@@ -23,6 +24,7 @@ function ConfirmDialog({
   onClose: () => void;
   tone?: "danger" | "warning";
   className?: string;
+  busy?: boolean;
   confirmDisabled?: boolean;
   children?: React.ReactNode;
 }) {
@@ -41,7 +43,7 @@ function ConfirmDialog({
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusFrame = window.requestAnimationFrame(() => {
       if (!dialog.contains(document.activeElement)) {
-        dialog.querySelector<HTMLElement>("[data-confirm-initial], [data-confirm-cancel]")
+        dialog.querySelector<HTMLElement>("[data-confirm-initial], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [data-confirm-cancel]")
           ?.focus({ preventScroll: true });
       }
     });
@@ -109,8 +111,8 @@ function ConfirmDialog({
           {children}
         </div>
         <footer>
-          <button className="ghost" type="button" data-confirm-cancel onClick={onClose}>取消</button>
-          <button className={tone === "danger" ? "trash-destructive" : "primary"} type="button" disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel}</button>
+          <button className="ghost" type="button" data-confirm-cancel disabled={busy} onClick={onClose}>取消</button>
+          <button className={tone === "danger" ? "trash-destructive" : "primary"} type="button" disabled={busy || confirmDisabled} onClick={onConfirm}>{busy ? "处理中" : confirmLabel}</button>
         </footer>
       </div>
     </>,
