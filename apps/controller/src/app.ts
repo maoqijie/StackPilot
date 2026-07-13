@@ -21,10 +21,13 @@ import { EnrollmentService } from "./modules/enrollments/enrollmentService.js";
 import { NodeService } from "./modules/nodes/nodeService.js";
 import { HostMonitoringService } from "./modules/hosts/hostMonitoringService.js";
 import { SiteMonitoringService } from "./modules/sites/siteMonitoringService.js";
+import { CertificateRenewalService } from "./modules/sites/certificateRenewalService.js";
 import { DatabaseMonitoringService } from "./modules/databases/databaseMonitoringService.js";
 import { DatabaseBackupService } from "./modules/databases/databaseBackupService.js";
 import { NginxSiteCollector } from "./platform/siteCollector.js";
 import { RemoteTaskService } from "./modules/remote-tasks/remoteTaskService.js";
+import { TerminalSnippetService } from "./modules/terminal/terminalSnippetService.js";
+import { MemoryTerminalSnippetRepository, SqliteTerminalSnippetRepository } from "./modules/terminal/terminalSnippetRepository.js";
 import { NativePlatformAdapter } from "./platform/nativeAdapter.js";
 import type { PlatformAdapter } from "./platform/types.js";
 import { FileExportRepository } from "./repositories/exportRepository.js";
@@ -71,6 +74,10 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
   const exports = new FileExportRepository(repoRoot);
   const repository = agentRepository ?? new FileAgentControlRepository(isAbsolute(config.agentStatePath) ? config.agentStatePath : resolve(repoRoot, config.agentStatePath));
   const overview = new OverviewService(platform, state, repository);
+  const sites = new SiteMonitoringService(new NginxSiteCollector(config.nginxConfigDirs), repository);
+  const certificateRenewals = new CertificateRenewalService(repository, sites);
+  const remoteTasks = new RemoteTaskService(repository);
+  const terminalRepository = database ? new SqliteTerminalSnippetRepository(database) : new MemoryTerminalSnippetRepository();
   const fileUploads = database ? createFileUploadService(database, repoRoot, config) : undefined;
   const trashRepository = database ? new SqliteFileTrashRepository(database) : new MemoryFileTrashRepository();
   const fileManager = new FileService(config.fileRoots, trashRepository);
@@ -78,9 +85,10 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
     databaseSlowQueries: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
-    sites: new SiteMonitoringService(new NginxSiteCollector(config.nginxConfigDirs)),
     databaseInstances: new DatabaseMonitoringService(repository),
     fileManager,
+    sites,
+    certificateRenewals,
     databaseBackups: new DatabaseBackupService(database, isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath), config, repoRoot),
     fileTrash: new FileTrashService(trashRepository, fileManager),
     tasks: new TaskService(overview, state, exports),
@@ -88,7 +96,8 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform),
     enrollments: new EnrollmentService(repository),
     nodes: new NodeService(repository),
-    remoteTasks: new RemoteTaskService(repository),
+    remoteTasks,
+    terminalSnippets: new TerminalSnippetService(terminalRepository, remoteTasks),
     ...(fileUploads ? { fileUploads } : {}),
   };
 }

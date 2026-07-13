@@ -20,6 +20,17 @@ CREATE TABLE IF NOT EXISTS file_uploads (
 );
 CREATE INDEX IF NOT EXISTS file_uploads_created_at_idx ON file_uploads(created_at DESC);
 
+CREATE TABLE IF NOT EXISTS terminal_snippet_preferences (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  snippet_id TEXT NOT NULL,
+  favorite INTEGER NOT NULL DEFAULT 0 CHECK (favorite IN (0,1)),
+  last_used_at TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, snippet_id)
+);
+CREATE INDEX IF NOT EXISTS terminal_snippet_preferences_user_updated_idx
+  ON terminal_snippet_preferences(user_id, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS file_trash_entries (
   entry_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -37,5 +48,6 @@ CREATE TABLE IF NOT EXISTS file_trash_entries (
   version INTEGER NOT NULL DEFAULT 1 CHECK(version > 0)
 );
 CREATE INDEX IF NOT EXISTS file_trash_state_time_idx ON file_trash_entries(state, deleted_at DESC);
+ALTER TABLE file_trash_entries ADD COLUMN trash_path TEXT;
 
-UPDATE release_metadata SET schema_version = 4, upgraded_at = CURRENT_TIMESTAMP WHERE singleton = 1;
+UPDATE release_metadata SET schema_version = 5, upgraded_at = CURRENT_TIMESTAMP WHERE singleton = 1;

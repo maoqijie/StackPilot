@@ -1,0 +1,87 @@
+.module-page-sites-cert .module-table { min-width: 1080px; }
+.module-page-sites-cert .module-metrics article svg.orange { color: var(--warning); background: var(--warning-soft); }
+.module-page-sites-cert .module-metrics article svg.red { color: var(--danger); background: var(--danger-soft); }
+.cert-risk { min-width: 0; display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 0 8px; }
+.cert-risk svg { grid-row: 1 / 3; }
+.cert-risk b { font-size: 13px; }
+.cert-risk em { color: var(--muted); font-size: 11px; font-style: normal; }
+.cert-risk.is-critical { color: var(--danger); }
+.cert-risk.is-warning { color: #ca8a04; }
+.cert-domain { min-width: 0; display: grid; gap: 2px; }
+.cert-domain b,
+.cert-domain small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cert-domain b { color: var(--primary-hover); }
+.cert-domain small { color: var(--muted); font: 500 11px/1.4 var(--font-mono); }
+.cert-actions { flex-wrap: nowrap; }
+.cert-actions button svg { flex: 0 0 auto; }
+.cert-detail-status { min-width: 0; margin-bottom: 16px; padding: 16px; border-radius: var(--radius-lg); display: flex; align-items: center; gap: 12px; }
+.cert-detail-status.is-critical { color: var(--danger); background: var(--danger-soft); }
+.cert-detail-status.is-warning { color: #ca8a04; background: var(--warning-soft); }
+.cert-detail-status > div { min-width: 0; display: grid; gap: 2px; }
+.cert-detail-status strong { color: inherit; }
+.cert-detail-status span { color: var(--text-soft); font-size: 13px; }
+.cert-detail-drawer,
+.cert-detail-drawer .drawer-head,
+.cert-detail-drawer .drawer-actions { border: 0; }
+.cert-detail-drawer:focus,
+.cert-detail-drawer:focus-visible { outline: 0; }
+.cert-detail-kv p { border: 0; }
+.cert-risk.is-valid { color: #16a34a; }
+.cert-risk.is-unavailable { color: var(--muted); }
+.cert-freshness { min-width: 0; display: grid; gap: 2px; }
+.cert-freshness b { color: var(--text-soft); font-size: 13px; }
+.cert-freshness small { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.renewal-state { display: inline-flex; align-items: center; min-height: 28px; padding: 4px 8px; border-radius: var(--radius-sm); color: var(--muted); background: var(--surface-soft); font-size: 12px; font-weight: 600; }
+.renewal-state:is(.is-queued, .is-running) { color: var(--primary-hover); background: var(--primary-soft); }
+.renewal-state.is-succeeded { color: #16a34a; background: var(--success-soft); }
+.renewal-state:is(.is-failed, .is-expired) { color: var(--danger); background: var(--danger-soft); }
+.cert-batch-status { min-width: 0; padding: 12px 16px; border-radius: var(--radius-lg); display: grid; gap: 12px; color: var(--primary-hover); background: var(--primary-soft); box-shadow: var(--glow-primary); }
+.cert-batch-status > header { min-width: 0; display: flex; align-items: center; gap: 12px; }
+.cert-batch-status > header > span { min-width: 0; display: grid; gap: 2px; }
+.cert-batch-status strong { font-size: 14px; }
+.cert-batch-status small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.cert-batch-operations { display: grid; gap: 4px; }
+.cert-batch-operations > span { min-width: 0; padding: 8px 12px; border-radius: var(--radius-md); display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; color: var(--text-soft); background: var(--surface); }
+.cert-batch-operations b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cert-batch-operations em { color: var(--muted); font-size: 12px; font-style: normal; }
+.cert-batch-operations small { grid-column: 1 / -1; }
+.cert-batch-status:is(.is-failed, .is-expired, .is-cancelled) { color: var(--danger); background: var(--danger-soft); box-shadow: var(--shadow-subtle); }
+.cert-batch-status:is(.is-succeeded, .is-partially_succeeded) { color: #16a34a; background: var(--success-soft); box-shadow: var(--shadow-subtle); }
+.cert-detail-status.is-valid { color: #16a34a; background: var(--success-soft); }
+.cert-detail-status.is-unavailable { color: var(--muted); background: var(--surface-soft); }
+.cert-detail-drawer .drawer-body { display: grid; align-content: start; gap: 24px; }
+.cert-detail-drawer .drawer-actions { border: 0; box-shadow: var(--shadow-subtle); }
+.cert-unavailable-reason { min-width: 0; padding: 12px 16px; border-radius: var(--radius-md); display: flex; gap: 12px; color: #ca8a04; background: var(--warning-soft); }
+.cert-unavailable-reason span { min-width: 0; display: grid; gap: 2px; }
+.cert-unavailable-reason small { color: var(--text-soft); overflow-wrap: anywhere; }
+.cert-identity-detail { display: grid; gap: 12px; }
+.cert-identity-detail > span { min-width: 0; padding: 12px; border-radius: var(--radius-md); display: grid; gap: 4px; background: var(--surface-soft); }
+.cert-identity-detail b { color: var(--muted); font-size: 12px; }
+.cert-identity-detail em,
+.cert-identity-detail code { min-width: 0; color: var(--text-soft); font-style: normal; overflow-wrap: anywhere; }
+.cert-renewal-message { min-width: 0; padding: 12px; border-radius: var(--radius-md); display: grid; gap: 4px; background: var(--surface-soft); }
+.cert-renewal-message span { overflow-wrap: anywhere; }
+.cert-renewal-message small { color: var(--muted); }
+.cert-renewal-confirm .confirm-dialog-body { gap: 16px; }
+.cert-reauth-field { display: grid; gap: 8px; }
+.cert-reauth-field > span { display: inline-flex; align-items: center; gap: 8px; color: var(--text-soft); font-size: 14px; font-weight: 500; }
+.cert-reauth-field input { width: 100%; height: var(--control-md); padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--text); background: var(--surface); font: 400 15px/1.4 var(--font-body); }
+.cert-reauth-field input:focus { border-color: var(--primary); outline: 3px solid rgb(14 165 233 / 12%); }
+.cert-renewal-confirm .form-error { margin: 0; color: var(--danger); font-size: 13px; }
+.module-page-sites-cert .module-card-title,
+.module-page-sites-cert .module-card-meta em { min-width: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 773px) {
+  .module-page-sites-cert .module-card-head { gap: 12px; }
+  .module-page-sites-cert .cert-risk { flex: 0 0 auto; }
+  .cert-detail-drawer .drawer-actions { padding: 16px; }
+}
+
+@media (max-width: 480px) {
+  .module-page-sites-cert .cert-risk { max-width: 128px; }
+  .module-page-sites-cert .cert-actions { display: flex; }
+  .module-page-sites-cert .cert-actions button { min-width: 0; }
+  .cert-batch-status > header { align-items: flex-start; }
+  .cert-batch-operations > span { grid-template-columns: minmax(0, 1fr) auto; }
+  .cert-batch-operations > span > strong { grid-column: 2; }
+}

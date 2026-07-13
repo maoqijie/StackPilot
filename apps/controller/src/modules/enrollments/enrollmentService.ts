@@ -1,7 +1,7 @@
 import { createHash, createPublicKey, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { AGENT_PROTOCOL_VERSION, type AgentEnrollmentRequest, type CreateEnrollmentRequest, isAgentProtocolCompatible } from "@stackpilot/contracts";
 import type { AgentControlRepository, AuditEvent } from "../../repositories/agentControlRepository.js";
-import { CONTROLLER_ALLOWED_AGENT_CAPABILITIES } from "../../repositories/agentControlRepository.js";
+import { DEFAULT_AGENT_CAPABILITIES } from "../../repositories/agentControlRepository.js";
 import { ServiceError } from "../serviceError.js";
 
 const digest = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
@@ -44,7 +44,7 @@ export class EnrollmentService {
       const now = new Date().toISOString();
       const nodeId = randomUUID();
       const credentialId = randomUUID();
-      const allowedCapabilities = input.capabilities.filter((item) => CONTROLLER_ALLOWED_AGENT_CAPABILITIES.includes(item));
+      const allowedCapabilities = input.capabilities.filter((item) => DEFAULT_AGENT_CAPABILITIES.includes(item));
       enrollment.usedAt = now;
       state.nodes.push({ nodeId, nodeName: input.nodeName, status: "pending", agentVersion: input.agentVersion, protocolVersion: input.protocolVersion, platform: input.platform, declaredCapabilities: input.capabilities, allowedCapabilities, enrolledAt: now, lastSeenAt: null, revokedAt: null });
       state.credentials.push({ credentialId, nodeId, publicKey: input.publicKey, createdAt: now, revokedAt: null, replacedBy: null, rotationId: null });

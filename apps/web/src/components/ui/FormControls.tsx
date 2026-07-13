@@ -1,6 +1,8 @@
 import { CheckCircle2, ChevronDown } from "lucide-react";
 import { useId, useRef, useState } from "react";
 
+type FieldSelectOption = string | { value: string; label: string };
+
 function FieldSelect({
   label,
   value,
@@ -9,7 +11,7 @@ function FieldSelect({
 }: {
   label: string;
   value: string;
-  options?: string[];
+  options?: FieldSelectOption[];
   onChange?: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -20,8 +22,8 @@ function FieldSelect({
   const listboxId = `${safeId}-listbox`;
   const buttonId = `${safeId}-button`;
   const valueId = `${safeId}-value`;
-  const availableOptions = options ?? [];
-  const rawSelectedIndex = availableOptions.indexOf(value);
+  const availableOptions = (options ?? []).map((option) => typeof option === "string" ? { value: option, label: option } : option);
+  const rawSelectedIndex = availableOptions.findIndex((option) => option.value === value);
   const hasSelectedOption = rawSelectedIndex >= 0;
   const selectedIndex = hasSelectedOption ? rawSelectedIndex : 0;
   const boundedActiveIndex = Math.min(activeIndex, Math.max(availableOptions.length - 1, 0));
@@ -34,8 +36,8 @@ function FieldSelect({
     setActiveIndex(selectedIndex);
     setOpen(true);
   };
-  const selectOption = (option: string) => {
-    onChange?.(option);
+  const selectOption = (option: { value: string; label: string }) => {
+    onChange?.(option.value);
     setOpen(false);
     focusButtonSoon();
   };
@@ -116,7 +118,7 @@ function FieldSelect({
           }
         }}
       >
-        <span id={valueId}>{value}</span><ChevronDown size={12} />
+        <span id={valueId}>{availableOptions[selectedIndex]?.label ?? value}</span><ChevronDown size={12} />
       </button>
       {open && availableOptions.length > 0 && (
         <div className="popover-panel" id={listboxId} role="listbox" aria-labelledby={`${safeId}-label`}>
@@ -124,12 +126,12 @@ function FieldSelect({
             <button
               className={[
                 index === boundedActiveIndex ? "active" : "",
-                option === value ? "selected" : "",
+                option.value === value ? "selected" : "",
               ].filter(Boolean).join(" ")}
               id={`${safeId}-option-${index}`}
-              key={option}
+              key={option.value}
               role="option"
-              aria-selected={option === value}
+              aria-selected={option.value === value}
               tabIndex={-1}
               type="button"
               onMouseEnter={() => setActiveIndex(index)}
@@ -137,7 +139,7 @@ function FieldSelect({
                 selectOption(option);
               }}
             >
-              {option}
+              {option.label}
             </button>
           ))}
         </div>

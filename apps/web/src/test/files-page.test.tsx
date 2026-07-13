@@ -23,8 +23,23 @@ describe("files browser page", () => {
     await waitFor(() => expect(drawer).toHaveFocus());
   });
 
+  it("renders a canonical backend path for an aliased requested root", async () => {
+    vi.stubGlobal("fetch",vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ...listPayload,
+      path:"/private/var/www",
+      entries:[{...listPayload.entries[0],path:"/private/var/www/index.html",parentPath:"/private/var/www"}],
+    }),{status:200,headers:{"Content-Type":"application/json"}})));
+
+    render(<FilesPageHarness />);
+
+    expect((await screen.findAllByText("index.html")).length).toBeGreaterThan(0);
+    expect(screen.getByText("/private/var/www/index.html")).toBeInTheDocument();
+    expect(screen.getByText("/var/www",{selector:"strong"})).toBeInTheDocument();
+    expect(screen.queryByText("正在读取目录")).not.toBeInTheDocument();
+  });
+
   it("confirms moving a file to the recoverable trash", async () => {
-    const listResponse=()=>new Response(JSON.stringify(listPayload),{status:200,headers:{"Content-Type":"application/json"}});const fetchMock=vi.fn().mockResolvedValueOnce(listResponse()).mockResolvedValueOnce(listResponse()).mockResolvedValueOnce(new Response(JSON.stringify({message:"index.html 已移入回收站",entry:null}),{status:200,headers:{"Content-Type":"application/json"}})).mockResolvedValueOnce(new Response(JSON.stringify({...listPayload,entries:[]}),{status:200,headers:{"Content-Type":"application/json"}}));vi.stubGlobal("fetch",fetchMock);
+    const listResponse=()=>new Response(JSON.stringify(listPayload),{status:200,headers:{"Content-Type":"application/json"}});const fetchMock=vi.fn().mockResolvedValueOnce(listResponse()).mockResolvedValueOnce(new Response(JSON.stringify({message:"index.html 已移入回收站",entry:null}),{status:200,headers:{"Content-Type":"application/json"}})).mockResolvedValueOnce(new Response(JSON.stringify({...listPayload,entries:[]}),{status:200,headers:{"Content-Type":"application/json"}}));vi.stubGlobal("fetch",fetchMock);
     const user = userEvent.setup();
     const notify = vi.fn<Notify>();
     render(<FilesPageHarness notify={notify} />);
@@ -36,7 +51,31 @@ describe("files browser page", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "确认将 index.html 移入回收站" }));
 
-    expect(screen.queryByText("index.html")).not.toBeInTheDocument();
+    await waitFor(()=>expect(screen.queryByRole("button",{name:"删除 index.html 到回收站"})).not.toBeInTheDocument());
     expect(notify).toHaveBeenCalledWith("index.html 已移入回收站", "warning");
+  });
+
+  it("does not offer mutations for symbolic links rejected by the backend", async () => {
+    vi.stubGlobal("fetch",vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ...listPayload,
+      entries:[{...listPayload.entries[0],id:"entry-link",name:"current",kind:"symlink",path:"/var/www/current",sizeBytes:null}],
+    }),{status:200,headers:{"Content-Type":"application/json"}})));
+
+    render(<FilesPageHarness />);
+
+    expect(await screen.findByRole("button",{name:"重命名 current"})).toBeDisabled();
+    expect(screen.getByRole("button",{name:"删除 current 到回收站"})).toBeDisabled();
+  });
+
+  it("does not offer directory rename without atomic no-replace support", async () => {
+    vi.stubGlobal("fetch",vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ...listPayload,
+      entries:[{...listPayload.entries[0],id:"entry-dir",name:"site",kind:"directory",path:"/var/www/site",sizeBytes:null}],
+    }),{status:200,headers:{"Content-Type":"application/json"}})));
+
+    render(<FilesPageHarness />);
+
+    expect(await screen.findByRole("button",{name:"重命名 site"})).toBeDisabled();
+    expect(screen.getByRole("button",{name:"删除 site 到回收站"})).toBeEnabled();
   });
 });
