@@ -20,3 +20,8 @@ CREATE TABLE file_uploads (
 );
 
 CREATE INDEX file_uploads_created_at_idx ON file_uploads(created_at DESC);
+
+UPDATE release_metadata
+SET schema_version = 3,
+    upgraded_at = CURRENT_TIMESTAMP
+WHERE singleton = 1;

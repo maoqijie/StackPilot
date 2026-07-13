@@ -233,7 +233,7 @@ npm run test --workspace @stackpilot/agent
 
 ## 生产部署与发布
 
-正式支持的生产运行时为 Linux x86_64、Node.js 22.x 和 SQLite schema 2。Docker Compose 默认仅公开 HTTPS 443；Controller 8787 位于内部网络，Agent 9443 默认只绑定回环地址。原生 systemd 方案为 Controller 与 Agent 创建不同的低权限用户，并通过 systemd credential 注入主密钥和 TLS 私钥。
+正式支持的生产运行时为 Linux x86_64、Node.js 22.x 和 SQLite schema 3。Docker Compose 默认仅公开 HTTPS 443；Controller 8787 位于内部网络，Agent 9443 默认只绑定回环地址。原生 systemd 方案为 Controller 与 Agent 创建不同的低权限用户，并通过 systemd credential 注入主密钥和 TLS 私钥。
 
 - [Docker Compose 安装](docs/installation/docker-compose.md)
 - [systemd 安装](docs/installation/systemd.md)
