@@ -20,6 +20,19 @@ import {
   type AgentTelemetryDiskVolume,
   type AgentTelemetrySnapshot,
 } from "@stackpilot/contracts";
+import {
+  collectWindowsLoadAverage,
+  type WindowsLoadAverage,
+} from "./windowsLoad.js";
+
+export {
+  collectProcessorQueueLength,
+  parseProcessorQueueLength,
+  WindowsLoadSampler,
+  type ProcessorQueueCommandRunner,
+  type WindowsLoadAverage,
+  type WindowsLoadSamplerSources,
+} from "./windowsLoad.js";
 
 const KIB = 1024;
 const execFileAsync = promisify(execFile);
@@ -37,6 +50,7 @@ export type HostTelemetrySources = {
   loadavg: () => number[];
   uptime: () => number;
   collectDisks: (target: AgentPlatform) => Promise<AgentTelemetryDiskVolume[]>;
+  collectWindowsLoad: (coreUsagePercents: readonly number[]) => Promise<WindowsLoadAverage | null>;
 };
 
 const clamp = (value: number) => Math.max(0, Math.min(100, Math.round(value * 10) / 10));
@@ -132,6 +146,7 @@ const defaultSources: HostTelemetrySources = {
   loadavg,
   uptime,
   collectDisks: collectDiskVolumes,
+  collectWindowsLoad: collectWindowsLoadAverage,
 };
 
 function optionalValue<T>(read: () => T, fallback: T): T {
@@ -151,12 +166,18 @@ export async function collectHostTelemetry(
   const memory = Number.isSafeInteger(totalBytes) && totalBytes > 0 && Number.isSafeInteger(availableBytes) && availableBytes >= 0
     ? { totalBytes, availableBytes: Math.min(totalBytes, availableBytes) }
     : null;
-  const load = optionalValue(source.loadavg, []);
-  const loadAverage = target !== "win32" && load.length >= 3 && load.slice(0, 3).every((value) => Number.isFinite(value) && value >= 0)
-    ? [load[0] ?? 0, load[1] ?? 0, load[2] ?? 0] as [number, number, number]
-    : null;
-  const disks = (await Promise.resolve().then(() => source.collectDisks(target)).catch(() => []))
-    .slice(0, AGENT_TELEMETRY_MAX_DISK_VOLUMES);
+  const disksPromise = Promise.resolve().then(() => source.collectDisks(target)).catch(() => []);
+  const windowsLoadPromise = target === "win32" && cpu
+    ? Promise.resolve().then(() => source.collectWindowsLoad(cpu.coreUsagePercents)).catch(() => null)
+    : Promise.resolve(null);
+  const [collectedDisks, windowsLoad] = await Promise.all([disksPromise, windowsLoadPromise]);
+  const load = target === "win32" ? [] : optionalValue(source.loadavg, []);
+  const loadAverage = target === "win32"
+    ? windowsLoad
+    : load.length >= 3 && load.slice(0, 3).every((value) => Number.isFinite(value) && value >= 0)
+      ? [load[0] ?? 0, load[1] ?? 0, load[2] ?? 0] as [number, number, number]
+      : null;
+  const disks = collectedDisks.slice(0, AGENT_TELEMETRY_MAX_DISK_VOLUMES);
   return AgentTelemetrySnapshotSchema.parse({
     collectedAt: optionalValue(() => source.now().toISOString(), new Date().toISOString()),
     hostname: optionalValue(source.hostname, "unknown-host").trim().slice(0, 120) || "unknown-host",

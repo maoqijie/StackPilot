@@ -145,7 +145,7 @@ npm run dev:agent
 
 第二个 Agent 必须创建另一个 enrollment，并使用不同状态目录。所有 Agent 请求由节点私钥签名，覆盖请求方法、路径、时间、nonce 和 body digest；Controller 持久化 nonce 以拒绝重放。用户会话和 API Token 不能代替 Agent 身份，来源 IP 也不参与认证。
 
-主机页面使用 `/api/hosts` 每 10 秒静默读取 Controller 本机和授权范围内的 Agent 遥测。Agent 每 15 秒随兼容 `1.0` 心跳上报 CPU、内存、负载、全部磁盘卷、主 IP 与运行时间；备份、服务和更新状态未采集时明确显示不可用。升级时先发布 Controller，再发布 Web，最后滚动升级 Agent。
+主机页面使用 `/api/hosts` 每 10 秒静默读取 Controller 本机和授权范围内的 Agent 遥测。Agent 每 15 秒随兼容 `1.0` 心跳上报 CPU、内存、负载、全部磁盘卷、主 IP 与运行时间；Windows 负载由忙碌逻辑核心数与 Processor Queue Length 生成等效的 1、5、15 分钟指数平均，页面会明确标注其来源。备份、服务和更新状态未采集时明确显示不可用。升级时先发布 Controller，再发布 Web，最后滚动升级 Agent。
 
 需要轮换单个 Agent身份时，在该 Agent下一次启动前设置 `STACKPILOT_AGENT_ROTATE_CREDENTIAL=1`。Agent会先安全保存 pending 私钥，再用当前身份执行带 rotation ID 的幂等轮换；响应丢失时可继续同一轮换，成功后旧凭据立即撤销。管理员撤销节点后，旧身份和轮换恢复路径都会被拒绝。
 

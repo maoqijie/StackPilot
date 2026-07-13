@@ -287,6 +287,26 @@ test("overview omits missing load and averages only available load samples", asy
   assert.deepEqual(withAgent.resources.cluster.at(-1), { label: "系统负载", value: "1.00", delta: "1 个实时节点", values: [1, 2, 3], collectedAt: withAgent.collectedAt, freshness: "current" });
 });
 
+test("overview labels Windows equivalent load without excluding it from mixed cluster averages", async () => {
+  const platform = new FakePlatformAdapter();
+  const originalCollect = platform.collectSnapshot.bind(platform);
+  platform.collectSnapshot = async () => ({ ...await originalCollect(), loadAverages: [] });
+  const repository = new MemoryAgentControlRepository();
+  await repository.update((state) => state.nodes.push(
+    agentNode(nodeIds.allowed, "windows-agent", { ...telemetry("windows-agent", 25, 8, 4, 1, 2), loadAverage: [3, 2, 1] }, { platform: "win32" }),
+    agentNode(nodeIds.hidden, "linux-agent", { ...telemetry("linux-agent", 25, 8, 4, 1, 2), loadAverage: [1, 2, 3] }),
+    agentNode(nodeIds.revoked, "legacy-windows-agent", { ...telemetry("legacy-windows-agent", 25, 8, 4, 1, 2), loadAverage: null }, { platform: "win32" }),
+    agentNode("44444444-4444-4444-8444-444444444444", "offline-windows-agent", { ...telemetry("offline-windows-agent", 25, 8, 4, 1, 2), loadAverage: [9, 9, 9] }, { platform: "win32", status: "offline" }),
+  ));
+
+  const overview = await new OverviewService(platform, new MemoryTaskStateRepository(), repository).getOverview();
+  assert.deepEqual(overview.resources.cluster.at(-1), { label: "系统负载", value: "2.00", delta: "2 个实时节点 · 1 个 Windows 等效值", values: [2, 2, 2], collectedAt: overview.collectedAt, freshness: "current" });
+  assert.deepEqual(overview.resources[nodeIds.allowed].at(-1), { label: "系统负载", value: "3.00", delta: "Windows 等效负载", values: [3, 2, 1], collectedAt: overview.resources[nodeIds.allowed][0].collectedAt, freshness: "current" });
+  assert.equal(overview.resources[nodeIds.hidden].at(-1).delta, "linux-agent");
+  assert.deepEqual(overview.resources[nodeIds.revoked].at(-1), { label: "系统负载", value: "暂不可用", delta: "等待采集", values: [], collectedAt: overview.resources[nodeIds.revoked][0].collectedAt, freshness: "current" });
+  assert.equal(overview.resources["44444444-4444-4444-8444-444444444444"].at(-1).freshness, "stale");
+});
+
 test("schedule service performs storage and execution only through injected interfaces", async () => {
   const platform = new FakePlatformAdapter();
   const repository = new MemoryScheduleRepository();

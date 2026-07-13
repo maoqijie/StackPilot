@@ -13,7 +13,7 @@ StackPilot `0.2.0-preview.5` is a preview release, not a stable production relea
 | Agent | `0.1.x` or `0.2.x`, protocol `1.0` | incompatible protocol major is rejected; future capabilities are not implied |
 | Browser | current and previous major Chrome, Edge and Firefox | Chromium desktop/mobile E2E is automated; Firefox is a compatibility target, not yet an E2E gate |
 
-Windows and macOS are development environments only. Native production deployment, systemd and host-management capabilities are not supported there. Safari, arm64, clustered Controllers and external databases are not currently supported.
+Windows and macOS are development environments only. Native production deployment, systemd and host-management capabilities are not supported there. Windows telemetry uses a CIM-backed equivalent load estimate rather than a native Unix Load Average; CI verifies that collection on a Windows runner, but this does not expand the native production support range. Safari, arm64, clustered Controllers and external databases are not currently supported.
 
 ## Version Rules
 

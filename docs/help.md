@@ -15,6 +15,8 @@ StackPilot 是面向自托管服务器运维的控制台。本文档记录当前
 
 集群状态页通过 `/api/overview/health` 聚合 Controller 本机和当前用户节点范围内的 Agent。新版 Agent 会随心跳上报 CPU、内存、负载、全部磁盘卷、主 IP 与运行时间；未采集的备份、服务和更新状态显示为“暂不可用”，旧版 Agent 在升级前显示为“等待遥测”。
 
+Linux 与 macOS 的系统负载直接来自操作系统提供的 1、5、15 分钟 Load Average。Windows 没有同名原生指标，StackPilot 使用“忙碌逻辑核心数 + Processor Queue Length”计算瞬时等效负载，并按实际采样间隔生成 1、5、15 分钟指数平均；页面会明确标注“Windows 等效负载”。PowerShell、CIM 或 CPU 采样失败时只将该项标记为“暂不可用”，不会中断其他遥测或 Agent 心跳。
+
 如果页面出现请求失败，先确认后端正在监听：
 
 ```bash

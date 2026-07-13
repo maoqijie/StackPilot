@@ -4,11 +4,19 @@ export {
   calculateCpuUsage,
   collectDiskVolumes,
   collectHostTelemetry as collectAgentTelemetry,
+  collectProcessorQueueLength,
   parsePosixDiskUsage,
+  parseProcessorQueueLength,
   parseWindowsDiskUsage,
   selectPrimaryIp,
+  WindowsLoadSampler,
 } from "@stackpilot/host-telemetry";
-export type { HostTelemetrySources as TelemetrySources } from "@stackpilot/host-telemetry";
+export type {
+  HostTelemetrySources as TelemetrySources,
+  ProcessorQueueCommandRunner,
+  WindowsLoadAverage,
+  WindowsLoadSamplerSources,
+} from "@stackpilot/host-telemetry";
 
 export function telemetryIsDegraded(snapshot: AgentTelemetrySnapshot) {
   const memory = snapshot.memory
