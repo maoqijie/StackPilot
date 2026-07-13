@@ -62,9 +62,9 @@ export class RemoteTaskService {
       const capability = requiredCapability[input.type];
       if (!node.allowedCapabilities.includes(capability) || !node.declaredCapabilities.includes(capability)) throw new ServiceError(403, "FORBIDDEN", "Controller 未授权节点执行该能力或 Agent 未声明该能力");
       const duplicate = state.tasks.find((item) => item.targetNodeId === nodeId && item.idempotencyKey === input.idempotencyKey);
+      if (!duplicate && state.tasks.filter((item) => item.targetNodeId === nodeId && !terminal.includes(item.status)).length >= this.queueLimit) throw new ServiceError(409, "BAD_REQUEST", "节点任务队列已满");
       authorize();
       if (duplicate) { created = duplicate; return; }
-      if (state.tasks.filter((item) => item.targetNodeId === nodeId && !terminal.includes(item.status)).length >= this.queueLimit) throw new ServiceError(409, "BAD_REQUEST", "节点任务队列已满");
       const now = new Date().toISOString();
       created = RemoteTaskRecordSchema.parse({
         protocolVersion: AGENT_PROTOCOL_VERSION, taskId: randomUUID(), type: input.type, targetNodeId: nodeId,
