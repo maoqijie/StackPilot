@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FileListPayload } from "@stackpilot/contracts";
 import { fetchFiles } from "../../api/filesApi";
 
-export function useFilesData(path:string){const[data,setData]=useState<FileListPayload|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState("");const requestRef=useRef(0),controllerRef=useRef<AbortController|null>(null);
-  const load=useCallback(async()=>{controllerRef.current?.abort();const controller=new AbortController(),request=++requestRef.current;controllerRef.current=controller;setLoading(true);setError("");try{const next=await fetchFiles(path,controller.signal);if(request===requestRef.current)setData(next);}catch(reason){if(controller.signal.aborted)return;if(request===requestRef.current)setError(reason instanceof Error?reason.message:"目录读取失败");}finally{if(request===requestRef.current)setLoading(false);}},[path]);
-  useEffect(()=>{void load();return()=>controllerRef.current?.abort();},[load]);
-  return{data:data?.path===path?data:null,loading,error,reload:load};
+export function useFilesData(path:string){const[data,setData]=useState<FileListPayload|null>(null),[errorState,setErrorState]=useState<{path:string;message:string}|null>(null);const requestRef=useRef(0),controllerRef=useRef<AbortController|null>(null);
+  const run=useCallback(async(controller:AbortController,request:number)=>{try{const next=await fetchFiles(path,controller.signal);if(request===requestRef.current){setData(next);setErrorState(null);}}catch(reason){if(controller.signal.aborted)return;if(request===requestRef.current)setErrorState({path,message:reason instanceof Error?reason.message:"目录读取失败"});}},[path]);
+  const start=useCallback(()=>{controllerRef.current?.abort();const controller=new AbortController(),request=++requestRef.current;controllerRef.current=controller;void run(controller,request);},[run]);
+  useEffect(()=>{const controller=new AbortController(),request=++requestRef.current;controllerRef.current=controller;void run(controller,request);return()=>controller.abort();},[run]);
+  const currentData=data?.path===path?data:null,error=errorState?.path===path?errorState.message:"";
+  return{data:currentData,loading:!currentData&&!error,error,reload:start};
 }

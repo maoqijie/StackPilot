@@ -6,16 +6,16 @@ import { ModulePageShell } from "../components/layout/ModulePageShell";
 import { MetricTile, ModuleSearch } from "../components/ui/Cards";
 import { DataTable } from "../components/ui/DataTable";
 import { DetailDrawer } from "../components/ui/DetailDrawer";
-import { FieldSelect, FormLine } from "../components/ui/FormControls";
+import { FieldSelect } from "../components/ui/FormControls";
 import { FilesBrowserPage } from "../features/files/FilesBrowserPage";
 import { FileTrashPage } from "../features/files/FileTrashPage";
-import type { FileRecord, FileUploadRecord, TrashFileRecord } from "../features/files/types";
+import type { FileRecord, FileUploadRecord } from "../features/files/types";
 import { initialFileRecords, initialFileUploads, initialTrashFiles } from "../mocks/demoData";
 import type { Notify, PageKey, Tone } from "../types/app";
 import { currentClock } from "../utils/time";
 
 function FilesModule({ page, notify, permissions = [] }: { page: PageKey; notify: Notify; permissions?: readonly Permission[] }) {
-  const [files, setFiles] = useState(initialFileRecords);
+  const [, setFiles] = useState(initialFileRecords);
   const [trashRows, setTrashRows] = useState(initialTrashFiles);
   const [restoredRows, setRestoredRows] = useState<FileRecord[]>([]);
 

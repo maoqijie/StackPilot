@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const FilePathSchema = z.string().min(1).max(4096).refine((value) => value.startsWith("/"), "文件路径必须是绝对路径");
 export const FileNameSchema = z.string().trim().min(1).max(255).refine(
-  (value) => value !== "." && value !== ".." && !/[\\/\0-\x1f]/.test(value),
+  (value) => value !== "." && value !== ".." && !/[\\/]/.test(value) && ![...value].some((character) => character.charCodeAt(0) < 32),
   "文件名无效",
 );
 export const FileEntrySchema = z.object({
