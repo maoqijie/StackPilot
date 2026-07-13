@@ -256,8 +256,8 @@
   max-width: min(260px, calc(100vw - 32px));
   padding: 8px 12px;
   border-radius: var(--radius-md);
-  color: var(--canvas);
-  background: var(--surface-dark);
+  color: var(--text);
+  background: var(--surface);
   box-shadow: var(--shadow-overlay);
   font-size: 13px;
   font-weight: 500;
@@ -275,7 +275,7 @@
   width: 7px;
   height: 7px;
   content: "";
-  background: var(--surface-dark);
+  background: var(--surface);
   transform: translate(-50%, -4px) rotate(45deg);
 }
 
@@ -293,8 +293,8 @@
   justify-content: space-between;
   gap: 12px;
 }
-.metric-details-tooltip > header strong { color: var(--canvas); font-size: 13px; }
-.metric-details-tooltip > header span { color: var(--subtle); font-size: 12px; }
+.metric-details-tooltip > header strong { color: var(--text); font-size: 13px; }
+.metric-details-tooltip > header span { color: var(--muted); font-size: 12px; }
 .metric-details-tooltip > div { display: grid; }
 .metric-details-tooltip p {
   min-width: 0;
@@ -308,9 +308,9 @@
 .metric-details-tooltip p > span { min-width: 0; display: grid; gap: 2px; }
 .metric-details-tooltip p b,
 .metric-details-tooltip p small { min-width: 0; overflow-wrap: anywhere; }
-.metric-details-tooltip p b { color: var(--canvas); font-size: 13px; }
-.metric-details-tooltip p small { color: var(--subtle); font-size: 11px; font-weight: 500; }
-.metric-details-tooltip p > strong { color: var(--canvas); font-size: 13px; white-space: nowrap; }
+.metric-details-tooltip p b { color: var(--text); font-size: 13px; }
+.metric-details-tooltip p small { color: var(--muted); font-size: 11px; font-weight: 500; }
+.metric-details-tooltip p > strong { color: var(--text); font-size: 13px; white-space: nowrap; }
 
 .metric-card.green { color: var(--tertiary); }
 .metric-card.orange { color: var(--warning); }

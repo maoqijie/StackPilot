@@ -77,3 +77,33 @@ test("features do not deep-import other features or page implementations", async
     }
   }
 });
+
+test("overview disk details use theme-responsive surface tokens", async () => {
+  const source = await readFile(join(sourceRoot, "styles", "overview.css"), "utf8");
+  const rule = (selector) => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matches = [...source.matchAll(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`, "g"))];
+    const declarations = matches.map((match) => match[1]).join("\n");
+    assert.ok(declarations, `Missing CSS rule: ${selector}`);
+    return declarations;
+  };
+
+  const tooltip = rule(".metric-details-tooltip");
+  assert.match(tooltip, /background:\s*var\(--surface\)/);
+  assert.match(tooltip, /color:\s*var\(--text\)/);
+  assert.doesNotMatch(tooltip, /var\(--(?:surface-dark|canvas)\)/);
+
+  const arrow = rule(".metric-details-tooltip::after");
+  assert.match(arrow, /background:\s*var\(--surface\)/);
+  assert.doesNotMatch(arrow, /var\(--surface-dark\)/);
+
+  for (const selector of [
+    ".metric-details-tooltip > header strong",
+    ".metric-details-tooltip p b",
+    ".metric-details-tooltip p > strong",
+  ]) {
+    assert.match(rule(selector), /color:\s*var\(--text\)/);
+  }
+  assert.match(rule(".metric-details-tooltip > header span"), /color:\s*var\(--muted\)/);
+  assert.match(rule(".metric-details-tooltip p small"), /color:\s*var\(--muted\)/);
+});
