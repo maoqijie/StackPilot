@@ -5,12 +5,13 @@ import {
   AGENT_PROTOCOL_VERSION, AgentEnrollmentResponseSchema, AgentHeartbeatResponseSchema, RemoteTaskPollResponseSchema, RotateCredentialResponseSchema,
   type AgentEnrollmentRequest,
 } from "@stackpilot/contracts";
-import { AGENT_CAPABILITIES } from "./capabilities/index.js";
+import { AGENT_CAPABILITIES, LEGACY_AGENT_CAPABILITIES } from "./capabilities/index.js";
 import { loadAgentConfig } from "./config/environment.js";
 import { createHeartbeat } from "./heartbeat/heartbeat.js";
 import { IdentityStore, type AgentIdentity } from "./identity/identityStore.js";
 import { agentLogger } from "./logging/logger.js";
 import { collectAgentTelemetry } from "./telemetry/collector.js";
+import { DatabaseSnapshotCache, SystemdDatabaseCollector } from "@stackpilot/host-telemetry";
 import { TaskExecutor } from "./tasks/executor.js";
 import { ControllerClient } from "./transport/controllerClient.js";
 
@@ -21,7 +22,7 @@ async function ensureIdentity(store: IdentityStore, client: ControllerClient, co
   const existing = await store.read(); if (existing) return existing;
   if (!config.enrollmentToken) throw new Error("Agent identity is missing and no enrollment token was provided");
   const pair = store.createKeyPair();
-  const request: AgentEnrollmentRequest = { enrollmentToken: config.enrollmentToken, nodeName: config.nodeName, publicKey: pair.publicKey, agentVersion: config.agentVersion, protocolVersion: AGENT_PROTOCOL_VERSION, platform: config.platform, capabilities: [...AGENT_CAPABILITIES] };
+  const request: AgentEnrollmentRequest = { enrollmentToken: config.enrollmentToken, nodeName: config.nodeName, publicKey: pair.publicKey, agentVersion: config.agentVersion, protocolVersion: AGENT_PROTOCOL_VERSION, platform: config.platform, capabilities: [...LEGACY_AGENT_CAPABILITIES] };
   const enrolled = AgentEnrollmentResponseSchema.parse(await client.enroll(request));
   const identity = { nodeId: enrolled.nodeId, credentialId: enrolled.credentialId, privateKey: pair.privateKey, publicKey: pair.publicKey, protocolVersion: enrolled.protocolVersion, createdAt: new Date().toISOString() };
   await store.write(identity); return identity;
@@ -43,12 +44,16 @@ export async function runAgent(env: NodeJS.ProcessEnv | Record<string, string | 
   let identity = await ensureIdentity(store, client, config);
   if (config.rotateCredential) { identity = await rotateIdentity(store, client, identity); if (env === process.env) delete process.env.STACKPILOT_AGENT_ROTATE_CREDENTIAL; }
   const executor = new TaskExecutor(store.receiptPath, identity.nodeId, config.platform, AGENT_CAPABILITIES); await executor.load();
+  const databaseSnapshots = new DatabaseSnapshotCache(new SystemdDatabaseCollector({ target: config.platform }));
   let failures = 0;
   while (!signal?.aborted) {
     try {
       let telemetryCollectionFailed = false;
       const telemetry = await collectAgentTelemetry(config.platform).catch(() => { telemetryCollectionFailed = true; return undefined; });
-      AgentHeartbeatResponseSchema.parse(await client.json("/api/agent/heartbeat", createHeartbeat(config, identity.nodeId, [...AGENT_CAPABILITIES], telemetry, telemetryCollectionFailed), identity));
+      void databaseSnapshots.refreshIfDue().catch((error) => agentLogger.log({ level: "warn", time: new Date().toISOString(), message: "Database inventory collection failed", errorName: error instanceof Error ? error.name : "UnknownError" }));
+      const databaseInventorySupported = client.supportsDatabaseInventory();
+      const capabilities = databaseInventorySupported ? AGENT_CAPABILITIES : LEGACY_AGENT_CAPABILITIES;
+      AgentHeartbeatResponseSchema.parse(await client.json("/api/agent/heartbeat", createHeartbeat(config, identity.nodeId, [...capabilities], telemetry, telemetryCollectionFailed, databaseInventorySupported ? databaseSnapshots.current : undefined), identity));
       for (const pending of executor.pendingUpdates()) { await client.json("/api/agent/tasks/status", pending, identity); await executor.markReported(pending.taskId); }
       const poll = RemoteTaskPollResponseSchema.parse(await client.json("/api/agent/tasks/poll", {}, identity));
       for (const taskId of poll.cancelledTaskIds) executor.cancel(taskId);

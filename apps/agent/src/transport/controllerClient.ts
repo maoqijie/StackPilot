@@ -1,11 +1,12 @@
 import { createHash, randomBytes, sign } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { request } from "node:https";
-import { AGENT_PROTOCOL_VERSION, agentSignaturePayload, type AgentEnrollmentRequest } from "@stackpilot/contracts";
+import { AGENT_FEATURE_DATABASE_INVENTORY, AGENT_PROTOCOL_VERSION, agentSignaturePayload, type AgentEnrollmentRequest } from "@stackpilot/contracts";
 import type { AgentIdentity } from "../identity/identityStore.js";
 
 export class ControllerClient {
   private ca: Buffer | null = null;
+  private agentFeatures = new Set<string>();
   constructor(private readonly baseUrl: string, private readonly caPath: string) {}
   private async trustedCa() { this.ca ??= await readFile(this.caPath); return this.ca; }
   async json<T>(path: string, body: unknown, identity?: AgentIdentity): Promise<T> {
@@ -19,6 +20,8 @@ export class ControllerClient {
     const ca = await this.trustedCa();
     return new Promise<T>((resolvePromise, rejectPromise) => {
       const req = request(url, { method: "POST", ca, rejectUnauthorized: true, headers, timeout: 10_000 }, (response) => {
+        const features = typeof response.headers["x-stackpilot-agent-features"] === "string" ? response.headers["x-stackpilot-agent-features"].split(",").map((feature) => feature.trim()).filter(Boolean) : [];
+        this.agentFeatures = new Set(features);
         const chunks: Buffer[] = []; let size = 0;
         response.on("data", (chunk: Buffer) => { size += chunk.length; if (size <= 256 * 1024) chunks.push(chunk); else req.destroy(new Error("Controller 响应过大")); });
         response.on("end", () => { try { const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as T; if ((response.statusCode ?? 500) >= 400) rejectPromise(new Error(`Controller request failed with status ${response.statusCode}`)); else resolvePromise(parsed); } catch (error) { rejectPromise(error); } });
@@ -26,5 +29,6 @@ export class ControllerClient {
       req.on("timeout", () => req.destroy(new Error("Controller 请求超时"))); req.on("error", rejectPromise); req.end(raw);
     });
   }
+  supportsDatabaseInventory() { return this.agentFeatures.has(AGENT_FEATURE_DATABASE_INVENTORY); }
   enroll(input: AgentEnrollmentRequest) { return this.json("/api/agent/enroll", input); }
 }

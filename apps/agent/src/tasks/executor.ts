@@ -47,7 +47,7 @@ export class TaskExecutor {
     }
     const controller = new AbortController(); this.running.set(task.taskId, controller); const timer = setTimeout(() => controller.abort(), definition.timeoutMs);
     let update: RemoteTaskStatusUpdate;
-    try { const result = await definition.run(parameters, controller.signal); update = { taskId: task.taskId, attempt: task.attempt, status: "succeeded", timestamp: new Date().toISOString(), result }; }
+    try { const result = await definition.run(parameters, controller.signal); controller.signal.throwIfAborted(); update = { taskId: task.taskId, attempt: task.attempt, status: "succeeded", timestamp: new Date().toISOString(), result }; }
     catch (error) { const cancelled = controller.signal.aborted; update = { taskId: task.taskId, attempt: task.attempt, status: cancelled ? "cancelled" : "failed", timestamp: new Date().toISOString(), errorCode: cancelled ? "TASK_CANCELLED_OR_TIMEOUT" : error instanceof Error ? error.name.slice(0, 80) : "TASK_FAILED", result: { message: cancelled ? "Task cancelled or timed out" : "Task failed", truncated: false } }; }
     finally { clearTimeout(timer); this.running.delete(task.taskId); }
     this.receipts.set(task.taskId, { taskId: task.taskId, idempotencyKey: task.idempotencyKey, attempt: task.attempt, status: update.status, updatedAt: update.timestamp, reported: false, update }); await this.persist(); return update;

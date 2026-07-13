@@ -35,6 +35,6 @@ export function FileTrashPage({page,notify,trashRows,setTrashRows,restoredRows,s
         </div>
       </ModulePageShell>
     </div>
-    {confirmation&&<ConfirmDialog title={confirmation.type==="all"?"清空回收站":"永久删除文件"} message={confirmation.type==="all"?`将永久删除回收站中的 ${confirmation.count} 个文件，此操作无法撤销。`:`将永久删除 ${confirmation.row.name}，此操作无法撤销。`} detail={confirmation.type==="file"?confirmation.row.originalPath:undefined} confirmLabel={confirmation.type==="all"?"确认清空":"永久删除"} onClose={closeConfirmation} onConfirm={confirmPurge}/>} 
+    {confirmation&&<ConfirmDialog title={confirmation.type==="all"?"清空回收站":"永久删除文件"} message={confirmation.type==="all"?`将永久删除回收站中的 ${confirmation.count} 个文件，此操作无法撤销。`:`将永久删除 ${confirmation.row.name}，此操作无法撤销。`} detail={confirmation.type==="file"?confirmation.row.originalPath:undefined} confirmLabel={confirmation.type==="all"?"确认清空":"永久删除"} onClose={closeConfirmation} onConfirm={confirmPurge}/>}
   </>;
 }
