@@ -54,6 +54,7 @@ export class NodeService {
       node.protocolVersion = heartbeat.protocolVersion; node.platform = heartbeat.platform; node.declaredCapabilities = heartbeat.capabilities;
       node.heartbeatHealthStatus = heartbeat.health.status;
       if (heartbeat.telemetry) node.telemetry = heartbeat.telemetry;
+      if (heartbeat.databaseSnapshot) node.databaseSnapshot = heartbeat.databaseSnapshot;
       return audit({ requester: `agent:${nodeId}`, nodeId, taskId: null, event: "node.heartbeat", taskType: null, parameters: { health: heartbeat.health.status, capabilities: heartbeat.capabilities }, fromStatus: previous, toStatus: "online", resultSummary: null, traceId });
     });
     if (!updated) throw new ServiceError(401, "UNAUTHORIZED", "节点不存在或已撤销");

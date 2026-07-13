@@ -9,16 +9,18 @@ import type { EnrollmentService } from "../modules/enrollments/enrollmentService
 import type { NodeService } from "../modules/nodes/nodeService.js";
 import type { HostMonitoringService } from "../modules/hosts/hostMonitoringService.js";
 import type { SiteMonitoringService } from "../modules/sites/siteMonitoringService.js";
+import type { DatabaseMonitoringService } from "../modules/databases/databaseMonitoringService.js";
 import type { DatabaseBackupService } from "../modules/databases/databaseBackupService.js";
 import type { RemoteTaskService } from "../modules/remote-tasks/remoteTaskService.js";
 import type { FileTrashService } from "../modules/files/fileTrashService.js";
+import type { FileService } from "../modules/files/fileService.js";
 import type { FileUploadService } from "../modules/files/fileUploadService.js";
 import type { DatabaseSlowQueryService } from "../modules/databases/databaseSlowQueryService.js";
 import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
 
-export type Services = { overview: OverviewService; hosts: HostMonitoringService; databases: DatabaseSlowQueryService; sites: SiteMonitoringService; databaseBackups: DatabaseBackupService; fileTrash: FileTrashService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService; files?: FileUploadService };
+export type Services = { overview: OverviewService; hosts: HostMonitoringService; databaseInstances: DatabaseMonitoringService; databaseSlowQueries: DatabaseSlowQueryService; sites: SiteMonitoringService; databaseBackups: DatabaseBackupService; fileManager: FileService; fileTrash: FileTrashService; fileUploads?: FileUploadService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService };
 export type RequestContext = {
   request: IncomingMessage;
   response: ServerResponse;

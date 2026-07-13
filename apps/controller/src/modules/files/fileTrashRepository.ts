@@ -11,6 +11,7 @@ type TrashRow = {
   expires_at: string;
   owner: string;
   reason: string;
+  trash_path: string | null;
   restored_at: string | null;
   restored_by: string | null;
 };
@@ -18,6 +19,8 @@ type TrashRow = {
 export interface FileTrashRepository {
   listActive(): TrashEntry[];
   listRecentlyRestored(limit: number): RestoredTrashEntry[];
+  create(entry: TrashEntry, trashPath: string): void;
+  storagePath(id: string): string | null;
   restore(id: string, restoredAt: string, restoredBy: string): TrashEntry | null;
   purge(id: string, purgedAt: string): TrashEntry | null;
   purgeAll(purgedAt: string): number;
@@ -30,6 +33,8 @@ function activeEntry(row: TrashRow): TrashEntry {
 export class MemoryFileTrashRepository implements FileTrashRepository {
   listActive() { return []; }
   listRecentlyRestored() { return []; }
+  create() {}
+  storagePath() { return null; }
   restore() { return null; }
   purge() { return null; }
   purgeAll() { return 0; }
@@ -40,6 +45,13 @@ export class SqliteFileTrashRepository implements FileTrashRepository {
   listActive() { return (this.database.prepare("SELECT * FROM file_trash_entries WHERE state='trashed' ORDER BY deleted_at DESC").all() as TrashRow[]).map(activeEntry); }
   listRecentlyRestored(limit: number) {
     return (this.database.prepare("SELECT * FROM file_trash_entries WHERE state='restored' ORDER BY restored_at DESC LIMIT ?").all(limit) as TrashRow[]).map((row) => ({ id: row.entry_id, name: row.name, originalPath: row.original_path, restoredAt: row.restored_at!, restoredBy: row.restored_by! }));
+  }
+  create(entry: TrashEntry, trashPath: string) {
+    this.database.prepare("INSERT INTO file_trash_entries(entry_id,name,kind,original_path,size_bytes,deleted_at,expires_at,owner,reason,trash_path) VALUES(?,?,?,?,?,?,?,?,?,?)")
+      .run(entry.id, entry.name, entry.kind, entry.originalPath, entry.sizeBytes, entry.deletedAt, entry.expiresAt, entry.owner, entry.reason, trashPath);
+  }
+  storagePath(id: string) {
+    return (this.database.prepare("SELECT trash_path AS path FROM file_trash_entries WHERE entry_id=? AND state='trashed'").get(id) as { path: string | null } | undefined)?.path ?? null;
   }
   restore(id: string, restoredAt: string, restoredBy: string) { return this.transition(id, "restored", "restored_at=?, restored_by=?", [restoredAt, restoredBy]); }
   purge(id: string, purgedAt: string) { return this.transition(id, "purged", "purged_at=?", [purgedAt]); }

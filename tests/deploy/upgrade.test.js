@@ -9,7 +9,7 @@ import { openDatabase } from "../../apps/controller/dist/database/database.js";
 
 const migrations = new URL("../../apps/controller/src/database/migrations/", import.meta.url);
 
-test("schema 1 upgrades to schema 4 without losing identity data", async () => {
+test("schema 1 upgrades to schema 5 without losing identity data", async () => {
   const dir = await mkdtemp(join(tmpdir(), "stackpilot-upgrade-"));
   const path = join(dir, "stackpilot.db");
   try {
@@ -22,12 +22,13 @@ test("schema 1 upgrades to schema 4 without losing identity data", async () => {
 
     const upgraded = openDatabase(path);
     assert.equal(upgraded.prepare("SELECT username FROM users").get().username, "upgrade-user");
-    assert.equal(upgraded.prepare("SELECT max(version) AS version FROM schema_migrations").get().version, 4);
+    assert.equal(upgraded.prepare("SELECT max(version) AS version FROM schema_migrations").get().version, 5);
     const release = upgraded.prepare("SELECT application_version, schema_version FROM release_metadata").get();
     assert.equal(release.application_version, "0.2.0-preview.1");
-    assert.equal(release.schema_version, 4);
+    assert.equal(release.schema_version, 5);
     assert.ok(upgraded.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='file_uploads'").get());
     assert.ok(upgraded.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='file_trash_entries'").get());
+    assert.ok(upgraded.prepare("SELECT name FROM pragma_table_info('file_trash_entries') WHERE name='trash_path'").get());
     upgraded.close();
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -47,10 +48,25 @@ test("legacy file-trash schema 3 upgrades without skipping file uploads", async 
     db.close();
 
     const upgraded = openDatabase(path);
-    assert.equal(upgraded.prepare("SELECT max(version) AS version FROM schema_migrations").get().version, 4);
+    assert.equal(upgraded.prepare("SELECT max(version) AS version FROM schema_migrations").get().version, 5);
     assert.ok(upgraded.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='file_uploads'").get());
     assert.ok(upgraded.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='file_trash_entries'").get());
+    assert.ok(upgraded.prepare("SELECT name FROM pragma_table_info('file_trash_entries') WHERE name='trash_path'").get());
     upgraded.close();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("controller refuses to open a database from a future schema", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "stackpilot-future-schema-"));
+  const path = join(dir, "stackpilot.db");
+  try {
+    const db = new Database(path);
+    db.exec("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)");
+    db.prepare("INSERT INTO schema_migrations(version,name,applied_at) VALUES(6,'future',?)").run(new Date().toISOString());
+    db.close();
+    assert.throws(() => openDatabase(path), /高于当前支持版本 5/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

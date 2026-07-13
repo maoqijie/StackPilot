@@ -24,6 +24,8 @@ import {
   collectWindowsLoadAverage,
   type WindowsLoadAverage,
 } from "./windowsLoad.js";
+export { DatabaseSnapshotCache, DATABASE_UNIT_PATTERNS, SystemdDatabaseCollector, parseSystemdDatabaseUnits } from "./databases.js";
+export type { DatabaseCollectorOptions, DatabaseUnitRunner } from "./databases.js";
 
 export {
   collectProcessorQueueLength,

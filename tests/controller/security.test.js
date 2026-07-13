@@ -101,6 +101,10 @@ test("file trash APIs persist reads and require session reauthentication for per
     const listed = await jsonResponse(await fetch(`${baseUrl}/api/files/trash`, { headers: authHeaders(apiToken) }));
     assert.equal(listed.status, 200);
     assert.deepEqual(listed.body.entries.map((entry) => entry.name), ["old.log", "old-cache"]);
+    assert.equal((await fetch(`${baseUrl}/api/files/trash?unexpected=1`, { headers: authHeaders(apiToken) })).status, 400);
+    const tokenReauth = await jsonResponse(await fetch(`${baseUrl}/api/auth/reauthenticate`, { method: "POST", headers: authHeaders(apiToken), body: JSON.stringify({ password: "correct horse battery staple" }) }));
+    assert.equal(tokenReauth.status, 403);
+    assert.equal(tokenReauth.body.code, "FORBIDDEN");
     const restored = await jsonResponse(await fetch(`${baseUrl}/api/files/trash/${restoredId}/restore`, { method: "POST", headers: authHeaders(apiToken), body: "{}" }));
     assert.equal(restored.status, 200);
     assert.equal(restored.body.trash.entries.length, 1);
@@ -134,7 +138,7 @@ test("administrator control-plane APIs manage enrollment, nodes and task status 
     const nodes = await jsonResponse(await fetch(`${baseUrl}/api/nodes`, { headers: authHeaders(apiToken) })); assert.equal(nodes.body.nodes[0].nodeName, "remote-node"); assert.doesNotMatch(JSON.stringify(nodes.body), /BEGIN PUBLIC KEY|credentialId|telemetry|10\.0\.0\.2/);
     const reauthResponse=await fetch(`${baseUrl}/api/auth/reauthenticate`,{method:"POST",headers:{Origin:allowedOrigin,Cookie:cookie,"X-CSRF-Token":loginBody.csrfToken,"Content-Type":"application/json"},body:JSON.stringify({password:"correct horse battery staple"})});const reauth=await reauthResponse.json();
     const task = await jsonResponse(await fetch(`${baseUrl}/api/nodes/${enrolled.nodeId}/tasks`, { method: "POST", headers: {Origin:allowedOrigin,Cookie:cookie,"X-CSRF-Token":loginBody.csrfToken,"X-Reauth-Proof":reauth.proof,"Content-Type":"application/json"}, body: JSON.stringify({ type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "http-control-task-1" }) })); assert.equal(task.status, 201);
-    const tasks = await jsonResponse(await fetch(`${baseUrl}/api/remote-tasks`, { headers: authHeaders(apiToken) })); assert.equal(tasks.body.tasks.length, 1);
+    const tasks = await jsonResponse(await fetch(`${baseUrl}/api/remote-tasks`, { headers: authHeaders(apiToken) })); assert.equal(tasks.body.tasks.length, 1); assert.equal(Number.isNaN(Date.parse(tasks.body.collectedAt)), false);
     const cancelled = await jsonResponse(await fetch(`${baseUrl}/api/remote-tasks/${task.body.taskId}/cancel`, { method: "POST", headers: authHeaders(apiToken), body: JSON.stringify({ reason: "test" }) })); assert.equal(cancelled.body.status, "cancelled");
     const health = await jsonResponse(await fetch(`${baseUrl}/api/overview/health`, { headers: authHeaders(apiToken) })); assert.equal(health.body.nodes.some((node) => node.id === enrolled.nodeId), true); assert.doesNotMatch(JSON.stringify(health.body), /BEGIN PUBLIC KEY|credentialId|"telemetry"/);
   }, { platform, services });
@@ -194,6 +198,17 @@ test("overview read models enforce all, partial and empty node scopes without le
 
     const emptyText = JSON.stringify(await readAll(empty));
     assert.doesNotMatch(emptyText, /allowed-agent|hidden-agent|global-enrollment/);
+
+    const partialTasks = await jsonResponse(await fetch(`${baseUrl}/api/remote-tasks`, { headers: authHeaders(partial) }));
+    assert.equal(partialTasks.status, 200);
+    assert.match(JSON.stringify(partialTasks.body), /allowed-agent-task-log/);
+    assert.doesNotMatch(JSON.stringify(partialTasks.body), /hidden-agent-task-log/);
+    const emptyTasks = await jsonResponse(await fetch(`${baseUrl}/api/remote-tasks`, { headers: authHeaders(empty) }));
+    assert.equal(emptyTasks.status, 200);
+    assert.deepEqual(emptyTasks.body.tasks, []);
+    const forbiddenTasks = await jsonResponse(await fetch(`${baseUrl}/api/remote-tasks`, { headers: authHeaders(summaryOnly) }));
+    assert.equal(forbiddenTasks.status, 403);
+    assert.equal(forbiddenTasks.body.code, "FORBIDDEN");
 
     const restrictedPayloads = await readAll(summaryOnly);
     const restrictedText = JSON.stringify(restrictedPayloads);

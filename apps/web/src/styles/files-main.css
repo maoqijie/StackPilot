@@ -143,6 +143,24 @@
 .file-row-actions { flex-wrap: nowrap; }
 .file-row-actions button { gap: 4px; }
 
+.files-load-state {
+  min-height: 160px;
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--muted);
+  background: var(--surface);
+}
+
+.files-load-state[role="alert"],
+.files-operation-error { color: var(--danger); background: var(--danger-soft); }
+.files-operation-error { padding: 8px 12px; margin: 16px 0 0; border-radius: var(--radius-md); font-size: 13px; }
+.spin { animation: files-spin 0.8s linear infinite; }
+@keyframes files-spin { to { transform: rotate(360deg); } }
+
 .file-editor-drawer,
 .file-delete-dialog,
 .file-editor-drawer :is(.drawer-head, .drawer-actions),

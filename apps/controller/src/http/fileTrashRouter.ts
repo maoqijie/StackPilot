@@ -12,6 +12,7 @@ function idAt(context: RequestContext) {
 export async function routeFileTrashRequest(context: RequestContext) {
   const { method = "GET" } = context.request;
   const { parts, response, services } = context;
+  if (context.url.searchParams.size) throw badRequest("查询参数无效");
   if (parts.length === 3 && method === "GET") {
     context.identity?.require(context.principal, "files:read");
     sendJson(response, 200, services.fileTrash.list(), TrashPayloadSchema); return;
@@ -20,15 +21,15 @@ export async function routeFileTrashRequest(context: RequestContext) {
   parseSchema(EmptyObjectSchema, context.body, "请求体");
   const actor = context.principal?.user.username ?? context.principal?.userId ?? "unknown";
   if (parts.length === 5 && parts[4] === "restore" && method === "POST") {
-    sendJson(response, 200, services.fileTrash.restore(idAt(context), actor), TrashMutationResponseSchema); return;
+    sendJson(response, 200, await services.fileTrash.restore(idAt(context), actor), TrashMutationResponseSchema); return;
   }
   if (parts.length === 4 && parts[3] === "purge" && method === "DELETE") {
     context.identity?.consumeReauth(context.principal!, typeof context.request.headers["x-reauth-proof"] === "string" ? context.request.headers["x-reauth-proof"] : undefined);
-    sendJson(response, 200, services.fileTrash.purgeAll(), TrashMutationResponseSchema); return;
+    sendJson(response, 200, await services.fileTrash.purgeAll(), TrashMutationResponseSchema); return;
   }
   if (parts.length === 4 && method === "DELETE") {
     context.identity?.consumeReauth(context.principal!, typeof context.request.headers["x-reauth-proof"] === "string" ? context.request.headers["x-reauth-proof"] : undefined);
-    sendJson(response, 200, services.fileTrash.purge(idAt(context)), TrashMutationResponseSchema); return;
+    sendJson(response, 200, await services.fileTrash.purge(idAt(context)), TrashMutationResponseSchema); return;
   }
   throw notFound("文件回收站接口不存在");
 }

@@ -12,30 +12,30 @@ function seed(database) {
   insert.run(ids[1], "cache", "directory", "/tmp/cache", null, "2026-07-13T00:00:00.000Z", "2026-07-20T00:00:00.000Z", "www-data", "缓存过期");
 }
 
-test("file trash persists list, restore history and permanent deletion", () => {
+test("file trash persists list, restore history and permanent deletion", async () => {
   const database = openDatabase(":memory:");
   try {
     seed(database);
     const service = new FileTrashService(new SqliteFileTrashRepository(database));
     assert.deepEqual(service.list().entries.map((entry) => entry.name), ["old.log", "cache"]);
-    const restored = service.restore(ids[0], "admin");
+    const restored = await service.restore(ids[0], "admin");
     assert.deepEqual(restored.trash.entries.map((entry) => entry.name), ["cache"]);
     assert.deepEqual(restored.trash.recentlyRestored.map((entry) => [entry.name, entry.restoredBy]), [["old.log", "admin"]]);
     assert.equal(database.prepare("SELECT state FROM file_trash_entries WHERE entry_id=?").get(ids[0]).state, "restored");
-    assert.throws(() => service.restore(ids[0], "admin"), /不存在/);
-    const purged = service.purge(ids[1]);
+    await assert.rejects(service.restore(ids[0], "admin"), /不存在/);
+    const purged = await service.purge(ids[1]);
     assert.equal(purged.trash.entries.length, 0);
     assert.equal(database.prepare("SELECT state FROM file_trash_entries WHERE entry_id=?").get(ids[1]).state, "purged");
   } finally { database.close(); }
 });
 
-test("file trash purge all only transitions active entries", () => {
+test("file trash purge all only transitions active entries", async () => {
   const database = openDatabase(":memory:");
   try {
     seed(database);
     const service = new FileTrashService(new SqliteFileTrashRepository(database));
-    service.restore(ids[0], "admin");
-    const result = service.purgeAll();
+    await service.restore(ids[0], "admin");
+    const result = await service.purgeAll();
     assert.match(result.message, /1 个项目/);
     assert.equal(result.trash.entries.length, 0);
     assert.equal(result.trash.recentlyRestored.length, 1);

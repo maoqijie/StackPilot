@@ -16,7 +16,7 @@ vi.mock("../api/identityApi", () => ({ reauthenticate: vi.fn() }));
 
 const payload: DatabaseBackupsPayload = {
   collectedAt: "2026-07-14T06:00:00.000Z",
-  source: { id: "controller-sqlite", name: "StackPilot Controller", engine: "SQLite", schemaVersion: 4, sizeBytes: 8_388_608, target: "backups" },
+  source: { id: "controller-sqlite", name: "StackPilot Controller", engine: "SQLite", schemaVersion: 5, sizeBytes: 8_388_608, target: "backups" },
   backups: [{
     id: "a".repeat(64), fileName: "stackpilot-20260714T055500Z.sqlite3", storage: "本地 / backups",
     createdAt: "2026-07-14T05:55:00.000Z", sizeBytes: 7_340_032, checksumStatus: "pending", drillStatus: "not_started", drilledAt: null,
