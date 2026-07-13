@@ -26,6 +26,7 @@ import { uniqueSorted } from "../utils/data";
 function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const preset = hostPagePreset(page);
   const isProduction = preset.mode === "production";
+  const hidesPageControls = isProduction || preset.mode === "alerts";
   const [rows, setRows] = useState<HostView[]>([]);
   const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
   const [envByPage, setEnvByPage] = useState<Record<string, string>>({});
@@ -120,7 +121,7 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
     { key: "ops", label: "操作", width: "64px", render: detailAction },
   ];
 
-  return <ModulePageShell title={resolvePageMeta(page).title} subtitle={loading ? "正在采集主机、服务与资源状态" : `${preset.subtitle} · 聚合于 ${collectedAt}`} hideHeading={isProduction} page={page} viewContext={isProduction ? false : hostViewContext(preset.mode, rows, filteredRows)} filters={isProduction ? null : <><ModuleSearch value={search} placeholder="搜索主机名、IP、服务或版本" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="环境" value={envFilter} options={["全部", ...envOptions]} onChange={(value) => setEnvByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="健康" value={healthFilter} options={hostHealthOptions(preset.mode)} onChange={(value) => setHealthByPage((current) => ({ ...current, [page]: value }))} /></>} metrics={<HostMetrics mode={preset.mode} rows={rows} filteredRows={filteredRows} />}>
+  return <ModulePageShell title={resolvePageMeta(page).title} subtitle={loading ? "正在采集主机、服务与资源状态" : `${preset.subtitle} · 聚合于 ${collectedAt}`} hideHeading={hidesPageControls} page={page} viewContext={hidesPageControls ? false : hostViewContext(preset.mode, rows, filteredRows)} filters={hidesPageControls ? null : <><ModuleSearch value={search} placeholder="搜索主机名、IP、服务或版本" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="环境" value={envFilter} options={["全部", ...envOptions]} onChange={(value) => setEnvByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="健康" value={healthFilter} options={hostHealthOptions(preset.mode)} onChange={(value) => setHealthByPage((current) => ({ ...current, [page]: value }))} /></>} metrics={<HostMetrics mode={preset.mode} rows={rows} filteredRows={filteredRows} />}>
     {loading && <span className="sr-only" role="status" aria-live="polite">正在从 /api/hosts 实时采集主机状态</span>}
     {error && <div className="overview-error-state hosts-error-state"><Shield size={18} /><span>{error}</span><button type="button" disabled={loading} onClick={() => void loadHosts()}>重试</button></div>}
     <HostFocusPanel mode={preset.mode} rows={rows} filteredRows={filteredRows} collectedAt={collectedAt} onOpen={(row) => setSelectedHostId(row.id)} />
