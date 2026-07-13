@@ -16,12 +16,13 @@ import type { RemoteTaskService } from "../modules/remote-tasks/remoteTaskServic
 import type { TerminalSnippetService } from "../modules/terminal/terminalSnippetService.js";
 import type { FileService } from "../modules/files/fileService.js";
 import type { FileUploadService } from "../modules/files/fileUploadService.js";
+import type { FileTrashService } from "../modules/files/fileTrashService.js";
 import type { DatabaseSlowQueryService } from "../modules/databases/databaseSlowQueryService.js";
 import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
 
-export type Services = { overview: OverviewService; hosts: HostMonitoringService; databaseInstances: DatabaseMonitoringService; databaseSlowQueries: DatabaseSlowQueryService; sites: SiteMonitoringService; certificateRenewals: CertificateRenewalService; databaseBackups: DatabaseBackupService; fileManager: FileService; fileUploads?: FileUploadService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService; terminalSnippets: TerminalSnippetService };
+export type Services = { overview: OverviewService; hosts: HostMonitoringService; databaseInstances: DatabaseMonitoringService; databaseSlowQueries: DatabaseSlowQueryService; sites: SiteMonitoringService; certificateRenewals: CertificateRenewalService; databaseBackups: DatabaseBackupService; fileManager: FileService; fileUploads?: FileUploadService; fileTrash?: FileTrashService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService; terminalSnippets: TerminalSnippetService };
 export type RequestContext = {
   request: IncomingMessage;
   response: ServerResponse;

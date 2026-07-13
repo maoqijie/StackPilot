@@ -19,6 +19,7 @@ import { routeTerminalRequest } from "./terminalRouter.js";
 import type { OverviewAccess } from "../modules/overview/overviewService.js";
 import { routeDatabaseBackupRequest } from "./databaseBackupRouter.js";
 import { routeFileManagerRequest, routeFileUploadRequest } from "./fileRouter.js";
+import { routeFileTrashRequest } from "./fileTrashRouter.js";
 
 function idAt(context: RequestContext, index: number) {
   try {
@@ -35,6 +36,7 @@ function overviewAccess(context:RequestContext):OverviewAccess{return{nodeScope:
 export async function routeRequest(context: RequestContext): Promise<void> {
   const { request, response, parts, services } = context;
   const method = request.method ?? "GET";
+  if (parts[0] === "api" && parts[1] === "files" && parts[2] === "trash") { await routeFileTrashRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "files") { await routeFileManagerRequest(context); return; }
   if (context.url.searchParams.size > 0) throw new ApiError(400, "BAD_REQUEST", "查询参数无效：当前接口不接受查询参数");
 

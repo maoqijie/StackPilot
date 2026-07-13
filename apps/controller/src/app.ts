@@ -46,6 +46,7 @@ import { requestSource } from "./http/trustedProxy.js";
 import { FileService } from "./modules/files/fileService.js";
 import { FileUploadRepository } from "./repositories/fileUploadRepository.js";
 import { FileUploadService } from "./modules/files/fileUploadService.js";
+import { FileTrashService } from "./modules/files/fileTrashService.js";
 import { DatabaseSlowQueryService } from "./modules/databases/databaseSlowQueryService.js";
 import { PostgresSlowQueryCollector } from "./platform/postgresSlowQueryCollector.js";
 
@@ -76,7 +77,9 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
   const certificateRenewals = new CertificateRenewalService(repository, sites);
   const remoteTasks = new RemoteTaskService(repository);
   const terminalRepository = database ? new SqliteTerminalSnippetRepository(database) : new MemoryTerminalSnippetRepository();
+  const fileManager = new FileService(config.fileRoots);
   const fileUploads = database ? createFileUploadService(database, repoRoot, config) : undefined;
+  const fileTrash = database ? new FileTrashService(database, fileManager) : undefined;
   return {
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
@@ -84,7 +87,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     databaseInstances: new DatabaseMonitoringService(repository),
     sites,
     certificateRenewals,
-    fileManager: new FileService(config.fileRoots),
+    fileManager,
     databaseBackups: new DatabaseBackupService(database, isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath), config, repoRoot),
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
@@ -94,6 +97,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     remoteTasks,
     terminalSnippets: new TerminalSnippetService(terminalRepository, remoteTasks),
     ...(fileUploads ? { fileUploads } : {}),
+    ...(fileTrash ? { fileTrash } : {}),
   };
 }
 
@@ -114,6 +118,7 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
   const agentRepository = options.agentRepository ?? (database ? new SqliteAgentControlRepository(database,identity?.audit) : undefined);
   const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, database);
   if (!services.fileUploads && database) services.fileUploads = createFileUploadService(database, repoRoot, config);
+  if (!services.fileTrash && database) services.fileTrash = new FileTrashService(database, services.fileManager);
   const logger = options.logger ?? consoleLogger;
   const surface = options.surface ?? "all";
 

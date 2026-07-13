@@ -52,4 +52,31 @@ describe("files upload page", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "上传详情" })).not.toBeInTheDocument();
   });
+
+  it("does not start a second transfer for the same upload", async () => {
+    let resolveChunk: ((response: Response) => void) | undefined;
+    const chunkResponse = new Promise<Response>((resolve) => { resolveChunk = resolve; });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ uploads: [], collectedAt: now, maxFileBytes: 100, chunkBytes: 8 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ upload: record("waiting", 0) }), { status: 201 }))
+      .mockReturnValueOnce(chunkResponse)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ upload: record("completed", 7) }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(<FileUploadQueuePage page="files-upload" notify={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: "添加上传" }));
+    const createDialog = screen.getByRole("dialog", { name: "添加上传" });
+    await user.upload(within(createDialog).getByLabelText("本地文件"), new File(["release"], "release.zip", { type: "application/zip" }));
+    await user.click(within(createDialog).getByRole("button", { name: "开始上传" }));
+    const detail = await screen.findByRole("dialog", { name: "上传详情" });
+    const resume = within(detail).getByRole("button", { name: "继续上传" });
+    await user.click(resume);
+    await user.click(resume);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    resolveChunk?.(new Response(JSON.stringify({ upload: record("waiting", 7), nextOffset: 7 }), { status: 200 }));
+    await waitFor(() => expect(within(detail).getByText("已完成")).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
 });

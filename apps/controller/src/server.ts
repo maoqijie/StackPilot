@@ -42,6 +42,7 @@ if (isMainModule) {
     const services = createControllerServices(platform, repoRoot, config, agentRepository, database);
     await services.sites.startup();
     await services.certificateRenewals.startup();
+    await services.fileTrash?.startup();
     const appOptions={ config, services, platform, repoRoot,database,identity,agentRepository };
     const server = createStackPilotServer(appOptions);
 

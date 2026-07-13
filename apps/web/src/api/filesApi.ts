@@ -2,10 +2,29 @@ import { FileListPayloadSchema, FileMutationResponseSchema } from "@stackpilot/c
 import type { FileListPayload } from "@stackpilot/contracts";
 import {
   CreateFileUploadRequestSchema, FileUploadClearResponseSchema, FileUploadChunkResponseSchema,
-  FileUploadListResponseSchema, FileUploadMutationResponseSchema,
+  FileUploadListResponseSchema, FileUploadMutationResponseSchema, TrashMutationResponseSchema, TrashPayloadSchema,
   type CreateFileUploadRequest, type FileUploadListResponse, type FileUploadRecord,
+  type TrashMutationResponse, type TrashPayload,
 } from "@stackpilot/contracts";
 import { getCsrfToken, requestJson, responseError } from "./client";
+
+export type { RestoredTrashEntry, TrashEntry, TrashPayload } from "@stackpilot/contracts";
+
+export function fetchFileTrash(signal?: AbortSignal) {
+  return requestJson<TrashPayload>("/files/trash", { signal }).then((payload) => TrashPayloadSchema.parse(payload));
+}
+
+export function restoreTrashEntry(id: string) {
+  return requestJson<TrashMutationResponse>(`/files/trash/${encodeURIComponent(id)}/restore`, { method: "POST", body: "{}" }).then((payload) => TrashMutationResponseSchema.parse(payload));
+}
+
+export function purgeTrashEntry(id: string, reauthProof: string) {
+  return requestJson<TrashMutationResponse>(`/files/trash/${encodeURIComponent(id)}`, { method: "DELETE", body: "{}", headers: { "X-Reauth-Proof": reauthProof } }).then((payload) => TrashMutationResponseSchema.parse(payload));
+}
+
+export function purgeFileTrash(reauthProof: string) {
+  return requestJson<TrashMutationResponse>("/files/trash/purge", { method: "DELETE", body: "{}", headers: { "X-Reauth-Proof": reauthProof } }).then((payload) => TrashMutationResponseSchema.parse(payload));
+}
 
 export async function listFileUploads(signal?: AbortSignal): Promise<FileUploadListResponse> {
   return FileUploadListResponseSchema.parse(await requestJson("/file-uploads", { signal }));

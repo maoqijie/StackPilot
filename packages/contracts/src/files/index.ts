@@ -22,6 +22,28 @@ export const FileMutationResponseSchema = z.object({ message: z.string().min(1).
 export type FileEntry = z.infer<typeof FileEntrySchema>;
 export type FileListPayload = z.infer<typeof FileListPayloadSchema>;
 
+export const TrashEntryKindSchema = z.enum(["file", "directory"]);
+export const TrashEntrySchema = z.object({
+  id: z.string().uuid(), name: FileNameSchema, kind: TrashEntryKindSchema, originalPath: FilePathSchema,
+  sizeBytes: z.number().int().nonnegative().nullable(), deletedAt: z.string().datetime(), expiresAt: z.string().datetime(),
+  owner: z.string().min(1), reason: z.string().min(1),
+}).strict();
+export const RestoredTrashEntrySchema = z.object({
+  id: z.string().uuid(), name: FileNameSchema, originalPath: FilePathSchema,
+  restoredAt: z.string().datetime(), restoredBy: z.string().min(1),
+}).strict();
+export const TrashPayloadSchema = z.object({
+  entries: z.array(TrashEntrySchema).max(5000), recentlyRestored: z.array(RestoredTrashEntrySchema).max(20),
+  retentionDays: z.number().int().positive(), collectedAt: z.string().datetime(),
+}).strict();
+export const TrashMutationResponseSchema = z.object({ message: z.string().min(1).max(240), trash: TrashPayloadSchema }).strict();
+
+export type TrashEntryKind = z.infer<typeof TrashEntryKindSchema>;
+export type TrashEntry = z.infer<typeof TrashEntrySchema>;
+export type RestoredTrashEntry = z.infer<typeof RestoredTrashEntrySchema>;
+export type TrashPayload = z.infer<typeof TrashPayloadSchema>;
+export type TrashMutationResponse = z.infer<typeof TrashMutationResponseSchema>;
+
 const UploadIdSchema = z.string().uuid();
 const UploadDirectorySchema = z.string().trim().max(512).refine(
   (value) => !value || (!value.startsWith("/") && !value.includes("\\") && !value.includes("\0") && value.split("/").every((part) => part.length > 0 && part !== "." && part !== "..")),

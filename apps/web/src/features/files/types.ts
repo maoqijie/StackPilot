@@ -22,15 +22,4 @@ type FileUploadRecord = {
   startedAt: string;
 };
 
-type TrashFileRecord = {
-  id: string;
-  name: string;
-  originalPath: string;
-  size: string;
-  deletedAt: string;
-  expiresIn: string;
-  owner: string;
-  reason: string;
-};
-
-export type { FileRecord, FileUploadRecord, TrashFileRecord };
+export type { FileRecord, FileUploadRecord };

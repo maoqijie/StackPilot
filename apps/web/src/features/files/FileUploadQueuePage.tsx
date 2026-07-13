@@ -80,6 +80,7 @@ export function FileUploadQueuePage({ page, notify }: { page: PageKey; notify: N
     } finally { aborts.current.delete(record.id); }
   };
   const startTransfer = (record: FileUploadRecord, file: File) => {
+    if (transfers.current.has(record.id)) return;
     const promise = transfer(record, file);
     transfers.current.set(record.id, promise);
     void promise.finally(() => { if (transfers.current.get(record.id) === promise) transfers.current.delete(record.id); });

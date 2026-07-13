@@ -3,7 +3,7 @@ import type { AclPolicy, AclRole, AclUser } from "../features/access/types";
 import type { AuditExportRecord, AuditRecord } from "../features/audit/types";
 import type { DatabaseBackupPlan, DatabaseBackupTask, DatabaseInstance, DatabaseRestorePoint, DatabaseSlowQuery } from "../features/databases/types";
 import type { DeployJob, RollbackRecord } from "../features/deployments/types";
-import type { FileRecord, FileUploadRecord, TrashFileRecord } from "../features/files/types";
+import type { FileRecord, FileUploadRecord } from "../features/files/types";
 import type { FirewallDenyRecord, FirewallRule } from "../features/firewall/types";
 import type { HostRecord } from "../features/hosts/types";
 import type { ServiceRecord } from "../features/services/types";
@@ -130,12 +130,6 @@ const initialFileUploads: FileUploadRecord[] = [
   { id: "upload-4", name: "media-assets.zip", targetPath: "/var/www/html/uploads", size: "284 MB", progress: 38, status: "失败", speed: "中断", owner: "运营", startedAt: "昨天 21:18" },
 ];
 
-const initialTrashFiles: TrashFileRecord[] = [
-  { id: "trash-1", name: "old-error.log", originalPath: "/tmp/old-error.log", size: "32 KB", deletedAt: "今天 09:42", expiresIn: "6 天", owner: "root", reason: "日志轮转清理" },
-  { id: "trash-2", name: "old-cache.tar", originalPath: "/tmp/old-cache.tar", size: "128 MB", deletedAt: "昨天 23:40", expiresIn: "5 天", owner: "www-data", reason: "缓存包过期" },
-  { id: "trash-3", name: "index.backup.html", originalPath: "/var/www/html/index.backup.html", size: "21 KB", deletedAt: "昨天 18:12", expiresIn: "5 天", owner: "deploy", reason: "发布后清理" },
-];
-
 const initialTerminalSessions: TerminalSessionRecord[] = [
   { id: "term-session-1", host: "panel-se-01", ip: "10.0.0.11", user: "root", cwd: "/var/www/html", status: "connected", latency: "38ms", startedAt: "今天 10:21", lastCommand: "systemctl status nginx", privilege: "sudo" },
   { id: "term-session-2", host: "panel-bj-02", ip: "10.0.1.22", user: "deploy", cwd: "/srv/shop", status: "connected", latency: "52ms", startedAt: "今天 10:04", lastCommand: "tail -f storage/logs/laravel.log", privilege: "user" },
@@ -244,4 +238,4 @@ const initialAclPolicies: AclPolicy[] = [
   { id: "pol-8", name: "权限管理", module: "权限", risk: "高", desc: "允许变更用户、角色和权限项绑定。", roles: ["管理员"], lastUpdated: "今天 10:02" },
 ];
 
-export { topbarNotifications, topbarHelpLinks, auditRows, dbRows, initialDatabaseBackupPlans, initialDatabaseBackupTasks, initialDatabaseRestorePoints, initialDatabaseSlowQueries, initialProxyEndpoints, initialProxyRules, initialSettingsChanges, initialTokenRows, initialHostRecords, initialSiteRecords, initialFileRecords, initialFileUploads, initialTrashFiles, initialTerminalSessions, initialTerminalSnippets, initialTerminalHistory, initialServiceRecords, initialFirewallRules, initialFirewallDenyRecords, initialDeployJobs, initialRollbackRecords, initialAuditRecords, databaseAuditRecords, initialAuditExports, permissionOptions, initialAclUsers, initialAclRoles, initialAclPolicies };
+export { topbarNotifications, topbarHelpLinks, auditRows, dbRows, initialDatabaseBackupPlans, initialDatabaseBackupTasks, initialDatabaseRestorePoints, initialDatabaseSlowQueries, initialProxyEndpoints, initialProxyRules, initialSettingsChanges, initialTokenRows, initialHostRecords, initialSiteRecords, initialFileRecords, initialFileUploads, initialTerminalSessions, initialTerminalSnippets, initialTerminalHistory, initialServiceRecords, initialFirewallRules, initialFirewallDenyRecords, initialDeployJobs, initialRollbackRecords, initialAuditRecords, databaseAuditRecords, initialAuditExports, permissionOptions, initialAclUsers, initialAclRoles, initialAclPolicies };

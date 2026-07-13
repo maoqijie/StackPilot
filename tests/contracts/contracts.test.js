@@ -9,6 +9,7 @@ import {
   ExecuteTerminalSnippetRequestSchema, TerminalSnippetListResponseSchema,
   AgentSiteSnapshotSchema, CertificateRenewalTaskParametersSchema, CreateCertificateRenewalRequestSchema,
   CreateFileUploadRequestSchema, FileUploadRecordSchema,
+  TrashMutationResponseSchema, TrashPayloadSchema,
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
@@ -134,6 +135,16 @@ test("file upload contracts reject paths and inconsistent progress", () => {
   const record = { id: crypto.randomUUID(), fileName: request.fileName, targetDirectory: request.targetDirectory, targetPath: "releases/2026/artifact.zip", sizeBytes: request.sizeBytes, contentType: request.contentType, receivedBytes: 10, status: "completed", owner: "Admin", sha256: "a".repeat(64), errorMessage: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), completedAt: new Date().toISOString() };
   assert.equal(FileUploadRecordSchema.safeParse(record).success, true);
   assert.equal(FileUploadRecordSchema.safeParse({ ...record, receivedBytes: 9 }).success, false);
+});
+
+test("file trash contracts expose lifecycle data without quarantine paths", () => {
+  const now = new Date().toISOString();
+  const entry = { id: crypto.randomUUID(), name: "old.log", kind: "file", originalPath: "/var/www/old.log", sizeBytes: 12, deletedAt: now, expiresAt: now, owner: "Admin", reason: "从文件管理删除" };
+  const trash = { entries: [entry], recentlyRestored: [], retentionDays: 7, collectedAt: now };
+  assert.equal(TrashPayloadSchema.safeParse(trash).success, true);
+  assert.equal(TrashPayloadSchema.safeParse({ ...trash, entries: [{ ...entry, quarantinePath: "/var/www/.stackpilot-trash/private" }] }).success, false);
+  assert.equal(TrashPayloadSchema.safeParse({ ...trash, entries: [{ ...entry, originalPath: "../old.log" }] }).success, false);
+  assert.equal(TrashMutationResponseSchema.safeParse({ message: "old.log 已恢复", trash }).success, true);
 });
 
 test("agent protocol schemas reject incompatible and generic command tasks", () => {
