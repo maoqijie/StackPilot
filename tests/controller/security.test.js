@@ -90,6 +90,23 @@ test("Agent control-plane reads require an authorized API token", async () => {
   });
 });
 
+test("file trash APIs persist reads, restore and permanent deletion", async () => {
+  await withServer({}, async (baseUrl, { apiToken, database }) => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    database.prepare("INSERT INTO file_trash_entries(entry_id,name,kind,original_path,size_bytes,deleted_at,expires_at,owner,reason) VALUES(?,?,?,?,?,?,?,?,?)")
+      .run(id, "old.log", "file", "/tmp/old.log", 1024, "2026-07-14T00:00:00.000Z", "2026-07-21T00:00:00.000Z", "root", "日志轮转");
+    assert.equal((await fetch(`${baseUrl}/api/files/trash`)).status, 401);
+    const listed = await jsonResponse(await fetch(`${baseUrl}/api/files/trash`, { headers: authHeaders(apiToken) }));
+    assert.equal(listed.status, 200);
+    assert.deepEqual(listed.body.entries.map((entry) => entry.name), ["old.log"]);
+    const restored = await jsonResponse(await fetch(`${baseUrl}/api/files/trash/${id}/restore`, { method: "POST", headers: authHeaders(apiToken), body: "{}" }));
+    assert.equal(restored.status, 200);
+    assert.equal(restored.body.trash.entries.length, 0);
+    assert.equal(restored.body.trash.recentlyRestored[0].name, "old.log");
+    assert.equal((await fetch(`${baseUrl}/api/files/trash/${id}`, { method: "DELETE", headers: authHeaders(apiToken), body: "{}" })).status, 404);
+  });
+});
+
 test("administrator control-plane APIs manage enrollment, nodes and task status without exposing credentials", async () => {
   const repository = new (await import("../../apps/controller/dist/repositories/agentControlRepository.js")).MemoryAgentControlRepository();
   const platform = new FakePlatformAdapter();

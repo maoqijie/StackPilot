@@ -12,6 +12,7 @@ function ConfirmDialog({
   onClose,
   tone = "danger",
   className,
+  confirmDisabled = false,
 }: {
   title: string;
   message: string;
@@ -21,6 +22,7 @@ function ConfirmDialog({
   onClose: () => void;
   tone?: "danger" | "warning";
   className?: string;
+  confirmDisabled?: boolean;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -97,7 +99,7 @@ function ConfirmDialog({
         </div>
         <footer>
           <button className="ghost" type="button" data-confirm-cancel onClick={onClose}>取消</button>
-          <button className={tone === "danger" ? "trash-destructive" : "primary"} type="button" onClick={onConfirm}>{confirmLabel}</button>
+          <button className={tone === "danger" ? "trash-destructive" : "primary"} type="button" disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel}</button>
         </footer>
       </div>
     </>,

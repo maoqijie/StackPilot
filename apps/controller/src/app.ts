@@ -38,6 +38,8 @@ import { loadOrCreateAuditKey } from "./security/secretStore.js";
 import { openDatabase } from "./database/database.js";
 import { SqliteAgentControlRepository } from "./repositories/sqliteAgentControlRepository.js";
 import { requestSource } from "./http/trustedProxy.js";
+import { FileTrashService } from "./modules/files/fileTrashService.js";
+import { MemoryFileTrashRepository, SqliteFileTrashRepository, type FileTrashRepository } from "./modules/files/fileTrashRepository.js";
 
 export type AppOptions = {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -52,7 +54,7 @@ export type AppOptions = {
   identity?: IdentityService | null;
 };
 
-export function createControllerServices(platform: PlatformAdapter, repoRoot: string, config: ControllerConfig, agentRepository?: AgentControlRepository): Services {
+export function createControllerServices(platform: PlatformAdapter, repoRoot: string, config: ControllerConfig, agentRepository?: AgentControlRepository, fileTrashRepository?: FileTrashRepository): Services {
   const state = new MemoryTaskStateRepository();
   const exports = new FileExportRepository(repoRoot);
   const repository = agentRepository ?? new FileAgentControlRepository(isAbsolute(config.agentStatePath) ? config.agentStatePath : resolve(repoRoot, config.agentStatePath));
@@ -61,6 +63,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
     sites: new SiteMonitoringService(new NginxSiteCollector(config.nginxConfigDirs)),
+    fileTrash: new FileTrashService(fileTrashRepository ?? new MemoryFileTrashRepository()),
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
     schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform),
@@ -85,7 +88,8 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
   const database = options.database ?? (config.masterKey ? openDatabase(isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath)) : null);
   const identity = options.identity === undefined ? (database && config.masterKey ? new IdentityService(database, loadOrCreateAuditKey(database,parseMasterKey(config.masterKey)), config.sessionSeconds) : null) : options.identity;
   const agentRepository = options.agentRepository ?? (database ? new SqliteAgentControlRepository(database,identity?.audit) : undefined);
-  const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository);
+  const fileTrashRepository = database ? new SqliteFileTrashRepository(database) : undefined;
+  const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, fileTrashRepository);
   const logger = options.logger ?? consoleLogger;
   const surface = options.surface ?? "all";
 

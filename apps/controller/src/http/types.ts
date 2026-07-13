@@ -10,11 +10,12 @@ import type { NodeService } from "../modules/nodes/nodeService.js";
 import type { HostMonitoringService } from "../modules/hosts/hostMonitoringService.js";
 import type { SiteMonitoringService } from "../modules/sites/siteMonitoringService.js";
 import type { RemoteTaskService } from "../modules/remote-tasks/remoteTaskService.js";
+import type { FileTrashService } from "../modules/files/fileTrashService.js";
 import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
 
-export type Services = { overview: OverviewService; hosts: HostMonitoringService; sites: SiteMonitoringService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService };
+export type Services = { overview: OverviewService; hosts: HostMonitoringService; sites: SiteMonitoringService; fileTrash: FileTrashService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService };
 export type RequestContext = {
   request: IncomingMessage;
   response: ServerResponse;

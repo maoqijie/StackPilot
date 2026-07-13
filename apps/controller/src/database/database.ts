@@ -15,6 +15,7 @@ export function openDatabase(path: string): Database.Database {
   migrateDatabase(database, [
     { version: 1, name: "identity-rbac-agent-audit", sql: readFileSync(resolve(migrationDirectory,"001_identity.sql"), "utf8") },
     { version: 2, name: "release-metadata", sql: readFileSync(resolve(migrationDirectory,"002_release_metadata.sql"), "utf8") },
+    { version: 3, name: "file-trash", sql: readFileSync(resolve(migrationDirectory,"003_file_trash.sql"), "utf8") },
   ]);
   return database;
 }
