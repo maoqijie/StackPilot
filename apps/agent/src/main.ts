@@ -46,8 +46,9 @@ export async function runAgent(env: NodeJS.ProcessEnv | Record<string, string | 
   let failures = 0;
   while (!signal?.aborted) {
     try {
-      const telemetry = await collectAgentTelemetry(config.platform).catch(() => undefined);
-      AgentHeartbeatResponseSchema.parse(await client.json("/api/agent/heartbeat", createHeartbeat(config, identity.nodeId, [...AGENT_CAPABILITIES], telemetry), identity));
+      let telemetryCollectionFailed = false;
+      const telemetry = await collectAgentTelemetry(config.platform).catch(() => { telemetryCollectionFailed = true; return undefined; });
+      AgentHeartbeatResponseSchema.parse(await client.json("/api/agent/heartbeat", createHeartbeat(config, identity.nodeId, [...AGENT_CAPABILITIES], telemetry, telemetryCollectionFailed), identity));
       for (const pending of executor.pendingUpdates()) { await client.json("/api/agent/tasks/status", pending, identity); await executor.markReported(pending.taskId); }
       const poll = RemoteTaskPollResponseSchema.parse(await client.json("/api/agent/tasks/poll", {}, identity));
       for (const taskId of poll.cancelledTaskIds) executor.cancel(taskId);

@@ -43,7 +43,12 @@ export const AgentTelemetrySnapshotSchema = z.object({
   ]).nullable(),
   disks: z.array(AgentTelemetryDiskVolumeSchema).max(AGENT_TELEMETRY_MAX_DISK_VOLUMES),
   uptimeSeconds: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-}).strict();
+}).strict().superRefine((value, context) => {
+  const totalBytes = value.disks.reduce((sum, disk) => sum + disk.totalBytes, 0);
+  const usedBytes = value.disks.reduce((sum, disk) => sum + disk.usedBytes, 0);
+  if (!Number.isSafeInteger(totalBytes)) context.addIssue({ code: "custom", message: "aggregate disk totalBytes must be a safe integer", path: ["disks"] });
+  if (!Number.isSafeInteger(usedBytes)) context.addIssue({ code: "custom", message: "aggregate disk usedBytes must be a safe integer", path: ["disks"] });
+});
 
 export const AgentHealthSchema = z.object({
   status: z.enum(["healthy", "degraded"]),

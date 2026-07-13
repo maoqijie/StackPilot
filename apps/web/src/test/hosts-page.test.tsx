@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchHosts, type HostMonitoringRecord } from "../api/hostsApi";
+import { formatTimestamp } from "../features/hosts/viewModel";
 import { HostsPage } from "../pages/HostsPage";
 
 vi.mock("../api/hostsApi", () => ({ fetchHosts: vi.fn() }));
@@ -65,7 +66,11 @@ describe("hosts live monitoring page", () => {
     vi.mocked(fetchHosts).mockResolvedValue({ collectedAt: "2026-07-12T04:30:02.000Z", hosts: [host()] });
     render(<HostsPage page="hosts" notify={notify} />);
     await screen.findAllByTitle(longHostname);
+    const diskTrigger = screen.getAllByRole("button", { name: "磁盘使用率 80%" })[0];
+    fireEvent.mouseEnter(diskTrigger);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 420)); });
     const tooltip = screen.getAllByRole("tooltip")[0];
+    expect(tooltip.parentElement).toBe(document.body);
     expect(tooltip).toHaveTextContent("root (/)");
     expect(tooltip).toHaveTextContent("60% · 已用 120.0 GB / 200.0 GB");
     expect(tooltip).toHaveTextContent("data (/data)");
@@ -86,9 +91,21 @@ describe("hosts live monitoring page", () => {
       cpuPercent: null, memory: null, disk: null, uptimeSeconds: null, backup: null, services: [],
     })] });
     render(<HostsPage page="hosts" notify={notify} />);
-    expect((await screen.findAllByText("未知")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("在线 · 等待采集")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("等待采集").length).toBeGreaterThanOrEqual(3);
     expect(screen.queryByText("0%")).not.toBeInTheDocument();
+  });
+
+  it("includes pending and awaiting agents in the default alert queue", async () => {
+    vi.mocked(fetchHosts).mockResolvedValue({ collectedAt: "2026-07-12T04:30:02.000Z", hosts: [
+      host({ id: "pending", name: "pending-node", connectionStatus: "pending", healthStatus: "unknown", telemetryFreshness: "awaiting", telemetryCollectedAt: null, cpuPercent: null, memory: null, disk: null }),
+      host({ id: "legacy", name: "legacy-node", connectionStatus: "online", healthStatus: "unknown", telemetryFreshness: "awaiting", telemetryCollectedAt: null, cpuPercent: null, memory: null, disk: null }),
+    ] });
+    render(<HostsPage page="hosts-alert" notify={notify} />);
+    expect(await screen.findAllByText("pending-node")).not.toHaveLength(0);
+    expect(screen.getAllByText("legacy-node")).not.toHaveLength(0);
+    expect(screen.getAllByText("待连接").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("在线 · 等待采集").length).toBeGreaterThan(0);
   });
 
   it("keeps production filtering scoped to the production environment", async () => {
@@ -98,6 +115,7 @@ describe("hosts live monitoring page", () => {
     expect(screen.queryByText("dev-node")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: /环境/ })).not.toBeInTheDocument();
     expect(screen.getByLabelText("CPU 24%，内存 48%，磁盘 80%")).toBeInTheDocument();
+    expect(screen.getAllByText(formatTimestamp("2026-07-12T04:30:00.000Z")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /刷新|重新采集|重新扫描/ })).not.toBeInTheDocument();
   });
 });

@@ -48,7 +48,8 @@ export async function routeRequest(context: RequestContext): Promise<void> {
   if (context.url.pathname === "/api/hosts" && method === "GET") {
     context.identity?.require(context.principal, "overview:read");
     const nodeScope = context.principal?.nodeScope ?? [];
-    sendJson(response,200,await services.hosts.getHosts(nodeScope==="all"||nodeScope.length>0,nodeScope),HostMonitoringPayloadSchema);return;
+    const canReadNodes = Boolean(context.principal?.permissions.has("nodes:read"));
+    sendJson(response,200,await services.hosts.getHosts(canReadNodes&&(nodeScope==="all"||nodeScope.length>0),nodeScope),HostMonitoringPayloadSchema);return;
   }
   if (parts[0] !== "api" || parts[1] !== "overview") throw notFound();
   context.identity?.require(context.principal, "overview:read");
