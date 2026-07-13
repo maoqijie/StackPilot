@@ -78,3 +78,20 @@ test("executor enforces timeout and cooperative cancellation with an injected ha
     assert.equal((await execution).status, "cancelled");
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test("executor reports cancellation when a handler returns after its abort signal", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "stackpilot-agent-test-"));
+  const lateRegistry = {
+    ...taskRegistry,
+    "system.summary.read": {
+      ...taskRegistry["system.summary.read"], timeoutMs: 5,
+      run: () => new Promise((resolve) => setTimeout(() => resolve({ message: "late result", truncated: false }), 15)),
+    },
+  };
+  try {
+    const executor = new TaskExecutor(join(directory, "late.json"), nodeId, "linux", ["system.summary.read"], lateRegistry); await executor.load();
+    const result = await executor.execute(task());
+    assert.equal(result.status, "cancelled");
+    assert.equal(result.errorCode, "TASK_CANCELLED_OR_TIMEOUT");
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});

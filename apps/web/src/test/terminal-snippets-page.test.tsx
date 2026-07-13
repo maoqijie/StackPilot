@@ -1,48 +1,57 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createTerminalTask } from "../api/terminalApi";
 import { TerminalPage } from "../pages/TerminalPage";
 import type { Notify } from "../types/app";
+import { resetTerminalApiMocks, terminalNode } from "./terminalTestFixtures";
+
+vi.mock("../api/identityApi", () => ({ reauthenticate: vi.fn() }));
+vi.mock("../api/terminalApi", () => ({ createTerminalTask: vi.fn(), fetchTerminalHosts: vi.fn(), fetchTerminalNodes: vi.fn(), fetchTerminalTasks: vi.fn() }));
 
 describe("terminal snippets page", () => {
-  it("opens snippet details in a body-level modal drawer", async () => {
+  beforeEach(resetTerminalApiMocks);
+
+  it("opens controlled command details in a body-level modal drawer", async () => {
     const user = userEvent.setup();
     render(<TerminalPage page="terminal-snippets" notify={vi.fn()} />);
 
+    await screen.findByRole("button", { name: "执行 磁盘占用" });
     await user.click(screen.getByRole("button", { name: "查看 磁盘占用 详情" }));
 
     const drawer = screen.getByRole("dialog", { name: "磁盘占用" });
     expect(drawer.parentElement).toBe(document.body);
     expect(drawer).toHaveClass("terminal-snippet-drawer");
     expect(within(drawer).getByText("df -h")).toBeInTheDocument();
-    expect(within(drawer).getByText("目标会话")).toBeInTheDocument();
+    expect(within(drawer).getByText("Agent 受控只读任务，不提供任意 Shell")).toBeInTheDocument();
   });
 
-  it("requires a warning confirmation before running a change snippet", async () => {
+  it("reauthenticates before running a service status snippet", async () => {
     const user = userEvent.setup();
     const notify = vi.fn<Notify>();
     render(<TerminalPage page="terminal-snippets" notify={notify} />);
 
-    await user.click(screen.getByRole("button", { name: "执行 重启 Worker" }));
-    const dialog = screen.getByRole("alertdialog", { name: "确认执行变更命令" });
-    expect(dialog).toHaveClass("terminal-snippet-confirm");
-    expect(within(dialog).getByText("systemctl restart worker.service")).toBeInTheDocument();
-
+    const run = await screen.findByRole("button", { name: "执行 Nginx 状态" });
+    await vi.waitFor(() => expect(run).toBeEnabled());
+    await user.click(run);
+    const dialog = screen.getByRole("alertdialog", { name: "确认执行受控命令" });
+    expect(within(dialog).getByText("systemctl status nginx --no-pager")).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText("当前密码"), "current-password");
     await user.click(within(dialog).getByRole("button", { name: "确认执行" }));
 
-    expect(screen.queryByRole("alertdialog", { name: "确认执行变更命令" })).not.toBeInTheDocument();
-    expect(notify).toHaveBeenCalledWith("panel-se-01 输出已记录", "success");
+    await vi.waitFor(() => expect(createTerminalTask).toHaveBeenCalledWith(
+      terminalNode.nodeId,
+      expect.objectContaining({ type: "service.status.read", parameters: { serviceName: "nginx" } }),
+      expect.any(String),
+    ));
+    expect(notify).toHaveBeenCalledWith("真实任务已提交，等待 Agent 返回结果", "success");
   });
 
-  it("keeps dangerous snippets inspectable but blocks direct execution", async () => {
-    const user = userEvent.setup();
-    render(<TerminalPage page="terminal-snippets" notify={vi.fn()} />);
+  it("disables execution for accounts without task creation permission", async () => {
+    render(<TerminalPage page="terminal-snippets" notify={vi.fn()} permissions={["nodes:read", "tasks:read"]} />);
 
-    expect(screen.getByRole("button", { name: "执行 清理临时缓存" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "查看 清理临时缓存 详情" }));
-
-    const drawer = screen.getByRole("dialog", { name: "清理临时缓存" });
-    expect(within(drawer).getByText("危险命令，已禁止直接执行")).toBeInTheDocument();
-    expect(within(drawer).getByRole("button", { name: /已阻止执行/ })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "执行 系统负载" })).toBeDisabled();
+    expect(screen.getByLabelText("命令输入")).toBeDisabled();
+    expect(createTerminalTask).not.toHaveBeenCalled();
   });
 });

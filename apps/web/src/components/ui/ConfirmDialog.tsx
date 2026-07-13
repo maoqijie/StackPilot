@@ -27,22 +27,27 @@ function ConfirmDialog({
   children?: React.ReactNode;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
   const titleId = useId();
   const descriptionId = useId();
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusFrame = window.requestAnimationFrame(() => {
-      dialog.querySelector<HTMLElement>("[data-confirm-cancel]")?.focus({ preventScroll: true });
+      dialog.querySelector<HTMLElement>("[data-confirm-initial], [data-confirm-cancel]")?.focus({ preventScroll: true });
     });
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || !document.contains(dialog)) return;
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -76,7 +81,7 @@ function ConfirmDialog({
         : drawerRestoreFallback(dialog);
       restoreTarget?.focus({ preventScroll: true });
     };
-  }, [onClose]);
+  }, []);
 
   return createPortal(
     <>

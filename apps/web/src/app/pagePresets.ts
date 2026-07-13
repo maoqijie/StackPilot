@@ -13,7 +13,7 @@ function auditPagePreset(page: PageKey) {
 }
 
 function databasePagePreset(page: PageKey) {
-  if (page === "databases-backups") return { type: "全部", status: "全部", host: "全部主机", search: "", mode: "backups", subtitle: "备份计划视图，聚焦备份成功率、最近任务和恢复演练。" };
+  if (page === "databases-backups") return { type: "全部", status: "全部", host: "全部主机", search: "", mode: "backups", subtitle: "真实备份文件视图，聚焦在线备份、完整性校验和隔离恢复演练。" };
   if (page === "databases-slow") return { type: "全部", status: "告警", host: "全部主机", search: "", mode: "slow", subtitle: "慢查询视图，默认筛选连接延迟或慢查询较多的实例。" };
   return { type: "全部", status: "全部", host: "全部主机", search: "", mode: "instances", subtitle: "集中管理和监控所有数据库实例的运行状态、备份与慢查询。" };
 }

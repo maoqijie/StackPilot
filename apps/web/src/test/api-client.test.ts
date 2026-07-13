@@ -47,4 +47,10 @@ describe("requestJson", () => {
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(init.headers).toMatchObject({ "X-CSRF-Token": "csrf-token-held-only-in-memory-123456", "X-Reauth-Proof": "reauth-proof-held-only-in-memory-123456" });
   });
+
+  it("does not force a JSON content type for binary request bodies", async () => {
+    const fetchMock=vi.fn().mockResolvedValue(new Response(JSON.stringify({ok:true}),{status:200,headers:{"Content-Type":"application/json"}}));vi.stubGlobal("fetch",fetchMock);
+    const file=new File(["content"],"index.html",{type:"text/html"});await requestJson("/files/upload",{method:"POST",body:file,headers:{"Content-Type":"application/octet-stream"}});
+    expect(fetchMock).toHaveBeenCalledWith("/api/files/upload",expect.objectContaining({headers:expect.objectContaining({"Content-Type":"application/octet-stream"})}));
+  });
 });
