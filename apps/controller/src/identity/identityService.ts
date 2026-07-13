@@ -20,7 +20,7 @@ export const PERMISSIONS: ReadonlyArray<[Permission, "low" | "medium" | "high", 
 ];
 const roleDefinitions = [
   ["administrator","管理员",PERMISSIONS.map(([key]) => key)],
-  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","sites:read","sites:renew","files:read","files:write","files:delete","tasks:read","tasks:create","tasks:cancel","terminal:read","terminal:execute"]],
+  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","sites:read","sites:renew","files:read","files:write","tasks:read","tasks:create","tasks:cancel","terminal:read","terminal:execute"]],
   ["audit-reader","只读审计员",["overview:read","nodes:read","sites:read","tasks:read","audit:read"]],
 ] as const;
 
