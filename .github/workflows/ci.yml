@@ -125,8 +125,8 @@ jobs:
           STACKPILOT_MASTER_KEY_PATH="$PWD/output/ci-secrets/master-key" \
           STACKPILOT_PUBLIC_ORIGIN="https://stackpilot.invalid" \
           docker compose -f deploy/docker/compose.yaml config --quiet
-          sudo systemd-sysusers deploy/systemd/stackpilot-controller.sysusers
-          sudo systemd-sysusers deploy/systemd/stackpilot-agent.sysusers
+          sudo systemd-sysusers "$PWD/deploy/systemd/stackpilot-controller.sysusers"
+          sudo systemd-sysusers "$PWD/deploy/systemd/stackpilot-agent.sysusers"
           systemd-analyze verify deploy/systemd/*.service
       - name: Build pinned production images
         run: |
