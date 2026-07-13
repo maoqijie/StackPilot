@@ -68,9 +68,21 @@ export class FileStorageSafety {
           throw new ServiceError(409, "BAD_REQUEST", "目录在操作前发生变化，请重试");
         }
       }
-      return await operation({ absolutePath: candidate, operationPath, realRoot });
+      const directory = { absolutePath: candidate, operationPath, realRoot };
+      await this.assertStableDirectory(directory);
+      return await operation(directory);
     } finally {
       await handle.close();
+    }
+  }
+
+  async assertStableDirectory(directory: StableDirectory) {
+    if (process.platform !== "linux") return;
+    let openedPath: string;
+    try { openedPath = await realpath(directory.operationPath); }
+    catch { throw new ServiceError(409, "BAD_REQUEST", "目录在操作前发生变化，请重试"); }
+    if (openedPath !== directory.absolutePath || !isWithin(directory.realRoot, openedPath)) {
+      throw new ServiceError(409, "BAD_REQUEST", "目录在操作前发生变化，请重试");
     }
   }
 
@@ -83,6 +95,7 @@ export class FileStorageSafety {
   }
 
   async stableChild(parent: StableDirectory, name: string): Promise<StableChild> {
+    await this.assertStableDirectory(parent);
     const operationPath = join(parent.operationPath, name);
     const absolutePath = join(parent.absolutePath, name);
     let resolved: string;

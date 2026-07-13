@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   executeTerminalSnippet, fetchTerminalSnippetNodes, fetchTerminalSnippets, fetchTerminalSnippetTasks,
   updateTerminalSnippetFavorite,
@@ -33,6 +33,8 @@ describe("terminal snippets real backend page", () => {
     vi.mocked(reauthenticate).mockReset().mockResolvedValue({ proof: "one-time-proof-with-more-than-thirty-two-characters", expiresAt: "2026-07-14T00:05:00.000Z" });
     vi.mocked(executeTerminalSnippet).mockReset().mockResolvedValue({ snippet: { ...snippets[0], lastUsedAt: collectedAt }, task });
   });
+
+  afterEach(() => vi.useRealTimers());
 
   it("loads Controller snippets and persists favorite state", async () => {
     const user = userEvent.setup(); render(<TerminalPage page="terminal-snippets" notify={vi.fn()} permissions={[...permissions]} />);
@@ -71,6 +73,57 @@ describe("terminal snippets real backend page", () => {
     await user.click(within(dialog).getByRole("button", { name: "确认执行" }));
     await waitFor(() => expect(executeTerminalSnippet).toHaveBeenCalled());
     expect(vi.mocked(executeTerminalSnippet).mock.calls[0][1].nodeId).toBe(secondNode.nodeId);
+  });
+
+  it("rejects before reauthentication when the pending default Agent goes offline", async () => {
+    vi.useFakeTimers();
+    const offlineNode = { ...node, status: "offline" as const };
+    const replacementNode = {
+      ...node,
+      nodeId: "44444444-4444-4444-8444-444444444444",
+      nodeName: "agent-sg-02",
+    };
+    const notify = vi.fn();
+    vi.mocked(fetchTerminalSnippetNodes)
+      .mockResolvedValueOnce({ nodes: [node] })
+      .mockResolvedValue({ nodes: [offlineNode, replacementNode] });
+
+    render(<TerminalPage page="terminal-snippets" notify={notify} permissions={[...permissions]} />);
+    await act(async () => undefined);
+    fireEvent.click(screen.getByRole("button", { name: "执行 系统资源概览" }));
+    const dialog = screen.getByRole("alertdialog", { name: "确认执行受控命令" });
+    fireEvent.input(within(dialog).getByLabelText("当前账号密码"), { target: { value: "correct password" } });
+
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(fetchTerminalSnippetNodes).toHaveBeenCalledTimes(2);
+    await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "确认执行" })); });
+
+    expect(notify).toHaveBeenCalledWith("目标 Agent 能力已变更，请重新选择命令", "danger");
+    expect(reauthenticate).not.toHaveBeenCalled();
+    expect(executeTerminalSnippet).not.toHaveBeenCalled();
+  });
+
+  it("rejects before reauthentication when the pending Agent capability is narrowed", async () => {
+    vi.useFakeTimers();
+    const restrictedNode = { ...node, allowedCapabilities: [] };
+    const notify = vi.fn();
+    vi.mocked(fetchTerminalSnippetNodes)
+      .mockResolvedValueOnce({ nodes: [node] })
+      .mockResolvedValue({ nodes: [restrictedNode] });
+
+    render(<TerminalPage page="terminal-snippets" notify={notify} permissions={[...permissions]} />);
+    await act(async () => undefined);
+    fireEvent.click(screen.getByRole("button", { name: "执行 系统资源概览" }));
+    const dialog = screen.getByRole("alertdialog", { name: "确认执行受控命令" });
+    fireEvent.input(within(dialog).getByLabelText("当前账号密码"), { target: { value: "correct password" } });
+
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(fetchTerminalSnippetNodes).toHaveBeenCalledTimes(2);
+    await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "确认执行" })); });
+
+    expect(notify).toHaveBeenCalledWith("目标 Agent 能力已变更，请重新选择命令", "danger");
+    expect(reauthenticate).not.toHaveBeenCalled();
+    expect(executeTerminalSnippet).not.toHaveBeenCalled();
   });
 
   it("keeps dangerous snippets inspectable but never executable", async () => {

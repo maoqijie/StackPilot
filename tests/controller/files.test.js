@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
@@ -32,7 +32,7 @@ test("file mutations serialize concurrent targets and metadata updates", async (
   } finally { await rm(work, { recursive: true, force: true }); }
 });
 
-test("file mutations stay anchored when a validated parent path is replaced", { skip: process.platform !== "linux" }, async () => {
+test("file mutations reject a validated parent moved outside the managed root", { skip: process.platform !== "linux" }, async () => {
   const work = await mkdtemp(join(tmpdir(), "stackpilot-files-anchor-")); const root = join(work, "root"); const trash = join(work, "trash"); const outside = join(work, "outside"); const site = join(root, "site"); const moved = join(root, "site-moved");
   await mkdir(root); await mkdir(outside); await mkdir(site); const service = new FileService(root, trash, 1024, work); const stable = service.safety.withStableDirectory.bind(service.safety); let replaced = false;
   service.safety.withStableDirectory = (value, operation) => stable(value, async (directory) => {
@@ -40,9 +40,24 @@ test("file mutations stay anchored when a validated parent path is replaced", { 
     return operation(directory);
   });
   try {
-    await service.upload("/site", "index.html", (async function* () { yield "anchored"; })(), "tester");
-    assert.equal(await readFile(join(moved, "index.html"), "utf8"), "anchored"); await assert.rejects(access(join(outside, "index.html")));
+    await assert.rejects(service.upload("/site", "index.html", (async function* () { yield "blocked"; })(), "tester"), /目录在操作前发生变化/);
+    await assert.rejects(access(join(moved, "index.html"))); await assert.rejects(access(join(outside, "index.html")));
   } finally { await rm(work, { recursive: true, force: true }); }
+});
+
+test("independent file services atomically refuse rename overwrite", async () => {
+  const work = await mkdtemp(join(tmpdir(), "stackpilot-files-independent-")); const root = join(work, "root"); const trashA = join(work, "trash-a"); const trashB = join(work, "trash-b"); await mkdir(root); await writeFile(join(root, "first.txt"), "first"); await writeFile(join(root, "second.txt"), "second");
+  try {
+    const results = await Promise.allSettled([new FileService(root, trashA, 1024, work).rename("/first.txt", "target.txt"), new FileService(root, trashB, 1024, work).rename("/second.txt", "target.txt")]);
+    assert.equal(results.filter((result) => result.status === "fulfilled").length, 1); assert.equal(results.filter((result) => result.status === "rejected").length, 1);
+    const target = await readFile(join(root, "target.txt"), "utf8"); const remaining = target === "first" ? "second.txt" : "first.txt"; assert.equal(await readFile(join(root, remaining), "utf8"), target === "first" ? "second" : "first");
+  } finally { await rm(work, { recursive: true, force: true }); }
+});
+
+test("directory rename is rejected without atomic no-replace support", async () => {
+  const work = await mkdtemp(join(tmpdir(), "stackpilot-files-directory-")); const root = join(work, "root"); const trash = join(work, "trash"); await mkdir(root); await mkdir(join(root, "site"));
+  try { await assert.rejects(new FileService(root, trash, 1024, work).rename("/site", "renamed"), /仅支持重命名普通文件/); assert.equal((await stat(join(root, "site"))).isDirectory(), true); }
+  finally { await rm(work, { recursive: true, force: true }); }
 });
 
 test("file storage rejects overlapping roots and untrusted trash metadata", async () => {
