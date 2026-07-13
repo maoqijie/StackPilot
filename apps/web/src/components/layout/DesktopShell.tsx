@@ -25,6 +25,7 @@ import { SettingsPage } from "../../pages/SettingsPage";
 import { SitesPage } from "../../pages/SitesPage";
 import { SystemdPage } from "../../pages/SystemdPage";
 import { TerminalPage } from "../../pages/TerminalPage";
+import { TerminalSnippetsPage } from "../../pages/TerminalSnippetsPage";
 import type { Notify, PageKey, SetPage } from "../../types/app";
 import { drawerFocusableElements } from "../../utils/focus";
 
@@ -226,7 +227,8 @@ function DesktopShellContent({
               : <DatabasesPage page={page} setPage={setPage} notify={notify} />
           )}
           {activeModule === "files" && <FilesModule page={page} notify={notify} />}
-          {activeModule === "terminal" && <TerminalPage page={page} notify={notify} />}
+          {page === "terminal-snippets" && <TerminalSnippetsPage notify={notify} />}
+          {activeModule === "terminal" && page !== "terminal-snippets" && <TerminalPage page={page} notify={notify} />}
           {activeModule === "systemd" && <SystemdPage page={page} notify={notify} />}
           {activeModule === "firewall" && <FirewallPage page={page} notify={notify} />}
           {activeModule === "deploy" && <DeployPage page={page} notify={notify} />}

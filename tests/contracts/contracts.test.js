@@ -5,6 +5,7 @@ import {
   OverviewSummaryPayloadSchema, PathIdSchema, WRITE_METHODS,
   AGENT_PROTOCOL_VERSION, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, CreateRemoteTaskRequestSchema, isAgentProtocolCompatible,
   SiteRuntimePayloadSchema,
+  ExecuteTerminalSnippetRequestSchema, TerminalSnippetListResponseSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
 } from "@stackpilot/contracts";
 
@@ -74,4 +75,12 @@ test("shared schemas validate external request and error contracts at runtime", 
   assert.equal(CreateScheduleJobRequestSchema.safeParse({ name: "backup", cron: "0 4 * * *", command: "true", extra: true }).success, false);
   assert.equal(ApiErrorResponseSchema.safeParse({ code: "BAD_REQUEST", error: "invalid", requestId: "request-1" }).success, true);
   assert.equal(OverviewSummaryPayloadSchema.safeParse({}).success, false);
+});
+
+test("terminal snippet contracts reject browser-supplied commands", () => {
+  const now = new Date().toISOString();
+  assert.equal(TerminalSnippetListResponseSchema.safeParse({ collectedAt: now, snippets: [{ id: "system-summary", version: 1, title: "Summary", command: "df -h", category: "resource", risk: "read", description: "Read resources", favorite: false, lastUsedAt: null, executable: true, requiredCapability: "system.summary.read" }] }).success, true);
+  const request = { nodeId: crypto.randomUUID(), snippetVersion: 1, idempotencyKey: "terminal-contract-1" };
+  assert.equal(ExecuteTerminalSnippetRequestSchema.safeParse(request).success, true);
+  assert.equal(ExecuteTerminalSnippetRequestSchema.safeParse({ ...request, command: "id" }).success, false);
 });

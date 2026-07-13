@@ -47,3 +47,8 @@ test("site TLS probes do not reuse sessions that omit peer certificate metadata"
   assert.match(source, /new HttpsAgent\(\{ keepAlive: false, maxCachedSessions: 0 \}\)/);
   assert.match(source, /agent: siteProbeHttpsAgent/);
 });
+
+test("production server injects SQLite into terminal snippet services", async () => {
+  const source = await readFile(join(sourceRoot, "server.ts"), "utf8");
+  assert.match(source, /createControllerServices\(platform, repoRoot, config,agentRepository,database\)/);
+});

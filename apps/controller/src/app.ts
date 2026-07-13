@@ -23,6 +23,8 @@ import { HostMonitoringService } from "./modules/hosts/hostMonitoringService.js"
 import { SiteMonitoringService } from "./modules/sites/siteMonitoringService.js";
 import { NginxSiteCollector } from "./platform/siteCollector.js";
 import { RemoteTaskService } from "./modules/remote-tasks/remoteTaskService.js";
+import { TerminalSnippetService } from "./modules/terminal/terminalSnippetService.js";
+import { MemoryTerminalSnippetRepository, SqliteTerminalSnippetRepository } from "./modules/terminal/terminalSnippetRepository.js";
 import { NativePlatformAdapter } from "./platform/nativeAdapter.js";
 import type { PlatformAdapter } from "./platform/types.js";
 import { FileExportRepository } from "./repositories/exportRepository.js";
@@ -52,11 +54,13 @@ export type AppOptions = {
   identity?: IdentityService | null;
 };
 
-export function createControllerServices(platform: PlatformAdapter, repoRoot: string, config: ControllerConfig, agentRepository?: AgentControlRepository): Services {
+export function createControllerServices(platform: PlatformAdapter, repoRoot: string, config: ControllerConfig, agentRepository?: AgentControlRepository, database: Database.Database | null = null): Services {
   const state = new MemoryTaskStateRepository();
   const exports = new FileExportRepository(repoRoot);
   const repository = agentRepository ?? new FileAgentControlRepository(isAbsolute(config.agentStatePath) ? config.agentStatePath : resolve(repoRoot, config.agentStatePath));
   const overview = new OverviewService(platform, state, repository);
+  const remoteTasks = new RemoteTaskService(repository);
+  const terminalRepository = database ? new SqliteTerminalSnippetRepository(database) : new MemoryTerminalSnippetRepository();
   return {
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
@@ -66,7 +70,8 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform),
     enrollments: new EnrollmentService(repository),
     nodes: new NodeService(repository),
-    remoteTasks: new RemoteTaskService(repository),
+    remoteTasks,
+    terminalSnippets: new TerminalSnippetService(terminalRepository, remoteTasks),
   };
 }
 
@@ -85,7 +90,7 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
   const database = options.database ?? (config.masterKey ? openDatabase(isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath)) : null);
   const identity = options.identity === undefined ? (database && config.masterKey ? new IdentityService(database, loadOrCreateAuditKey(database,parseMasterKey(config.masterKey)), config.sessionSeconds) : null) : options.identity;
   const agentRepository = options.agentRepository ?? (database ? new SqliteAgentControlRepository(database,identity?.audit) : undefined);
-  const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository);
+  const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, database);
   const logger = options.logger ?? consoleLogger;
   const surface = options.surface ?? "all";
 

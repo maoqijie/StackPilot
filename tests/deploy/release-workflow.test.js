@@ -24,3 +24,8 @@ test("release signs only after scans and uses OIDC without a stored signing key"
   assert.match(release, /cosign sign --yes/);
   assert.doesNotMatch(release, /COSIGN_PRIVATE_KEY|password:.*COSIGN|latest/);
 });
+
+test("release provenance declares the current database schema", async () => {
+  const generator = await read("deploy/scripts/generate-release.mjs");
+  assert.match(generator, /protocol:"1\.0",schema:3/);
+});

@@ -40,7 +40,7 @@ function systemdPagePreset(page: PageKey) {
 }
 
 function terminalPagePreset(page: PageKey) {
-  if (page === "terminal-snippets") return { panel: "snippets", subtitle: "常用命令视图，可一键填充到终端输入。" };
+  if (page === "terminal-snippets") return { panel: "snippets", subtitle: "Controller 管理的受控命令片段与真实 Agent 任务。" };
   if (page === "terminal-history") return { panel: "history", subtitle: "执行历史视图，展示今日命令记录并可复制会话。" };
   return { panel: "sessions", subtitle: "管理终端会话、命令草稿和输出记录。" };
 }
