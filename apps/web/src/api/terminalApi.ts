@@ -1,19 +1,20 @@
 import {
-  AgentNodeListResponseSchema, ExecuteTerminalSnippetResponseSchema, RemoteTaskListResponseSchema,
-  TerminalSnippetListResponseSchema, TerminalSnippetRecordSchema,
+  AgentNodeListResponseSchema, ExecuteTerminalSnippetResponseSchema, HostMonitoringPayloadSchema,
+  RemoteTaskListResponseSchema, RemoteTaskRecordSchema, TerminalSnippetListResponseSchema, TerminalSnippetRecordSchema,
   type ExecuteTerminalSnippetRequest,
 } from "@stackpilot/contracts";
+import type { CreateRemoteTaskRequest } from "@stackpilot/contracts";
 import { requestJson } from "./client";
 
 export function fetchTerminalSnippets(signal?: AbortSignal) {
   return requestJson<unknown>("/terminal/snippets", { signal }).then((payload) => TerminalSnippetListResponseSchema.parse(payload));
 }
 
-export function fetchTerminalNodes(signal?: AbortSignal) {
+export function fetchTerminalSnippetNodes(signal?: AbortSignal) {
   return requestJson<unknown>("/terminal/nodes", { signal }).then((payload) => AgentNodeListResponseSchema.parse(payload));
 }
 
-export function fetchTerminalTasks(signal?: AbortSignal) {
+export function fetchTerminalSnippetTasks(signal?: AbortSignal) {
   return requestJson<unknown>("/terminal/tasks", { signal }).then((payload) => RemoteTaskListResponseSchema.parse(payload));
 }
 
@@ -28,3 +29,10 @@ export function executeTerminalSnippet(snippetId: string, input: ExecuteTerminal
     method: "POST", headers: { "X-Reauth-Proof": reauthProof }, body: JSON.stringify(input), signal,
   }).then((payload) => ExecuteTerminalSnippetResponseSchema.parse(payload));
 }
+
+const fetchTerminalNodes = (signal?: AbortSignal) => requestJson<unknown>("/nodes", { signal }).then((value) => AgentNodeListResponseSchema.parse(value));
+const fetchTerminalHosts = (signal?: AbortSignal) => requestJson<unknown>("/hosts", { signal }).then((value) => HostMonitoringPayloadSchema.parse(value));
+const fetchTerminalTasks = (signal?: AbortSignal) => requestJson<unknown>("/remote-tasks", { signal }).then((value) => RemoteTaskListResponseSchema.parse(value));
+const createTerminalTask = (nodeId: string, input: CreateRemoteTaskRequest, proof: string) => requestJson<unknown>(`/nodes/${encodeURIComponent(nodeId)}/tasks`, { method: "POST", headers: { "X-Reauth-Proof": proof }, body: JSON.stringify(input) }).then((value) => RemoteTaskRecordSchema.parse(value));
+
+export { createTerminalTask, fetchTerminalHosts, fetchTerminalNodes, fetchTerminalTasks };

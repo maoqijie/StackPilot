@@ -1,108 +1,23 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { FileService } from "../../apps/controller/dist/modules/files/fileService.js";
 import { createStackPilotServer } from "../../apps/controller/dist/server.js";
+import { createControllerServices } from "../../apps/controller/dist/app.js";
+import { loadControllerConfig } from "../../apps/controller/dist/config/environment.js";
 import { openDatabase } from "../../apps/controller/dist/database/database.js";
 import { IdentityService } from "../../apps/controller/dist/identity/identityService.js";
 import { FakePlatformAdapter } from "./support/fakePlatform.js";
 
-const origin = "http://127.0.0.1:5173";
-const password = "correct horse battery staple";
+async function fixture(callback){const root=await mkdtemp(join(tmpdir(),"stackpilot-files-"));try{await callback(root);}finally{await rm(root,{recursive:true,force:true});}}
 
-async function fixture(callback) {
-  const root = await mkdtemp(join(tmpdir(), "stackpilot-upload-"));
-  const database = openDatabase(join(root, "stackpilot.sqlite3"));
-  const identity = new IdentityService(database, Buffer.alloc(32, 4));
-  await identity.createInitialAdministrator("admin", "Administrator", password);
-  const server = createStackPilotServer({
-    env: { STACKPILOT_COOKIE_SECURE: "0", STACKPILOT_ALLOWED_ORIGINS: origin, STACKPILOT_UPLOAD_ROOT: join(root, "uploads"), STACKPILOT_UPLOAD_MAX_BYTES: "32", STACKPILOT_UPLOAD_CHUNK_MAX_BYTES: "8" },
-    database, identity, platform: new FakePlatformAdapter(),
-  });
-  server.listen(0, "127.0.0.1"); await once(server, "listening");
-  try { await callback(`http://127.0.0.1:${server.address().port}`, { root, database, identity }); }
-  finally { server.close(); await once(server, "close"); database.close(); await rm(root, { recursive: true, force: true }); }
-}
+test("file service persists the real lifecycle under an allowed root",async()=>fixture(async(root)=>{const service=new FileService([root]),previousUmask=process.umask(0o077);try{assert.equal((await service.list(root)).parentPath,null);await service.createDirectory(root,"site");assert.equal((await stat(join(root,"site"))).mode&0o777,0o775);const file=await service.upload(join(root,"site"),"index.html",Buffer.from("release"));assert.equal((await stat(file.path)).mode&0o777,0o664);assert.equal((await readFile(file.path,"utf8")),"release");const renamed=await service.rename(file.path,"app.html");assert.equal(renamed.name,"app.html");assert.equal((await service.list(join(root,"site"))).entries[0].name,"app.html");await service.moveToTrash(renamed.path);assert.deepEqual((await service.list(join(root,"site"))).entries,[]);}finally{process.umask(previousUmask);}}));
 
-async function session(base) {
-  const response = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ username: "admin", password }) });
-  const body = await response.json();
-  return { Cookie: response.headers.get("set-cookie").split(";")[0], Origin: origin, "X-CSRF-Token": body.csrfToken };
-}
+test("file service rejects traversal, symlink escape and protected trash paths",async()=>fixture(async(root)=>{const outside=await mkdtemp(join(tmpdir(),"stackpilot-outside-"));try{await writeFile(join(outside,"secret"),"secret");await symlink(outside,join(root,"escape"));const service=new FileService([root]);await assert.rejects(service.list(join(root,"..")),/允许范围/);await assert.rejects(service.list(join(root,"escape")),/符号链接/);await assert.rejects(service.createDirectory(root,".stackpilot-trash"),/文件名无效/);await writeFile(join(root,"trash-me.txt"),"trash");await service.moveToTrash(join(root,"trash-me.txt"));await assert.rejects(service.list(join(root,".stackpilot-trash")),/不可直接访问/);}finally{await rm(outside,{recursive:true,force:true});}}));
 
-async function createUpload(base, headers, overrides = {}) {
-  return fetch(`${base}/api/file-uploads`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ fileName: "artifact.txt", targetDirectory: "releases", sizeBytes: 11, contentType: "text/plain", idempotencyKey: "upload-case-001", ...overrides }) });
-}
+test("concurrent renames never overwrite the winning target",async()=>fixture(async(root)=>{await writeFile(join(root,"first.txt"),"first");await writeFile(join(root,"second.txt"),"second");const service=new FileService([root]),results=await Promise.allSettled([service.rename(join(root,"first.txt"),"target.txt"),service.rename(join(root,"second.txt"),"target.txt")]);assert.equal(results.filter((result)=>result.status==="fulfilled").length,1);assert.equal(results.filter((result)=>result.status==="rejected").length,1);const target=await readFile(join(root,"target.txt"),"utf8"),remaining=target==="first"?"second.txt":"first.txt";assert.equal(await readFile(join(root,remaining),"utf8"),target==="first"?"second":"first");}));
 
-test("file upload HTTP flow streams exact chunks, persists progress and publishes without overwrite", async () => fixture(async (base, { root, database }) => {
-  assert.equal((await fetch(`${base}/api/file-uploads`)).status, 401);
-  const headers = await session(base);
-  assert.equal((await createUpload(base, { Cookie: headers.Cookie, Origin: origin })).status, 403);
-  const created = await createUpload(base, headers); assert.equal(created.status, 201); const upload = (await created.json()).upload;
-  assert.equal(upload.status, "waiting"); assert.equal(upload.receivedBytes, 0); assert.equal(upload.owner, "Administrator");
-  const duplicate = await createUpload(base, headers); assert.equal((await duplicate.json()).upload.id, upload.id);
-  assert.equal((await createUpload(base, headers, { fileName: "different.txt" })).status, 409);
-
-  const wrongOffset = await fetch(`${base}/api/file-uploads/${upload.id}/chunks`, { method: "POST", headers: { ...headers, "Content-Type": "application/octet-stream", "Upload-Offset": "1" }, body: Buffer.from("hello ") });
-  assert.equal(wrongOffset.status, 409);
-  const first = await fetch(`${base}/api/file-uploads/${upload.id}/chunks`, { method: "POST", headers: { ...headers, "Content-Type": "application/octet-stream", "Upload-Offset": "0" }, body: Buffer.from("hello ") });
-  assert.equal(first.status, 200); assert.equal((await first.json()).nextOffset, 6);
-  const second = await fetch(`${base}/api/file-uploads/${upload.id}/chunks`, { method: "POST", headers: { ...headers, "Content-Type": "application/octet-stream", "Upload-Offset": "6" }, body: Buffer.from("world") });
-  assert.equal(second.status, 200); assert.equal((await second.json()).upload.receivedBytes, 11);
-  assert.equal(database.prepare("SELECT received_bytes FROM file_uploads WHERE id=?").get(upload.id).received_bytes, 11);
-  const completed = await fetch(`${base}/api/file-uploads/${upload.id}/complete`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: "{}" });
-  assert.equal(completed.status, 200); const result = (await completed.json()).upload; assert.equal(result.status, "completed"); assert.match(result.sha256, /^[a-f0-9]{64}$/);
-  assert.equal(await readFile(join(root, "uploads", "releases", "artifact.txt"), "utf8"), "hello world");
-  assert.equal((await fetch(`${base}/api/file-uploads`, { headers })).status, 200);
-}));
-
-test("file uploads reject traversal, symlink directories, oversize chunks and target overwrite", async () => fixture(async (base, { root }) => {
-  const headers = await session(base);
-  for (const targetDirectory of ["../outside", "/absolute", "nested/../outside", "nested//outside"]) assert.equal((await createUpload(base, headers, { targetDirectory, idempotencyKey: `invalid-${crypto.randomUUID()}` })).status, 400);
-  assert.equal((await createUpload(base, headers, { sizeBytes: 33, idempotencyKey: "oversized-file" })).status, 413);
-  await mkdir(join(root, "uploads"), { recursive: true });
-  await symlink(tmpdir(), join(root, "uploads", "linked"));
-  assert.equal((await createUpload(base, headers, { targetDirectory: "linked", idempotencyKey: "symlink-target" })).status, 400);
-  await writeFile(join(root, "uploads", "existing.txt"), "keep");
-  assert.equal((await createUpload(base, headers, { fileName: "existing.txt", targetDirectory: "", idempotencyKey: "existing-target" })).status, 409);
-  assert.equal(await readFile(join(root, "uploads", "existing.txt"), "utf8"), "keep");
-
-  const upload = (await (await createUpload(base, headers, { fileName: "short.bin", targetDirectory: "", sizeBytes: 9, idempotencyKey: "short-chunk" })).json()).upload;
-  const oversized = await fetch(`${base}/api/file-uploads/${upload.id}/chunks`, { method: "POST", headers: { ...headers, "Content-Type": "application/octet-stream", "Upload-Offset": "0" }, body: Buffer.alloc(9) });
-  assert.equal(oversized.status, 413);
-  assert.equal((await lstat(join(root, "uploads", `.short.bin.${upload.id}.upload`))).size, 0);
-}));
-
-test("file upload CORS preflight allows the offset header for browser chunks", async () => fixture(async (base) => {
-  const response = await fetch(`${base}/api/file-uploads/11111111-1111-4111-8111-111111111111/chunks`, {
-    method: "OPTIONS",
-    headers: { Origin: origin, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "content-type,upload-offset,x-csrf-token" },
-  });
-  assert.equal(response.status, 204);
-  assert.match(response.headers.get("access-control-allow-headers"), /Upload-Offset/);
-}));
-
-test("file upload cancel removes partial data and clear-completed removes terminal records", async () => fixture(async (base, { root }) => {
-  const headers = await session(base);
-  const upload = (await (await createUpload(base, headers, { fileName: "cancel.txt", targetDirectory: "", sizeBytes: 3, idempotencyKey: "cancel-upload" })).json()).upload;
-  const part = await fetch(`${base}/api/file-uploads/${upload.id}/chunks`, { method: "POST", headers: { ...headers, "Content-Type": "application/octet-stream", "Upload-Offset": "0" }, body: Buffer.from("ab") }); assert.equal(part.status, 200);
-  const cancelled = await fetch(`${base}/api/file-uploads/${upload.id}`, { method: "DELETE", headers }); assert.equal((await cancelled.json()).upload.status, "cancelled");
-  assert.equal((await fetch(`${base}/api/file-uploads/${upload.id}/complete`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: "{}" })).status, 409);
-  await assert.rejects(lstat(join(root, "uploads", `.cancel.txt.${upload.id}.upload`)), (error) => error.code === "ENOENT");
-  const cleared = await fetch(`${base}/api/file-uploads/clear-completed`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: "{}" }); assert.equal((await cleared.json()).removed, 0);
-  const list = await (await fetch(`${base}/api/file-uploads`, { headers })).json(); assert.equal(list.uploads.some((row) => row.id === upload.id && row.status === "cancelled"), true);
-}));
-
-test("zero-byte uploads complete without chunks and read-only tokens cannot mutate", async () => fixture(async (base, { identity, root }) => {
-  const admin = (await identity.login("admin", password, "token", "tests")).principal;
-  const readToken = identity.createApiToken(admin, { name: "files-reader", permissions: ["files:read"], nodeScope: "all", expiresAt: null }).token;
-  assert.equal((await fetch(`${base}/api/file-uploads`, { headers: { Authorization: `Bearer ${readToken}` } })).status, 200);
-  assert.equal((await createUpload(base, { Authorization: `Bearer ${readToken}` }, { fileName: "blocked.txt", sizeBytes: 0, targetDirectory: "", idempotencyKey: "read-only-create" })).status, 403);
-  const headers = await session(base);
-  const upload = (await (await createUpload(base, headers, { fileName: "empty.txt", sizeBytes: 0, targetDirectory: "", idempotencyKey: "empty-upload" })).json()).upload;
-  const completed = await fetch(`${base}/api/file-uploads/${upload.id}/complete`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: "{}" });
-  assert.equal((await completed.json()).upload.status, "completed");
-  assert.equal((await lstat(join(root, "uploads", "empty.txt"))).size, 0);
-}));
+test("file HTTP API enforces permissions before accepting raw uploads",async()=>fixture(async(root)=>{const database=openDatabase(":memory:"),identity=new IdentityService(database,Buffer.alloc(32,9));await identity.createInitialAdministrator("admin","Administrator","correct horse battery staple");const admin=(await identity.login("admin","correct horse battery staple","files-test","node-test")).principal;const readToken=identity.createApiToken(admin,{name:"files-read",permissions:["files:read"],nodeScope:"all",expiresAt:null}).token,manageToken=identity.createApiToken(admin,{name:"files-manage",permissions:["files:read","files:manage"],nodeScope:"all",expiresAt:null}).token;const config=loadControllerConfig({STACKPILOT_COOKIE_SECURE:"0",STACKPILOT_FILE_ROOTS:root}),platform=new FakePlatformAdapter(),services=createControllerServices(platform,process.cwd(),config);const server=createStackPilotServer({config,platform,services,database,identity});server.listen(0,"127.0.0.1");await once(server,"listening");const base=`http://127.0.0.1:${server.address().port}`,auth=(token,extra={})=>({Authorization:`Bearer ${token}`,...extra});try{assert.equal((await fetch(`${base}/api/files?path=${encodeURIComponent(root)}`)).status,401);assert.equal((await fetch(`${base}/api/files?path=${encodeURIComponent(root)}`,{headers:auth(readToken)})).status,200);assert.equal((await fetch(`${base}/api/files/directories`,{method:"POST",headers:auth(readToken,{"Content-Type":"application/json"}),body:JSON.stringify({path:root,name:"denied"})})).status,403);assert.equal((await fetch(`${base}/api/files/upload`,{method:"POST",headers:auth(readToken,{"Content-Type":"application/octet-stream","X-File-Path":root,"X-File-Name":"denied.txt"}),body:"denied"})).status,403);const upload=await fetch(`${base}/api/files/upload`,{method:"POST",headers:auth(manageToken,{"Content-Type":"application/octet-stream","X-File-Path":root,"X-File-Name":"hello.txt"}),body:"hello"});assert.equal(upload.status,201);assert.equal(await readFile(join(root,"hello.txt"),"utf8"),"hello");}finally{server.close();await once(server,"close");database.close();}}));

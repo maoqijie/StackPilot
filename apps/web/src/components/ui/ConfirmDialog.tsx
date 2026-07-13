@@ -27,8 +27,13 @@ function ConfirmDialog({
   children?: React.ReactNode;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
   const titleId = useId();
   const descriptionId = useId();
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -36,7 +41,7 @@ function ConfirmDialog({
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusFrame = window.requestAnimationFrame(() => {
       if (!dialog.contains(document.activeElement)) {
-        dialog.querySelector<HTMLElement>("[data-confirm-autofocus]")
+        dialog.querySelector<HTMLElement>("[data-confirm-initial], [data-confirm-cancel]")
           ?.focus({ preventScroll: true });
       }
     });
@@ -45,7 +50,7 @@ function ConfirmDialog({
       if (event.defaultPrevented || !document.contains(dialog)) return;
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -79,7 +84,7 @@ function ConfirmDialog({
         : drawerRestoreFallback(dialog);
       restoreTarget?.focus({ preventScroll: true });
     };
-  }, [onClose]);
+  }, []);
 
   return createPortal(
     <>
@@ -104,7 +109,7 @@ function ConfirmDialog({
           {children}
         </div>
         <footer>
-          <button className="ghost" type="button" data-confirm-autofocus onClick={onClose}>取消</button>
+          <button className="ghost" type="button" data-confirm-cancel onClick={onClose}>取消</button>
           <button className={tone === "danger" ? "trash-destructive" : "primary"} type="button" disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel}</button>
         </footer>
       </div>

@@ -56,7 +56,10 @@ test("terminal snippets persist preferences and only execute catalog-mapped Agen
     assert.equal(body.task.type, "system.summary.read"); assert.deepEqual(body.task.parameters, { includeLoad: true });
     assert.match(body.task.idempotencyKey, /^terminal:/);
     assert.equal(body.snippet.lastUsedAt !== null, true); assert.doesNotMatch(JSON.stringify(body.task), /df -h|uptime|command/);
+    const originalUpdate = repository.update.bind(repository); let updateCalls = 0;
+    repository.update = (...args) => { updateCalls += 1; return originalUpdate(...args); };
     const terminalTasks = await fetch(`${base}/api/terminal/tasks`, { headers: { Authorization: `Bearer ${terminalReadToken}` } });
     assert.equal(terminalTasks.status, 200); assert.deepEqual((await terminalTasks.json()).tasks.map((task) => task.taskId), [body.task.taskId]);
+    assert.equal(updateCalls, 0);
   } finally { server.close(); await once(server, "close"); database.close(); }
 });

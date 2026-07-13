@@ -37,6 +37,8 @@ const environmentSchema = z.object({
   STACKPILOT_ALLOWED_ORIGINS: originListSchema,
   STACKPILOT_ENABLE_CRONTAB_WRITE: z.enum(["0", "1"]).default("0"),
   STACKPILOT_JSON_BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(64 * 1024),
+  STACKPILOT_FILE_UPLOAD_LIMIT_BYTES: z.coerce.number().int().positive().max(1024 * 1024 * 1024).default(64 * 1024 * 1024),
+  STACKPILOT_FILE_ROOTS: z.string().default("/var/www"),
   STACKPILOT_UPLOAD_ROOT: z.string().min(1).default(".stackpilot/uploads"),
   STACKPILOT_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(1024 * 1024 * 1024),
   STACKPILOT_UPLOAD_CHUNK_MAX_BYTES: z.coerce.number().int().positive().max(64 * 1024 * 1024).default(8 * 1024 * 1024),
@@ -63,6 +65,8 @@ export type ControllerConfig = {
   allowedOrigins: string[];
   crontabWriteEnabled: boolean;
   jsonBodyLimitBytes: number;
+  fileUploadLimitBytes: number;
+  fileRoots: string[];
   uploadRoot: string;
   uploadMaxBytes: number;
   uploadChunkMaxBytes: number;
@@ -96,6 +100,8 @@ export function loadControllerConfig(env: NodeJS.ProcessEnv | Record<string, str
     allowedOrigins: parsed.STACKPILOT_ALLOWED_ORIGINS,
     crontabWriteEnabled: parsed.STACKPILOT_ENABLE_CRONTAB_WRITE === "1",
     jsonBodyLimitBytes: parsed.STACKPILOT_JSON_BODY_LIMIT_BYTES,
+    fileUploadLimitBytes: parsed.STACKPILOT_FILE_UPLOAD_LIMIT_BYTES,
+    fileRoots: parsed.STACKPILOT_FILE_ROOTS.split(",").map((value) => value.trim()).filter(Boolean),
     uploadRoot: parsed.STACKPILOT_UPLOAD_ROOT,
     uploadMaxBytes: parsed.STACKPILOT_UPLOAD_MAX_BYTES,
     uploadChunkMaxBytes: parsed.STACKPILOT_UPLOAD_CHUNK_MAX_BYTES,

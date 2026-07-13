@@ -35,7 +35,7 @@ export async function routeTerminalRequest(context: RequestContext) {
   }
   if (context.parts.length === 3 && context.parts[2] === "tasks" && method === "GET") {
     identity?.require(principal, "terminal:read");
-    const tasks = await context.services.remoteTasks.list();
+    const tasks = await context.services.remoteTasks.listReadOnly();
     const scoped = principal?.nodeScope === "all" ? tasks : tasks.filter((task) => principal?.nodeScope.includes(task.targetNodeId));
     sendJson(context.response, 200, { tasks: scoped.filter((task) => task.requester === `user:${userId}` && task.idempotencyKey.startsWith("terminal:")) }, RemoteTaskListResponseSchema); return;
   }
