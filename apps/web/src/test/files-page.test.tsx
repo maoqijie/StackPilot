@@ -23,6 +23,21 @@ describe("files browser page", () => {
     await waitFor(() => expect(drawer).toHaveFocus());
   });
 
+  it("renders a canonical backend path for an aliased requested root", async () => {
+    vi.stubGlobal("fetch",vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ...listPayload,
+      path:"/private/var/www",
+      entries:[{...listPayload.entries[0],path:"/private/var/www/index.html",parentPath:"/private/var/www"}],
+    }),{status:200,headers:{"Content-Type":"application/json"}})));
+
+    render(<FilesPageHarness />);
+
+    expect((await screen.findAllByText("index.html")).length).toBeGreaterThan(0);
+    expect(screen.getByText("/private/var/www/index.html")).toBeInTheDocument();
+    expect(screen.getByText("/var/www",{selector:"strong"})).toBeInTheDocument();
+    expect(screen.queryByText("正在读取目录")).not.toBeInTheDocument();
+  });
+
   it("confirms moving a file to the recoverable trash", async () => {
     const fetchMock=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(listPayload),{status:200,headers:{"Content-Type":"application/json"}})).mockResolvedValueOnce(new Response(JSON.stringify({message:"index.html 已移入回收站",entry:null}),{status:200,headers:{"Content-Type":"application/json"}})).mockResolvedValueOnce(new Response(JSON.stringify({...listPayload,entries:[]}),{status:200,headers:{"Content-Type":"application/json"}}));vi.stubGlobal("fetch",fetchMock);
     const user = userEvent.setup();
