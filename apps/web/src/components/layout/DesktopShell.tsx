@@ -223,7 +223,7 @@ function DesktopShellContent({
           {activeModule === "sites" && <SitesPage page={page} notify={notify} />}
           {activeModule === "databases" && (
             page === "databases-backups"
-              ? <DatabaseBackupsPage page={page} notify={notify} />
+              ? <DatabaseBackupsPage page={page} notify={notify} canManage={user.permissions.includes("system:backup")} />
               : page === "databases-slow"
                 ? <DatabaseSlowQueriesPage page={page} setPage={setPage} notify={notify} />
               : <DatabasesPage page={page} setPage={setPage} notify={notify} />
