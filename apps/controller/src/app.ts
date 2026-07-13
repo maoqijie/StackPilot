@@ -38,6 +38,7 @@ import { loadOrCreateAuditKey } from "./security/secretStore.js";
 import { openDatabase } from "./database/database.js";
 import { SqliteAgentControlRepository } from "./repositories/sqliteAgentControlRepository.js";
 import { requestSource } from "./http/trustedProxy.js";
+import { FileService } from "./modules/files/fileService.js";
 
 export type AppOptions = {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -61,6 +62,7 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
     sites: new SiteMonitoringService(new NginxSiteCollector(config.nginxConfigDirs)),
+    files: new FileService(config.fileRoot, config.fileTrashDir, config.fileUploadLimitBytes, repoRoot),
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
     schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform),
@@ -115,8 +117,11 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
       if (surface === "management" && isAgentPath) throw new ServiceError(426, "BAD_REQUEST", "Agent API 仅在 TLS 监听器可用");
       principal = !isAgentPath && !isHealthPath && !isLoginPath && !isSessionStatusPath ? authenticateUser(request, identity) : isSessionStatusPath && identity ? (()=>{try{return authenticateUser(request,identity);}catch{return undefined;}})() : undefined;
       if (!isAgentPath && isWriteMethod(method) && !isLoginPath && principal && identity) requireCsrf(request, principal, identity, config.allowedOrigins);
+      const isFileUpload = url.pathname === "/api/file-uploads" && method === "POST";
+      if (isFileUpload) identity?.require(principal, "files:write");
       const bodyLimit = url.pathname === "/api/agent/heartbeat" ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
-      const parsedBody = isWriteMethod(method) ? await readJsonRequest(request, bodyLimit) : { value: {}, raw: Buffer.alloc(0) };
+      const parsedBody = isFileUpload ? { value: {}, raw: Buffer.alloc(0) }
+        : isWriteMethod(method) ? await readJsonRequest(request, bodyLimit) : { value: {}, raw: Buffer.alloc(0) };
       const parts = url.pathname.split("/").filter(Boolean);
       const authenticatedAgent = isAgentPath && url.pathname !== "/api/agent/enroll"
         ? await authenticateAgentRequest(request, `${url.pathname}${url.search}`, parsedBody.raw, services.nodes)

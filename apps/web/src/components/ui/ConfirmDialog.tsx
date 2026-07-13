@@ -12,6 +12,9 @@ function ConfirmDialog({
   onClose,
   tone = "danger",
   className,
+  busy = false,
+  confirmDisabled = false,
+  children,
 }: {
   title: string;
   message: string;
@@ -21,10 +24,15 @@ function ConfirmDialog({
   onClose: () => void;
   tone?: "danger" | "warning";
   className?: string;
+  busy?: boolean;
+  confirmDisabled?: boolean;
+  children?: React.ReactNode;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descriptionId = useId();
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -38,7 +46,7 @@ function ConfirmDialog({
       if (event.defaultPrevented || !document.contains(dialog)) return;
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -72,7 +80,7 @@ function ConfirmDialog({
         : drawerRestoreFallback(dialog);
       restoreTarget?.focus({ preventScroll: true });
     };
-  }, [onClose]);
+  }, []);
 
   return createPortal(
     <>
@@ -94,10 +102,11 @@ function ConfirmDialog({
         <div className="confirm-dialog-body">
           <p id={descriptionId}>{message}</p>
           {detail && <code>{detail}</code>}
+          {children}
         </div>
         <footer>
-          <button className="ghost" type="button" data-confirm-cancel onClick={onClose}>取消</button>
-          <button className={tone === "danger" ? "trash-destructive" : "primary"} type="button" onClick={onConfirm}>{confirmLabel}</button>
+          <button className="ghost" type="button" data-confirm-cancel disabled={busy} onClick={onClose}>取消</button>
+          <button className={tone === "danger" ? "trash-destructive" : "primary"} type="button" disabled={busy || confirmDisabled} onClick={onConfirm}>{busy ? "处理中" : confirmLabel}</button>
         </footer>
       </div>
     </>,

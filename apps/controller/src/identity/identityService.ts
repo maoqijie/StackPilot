@@ -10,13 +10,14 @@ import type { Principal } from "./types.js";
 const argon = { algorithm: Algorithm.Argon2id, memoryCost: 19_456, timeCost: 2, parallelism: 1, outputLen: 32 } as const;
 export const PERMISSIONS: ReadonlyArray<[Permission, "low" | "medium" | "high", string]> = [
   ["overview:read","low","读取本机总览"],["overview:operate","medium","执行本机操作"],["schedules:read","low","读取定时任务"],["schedules:write","high","修改定时任务"],
+  ["files:read","low","读取受管文件"],["files:write","high","修改和上传受管文件"],["files:delete","high","永久删除受管文件"],
   ["nodes:read","low","读取授权节点"],["nodes:manage","high","注册、轮换或撤销节点"],["tasks:read","low","读取远程任务"],["tasks:create","high","创建远程任务"],["tasks:cancel","medium","取消远程任务"],
   ["audit:read","low","读取审计日志"],["users:read","low","读取用户"],["users:manage","high","管理用户"],["roles:read","low","读取角色"],["roles:manage","high","管理角色"],["tokens:manage","high","管理 API Token"],["system:backup","high","备份与恢复数据库"],
 ];
 const roleDefinitions = [
   ["administrator","管理员",PERMISSIONS.map(([key]) => key)],
-  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","tasks:read","tasks:create","tasks:cancel"]],
-  ["audit-reader","只读审计员",["overview:read","nodes:read","tasks:read","audit:read"]],
+  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","files:read","files:write","files:delete","tasks:read","tasks:create","tasks:cancel"]],
+  ["audit-reader","只读审计员",["overview:read","nodes:read","files:read","tasks:read","audit:read"]],
 ] as const;
 
 type UserRow = { id: string; username: string; display_name: string; password_hash: string; disabled_at: string | null };

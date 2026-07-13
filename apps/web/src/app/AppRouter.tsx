@@ -5,7 +5,7 @@ import type { Notify, PageKey, SetPage, ToastState } from "../types/app";
 import { AuthGate } from "../features/auth/AuthGate";
 import { logout } from "../api/authApi";
 
-function AuthenticatedApp() {
+function AuthenticatedApp({ user }: { user: import("@stackpilot/contracts").PublicUser }) {
   const [page, setPageState] = useState<PageKey>(readPageFromHash);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [topbarUnreadCount, setTopbarUnreadCount] = useState(0);
@@ -89,7 +89,7 @@ function AuthenticatedApp() {
   return (
     <main className="shot-canvas">
       <div className="app-interaction-layer" inert={sessionLocked} aria-hidden={sessionLocked ? "true" : undefined}>
-        <DesktopShell page={page} setPage={setPage} notify={notify} topbarUnreadCount={topbarUnreadCount} setTopbarUnreadCount={setTopbarUnreadCount} sessionLocked={sessionLocked} onLogout={lockSession} />
+        <DesktopShell page={page} setPage={setPage} notify={notify} user={user} topbarUnreadCount={topbarUnreadCount} setTopbarUnreadCount={setTopbarUnreadCount} sessionLocked={sessionLocked} onLogout={lockSession} />
       </div>
       {sessionLocked && (
         <SessionLockOverlay
@@ -105,7 +105,7 @@ function AuthenticatedApp() {
   );
 }
 
-function App(){return <AuthGate>{()=><AuthenticatedApp/>}</AuthGate>;}
+function App(){return <AuthGate>{(user)=><AuthenticatedApp user={user}/>}</AuthGate>;}
 
 export { App };
 export default App;

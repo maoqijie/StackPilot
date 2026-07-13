@@ -3,13 +3,14 @@ import type { ApiErrorResponse, ApiNotice } from "@stackpilot/contracts";
 
 let csrfToken = "";
 export const setCsrfToken = (value: string) => { csrfToken = value; };
+export const getCsrfToken = () => csrfToken;
 
 export async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_CLIENT_PREFIX}${path}`, {
     ...init,
     credentials: "include",
     headers: {
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(init.body && typeof init.body === "string" ? { "Content-Type": "application/json" } : {}),
       ...((init.method && init.method !== "GET" && csrfToken) ? { "X-CSRF-Token": csrfToken } : {}),
       ...init.headers,
     },
@@ -27,5 +28,7 @@ export async function requestJson<T>(path: string, init: RequestInit = {}): Prom
     throw new Error(message);
   }
 
-  return response.json() as Promise<T>;
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }

@@ -93,6 +93,7 @@ function DesktopShellContent({
   page,
   setPage,
   notify,
+  user,
   topbarUnreadCount,
   setTopbarUnreadCount,
   sessionLocked,
@@ -101,6 +102,7 @@ function DesktopShellContent({
   page: PageKey;
   setPage: SetPage;
   notify: Notify;
+  user: import("@stackpilot/contracts").PublicUser;
   topbarUnreadCount: number;
   setTopbarUnreadCount: React.Dispatch<React.SetStateAction<number>>;
   sessionLocked: boolean;
@@ -208,9 +210,10 @@ function DesktopShellContent({
         onNavigate={() => {
           if (isNarrowSidebar) setSidebarCollapsed(true);
         }}
+        permissions={user.permissions}
       />
       <div className="desktop-main" inert={sidebarOverlayOpen} aria-hidden={sidebarOverlayOpen ? "true" : undefined}>
-        <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={overview} interactionsDisabled={sessionLocked} onLogout={onLogout} />
+        <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={overview} interactionsDisabled={sessionLocked} onLogout={onLogout} permissions={user.permissions} />
         <div className="desktop-content" ref={desktopContentRef}>
           {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
           {page === "overview-health" && <OverviewHealthPage notify={notify} />}
@@ -225,7 +228,7 @@ function DesktopShellContent({
                 ? <DatabaseSlowQueriesPage page={page} setPage={setPage} notify={notify} />
               : <DatabasesPage page={page} setPage={setPage} notify={notify} />
           )}
-          {activeModule === "files" && <FilesModule page={page} notify={notify} />}
+          {activeModule === "files" && <FilesModule page={page} notify={notify} permissions={user.permissions} />}
           {activeModule === "terminal" && <TerminalPage page={page} notify={notify} />}
           {activeModule === "systemd" && <SystemdPage page={page} notify={notify} />}
           {activeModule === "firewall" && <FirewallPage page={page} notify={notify} />}
