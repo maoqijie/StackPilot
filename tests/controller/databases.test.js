@@ -76,6 +76,25 @@ test("database monitoring retains the last local inventory after a transient col
   assert.match(retained.warnings.join(" "), /保留 Controller 本机上次成功采集/);
 });
 
+test("database monitoring prefers Controller-local inventory when the local Agent reports the same systemd unit", async () => {
+  const repository = new MemoryAgentControlRepository();
+  const localNode = node("11111111-1111-4111-8111-111111111111", "controller-db");
+  localNode.databaseSnapshot.instances.unshift({
+    ...localNode.databaseSnapshot.instances[0], id: "postgresql@16-main.service", name: "postgresql-16-main",
+    source: "systemd:postgresql@16-main.service",
+  });
+  await repository.update((state) => state.nodes.push(localNode));
+  const localSnapshot = {
+    ...localNode.databaseSnapshot,
+    instances: [localNode.databaseSnapshot.instances[0]],
+  };
+
+  const payload = await new DatabaseMonitoringService(repository, { collect: async () => localSnapshot }).getInstances({ nodeScope: "all" });
+  assert.equal(payload.instances.length, 1);
+  assert.equal(payload.instances[0].nodeId, "node-local");
+  assert.equal(payload.instances[0].name, "postgresql-16-main");
+});
+
 test("database monitoring labels stale data and an empty authorized scope honestly", async () => {
   const repository = new MemoryAgentControlRepository(); const id = "11111111-1111-4111-8111-111111111111";
   await repository.update((state) => state.nodes.push(node(id, "db-stale", new Date(Date.now() - 180_000).toISOString())));

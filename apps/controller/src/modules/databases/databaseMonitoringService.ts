@@ -41,6 +41,15 @@ function localRuntimeRecord(snapshot: AgentDatabaseSnapshot, instance: AgentData
   };
 }
 
+function snapshotInstances(snapshot: AgentDatabaseSnapshot) {
+  const hasPostgresCluster = snapshot.instances.some((instance) => /^postgresql@.+\.service$/.test(instance.id));
+  return snapshot.instances.filter((instance) => !(hasPostgresCluster && instance.id === "postgresql.service"));
+}
+
+function instanceIdentity(instance: AgentDatabaseInstance) {
+  return `${instance.host.toLowerCase()}\0${instance.engine}\0${instance.source.toLowerCase()}`;
+}
+
 export class DatabaseMonitoringService {
   private localSnapshot: AgentDatabaseSnapshot | undefined;
   private localCollection: Promise<AgentDatabaseSnapshot> | undefined;
@@ -78,9 +87,13 @@ export class DatabaseMonitoringService {
     let collectionStatus = !snapshots.length || statuses.every((status) => status === "unavailable") ? "unavailable"
       : !pendingNodes.length && !staleNodes.length && !localStale && statuses.every((status) => status === "complete") ? "complete" : "partial";
     const collectedAt = snapshots.map((snapshot) => snapshot.collectedAt).sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? new Date().toISOString();
+    const localInstances = localSnapshot ? snapshotInstances(localSnapshot) : [];
+    const localIdentities = new Set(localInstances.map(instanceIdentity));
     const allInstances = [
-      ...(localSnapshot ? localSnapshot.instances.map((instance) => localRuntimeRecord(localSnapshot, instance)) : []),
-      ...nodes.flatMap((node) => node.databaseSnapshot!.instances.map((instance) => runtimeRecord(node, instance))),
+      ...(localSnapshot ? localInstances.map((instance) => localRuntimeRecord(localSnapshot, instance)) : []),
+      ...nodes.flatMap((node) => snapshotInstances(node.databaseSnapshot!)
+        .filter((instance) => !localIdentities.has(instanceIdentity(instance)))
+        .map((instance) => runtimeRecord(node, instance))),
     ];
     const truncated = allInstances.length > MAX_DATABASE_INSTANCES;
     if (truncated) collectionStatus = "partial";
