@@ -27,6 +27,7 @@
 }
 .page-subtitle { max-width: 680px; margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .page-head > div:last-child { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.module-head-actions-only { justify-content: flex-end; }
 
 .module-layout { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .module-layout.has-side { grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); }

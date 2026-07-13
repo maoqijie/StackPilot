@@ -5,7 +5,6 @@ import { OverviewHealthPage } from "../pages/OverviewHealthPage";
 import { OverviewRisksPage } from "../pages/OverviewRisksPage";
 import { exportOverviewRisks, fetchOverviewHealth, fetchOverviewRisks } from "../api/overviewApi";
 import type { OverviewRiskRecord } from "../api/overviewApi";
-import { formatBackendDateTime } from "../utils/time";
 
 vi.mock("../api/overviewApi", () => ({
   fetchOverviewHealth: vi.fn(),
@@ -26,6 +25,8 @@ describe("overview health API states", () => {
     render(<OverviewHealthPage notify={notify} />);
     expect(screen.getByText("正在从 /api/overview/health 实时采集节点状态")).toBeInTheDocument();
     expect(screen.getAllByText("正在采集节点状态")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "集群状态" })).toHaveClass("sr-only");
+    expect(screen.getByRole("button", { name: "Agent 管理" })).toBeInTheDocument();
   });
 
   it("shows a retryable error without injecting fixture rows", async () => {
@@ -52,7 +53,7 @@ describe("overview health API states", () => {
 
     expect(fetchOverviewHealth).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "刷新状态" })).not.toBeInTheDocument();
-    expect(screen.getByText(new RegExp(`更新于 ${formatBackendDateTime("2026-07-12T12:30:00.000Z")}`))).toBeInTheDocument();
+    expect(screen.queryByText(/监控 0 个节点的健康/)).not.toBeInTheDocument();
 
     await act(async () => {
       vi.advanceTimersByTime(9_999);
@@ -64,7 +65,6 @@ describe("overview health API states", () => {
       await Promise.resolve();
     });
     expect(fetchOverviewHealth).toHaveBeenCalledTimes(2);
-    expect(screen.getByText(new RegExp(`更新于 ${formatBackendDateTime("2026-07-12T12:30:10.000Z")}`))).toBeInTheDocument();
     expect(notify).not.toHaveBeenCalled();
   });
 

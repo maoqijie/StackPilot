@@ -163,7 +163,7 @@ describe("OverviewDataProvider", () => {
     );
     await act(async () => { await Promise.resolve(); });
 
-    expect(screen.getByText(/监控 0 个节点/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "集群状态" })).toHaveClass("sr-only");
     expect(screen.getByRole("heading", { name: "任务流" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "风险中心" })).toBeInTheDocument();
     expect(fetchOverviewHealth).not.toHaveBeenCalled();

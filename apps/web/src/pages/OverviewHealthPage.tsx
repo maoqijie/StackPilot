@@ -18,7 +18,6 @@ import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import { NodeDetailContent } from "./OverviewPage";
 import type { Notify } from "../types/app";
 import { reauthenticate } from "../api/identityApi";
-import { formatBackendDateTime, overviewCollectedAt } from "../utils/time";
 
 function OverviewHealthPage({ notify }: { notify: Notify }) {
   const shared = useOptionalOverviewData();
@@ -30,13 +29,10 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [localLoading, setLocalLoading] = useState(true);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [localCollectedAt, setLocalCollectedAt] = useState<string | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const nodes = shared?.overview?.nodes ?? localNodes;
   const loading = shared ? shared.loading && !shared.overview : localLoading;
   const error = shared?.error ?? localError;
-  const collectedAt = shared?.overview ? overviewCollectedAt(shared.overview) : localCollectedAt;
-  const lastRefresh = formatBackendDateTime(collectedAt, "等待采集");
   const selected = nodes.find((node) => node.id === selectedId) ?? null;
   const filteredNodes = nodes.filter((node) => {
     const query = search.trim().toLowerCase();
@@ -68,7 +64,6 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
     try {
       const payload = await request(signal);
       syncHealth(payload.nodes);
-      setLocalCollectedAt(payload.collectedAt ?? payload.lastRefresh);
       setLocalError(null);
     } catch (loadError) {
       if (signal?.aborted) return;
@@ -88,7 +83,6 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
     fetchOverviewHealth(controller.signal)
       .then((payload) => {
         syncHealth(payload.nodes);
-        setLocalCollectedAt(payload.collectedAt ?? payload.lastRefresh);
         setLocalError(null);
         setLocalLoading(false);
       })
@@ -109,7 +103,7 @@ function OverviewHealthPage({ notify }: { notify: Notify }) {
   return (
     <ModulePageShell
       title="集群状态"
-      subtitle={loading ? "正在采集节点、服务与资源状态" : `监控 ${nodes.length} 个节点的健康、容量与更新状态 · 更新于 ${lastRefresh}`}
+      hideHeading
       page="overview-health"
       viewContext={false}
       actions={<button className="ghost" type="button" onClick={() => setAgentOpen(true)}><KeyRound size={14} /> Agent 管理</button>}

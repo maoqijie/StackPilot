@@ -5,6 +5,7 @@ import type { PageKey, ViewContext } from "../../types/app";
 function ModulePageShell({
   title,
   subtitle,
+  hideHeading = false,
   page,
   viewContext,
   tabs,
@@ -16,6 +17,7 @@ function ModulePageShell({
 }: {
   title: string;
   subtitle?: string | null;
+  hideHeading?: boolean;
   page?: PageKey;
   viewContext?: ViewContext | false | null;
   tabs?: React.ReactNode;
@@ -30,11 +32,13 @@ function ModulePageShell({
   const isModalSide = Boolean(side) && isNarrowViewport;
   return (
     <div className={`module-page ${page ? `module-page-${page}` : ""}`}>
-      <div className="page-head module-head" inert={isModalSide} aria-hidden={isModalSide ? "true" : undefined}>
-        <div>
-          <h1>{title}</h1>
-          {subtitle && <p className="page-subtitle">{subtitle}</p>}
-        </div>
+      <div className={`page-head module-head ${hideHeading ? "module-head-actions-only" : ""}`} inert={isModalSide} aria-hidden={isModalSide ? "true" : undefined}>
+        {hideHeading ? <h1 className="sr-only">{title}</h1> : (
+          <div>
+            <h1>{title}</h1>
+            {subtitle && <p className="page-subtitle">{subtitle}</p>}
+          </div>
+        )}
         {actions && <div>{actions}</div>}
       </div>
       <div className={`module-layout ${side ? "has-side" : ""}`}>

@@ -840,6 +840,10 @@
   gap: 8px;
 }
 
+:is(.module-page-overview-health, .module-page-overview-tasks, .module-page-overview-risks) > .module-head-actions-only {
+  justify-content: flex-end;
+}
+
 :is(.module-page-overview-health, .module-page-overview-tasks, .module-page-overview-risks) .module-main {
   gap: 24px;
 }
