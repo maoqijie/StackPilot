@@ -60,6 +60,29 @@ test("directory rename is rejected without atomic no-replace support", async () 
   finally { await rm(work, { recursive: true, force: true }); }
 });
 
+test("restore never overwrites an externally created target", async () => {
+  const work = await mkdtemp(join(tmpdir(), "stackpilot-files-restore-conflict-")); const root = join(work, "root"); const trash = join(work, "trash"); await mkdir(root); await writeFile(join(root, "report.txt"), "trashed"); const service = new FileService(root, trash, 1024, work);
+  try {
+    const row = await service.trash("/report.txt"); await writeFile(join(root, "report.txt"), "external"); await assert.rejects(service.restore(row.id), /恢复目标已存在/);
+    assert.equal(await readFile(join(root, "report.txt"), "utf8"), "external"); assert.equal((await service.listTrash()).entries[0].id, row.id); assert.equal(await access(join(trash, ".stackpilot-file-transaction.json")).then(() => true, () => false), false);
+  } finally { await rm(work, { recursive: true, force: true }); }
+});
+
+test("independent file services cannot overwrite the same restore target", async () => {
+  const work = await mkdtemp(join(tmpdir(), "stackpilot-files-restore-race-")); const root = join(work, "root"); const trash = join(work, "trash"); await mkdir(root); await writeFile(join(root, "race.txt"), "original"); const first = new FileService(root, trash, 1024, work); const row = await first.trash("/race.txt"); const second = new FileService(root, trash, 1024, work);
+  try {
+    await second.listTrash(); const results = await Promise.allSettled([first.restore(row.id), second.restore(row.id)]); assert.equal(results.filter((result) => result.status === "fulfilled").length, 1); assert.equal(await readFile(join(root, "race.txt"), "utf8"), "original"); assert.equal((await first.listTrash()).entries.length, 0);
+  } finally { await rm(work, { recursive: true, force: true }); }
+});
+
+test("directory restore preserves bytes without overwriting a competing directory", async () => {
+  const work = await mkdtemp(join(tmpdir(), "stackpilot-files-restore-directory-")); const root = join(work, "root"); const trash = join(work, "trash"); await mkdir(join(root, "site"), { recursive: true }); await writeFile(join(root, "site", "index.html"), "release"); const service = new FileService(root, trash, 1024, work);
+  try {
+    const row = await service.trash("/site"); await mkdir(join(root, "site")); await writeFile(join(root, "site", "external.txt"), "external"); await assert.rejects(service.restore(row.id), /恢复目标已存在/); assert.equal(await readFile(join(root, "site", "external.txt"), "utf8"), "external"); await rm(join(root, "site"), { recursive: true });
+    await service.restore(row.id); assert.equal(await readFile(join(root, "site", "index.html"), "utf8"), "release"); assert.equal((await service.listTrash()).entries.length, 0);
+  } finally { await rm(work, { recursive: true, force: true }); }
+});
+
 test("file storage rejects overlapping roots and untrusted trash metadata", async () => {
   const work = await mkdtemp(join(tmpdir(), "stackpilot-files-metadata-")); const root = join(work, "root"); const trash = join(work, "trash"); await mkdir(root); await mkdir(trash);
   try {
