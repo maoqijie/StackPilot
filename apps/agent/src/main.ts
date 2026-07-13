@@ -11,6 +11,7 @@ import { createHeartbeat } from "./heartbeat/heartbeat.js";
 import { IdentityStore, type AgentIdentity } from "./identity/identityStore.js";
 import { agentLogger } from "./logging/logger.js";
 import { collectAgentTelemetry } from "./telemetry/collector.js";
+import { DatabaseSnapshotCache, SystemdDatabaseCollector } from "@stackpilot/host-telemetry";
 import { TaskExecutor } from "./tasks/executor.js";
 import { ControllerClient } from "./transport/controllerClient.js";
 
@@ -43,12 +44,14 @@ export async function runAgent(env: NodeJS.ProcessEnv | Record<string, string | 
   let identity = await ensureIdentity(store, client, config);
   if (config.rotateCredential) { identity = await rotateIdentity(store, client, identity); if (env === process.env) delete process.env.STACKPILOT_AGENT_ROTATE_CREDENTIAL; }
   const executor = new TaskExecutor(store.receiptPath, identity.nodeId, config.platform, AGENT_CAPABILITIES); await executor.load();
+  const databaseSnapshots = new DatabaseSnapshotCache(new SystemdDatabaseCollector({ target: config.platform }));
   let failures = 0;
   while (!signal?.aborted) {
     try {
       let telemetryCollectionFailed = false;
       const telemetry = await collectAgentTelemetry(config.platform).catch(() => { telemetryCollectionFailed = true; return undefined; });
-      AgentHeartbeatResponseSchema.parse(await client.json("/api/agent/heartbeat", createHeartbeat(config, identity.nodeId, [...AGENT_CAPABILITIES], telemetry, telemetryCollectionFailed), identity));
+      void databaseSnapshots.refreshIfDue().catch((error) => agentLogger.log({ level: "warn", time: new Date().toISOString(), message: "Database inventory collection failed", errorName: error instanceof Error ? error.name : "UnknownError" }));
+      AgentHeartbeatResponseSchema.parse(await client.json("/api/agent/heartbeat", createHeartbeat(config, identity.nodeId, [...AGENT_CAPABILITIES], telemetry, telemetryCollectionFailed, databaseSnapshots.current), identity));
       for (const pending of executor.pendingUpdates()) { await client.json("/api/agent/tasks/status", pending, identity); await executor.markReported(pending.taskId); }
       const poll = RemoteTaskPollResponseSchema.parse(await client.json("/api/agent/tasks/poll", {}, identity));
       for (const taskId of poll.cancelledTaskIds) executor.cancel(taskId);

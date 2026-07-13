@@ -52,7 +52,7 @@ function DatabaseSlowQueriesPage({ page, setPage, notify, snapshot = null }: { p
   const [instanceRemediationIds, setInstanceRemediationIds] = useState(readSlowRemediationIds);
   const hasCollectedData = snapshot !== null;
   const collectedAt = formatBackendDateTime(snapshot?.collectedAt, "暂不可用");
-  const delayedInstances = (snapshot?.instances ?? []).filter((instance) => instance.connectionHealth.startsWith("延迟") || instance.slowQueries > 0);
+  const delayedInstances = (snapshot?.instances ?? []).filter((instance) => instance.connectionHealth.startsWith("延迟") || (instance.slowQueries ?? 0) > 0);
   const databaseOptions = ["全部", ...Array.from(new Set([...queries.map((query) => query.database), ...delayedInstances.map((instance) => instance.name)]))];
   const filteredQueries = queries.filter((query) => {
     const keyword = search.trim().toLowerCase();
@@ -66,14 +66,15 @@ function DatabaseSlowQueriesPage({ page, setPage, notify, snapshot = null }: { p
     const keyword = search.trim().toLowerCase();
     const matchSearch = !keyword || `${instance.name} ${instance.engine} ${instance.host} ${instance.connectionHealth} ${instance.owner}`.toLowerCase().includes(keyword);
     const matchDatabase = databaseFilter === "全部" || instance.name === databaseFilter;
-    const matchLevel = levelFilter === "全部" || (levelFilter === "高" ? instance.connectionHealth.startsWith("延迟") || instance.slowQueries >= 10 : levelFilter === "中" ? instance.slowQueries > 0 : false);
+    const slowQueries = instance.slowQueries ?? 0;
+    const matchLevel = levelFilter === "全部" || (levelFilter === "高" ? instance.connectionHealth.startsWith("延迟") || slowQueries >= 10 : levelFilter === "中" ? slowQueries > 0 : false);
     const matchStatus = statusFilter === "全部" || statusFilter === "待处理";
     return matchSearch && matchDatabase && matchLevel && matchStatus;
   });
   const selectedQuery = drawerId ? queries.find((query) => query.id === drawerId) ?? null : null;
   const primaryQuery = filteredQueries[0] ?? null;
   const pendingCount = queries.filter((query) => query.status !== "已处理").length;
-  const highLatencyCount = delayedInstances.filter((instance) => instance.connectionHealth.startsWith("延迟") || instance.slowQueries >= 10).length;
+  const highLatencyCount = delayedInstances.filter((instance) => instance.connectionHealth.startsWith("延迟") || (instance.slowQueries ?? 0) >= 10).length;
   const highCount = queries.filter((query) => query.level === "高" && query.status !== "已处理").length + highLatencyCount;
   const affectedDatabases = new Set([
     ...queries.filter((query) => query.status !== "已处理").map((query) => query.database),

@@ -279,6 +279,7 @@
 }
 .database-rate-ring.orange { color: var(--warning); }
 .database-rate-ring.red { color: var(--danger); }
+.database-rate-ring.gray { color: var(--muted); }
 .database-rate-ring svg:first-child {
   position: absolute;
   inset: 0;
