@@ -50,7 +50,7 @@ CapabilityBoundingSet=
 AmbientCapabilities=
 SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
-ReadWritePaths=/var/lib/stackpilot-controller /var/www
+ReadWritePaths=/var/lib/stackpilot-controller
 
 [Install]
 WantedBy=multi-user.target

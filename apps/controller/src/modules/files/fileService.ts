@@ -10,14 +10,24 @@ import { z } from "zod";
 import { ServiceError } from "../serviceError.js";
 
 const TRASH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const TRASH_MAINTENANCE_MS = 60 * 60 * 1000;
+const MAX_TRASH_ENTRIES = 10_000;
 const META_FILE = ".stackpilot-trash.json";
 const HISTORY_FILE = ".stackpilot-uploads.json";
+const TRANSACTION_FILE = ".stackpilot-file-transaction.json";
 const TrashMetaSchema = TrashFileEntrySchema.extend({ storedName: z.string() }).strict().superRefine((row, context) => {
   if (row.storedName !== `${row.id}.data`) context.addIssue({ code: "custom", message: "回收站存储名称无效" });
 });
-const TrashMetadataSchema = z.array(TrashMetaSchema).max(10_000);
+const TrashMetadataSchema = z.array(TrashMetaSchema).max(MAX_TRASH_ENTRIES);
 const UploadHistorySchema = z.array(FileUploadRecordSchema).max(500);
 type TrashMeta = z.infer<typeof TrashMetaSchema>;
+const FileTransactionSchema = z.discriminatedUnion("operation", [
+  z.object({ operation: z.literal("trash"), row: TrashMetaSchema }).strict(),
+  z.object({ operation: z.literal("restore"), row: TrashMetaSchema }).strict(),
+  z.object({ operation: z.literal("purge"), rows: z.array(TrashMetaSchema).max(MAX_TRASH_ENTRIES) }).strict(),
+  z.object({ operation: z.literal("upload"), targetPath: z.string().min(1).max(4096), temporaryName: z.string().regex(/^\.upload-[0-9a-f-]+\.tmp$/i), upload: FileUploadRecordSchema }).strict(),
+]);
+type FileTransaction = z.infer<typeof FileTransactionSchema>;
 
 function ownerLabel(uid: number) { return `uid:${uid}`; }
 function entryId(path: string, info: { dev: number | bigint; ino: number | bigint }) {
@@ -37,11 +47,16 @@ export class FileService {
   private readonly trashRoot: string;
   private storageReady: Promise<void> | null = null;
   private mutationQueue = Promise.resolve();
+  private readonly maintenanceTimer: NodeJS.Timeout;
 
   constructor(root: string, trashRoot: string, readonly maxUploadBytes: number, repoRoot: string) {
     this.root = isAbsolute(root) ? normalize(root) : resolve(repoRoot, root);
     this.trashRoot = isAbsolute(trashRoot) ? normalize(trashRoot) : resolve(repoRoot, trashRoot);
     if (isWithin(this.root, this.trashRoot) || isWithin(this.trashRoot, this.root)) throw new Error("文件根目录与回收站目录必须彼此隔离");
+    this.maintenanceTimer = setInterval(() => { void this.exclusive(async () => { await this.ensureStorage(); await this.cleanupExpired(); }).catch(() => undefined); }, TRASH_MAINTENANCE_MS);
+    this.maintenanceTimer.unref();
+    const initialMaintenance = setTimeout(() => { void this.exclusive(async () => { await this.ensureStorage(); await this.cleanupExpired(); }).catch(() => undefined); }, 1_000);
+    initialMaintenance.unref();
   }
 
   private ensureStorage() {
@@ -58,6 +73,8 @@ export class FileService {
     ]);
     if (isWithin(canonicalRoot, canonicalTrash) || isWithin(canonicalTrash, canonicalRoot)) throw new Error("文件根目录与回收站目录必须彼此隔离");
     if (rootInfo.dev !== trashInfo.dev) throw new Error("文件根目录与回收站目录必须位于同一文件系统");
+    await this.recoverTransaction();
+    await this.reconcileTrashStorage();
   }
 
   private exclusive<T>(operation: () => Promise<T>): Promise<T> {
@@ -116,7 +133,7 @@ export class FileService {
     if (rows.length > 10_000) throw new ServiceError(409, "BAD_REQUEST", "目录项目超过 10000 个，拒绝展示");
     const entries: FileEntry[] = [];
     for (const row of rows) {
-      if (row.isSymbolicLink() || (!row.isDirectory() && !row.isFile())) continue;
+      if (row.name.startsWith(".stackpilot-upload-") || row.isSymbolicLink() || (!row.isDirectory() && !row.isFile())) continue;
       entries.push(await this.toEntry(join(directory, row.name)));
     }
     entries.sort((a, b) => a.kind === b.kind ? a.name.localeCompare(b.name, "zh-Hans-CN") : a.kind === "directory" ? -1 : 1);
@@ -163,7 +180,7 @@ export class FileService {
   private async writeMetadata(path: string, value: unknown) {
     const temporary = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`);
     const handle = await open(temporary, "wx", 0o600);
-    try { await handle.writeFile(JSON.stringify(value, null, 2)); await handle.sync(); await handle.close(); await rename(temporary, path); }
+    try { await handle.writeFile(JSON.stringify(value, null, 2)); await handle.sync(); await handle.close(); await rename(temporary, path); await this.syncDirectory(dirname(path)); }
     catch (error) { await handle.close().catch(() => undefined); await rm(temporary, { force: true }); throw error; }
   }
 
@@ -171,10 +188,84 @@ export class FileService {
   private saveTrash(rows: TrashMeta[]) { return this.writeMetadata(join(this.trashRoot, META_FILE), rows); }
   private uploadHistory() { return this.readMetadata(join(this.trashRoot, HISTORY_FILE), UploadHistorySchema, "上传历史"); }
   private saveUploadHistory(rows: FileUploadRecord[]) { return this.writeMetadata(join(this.trashRoot, HISTORY_FILE), rows.slice(0, 500)); }
+  private transactionPath() { return join(this.trashRoot, TRANSACTION_FILE); }
+  private saveTransaction(value: FileTransaction) { return this.writeMetadata(this.transactionPath(), value); }
+  private async clearTransaction() { await rm(this.transactionPath(), { force: true }); await this.syncDirectory(this.trashRoot); }
+  private async syncDirectory(path: string) { const handle = await open(path, "r"); try { await handle.sync(); } finally { await handle.close(); } }
+  private async exists(path: string) { try { await lstat(path); return true; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; } }
   private storedPath(row: TrashMeta) {
     const target = join(this.trashRoot, `${row.id}.data`);
     if (row.storedName !== `${row.id}.data` || !isWithin(this.trashRoot, target)) throw metadataError("回收站");
     return target;
+  }
+
+  private async recoverTransaction() {
+    let transaction: FileTransaction;
+    try { transaction = FileTransactionSchema.parse(JSON.parse(await readFile(this.transactionPath(), "utf8")) as unknown); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return; throw metadataError("文件事务"); }
+    if (transaction.operation === "trash") await this.recoverTrash(transaction.row);
+    if (transaction.operation === "restore") await this.recoverRestore(transaction.row);
+    if (transaction.operation === "purge") await this.finishPurge(transaction.rows);
+    if (transaction.operation === "upload") await this.recoverUpload(transaction);
+    await this.clearTransaction();
+  }
+
+  private async recoverTrash(row: TrashMeta) {
+    const rows = await this.trashMetadata(); const stored = this.storedPath(row); const source = this.requestedPath(row.originalPath);
+    const [hasStored, hasSource] = await Promise.all([this.exists(stored), this.exists(source)]); const recorded = rows.some((item) => item.id === row.id);
+    if (hasStored && !hasSource) { if (!recorded) await this.saveTrash([row, ...rows]); return; }
+    if (!hasStored && hasSource && !recorded) return;
+    throw metadataError("回收站恢复");
+  }
+
+  private async recoverRestore(row: TrashMeta) {
+    const rows = await this.trashMetadata(); const stored = this.storedPath(row); const target = this.requestedPath(row.originalPath);
+    const [hasStored, hasTarget] = await Promise.all([this.exists(stored), this.exists(target)]); const recorded = rows.some((item) => item.id === row.id);
+    if (!hasStored && hasTarget) { if (recorded) await this.saveTrash(rows.filter((item) => item.id !== row.id)); return; }
+    if (hasStored && !hasTarget && recorded) return;
+    throw metadataError("回收站恢复");
+  }
+
+  private async recoverUpload(transaction: Extract<FileTransaction, { operation: "upload" }>) {
+    const target = this.requestedPath(transaction.targetPath); const temporary = join(this.trashRoot, transaction.temporaryName);
+    const [hasTarget, hasTemporary] = await Promise.all([this.exists(target), this.exists(temporary)]);
+    if (!hasTarget && hasTemporary) await link(temporary, target);
+    else if (!hasTarget) throw metadataError("上传事务");
+    const history = await this.uploadHistory();
+    if (!history.some((item) => item.id === transaction.upload.id)) await this.saveUploadHistory([transaction.upload, ...history]);
+    await rm(temporary, { force: true });
+  }
+
+  private async reconcileTrashStorage() {
+    const rows = await this.trashMetadata(); const expected = new Set(rows.map((row) => row.storedName));
+    for (const row of rows) if (!await this.exists(this.storedPath(row))) throw metadataError("回收站");
+    for (const entry of await readdir(this.trashRoot)) {
+      if (/^[0-9a-f-]+\.data$/i.test(entry) && !expected.has(entry)) throw metadataError("回收站");
+      if (entry.startsWith(".purge-") || /^\.upload-[0-9a-f-]+\.tmp$/i.test(entry)) await rm(join(this.trashRoot, entry), { recursive: true, force: true });
+    }
+  }
+
+  private async finishPurge(rows: TrashMeta[]) {
+    const metadata = await this.trashMetadata(); const ids = new Set(rows.map((row) => row.id));
+    for (const row of rows) {
+      const stored = this.storedPath(row); const quarantine = join(this.trashRoot, `.purge-${row.id}`);
+      const hasStored = await this.exists(stored); const hasQuarantine = await this.exists(quarantine);
+      if (hasStored && !hasQuarantine) { await rename(stored, quarantine); await this.syncDirectory(this.trashRoot); }
+      else if (hasStored && hasQuarantine) throw metadataError("回收站清理");
+    }
+    await this.saveTrash(metadata.filter((row) => !ids.has(row.id)));
+    for (const row of rows) await rm(join(this.trashRoot, `.purge-${row.id}`), { recursive: true, force: true });
+  }
+
+  private async purgeRows(rows: TrashMeta[]) {
+    if (!rows.length) return;
+    await this.saveTransaction({ operation: "purge", rows });
+    await this.finishPurge(rows); await this.clearTransaction();
+  }
+
+  private async cleanupExpired() {
+    const rows = await this.trashMetadata(); const now = Date.now();
+    await this.purgeRows(rows.filter((row) => Date.parse(row.expiresAt) <= now));
   }
 
   async trash(path: string) {
@@ -182,10 +273,11 @@ export class FileService {
       await this.ensureStorage(); const source = await this.assertExisting(path);
       if (source === this.root) throw new ServiceError(403, "FORBIDDEN", "不能删除文件根目录");
       const rows = await this.trashMetadata(); const info = await stat(source); const id = randomUUID(); const storedName = `${id}.data`; const now = new Date();
+      if (rows.length >= MAX_TRASH_ENTRIES) throw new ServiceError(409, "BAD_REQUEST", `回收站最多保留 ${MAX_TRASH_ENTRIES} 个文件项`);
       const row: TrashMeta = { id, name: basename(source), originalPath: this.virtualPath(source), kind: info.isDirectory() ? "directory" : "file", sizeBytes: info.isDirectory() ? null : info.size, deletedAt: now.toISOString(), expiresAt: new Date(now.getTime() + TRASH_RETENTION_MS).toISOString(), owner: ownerLabel(info.uid), storedName };
-      const stored = this.storedPath(row); await rename(source, stored);
-      try { await this.saveTrash([row, ...rows]); }
-      catch (error) { await rename(stored, source).catch(() => undefined); throw error; }
+      const stored = this.storedPath(row); await this.saveTransaction({ operation: "trash", row }); await rename(source, stored); await Promise.all([this.syncDirectory(dirname(source)), this.syncDirectory(this.trashRoot)]);
+      try { await this.saveTrash([row, ...rows]); await this.clearTransaction(); }
+      catch (error) { try { await rename(stored, source); await this.clearTransaction(); } catch { /* Leave the journal for startup recovery. */ } throw error; }
       return { id: row.id, name: row.name, originalPath: row.originalPath, kind: row.kind, sizeBytes: row.sizeBytes, deletedAt: row.deletedAt, expiresAt: row.expiresAt, owner: row.owner };
     });
   }
@@ -201,9 +293,9 @@ export class FileService {
       await this.ensureStorage(); const rows = await this.trashMetadata(); const row = rows.find((item) => item.id === id);
       if (!row) throw new ServiceError(404, "NOT_FOUND", "回收站项目不存在");
       const target = await this.assertParent(row.originalPath); await this.assertMissing(target); const stored = this.storedPath(row);
-      await rename(stored, target);
-      try { await this.saveTrash(rows.filter((item) => item.id !== id)); }
-      catch (error) { await rename(target, stored).catch(() => undefined); throw error; }
+      await this.saveTransaction({ operation: "restore", row }); await rename(stored, target); await Promise.all([this.syncDirectory(this.trashRoot), this.syncDirectory(dirname(target))]);
+      try { await this.saveTrash(rows.filter((item) => item.id !== id)); await this.clearTransaction(); }
+      catch (error) { try { await rename(target, stored); await this.clearTransaction(); } catch { /* Leave the journal for startup recovery. */ } throw error; }
       return this.toEntry(target);
     });
   }
@@ -212,24 +304,13 @@ export class FileService {
     return this.exclusive(async () => {
       await this.ensureStorage(); const rows = await this.trashMetadata(); const row = rows.find((item) => item.id === id);
       if (!row) throw new ServiceError(404, "NOT_FOUND", "回收站项目不存在");
-      const stored = this.storedPath(row); const quarantine = join(this.trashRoot, `.purge-${row.id}`); await rename(stored, quarantine);
-      try { await this.saveTrash(rows.filter((item) => item.id !== id)); await rm(quarantine, { recursive: true, force: true }); }
-      catch (error) { await rename(quarantine, stored).catch(() => undefined); await this.saveTrash(rows).catch(() => undefined); throw error; }
+      await this.purgeRows([row]);
     });
   }
 
   async emptyTrash() {
     return this.exclusive(async () => {
-      await this.ensureStorage(); const rows = await this.trashMetadata(); const moved: Array<{ stored: string; quarantine: string }> = [];
-      try {
-        for (const row of rows) { const stored = this.storedPath(row); const quarantine = join(this.trashRoot, `.purge-${row.id}`); await rename(stored, quarantine); moved.push({ stored, quarantine }); }
-        await this.saveTrash([]);
-        for (const item of moved) await rm(item.quarantine, { recursive: true, force: true });
-        return rows.length;
-      } catch (error) {
-        for (const item of moved.reverse()) await rename(item.quarantine, item.stored).catch(() => undefined);
-        await this.saveTrash(rows).catch(() => undefined); throw error;
-      }
+      await this.ensureStorage(); const rows = await this.trashMetadata(); await this.purgeRows(rows); return rows.length;
     });
   }
 
@@ -242,7 +323,7 @@ export class FileService {
     return this.exclusive(async () => {
       await this.ensureStorage(); const parent = await this.assertExisting(targetPath);
       if (!(await stat(parent)).isDirectory()) throw new ServiceError(400, "BAD_REQUEST", "目标路径不是目录");
-      const clean = cleanName(name); const id = randomUUID(); const temporary = join(parent, `.stackpilot-upload-${id}.tmp`); const startedAt = new Date().toISOString(); let sizeBytes = 0;
+      const clean = cleanName(name); const id = randomUUID(); const temporaryName = `.upload-${id}.tmp`; const temporary = join(this.trashRoot, temporaryName); const startedAt = new Date().toISOString(); let sizeBytes = 0;
       const handle = await open(temporary, "wx", 0o600);
       try {
         for await (const value of content) {
@@ -255,18 +336,27 @@ export class FileService {
             offset += bytesWritten;
           }
         }
-        await handle.sync(); await handle.close(); await chmod(temporary, 0o640);
+        await handle.sync(); await handle.close(); await chmod(temporary, 0o640); await this.syncDirectory(this.trashRoot);
         const target = join(parent, clean); await this.assertMissing(target);
-        try { await link(temporary, target); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new ServiceError(409, "BAD_REQUEST", "目标路径已存在同名文件"); throw error; }
-        await rm(temporary, { force: true });
         const completedAt = new Date().toISOString();
         const upload: FileUploadRecord = { id, name: clean, targetPath, sizeBytes, status: "completed", owner: owner.slice(0, 128), startedAt, completedAt, error: null };
-        try { await this.saveUploadHistory([upload, ...await this.uploadHistory()]); }
-        catch (error) { await rm(target, { force: true }); throw error; }
+        await this.saveTransaction({ operation: "upload", targetPath: this.virtualPath(target), temporaryName, upload }); let published = false; let historyCommitted = false;
+        try {
+          try { await link(temporary, target); published = true; await this.syncDirectory(parent); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new ServiceError(409, "BAD_REQUEST", "目标路径已存在同名文件"); throw error; }
+          await this.saveUploadHistory([upload, ...await this.uploadHistory()]); historyCommitted = true; await rm(temporary, { force: true }); await this.clearTransaction();
+        } catch (error) {
+          if (!historyCommitted) { if (published) { await rm(target, { force: true }); await this.syncDirectory(parent).catch(() => undefined); } await this.clearTransaction().catch(() => undefined); }
+          else { (error as { uploadCommitted?: boolean }).uploadCommitted = true; }
+          throw error;
+        }
         return { upload, entry: await this.toEntry(target) };
       } catch (error) {
-        await handle.close().catch(() => undefined); await rm(temporary, { force: true }); throw error;
+        await handle.close().catch(() => undefined); await rm(temporary, { force: true });
+        if ((error as { uploadCommitted?: boolean }).uploadCommitted) throw error;
+        const completedAt = new Date().toISOString(); const message = error instanceof Error ? error.message.slice(0, 240) : "上传失败";
+        const failed: FileUploadRecord = { id, name: clean, targetPath, sizeBytes, status: "failed", owner: owner.slice(0, 128), startedAt, completedAt, error: message };
+        await this.saveUploadHistory([failed, ...await this.uploadHistory()]).catch(() => undefined); throw error;
       }
     });
   }

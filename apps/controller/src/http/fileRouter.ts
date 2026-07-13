@@ -8,10 +8,21 @@ import type { RequestContext } from "./types.js";
 import { ApiError, badRequest, notFound } from "./errors/ApiError.js";
 import { sendJson } from "./response/json.js";
 import { parseSchema } from "./validation.js";
+import { requestSource } from "./trustedProxy.js";
 
 function decodedHeader(context: RequestContext, name: string) {
   const raw = context.request.headers[name]; if (typeof raw !== "string") throw badRequest(`缺少 ${name} 请求头`);
   try { return decodeURIComponent(raw); } catch { throw badRequest(`${name} 请求头编码无效`); }
+}
+
+function auditFile(context: RequestContext, action: string, targetId: string, parameters: unknown = {}) {
+  if (!context.identity || !context.principal) return;
+  context.identity.audit.append({
+    actorType: context.principal.type, actorId: context.principal.userId,
+    sessionId: context.principal.type === "session" ? context.principal.id : null,
+    source: requestSource(context.request, context.config.trustedProxies), targetType: "managed-file", targetId, action, parameters,
+    outcome: "success", authorization: "allowed", requestId: context.requestId,
+  });
 }
 
 export async function routeFileRequest(context: RequestContext) {
@@ -23,20 +34,20 @@ export async function routeFileRequest(context: RequestContext) {
   }
   if (context.url.pathname === "/api/files/directories" && method === "POST") {
     context.identity?.require(context.principal, "files:write"); const input = parseSchema(CreateDirectoryRequestSchema, context.body, "创建目录");
-    sendJson(response, 201, { message: `${input.name} 已创建`, entry: await services.files.createDirectory(input.parentPath, input.name) }, FileMutationResponseSchema); return;
+    const entry = await services.files.createDirectory(input.parentPath, input.name); auditFile(context, "file.directory.create", entry.path); sendJson(response, 201, { message: `${input.name} 已创建`, entry }, FileMutationResponseSchema); return;
   }
   if (context.url.pathname === "/api/files/rename" && method === "PATCH") {
     context.identity?.require(context.principal, "files:write"); const input = parseSchema(RenameFileRequestSchema, context.body, "重命名文件");
-    sendJson(response, 200, { message: "文件项已重命名", entry: await services.files.rename(input.path, input.name) }, FileMutationResponseSchema); return;
+    const entry = await services.files.rename(input.path, input.name); auditFile(context, "file.rename", entry.path, { previousPath: input.path }); sendJson(response, 200, { message: "文件项已重命名", entry }, FileMutationResponseSchema); return;
   }
   if (context.url.pathname === "/api/files/trash" && method === "POST") {
     context.identity?.require(context.principal, "files:write"); const input = parseSchema(TrashFileRequestSchema, context.body, "移入回收站");
-    sendJson(response, 200, { message: "文件项已移入回收站", trashEntry: await services.files.trash(input.path) }, FileMutationResponseSchema); return;
+    const trashEntry = await services.files.trash(input.path); auditFile(context, "file.trash", input.path, { trashId: trashEntry.id }); sendJson(response, 200, { message: "文件项已移入回收站", trashEntry }, FileMutationResponseSchema); return;
   }
   if (context.url.pathname === "/api/file-trash" && method === "GET") { context.identity?.require(context.principal, "files:read"); sendJson(response, 200, await services.files.listTrash(), FileTrashPayloadSchema); return; }
   if (context.url.pathname === "/api/file-trash/restore" && method === "POST") {
     context.identity?.require(context.principal, "files:write"); const { id } = parseSchema(TrashMutationRequestSchema, context.body, "恢复文件");
-    sendJson(response, 200, { message: "文件已恢复", entry: await services.files.restore(id) }, FileMutationResponseSchema); return;
+    const entry = await services.files.restore(id); auditFile(context, "file.restore", entry.path, { trashId: id }); sendJson(response, 200, { message: "文件已恢复", entry }, FileMutationResponseSchema); return;
   }
   if (context.url.pathname === "/api/file-trash" && method === "DELETE") {
     context.identity?.require(context.principal, "files:delete");
@@ -44,8 +55,8 @@ export async function routeFileRequest(context: RequestContext) {
     if (!item.success && !empty.success) throw badRequest("永久删除请求必须指定有效文件 ID 或显式确认清空回收站");
     const proof = context.request.headers["x-reauth-proof"];
     context.identity?.consumeReauth(context.principal!, typeof proof === "string" ? proof : undefined);
-    if (item.success) { await services.files.purge(item.data.id); sendJson(response, 200, { message: "文件已永久删除" }, FileMutationResponseSchema); }
-    else { const count = await services.files.emptyTrash(); sendJson(response, 200, { message: `已永久删除 ${count} 个文件项` }, FileMutationResponseSchema); }
+    if (item.success) { await services.files.purge(item.data.id); auditFile(context, "file.purge", item.data.id); sendJson(response, 200, { message: "文件已永久删除" }, FileMutationResponseSchema); }
+    else { const count = await services.files.emptyTrash(); auditFile(context, "file.trash.empty", "all", { count }); sendJson(response, 200, { message: `已永久删除 ${count} 个文件项` }, FileMutationResponseSchema); }
     return;
   }
   if (context.url.pathname === "/api/file-uploads" && method === "GET") { context.identity?.require(context.principal, "files:read"); sendJson(response, 200, await services.files.listUploads(), FileUploadsPayloadSchema); return; }
@@ -54,6 +65,7 @@ export async function routeFileRequest(context: RequestContext) {
     const targetPath = decodedHeader(context, "x-file-target-path"); const name = decodedHeader(context, "x-file-name");
     const lengthHeader = context.request.headers["content-length"]; const contentLength = typeof lengthHeader === "string" ? Number(lengthHeader) : undefined;
     const result = await services.files.upload(targetPath, name, context.request, context.principal?.user.displayName ?? "unknown", Number.isFinite(contentLength) ? contentLength : undefined);
+    auditFile(context, "file.upload", result.entry.path, { sizeBytes: result.upload.sizeBytes });
     sendJson(response, 201, { message: `${name} 上传完成`, ...result }, FileUploadResponseSchema); return;
   }
   if (["files", "file-trash", "file-uploads"].includes(parts[1] ?? "")) throw notFound("文件接口不存在");
