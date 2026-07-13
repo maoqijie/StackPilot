@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import type { CommandResult } from "./types.js";
 
 const execFileAsync = promisify(execFile);
-const allowedExecutables = new Set(["git", "crontab", "systemctl", "launchctl", "lsof", "ps", "du", "/bin/sh"]);
+const allowedExecutables = new Set(["git", "crontab", "systemctl", "launchctl", "lsof", "ps", "du", "/bin/sh", "/usr/bin/psql"]);
 
 export async function runFixedCommand(executable: string, args: readonly string[], options: { cwd?: string; timeoutMs?: number; maxBuffer?: number } = {}): Promise<CommandResult> {
   if (!allowedExecutables.has(executable)) throw new Error("平台适配器拒绝未知可执行文件");

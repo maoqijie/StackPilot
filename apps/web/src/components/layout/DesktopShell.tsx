@@ -1,3 +1,4 @@
+import type { PublicUser } from "@stackpilot/contracts";
 import { Lock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { desktopTopbarChrome, navPageFor } from "../../app/navigation";
@@ -97,6 +98,7 @@ function DesktopShellContent({
   setTopbarUnreadCount,
   sessionLocked,
   onLogout,
+  user,
 }: {
   page: PageKey;
   setPage: SetPage;
@@ -105,6 +107,7 @@ function DesktopShellContent({
   setTopbarUnreadCount: React.Dispatch<React.SetStateAction<number>>;
   sessionLocked: boolean;
   onLogout: () => void;
+  user: PublicUser;
 }) {
   const activeModule = navPageFor(page);
   const topbarChrome = desktopTopbarChrome(page);
@@ -220,12 +223,12 @@ function DesktopShellContent({
           {activeModule === "sites" && <SitesPage page={page} notify={notify} />}
           {activeModule === "databases" && (
             page === "databases-backups"
-              ? <DatabaseBackupsPage page={page} notify={notify} />
+              ? <DatabaseBackupsPage page={page} notify={notify} canManage={user.permissions.includes("system:backup")} />
               : page === "databases-slow"
-                ? <DatabaseSlowQueriesPage page={page} setPage={setPage} notify={notify} />
+                ? <DatabaseSlowQueriesPage page={page} notify={notify} />
               : <DatabasesPage page={page} setPage={setPage} notify={notify} />
           )}
-          {activeModule === "files" && <FilesModule page={page} notify={notify} />}
+          {activeModule === "files" && <FilesModule page={page} notify={notify} canManageTrash={user.permissions.includes("files:manage")} />}
           {activeModule === "terminal" && <TerminalPage page={page} notify={notify} />}
           {activeModule === "systemd" && <SystemdPage page={page} notify={notify} />}
           {activeModule === "firewall" && <FirewallPage page={page} notify={notify} />}

@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
-import { createStackPilotApp, type AppOptions } from "./app.js";
+import { createControllerServices, createStackPilotApp, type AppOptions } from "./app.js";
 import { loadControllerConfig } from "./config/environment.js";
 import { NativePlatformAdapter } from "./platform/nativeAdapter.js";
 import { openDatabase } from "./database/database.js";
@@ -39,7 +39,8 @@ if (isMainModule) {
     const database=openDatabase(databasePath);
     const identity=new IdentityService(database,loadOrCreateAuditKey(database,parseMasterKey(config.masterKey)),config.sessionSeconds);
     const agentRepository=new SqliteAgentControlRepository(database,identity.audit);
-    const appOptions={ config, platform, repoRoot,database,identity,agentRepository };
+    const services = createControllerServices(platform, repoRoot, config, agentRepository, database);
+    const appOptions={ config, services, platform, repoRoot,database,identity,agentRepository };
     const server = createStackPilotServer(appOptions);
 
     server.listen(config.port, config.host, () => {

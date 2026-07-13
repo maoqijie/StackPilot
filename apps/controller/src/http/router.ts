@@ -4,7 +4,7 @@ import {
   OverviewRisksPayloadSchema, OverviewRisksScanResponseSchema, OverviewSummaryPayloadSchema,
   OverviewTasksPayloadSchema, OverviewTasksRefreshResponseSchema, PathIdSchema,
   HostMonitoringPayloadSchema, ReadinessResponseSchema, RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
-  SiteRuntimePayloadSchema,
+  SiteRuntimePayloadSchema, DatabaseSlowQueriesPayloadSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
@@ -16,6 +16,8 @@ import { routeControlPlaneRequest } from "./controlPlaneRouter.js";
 import { routeIdentityRequest } from "./identityRouter.js";
 import type { OverviewAccess } from "../modules/overview/overviewService.js";
 import { routeFileTrashRequest } from "./fileTrashRouter.js";
+import { routeDatabaseBackupRequest } from "./databaseBackupRouter.js";
+import { routeFileRequest } from "./fileRouter.js";
 
 function idAt(context: RequestContext, index: number) {
   try {
@@ -48,11 +50,18 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     await routeControlPlaneRequest(context); return;
   }
   if (parts[0] === "api" && parts[1] === "files" && parts[2] === "trash") { await routeFileTrashRequest(context); return; }
+  if (parts[0] === "api" && parts[1] === "database-backups") { await routeDatabaseBackupRequest(context); return; }
+  if (parts[0] === "api" && parts[1] === "file-uploads") { await routeFileRequest(context); return; }
   if (context.url.pathname === "/api/hosts" && method === "GET") {
     context.identity?.require(context.principal, "overview:read");
     const nodeScope = context.principal?.nodeScope ?? [];
     const canReadNodes = Boolean(context.principal?.permissions.has("nodes:read"));
     sendJson(response,200,await services.hosts.getHosts(canReadNodes&&(nodeScope==="all"||nodeScope.length>0),nodeScope),HostMonitoringPayloadSchema);return;
+  }
+  if (context.url.pathname === "/api/databases/slow-queries" && method === "GET") {
+    context.identity?.require(context.principal, "databases:read");
+    sendJson(response, 200, await services.databases.getSlowQueries(), DatabaseSlowQueriesPayloadSchema);
+    return;
   }
   if (context.url.pathname === "/api/sites" && method === "GET") {
     context.identity?.require(context.principal, "overview:read");

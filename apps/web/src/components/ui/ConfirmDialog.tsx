@@ -13,6 +13,7 @@ function ConfirmDialog({
   tone = "danger",
   className,
   confirmDisabled = false,
+  children,
 }: {
   title: string;
   message: string;
@@ -23,6 +24,7 @@ function ConfirmDialog({
   tone?: "danger" | "warning";
   className?: string;
   confirmDisabled?: boolean;
+  children?: React.ReactNode;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -96,6 +98,7 @@ function ConfirmDialog({
         <div className="confirm-dialog-body">
           <p id={descriptionId}>{message}</p>
           {detail && <code>{detail}</code>}
+          {children}
         </div>
         <footer>
           <button className="ghost" type="button" data-confirm-cancel onClick={onClose}>取消</button>

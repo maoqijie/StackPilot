@@ -7,6 +7,8 @@ import type { Notify } from "../types/app";
 
 const filesApi = vi.hoisted(() => ({ fetchFileTrash: vi.fn(), restoreTrashEntry: vi.fn(), purgeTrashEntry: vi.fn(), purgeFileTrash: vi.fn() }));
 vi.mock("../api/filesApi", () => filesApi);
+const identityApi = vi.hoisted(() => ({ reauthenticate: vi.fn() }));
+vi.mock("../api/identityApi", () => identityApi);
 
 const firstId = "11111111-1111-4111-8111-111111111111";
 const secondId = "22222222-2222-4222-8222-222222222222";
@@ -19,7 +21,7 @@ const payload: TrashPayload = {
 };
 
 describe("files trash page", () => {
-  beforeEach(() => { vi.clearAllMocks(); filesApi.fetchFileTrash.mockResolvedValue(payload); });
+  beforeEach(() => { vi.clearAllMocks(); filesApi.fetchFileTrash.mockResolvedValue(payload); identityApi.reauthenticate.mockResolvedValue({ proof: "reauth-proof", expiresAt: "2026-07-14T02:15:00.000Z" }); });
 
   it("loads backend rows and opens details in a body-level drawer", async () => {
     const user = userEvent.setup();
@@ -52,8 +54,11 @@ describe("files trash page", () => {
     render(<FileTrashPage page="files-trash" notify={notify} />);
     await screen.findByText("后端采集时间 2026/7/14 10:00:00");
     await user.click(screen.getAllByRole("button", { name: "永久删除 old-error.log" })[0]);
-    await user.click(within(screen.getByRole("alertdialog", { name: "永久删除文件" })).getByRole("button", { name: "永久删除" }));
-    await waitFor(() => expect(notify).toHaveBeenCalledWith("后端拒绝删除", "danger"));
+    const dialog = screen.getByRole("alertdialog", { name: "永久删除文件" });
+    await user.type(within(dialog).getByLabelText("当前密码"), "correct password");
+    await user.click(within(dialog).getByRole("button", { name: "永久删除" }));
+    await waitFor(() => expect(within(dialog).getByRole("alert")).toHaveTextContent("后端拒绝删除"));
+    expect(filesApi.purgeTrashEntry).toHaveBeenCalledWith(firstId, "reauth-proof");
     await user.click(within(screen.getByRole("alertdialog", { name: "永久删除文件" })).getByRole("button", { name: "取消" }));
     expect(screen.getAllByRole("button", { name: "old-error.log" })).toHaveLength(2);
   });

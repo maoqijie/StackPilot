@@ -23,9 +23,11 @@ export async function routeFileTrashRequest(context: RequestContext) {
     sendJson(response, 200, services.fileTrash.restore(idAt(context), actor), TrashMutationResponseSchema); return;
   }
   if (parts.length === 4 && parts[3] === "purge" && method === "DELETE") {
+    context.identity?.consumeReauth(context.principal!, typeof context.request.headers["x-reauth-proof"] === "string" ? context.request.headers["x-reauth-proof"] : undefined);
     sendJson(response, 200, services.fileTrash.purgeAll(), TrashMutationResponseSchema); return;
   }
   if (parts.length === 4 && method === "DELETE") {
+    context.identity?.consumeReauth(context.principal!, typeof context.request.headers["x-reauth-proof"] === "string" ? context.request.headers["x-reauth-proof"] : undefined);
     sendJson(response, 200, services.fileTrash.purge(idAt(context)), TrashMutationResponseSchema); return;
   }
   throw notFound("文件回收站接口不存在");

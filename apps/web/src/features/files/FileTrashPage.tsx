@@ -2,6 +2,7 @@ import { Clock3, FileBox, LoaderCircle, RefreshCw, Shield, Trash2 } from "lucide
 import { useRef, useState } from "react";
 import { purgeFileTrash, purgeTrashEntry, restoreTrashEntry } from "../../api/filesApi";
 import type { TrashEntry } from "../../api/filesApi";
+import { reauthenticate } from "../../api/identityApi";
 import { resolvePageMeta } from "../../app/navigation";
 import { ModulePageShell } from "../../components/layout/ModulePageShell";
 import { MetricTile, ModuleSearch } from "../../components/ui/Cards";
@@ -13,11 +14,13 @@ import type { Notify, PageKey } from "../../types/app";
 import { formatUploadSize } from "./format";
 import { useFileTrash } from "./useFileTrash";
 
-function FileTrashPage({ page, notify }: { page: PageKey; notify: Notify }) {
+function FileTrashPage({ page, notify, canManage = true }: { page: PageKey; notify: Notify; canManage?: boolean }) {
   const [search, setSearch] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("全部");
   const [selectedId, setSelectedId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [password, setPassword] = useState("");
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const { payload, setPayload, loading, error, retry } = useFileTrash();
   const trashRows = payload?.entries ?? [];
   const restoredRows = payload?.recentlyRestored ?? [];
@@ -49,23 +52,31 @@ function FileTrashPage({ page, notify }: { page: PageKey; notify: Notify }) {
   };
   const requestPurge = (row: TrashEntry, returnToDetail = false) => {
     if (returnToDetail) setSelectedId("");
+    setPassword("");
+    setMutationError(null);
     setConfirmation({ type: "file", row, returnToDetail });
   };
   const closeConfirmation = () => {
+    if (submitting) return;
     if (confirmation?.type === "file" && confirmation.returnToDetail && trashRows.some((row) => row.id === confirmation.row.id)) setSelectedId(confirmation.row.id);
+    setPassword("");
+    setMutationError(null);
     setConfirmation(null);
   };
   const confirmPurge = async () => {
-    if (!confirmation || submitting) return;
+    if (!confirmation || !password || submitting) return;
     setSubmitting(true);
+    setMutationError(null);
     try {
-      const result = confirmation.type === "all" ? await purgeFileTrash() : await purgeTrashEntry(confirmation.row.id);
+      const proof = await reauthenticate(password);
+      const result = confirmation.type === "all" ? await purgeFileTrash(proof.proof) : await purgeTrashEntry(confirmation.row.id, proof.proof);
       setPayload(result.trash);
       setSelectedId("");
       setConfirmation(null);
+      setPassword("");
       notify(result.message, "danger");
     } catch (reason) {
-      notify(reason instanceof Error ? reason.message : "永久删除失败", "danger");
+      setMutationError(reason instanceof Error ? reason.message : "永久删除失败");
     } finally { setSubmitting(false); }
   };
 
@@ -81,11 +92,11 @@ function FileTrashPage({ page, notify }: { page: PageKey; notify: Notify }) {
           subtitle="独立回收站视图，支持按所有者筛选、查看删除原因、恢复文件和永久删除。"
           page={page}
           viewContext={{ eyebrow: "文件 / 回收站", title: "回收站", chips: [`待清理 ${trashRows.length}`, `已恢复 ${restoredRows.length}`, `保留 ${payload?.retentionDays ?? 7} 天`] }}
-          actions={<><button className="ghost" type="button" onClick={() => { restorePanelRef.current?.scrollIntoView({ block: "start" }); restorePanelRef.current?.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true }); }}><RefreshCw size={15} /> 查看恢复记录</button><button className="trash-destructive" type="button" disabled={trashRows.length === 0 || submitting} onClick={() => setConfirmation({ type: "all", count: trashRows.length })}><Trash2 size={15} /> 清空回收站</button></>}
+          actions={<><button className="ghost" type="button" onClick={() => { restorePanelRef.current?.scrollIntoView({ block: "start" }); restorePanelRef.current?.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true }); }}><RefreshCw size={15} /> 查看恢复记录</button>{canManage && <button className="trash-destructive" type="button" disabled={trashRows.length === 0 || submitting} onClick={() => { setPassword(""); setMutationError(null); setConfirmation({ type: "all", count: trashRows.length }); }}><Trash2 size={15} /> 清空回收站</button>}</>}
           filters={<><ModuleSearch value={search} placeholder="搜索文件、原路径、删除原因" onChange={setSearch} /><FieldSelect label="所有者" value={ownerFilter} options={ownerOptions} onChange={setOwnerFilter} /></>}
           metrics={<><MetricTile icon={Trash2} label="回收站项目" value={`${trashRows.length}`} tone="orange" /><MetricTile icon={RefreshCw} label="已恢复" value={`${restoredRows.length}`} tone="green" /><MetricTile icon={Clock3} label="保留策略" value={`${payload?.retentionDays ?? 7} 天`} tone="blue" /></>}
           side={selected && (
-            <DetailDrawer title="删除详情" subtitle={selected.name} onClose={() => setSelectedId("")} className="trash-detail-drawer" modal actions={<><button className="trash-destructive" type="button" disabled={submitting} aria-label={`永久删除 ${selected.name}`} onClick={() => requestPurge(selected, true)}>永久删除</button><button className="primary" type="button" disabled={submitting} aria-label={`恢复 ${selected.name}`} onClick={() => void restoreFile(selected)}>恢复</button></>}>
+            <DetailDrawer title="删除详情" subtitle={selected.name} onClose={() => setSelectedId("")} className="trash-detail-drawer" modal actions={canManage ? <><button className="trash-destructive" type="button" disabled={submitting} aria-label={`永久删除 ${selected.name}`} onClick={() => requestPurge(selected, true)}>永久删除</button><button className="primary" type="button" disabled={submitting} aria-label={`恢复 ${selected.name}`} onClick={() => void restoreFile(selected)}>恢复</button></> : undefined}>
               <dl className="trash-detail-list">
                 <div><dt>原路径</dt><dd>{selected.originalPath}</dd></div>
                 <div><dt>大小</dt><dd>{formatSize(selected)}</dd></div>
@@ -111,7 +122,7 @@ function FileTrashPage({ page, notify }: { page: PageKey; notify: Notify }) {
                   { key: "deleted", label: "删除时间", render: (row) => formatDate(row.deletedAt) },
                   { key: "expires", label: "剩余保留", width: "92px", render: (row) => <span className="pill orange"><Clock3 size={12} />{expiresIn(row.expiresAt)}</span> },
                   { key: "owner", label: "所有者", width: "84px", render: (row) => row.owner },
-                  { key: "ops", label: "操作", width: "184px", render: (row) => <span className="table-actions"><button type="button" disabled={submitting} aria-label={`恢复 ${row.name}`} onClick={() => void restoreFile(row)}>恢复</button><button className="trash-destructive small" type="button" disabled={submitting} aria-label={`永久删除 ${row.name}`} onClick={() => requestPurge(row)}>永久删除</button></span> },
+                  { key: "ops", label: "操作", width: "184px", render: (row) => canManage ? <span className="table-actions"><button type="button" disabled={submitting} aria-label={`恢复 ${row.name}`} onClick={() => void restoreFile(row)}>恢复</button><button className="trash-destructive small" type="button" disabled={submitting} aria-label={`永久删除 ${row.name}`} onClick={() => requestPurge(row)}>永久删除</button></span> : <span>只读</span> },
                 ]}
                 rows={filteredRows}
                 emptyText="回收站没有匹配文件"
@@ -121,7 +132,7 @@ function FileTrashPage({ page, notify }: { page: PageKey; notify: Notify }) {
                     <div className="module-card-head trash-mobile-head"><button className="module-row-link trash-file-link" type="button" title={row.name} onClick={() => setSelectedId(row.id)}><Trash2 size={15} /><b>{row.name}</b></button><span className="pill orange"><Clock3 size={12} />{expiresIn(row.expiresAt)}</span></div>
                     <code className="module-card-code">{row.originalPath}</code>
                     <div className="module-card-meta"><span><b>大小</b><em>{formatSize(row)}</em></span><span><b>删除</b><em>{formatDate(row.deletedAt)}</em></span><span><b>所有者</b><em>{row.owner}</em></span><span className="module-card-span-2"><b>原因</b><em>{row.reason}</em></span></div>
-                    <div className="module-card-footer"><div className="table-actions actions-2"><button type="button" disabled={submitting} aria-label={`恢复 ${row.name}`} onClick={() => void restoreFile(row)}>恢复</button><button className="trash-destructive small" type="button" disabled={submitting} aria-label={`永久删除 ${row.name}`} onClick={() => requestPurge(row)}>永久删除</button></div></div>
+                    {canManage && <div className="module-card-footer"><div className="table-actions actions-2"><button type="button" disabled={submitting} aria-label={`恢复 ${row.name}`} onClick={() => void restoreFile(row)}>恢复</button><button className="trash-destructive small" type="button" disabled={submitting} aria-label={`永久删除 ${row.name}`} onClick={() => requestPurge(row)}>永久删除</button></div></div>}
                   </>
                 )}
               />
@@ -136,7 +147,10 @@ function FileTrashPage({ page, notify }: { page: PageKey; notify: Notify }) {
           </div>
         </ModulePageShell>
       </div>
-      {confirmation && <ConfirmDialog title={confirmation.type === "all" ? "清空回收站" : "永久删除文件"} message={confirmation.type === "all" ? `将永久删除回收站中的 ${confirmation.count} 个文件，此操作无法撤销。` : `将永久删除 ${confirmation.row.name}，此操作无法撤销。`} detail={confirmation.type === "file" ? confirmation.row.originalPath : undefined} confirmLabel={submitting ? "处理中..." : confirmation.type === "all" ? "确认清空" : "永久删除"} confirmDisabled={submitting} onClose={closeConfirmation} onConfirm={() => void confirmPurge()} />}
+      {confirmation && <ConfirmDialog title={confirmation.type === "all" ? "清空回收站" : "永久删除文件"} message={confirmation.type === "all" ? `将永久删除回收站中的 ${confirmation.count} 个文件，此操作无法撤销。` : `将永久删除 ${confirmation.row.name}，此操作无法撤销。`} detail={confirmation.type === "file" ? confirmation.row.originalPath : undefined} confirmLabel={submitting ? "处理中..." : confirmation.type === "all" ? "确认清空" : "永久删除"} confirmDisabled={!password || submitting} onClose={closeConfirmation} onConfirm={() => void confirmPurge()}>
+        <label className="cert-reauth-field"><span>当前密码</span><input autoFocus type="password" autoComplete="current-password" value={password} disabled={submitting} onChange={(event) => setPassword(event.target.value)} /></label>
+        {mutationError && <p className="form-error" role="alert">{mutationError}</p>}
+      </ConfirmDialog>}
     </>
   );
 }
