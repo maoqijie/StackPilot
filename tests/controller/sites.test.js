@@ -138,12 +138,14 @@ test("site monitoring removes local mirrors while retaining the Agent identity f
   const sameHost = remoteNode("11111111-1111-4111-8111-111111111111");
   sameHost.siteSnapshot.sites[0].host = " CONTROLLER-1 ";
   sameHost.siteSnapshot.sites[0].domain = " Remote.Example.com ";
+  sameHost.siteSnapshot.sites[0].status = "unknown";
+  sameHost.siteSnapshot.sites[0].latencyMs = null;
   const otherHost = remoteNode("22222222-2222-4222-8222-222222222222");
   otherHost.siteSnapshot.sites[0].host = "controller-2";
   await repository.update((state) => state.nodes.push(sameHost, otherHost));
   const localSite = {
     ...sameHost.siteSnapshot.sites[0], id: "nginx-local", nodeId: "node-local", host: "controller-1",
-    collectedAt: new Date().toISOString(), freshness: "current",
+    status: "running", latencyMs: 7, collectedAt: new Date().toISOString(), freshness: "current",
     renewal: { batchId: null, taskId: null, status: "idle", message: null, updatedAt: null },
   };
   const service = new SiteMonitoringService({ collectSites: async () => ({
@@ -166,6 +168,9 @@ test("site monitoring removes local mirrors while retaining the Agent identity f
   assert.equal(managed?.nodeId, sameHost.nodeId);
   assert.equal(managed?.manageability, "managed");
   assert.equal(managed?.version, 2);
+  assert.equal(managed?.status, "running");
+  assert.equal(managed?.latencyMs, 7);
+  assert.equal(managed?.certificate.certificateId, "cert-agent-1");
 });
 
 test("certificate renewal batches are atomic, idempotent, deduplicated and non-retryable", async () => {

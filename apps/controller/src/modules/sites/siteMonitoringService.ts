@@ -76,6 +76,11 @@ function siteHostKey(site: Pick<SiteRuntimeRecord, "domain" | "host">) {
   return `${site.host.trim().toLowerCase()}\0${site.domain.trim().toLowerCase()}`;
 }
 
+function mergeLocalProbe(site: SiteRuntimeRecord, localByHost: ReadonlyMap<string, SiteRuntimeRecord>) {
+  const local = localByHost.get(siteHostKey(site));
+  return local ? { ...site, status: local.status, latencyMs: local.latencyMs } : site;
+}
+
 export class SiteMonitoringService {
   private cached: SiteRuntimePayload | null = null;
   private inFlight: Promise<SiteRuntimePayload> | null = null;
@@ -123,8 +128,9 @@ export class SiteMonitoringService {
     const permitted = state.nodes.filter((node) =>
       !node.revokedAt && node.siteSnapshot && (access.nodeScope === "all" || access.nodeScope.includes(node.nodeId)),
     );
+    const localByHost = new Map(local.sites.map((site) => [siteHostKey(site), site]));
     const remoteSites = permitted.flatMap((node) => node.siteSnapshot!.sites
-      .map((site) => remoteSite(node, site, state.tasks)));
+      .map((site) => mergeLocalProbe(remoteSite(node, site, state.tasks), localByHost)));
     const remoteHostKeys = new Set(remoteSites.map(siteHostKey));
     const localSites = local.sites
       .filter((site) => !remoteHostKeys.has(siteHostKey(site)))
