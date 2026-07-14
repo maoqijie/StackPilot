@@ -6,10 +6,18 @@ import { CertificateRenewalTaskParametersSchema } from "../sites/index.js";
 export const RemoteTaskStatusSchema = z.enum(["queued", "dispatched", "running", "succeeded", "failed", "cancelled", "expired"]);
 export const SystemSummaryTaskParametersSchema = z.object({ includeLoad: z.boolean().default(true) }).strict();
 export const ServiceStatusTaskParametersSchema = z.object({ serviceName: z.string().min(1).max(120).regex(/^[A-Za-z0-9_.@:-]+$/) }).strict();
-export const RemoteTaskTypeSchema = z.enum(["system.summary.read", "service.status.read", "sites.certificates.renew"]);
+const TerminalServiceNameSchema = z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9_.@:-]*$/);
+export const TerminalCommandTaskParametersSchema = z.discriminatedUnion("command", [
+  z.object({ command: z.literal("disk-usage") }).strict(),
+  z.object({ command: z.literal("uptime") }).strict(),
+  z.object({ command: z.literal("top-summary") }).strict(),
+  z.object({ command: z.literal("service-status"), serviceName: TerminalServiceNameSchema }).strict(),
+]);
+export const RemoteTaskTypeSchema = z.enum(["system.summary.read", "service.status.read", "terminal.command.execute", "sites.certificates.renew"]);
 export const CreateRemoteTaskRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("system.summary.read"), parameters: SystemSummaryTaskParametersSchema, expiresInSeconds: z.number().int().min(5).max(900).default(120), idempotencyKey: z.string().min(8).max(160) }).strict(),
   z.object({ type: z.literal("service.status.read"), parameters: ServiceStatusTaskParametersSchema, expiresInSeconds: z.number().int().min(5).max(900).default(120), idempotencyKey: z.string().min(8).max(160) }).strict(),
+  z.object({ type: z.literal("terminal.command.execute"), parameters: TerminalCommandTaskParametersSchema, expiresInSeconds: z.number().int().min(5).max(120).default(30), idempotencyKey: z.string().min(8).max(160) }).strict(),
   z.object({ type: z.literal("sites.certificates.renew"), parameters: CertificateRenewalTaskParametersSchema, expiresInSeconds: z.number().int().min(30).max(900).default(600), idempotencyKey: z.string().min(8).max(160) }).strict(),
 ]);
 export const RemoteTaskEnvelopeSchema = z.object({

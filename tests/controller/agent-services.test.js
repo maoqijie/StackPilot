@@ -74,6 +74,20 @@ test("node capability authorization accepts only declared Controller-supported c
   await assert.rejects(() => fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["service.status.read"], "admin", crypto.randomUUID()), /已声明/);
 });
 
+test("terminal command requires explicit dual capability authorization and never retries", async () => {
+  const fixture = await enrolledFixture();
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.2.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read", "terminal.command.execute"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID());
+  const input = { type: "terminal.command.execute", parameters: { command: "uptime" }, expiresInSeconds: 30, idempotencyKey: "terminal-uptime-once" };
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID()), (error) => error.status === 403);
+  await fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["system.summary.read", "terminal.command.execute"], "admin", crypto.randomUUID());
+  const created = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID());
+  assert.equal(created.maxAttempts, 1); assert.equal(created.retryable, false); assert.equal(created.requiredCapability, "terminal.command.execute");
+  await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID());
+  const failed = await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: created.taskId, attempt: 1, status: "failed", timestamp: new Date().toISOString(), errorCode: "COMMAND_FAILED", result: { message: "failed", truncated: false } }, crypto.randomUUID());
+  assert.equal(failed.status, "failed"); assert.equal(failed.nextAttemptAt, null); assert.equal((await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID())).length, 0);
+  const state = await fixture.repository.read(); assert.equal(state.audits.findLast((event) => event.taskId === created.taskId)?.resultSummary, "Terminal command result recorded");
+});
+
 test("task state machine enforces capability, idempotency, expiry, cancellation and queue limit", async () => {
   const fixture = await enrolledFixture(); await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read", "service.status.read"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID());
   const input = { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "idempotent-summary-a" };

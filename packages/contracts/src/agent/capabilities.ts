@@ -3,7 +3,7 @@ import { z } from "zod";
 export const AgentPlatformSchema = z.enum(["linux", "darwin", "win32"]);
 export const AGENT_FEATURE_DATABASE_INVENTORY = "database-inventory-v1";
 export const AgentCapabilitySchema = z.enum([
-  "system.summary.read", "service.status.read", "sites.inventory.read", "sites.certificates.renew", "databases.inventory.read",
+  "system.summary.read", "service.status.read", "terminal.command.execute", "sites.inventory.read", "sites.certificates.renew", "databases.inventory.read",
   "database.inventory.read", "database.sql.read",
   "database.backup", "database.operate", "database.install", "database.restore",
 ]);

@@ -96,7 +96,18 @@ test("terminal UI submits and displays a real Agent task", async ({ page }, test
   rmSync(state, { recursive: true, force: true });
   mkdirSync(state, { recursive: true });
   agent = spawn(process.execPath, ["apps/agent/dist/main.js"], { cwd: process.cwd(), env: { ...process.env, STACKPILOT_CONTROLLER_URL: `https://127.0.0.1:${e2eAgentPort}`, STACKPILOT_AGENT_CA_PATH: resolve(e2eRuntime, "controller-ca.crt"), STACKPILOT_AGENT_STATE_DIR: state, STACKPILOT_AGENT_NAME: agentName, STACKPILOT_AGENT_ENROLLMENT_TOKEN: enrollment.body.token, STACKPILOT_AGENT_HEARTBEAT_SECONDS: "5" }, stdio: "ignore" });
-  await expect.poll(async () => { const result = await api<{ nodes: Array<{ nodeName: string; status: string }> }>(page, "/api/nodes"); return result.body.nodes.find((item) => item.nodeName === agentName)?.status; }, { timeout: 25_000 }).toBe("online");
+  let nodeId = "";
+  await expect.poll(async () => { const result = await api<{ nodes: Array<{ nodeId: string; nodeName: string; status: string }> }>(page, "/api/nodes"); const node = result.body.nodes.find((item) => item.nodeName === agentName); nodeId = node?.nodeId ?? ""; return node?.status; }, { timeout: 25_000 }).toBe("online");
+  if (process.platform !== "linux") {
+    await page.goto("/#terminal"); await page.reload();
+    const target = page.getByRole("button", { name: `切换终端目标 ${agentName}` }); await expect(target).toBeVisible({ timeout: 15_000 }); await target.click();
+    await page.getByRole("textbox", { name: "命令输入" }).fill("uptime"); await expect(page.getByRole("button", { name: "运行" })).toBeDisabled();
+    const viewport = await page.evaluate(() => ({ inner: window.innerWidth, body: document.body.scrollWidth, root: document.documentElement.scrollWidth }));
+    expect(viewport.body).toBeLessThanOrEqual(viewport.inner); expect(viewport.root).toBeLessThanOrEqual(viewport.inner); expect(consoleErrors).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath("terminal-linux-capability-required.png"), fullPage: true }); return;
+  }
+  const capabilityProof = await reauthenticate(page);
+  expect((await api(page, `/api/nodes/${nodeId}/capabilities`, "PATCH", { allowedCapabilities: ["system.summary.read", "service.status.read", "sites.inventory.read", "terminal.command.execute"] }, { "X-Reauth-Proof": capabilityProof })).status).toBe(200);
 
   await page.goto("/#terminal");
   await page.reload();
@@ -110,7 +121,8 @@ test("terminal UI submits and displays a real Agent task", async ({ page }, test
   await dialog.getByLabel("当前密码").fill(adminPassword);
   await dialog.getByRole("button", { name: "确认执行" }).click();
   await expect(page.getByText("真实任务已提交，等待 Agent 返回结果")).toBeVisible();
-  await expect(page.getByRole("log")).toContainText("hostname:", { timeout: 25_000 });
+  await expect(page.getByRole("log")).toContainText("load average", { timeout: 25_000 });
+  await expect(page.getByRole("log")).toContainText("exit code: 0");
 
   const viewport = await page.evaluate(() => ({ inner: window.innerWidth, body: document.body.scrollWidth, root: document.documentElement.scrollWidth }));
   expect(viewport.body).toBeLessThanOrEqual(viewport.inner);

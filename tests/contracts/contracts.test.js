@@ -170,6 +170,13 @@ test("agent protocol schemas reject incompatible and generic command tasks", () 
   assert.equal(isAgentProtocolCompatible("1.9"), false);
   assert.equal(isAgentProtocolCompatible("2.0"), false);
   assert.equal(CreateRemoteTaskRequestSchema.safeParse({ type: "run-shell", parameters: { command: "id" }, expiresInSeconds: 60, idempotencyKey: "generic-command" }).success, false);
+  const terminal = (parameters) => ({ type: "terminal.command.execute", parameters, expiresInSeconds: 30, idempotencyKey: "terminal-command-1" });
+  for (const parameters of [{ command: "disk-usage" }, { command: "uptime" }, { command: "top-summary" }, { command: "service-status", serviceName: "nginx.service" }]) {
+    assert.equal(CreateRemoteTaskRequestSchema.safeParse(terminal(parameters)).success, true);
+  }
+  for (const parameters of [{ command: "id" }, { command: "uptime", args: ["--version"] }, { command: "service-status", serviceName: "nginx;id" }, { command: "service-status", serviceName: "-H" }, { command: "service-status", serviceName: "nginx.service", shell: true }]) {
+    assert.equal(CreateRemoteTaskRequestSchema.safeParse(terminal(parameters)).success, false);
+  }
   assert.equal(AgentHeartbeatSchema.safeParse({ nodeId: crypto.randomUUID(), agentVersion: "0.1.0", protocolVersion: "1.0", timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 1 }, token: "forbidden" }).success, false);
 });
 

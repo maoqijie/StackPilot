@@ -15,8 +15,10 @@ const transitions: Record<RemoteTaskStatus, readonly RemoteTaskStatus[]> = {
 const requiredCapability: Record<CreateRemoteTaskRequest["type"], AgentCapability> = {
   "system.summary.read": "system.summary.read",
   "service.status.read": "service.status.read",
+  "terminal.command.execute": "terminal.command.execute",
   "sites.certificates.renew": "sites.certificates.renew",
 };
+const singleAttemptTypes: ReadonlySet<CreateRemoteTaskRequest["type"]> = new Set(["terminal.command.execute", "sites.certificates.renew"]);
 const audit = (event: Omit<AuditEvent, "eventId" | "timestamp">): AuditEvent => ({ eventId: randomUUID(), timestamp: new Date().toISOString(), ...event });
 const sensitiveResultKey = /authorization|cookie|token|secret|password|private|environment|stdout|stderr/i;
 function containsSensitiveKey(value: unknown): boolean {
@@ -24,6 +26,7 @@ function containsSensitiveKey(value: unknown): boolean {
   if (value && typeof value === "object") return Object.entries(value).some(([key, nested]) => sensitiveResultKey.test(key) || containsSensitiveKey(nested));
   return false;
 }
+const taskResultSummary = (task: RemoteTaskRecord, message?: string) => task.type === "terminal.command.execute" ? message ? "Terminal command result recorded" : null : message ?? null;
 
 function sameTaskOperation(task: RemoteTaskRecord, input: CreateRemoteTaskRequest, requester: string) {
   return task.requester === requester && task.type === input.type
@@ -83,9 +86,9 @@ export class RemoteTaskService {
         protocolVersion: AGENT_PROTOCOL_VERSION, taskId: randomUUID(), type: input.type, targetNodeId: nodeId,
         parameters: input.parameters, createdAt: now, expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
         idempotencyKey: input.idempotencyKey, requester, traceId, requiredCapability: capability, attempt: 0,
-        maxAttempts: input.type.startsWith("sites.") ? 1 : 3,
+        maxAttempts: singleAttemptTypes.has(input.type) ? 1 : 3,
         status: "queued", updatedAt: now, result: null, errorCode: null,
-        retryable: !input.type.startsWith("sites."), nextAttemptAt: null,
+        retryable: !singleAttemptTypes.has(input.type), nextAttemptAt: null,
       });
       state.tasks.push(created);
       const parameters = input.parameters as Record<string, unknown>;
@@ -148,7 +151,7 @@ export class RemoteTaskService {
         if (task.errorCode === "RESULT_UNKNOWN" && (input.status === "succeeded" || input.status === "failed")) {
           const previous = task.status;
           task.status = input.status; task.updatedAt = input.timestamp; task.result = input.result ?? null; task.errorCode = input.errorCode ?? null;
-          state.audits.push(audit({ requester: `agent:${nodeId}`, nodeId, taskId: task.taskId, event: "task.result-reconciled", taskType: task.type, parameters: null, fromStatus: previous, toStatus: task.status, resultSummary: input.result?.message ?? null, traceId }));
+          state.audits.push(audit({ requester: `agent:${nodeId}`, nodeId, taskId: task.taskId, event: "task.result-reconciled", taskType: task.type, parameters: null, fromStatus: previous, toStatus: task.status, resultSummary: taskResultSummary(task, input.result?.message), traceId }));
           updated = task;
         } else { updated = task; }
         return;
@@ -167,7 +170,7 @@ export class RemoteTaskService {
       if (input.status === "failed" && task.retryable && task.attempt < task.maxAttempts && Date.parse(task.expiresAt) > Date.now()) {
         transitionTask(task, "queued"); task.nextAttemptAt = new Date(Date.now() + 1000 * (2 ** Math.max(task.attempt - 1, 0))).toISOString();
       }
-      state.audits.push(audit({ requester: `agent:${nodeId}`, nodeId, taskId: task.taskId, event: "task.status", taskType: task.type, parameters: null, fromStatus: previous, toStatus: task.status, resultSummary: input.result?.message ?? null, traceId }));
+      state.audits.push(audit({ requester: `agent:${nodeId}`, nodeId, taskId: task.taskId, event: "task.status", taskType: task.type, parameters: null, fromStatus: previous, toStatus: task.status, resultSummary: taskResultSummary(task, input.result?.message), traceId }));
       updated = task;
     });
     if (!updated) throw new ServiceError(500, "INTERNAL_ERROR", "任务状态未保存");
