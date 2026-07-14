@@ -1,7 +1,7 @@
 {
   "name": "@stackpilot/agent",
   "private": true,
-  "version": "0.3.0-preview.11",
+  "version": "0.3.0-preview.12",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
@@ -14,8 +14,8 @@
     "test": "npm run build && npm run build --workspace @stackpilot/cert-helper && node --test ../../tests/agent/*.test.js"
   },
   "dependencies": {
-    "@stackpilot/contracts": "0.3.0-preview.11",
-    "@stackpilot/host-telemetry": "0.3.0-preview.11",
+    "@stackpilot/contracts": "0.3.0-preview.12",
+    "@stackpilot/host-telemetry": "0.3.0-preview.12",
     "zod": "^4.4.3"
   },
   "devDependencies": {

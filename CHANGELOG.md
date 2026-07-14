@@ -2,6 +2,12 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.12 - 2026-07-15
+
+### Security
+
+- Revalidated the current principal node scope before returning an idempotent site-plan result, preventing a previously authorized plan from bypassing a later scope reduction.
+
 ## 0.3.0-preview.11 - 2026-07-15
 
 ### Added

@@ -106,7 +106,7 @@ export class SiteManagementService {
     this.assertNodeAccess(input.nodeId, access);
     const key = this.idempotency(requester, "prepare", input.idempotencyKey);
     const existing = this.repository.findPlanByIdempotency(key);
-    if (existing) return existing;
+    if (existing) { this.assertNodeAccess(existing.nodeId, access); return existing; }
     const requestedDomains = new Set(input.domains.map((domain) => domain.toLowerCase()));
     const conflict = (await this.getSites(access)).sites.find((site) => site.nodeId === input.nodeId && site.manageability !== "managed" && requestedDomains.has(site.domain.toLowerCase()));
     if (conflict) throw new ServiceError(409, "BAD_REQUEST", `域名 ${conflict.domain} 已由目标节点的 Nginx 配置使用`);
