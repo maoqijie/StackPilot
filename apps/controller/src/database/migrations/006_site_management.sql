@@ -61,4 +61,4 @@ CREATE TABLE site_environment_references (
   PRIMARY KEY(plan_id, variable_name)
 );
 
-UPDATE release_metadata SET schema_version = 4, upgraded_at = CURRENT_TIMESTAMP WHERE singleton = 1;
+UPDATE release_metadata SET schema_version = 6, upgraded_at = CURRENT_TIMESTAMP WHERE singleton = 1;

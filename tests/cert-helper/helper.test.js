@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, lstat, mkdtemp, mkdir, readFile, readdir, readlink, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -236,4 +236,48 @@ test("failed first Node activation stops and disables the new unit", async () =>
     const enable = calls.findIndex((call) => call[1] === "enable"); const stop = calls.findLastIndex((call) => call[1] === "stop"); const disable = calls.findLastIndex((call) => call[1] === "disable"); const daemonReload = calls.findLastIndex((call) => call[1] === "daemon-reload");
     assert.ok(enable >= 0); assert.ok(stop > enable); assert.ok(disable > stop); assert.ok(daemonReload > disable);
   } finally { await writableTree(root); await rm(root, { recursive: true, force: true }); }
+});
+
+test("certificate inventory rejects private-key symlinks and mixed PEM files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "stackpilot-cert-helper-"));
+  const nginxRoot = join(root, "sites-enabled");
+  const liveRoot = join(root, "letsencrypt", "live");
+  const domainRoot = join(liveRoot, "bad.example.test");
+  await mkdir(nginxRoot, { recursive: true });
+  await mkdir(domainRoot, { recursive: true });
+  const privateKey = join(domainRoot, "privkey.pem");
+  const publicLink = join(domainRoot, "fullchain.pem");
+  try {
+    const pair = await selfsigned.generate([{ name: "commonName", value: "bad.example.test" }], { days: 30, keySize: 2048 });
+    await writeFile(privateKey, pair.private);
+    await symlink(privateKey, publicLink);
+    await writeFile(join(nginxRoot, "bad.conf"), `ssl_certificate ${publicLink};`);
+    assert.deepEqual(await buildCertificateInventory([nginxRoot], liveRoot), []);
+    assert.equal((await buildCertificateMap([nginxRoot], liveRoot)).has(certificateIdForName("bad.example.test")), false);
+    await rm(publicLink);
+    await writeFile(publicLink, `${pair.cert}\n${pair.private}`);
+    assert.deepEqual(await buildCertificateInventory([nginxRoot], liveRoot), []);
+    assert.equal((await buildCertificateMap([nginxRoot], liveRoot)).has(certificateIdForName("bad.example.test")), false);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("certificate mapping accepts the standard Certbot live-to-archive public link", async () => {
+  const root = await mkdtemp(join(tmpdir(), "stackpilot-cert-helper-"));
+  const nginxRoot = join(root, "sites-enabled");
+  const liveRoot = join(root, "letsencrypt", "live");
+  const archiveRoot = join(root, "letsencrypt", "archive", "valid.example.test");
+  const liveDomainRoot = join(liveRoot, "valid.example.test");
+  await mkdir(nginxRoot, { recursive: true });
+  await mkdir(archiveRoot, { recursive: true });
+  await mkdir(liveDomainRoot, { recursive: true });
+  const archived = join(archiveRoot, "fullchain1.pem");
+  const live = join(liveDomainRoot, "fullchain.pem");
+  try {
+    const pair = await selfsigned.generate([{ name: "commonName", value: "valid.example.test" }], { days: 30, keySize: 2048 });
+    await writeFile(archived, pair.cert);
+    await symlink("../../archive/valid.example.test/fullchain1.pem", live);
+    await writeFile(join(nginxRoot, "valid.conf"), `ssl_certificate ${live};`);
+    assert.equal((await buildCertificateMap([nginxRoot], liveRoot)).get(certificateIdForName("valid.example.test")), "valid.example.test");
+    assert.equal((await buildCertificateInventory([nginxRoot], liveRoot)).length, 1);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

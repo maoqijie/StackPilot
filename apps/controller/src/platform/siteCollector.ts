@@ -128,7 +128,7 @@ function mergeCandidates(candidates: SiteCandidate[]) {
       listeners,
       runtime: preferred.runtime,
       upstream: preferred.upstream,
-      certificatePath: preferred.certificatePath ?? current.certificatePath,
+      certificatePath: candidate.certificatePath ?? current.certificatePath,
       source: current.source === candidate.source ? current.source : "多个 Nginx 配置",
     });
   }

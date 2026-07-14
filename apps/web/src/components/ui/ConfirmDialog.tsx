@@ -2,6 +2,7 @@ import { AlertTriangle, X } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { drawerFocusableElements, drawerRestoreFallback, isFocusableElement } from "../../utils/focus";
+import { useExitMotion } from "./useExitMotion";
 
 function ConfirmDialog({
   title,
@@ -12,6 +13,7 @@ function ConfirmDialog({
   onClose,
   tone = "danger",
   className,
+  busy = false,
   confirmDisabled = false,
   children,
 }: {
@@ -23,31 +25,31 @@ function ConfirmDialog({
   onClose: () => void;
   tone?: "danger" | "warning";
   className?: string;
+  busy?: boolean;
   confirmDisabled?: boolean;
   children?: React.ReactNode;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
   const titleId = useId();
   const descriptionId = useId();
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
+  const { closing, requestClose } = useExitMotion(onClose);
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusFrame = window.requestAnimationFrame(() => {
-      dialog.querySelector<HTMLElement>("[data-confirm-initial], [data-confirm-cancel]")?.focus({ preventScroll: true });
+      if (!dialog.contains(document.activeElement)) {
+        dialog.querySelector<HTMLElement>("[data-confirm-initial], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [data-confirm-cancel]")
+          ?.focus({ preventScroll: true });
+      }
     });
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || !document.contains(dialog)) return;
       if (event.key === "Escape") {
         event.preventDefault();
-        onCloseRef.current();
+        requestClose();
         return;
       }
       if (event.key !== "Tab") return;
@@ -81,24 +83,26 @@ function ConfirmDialog({
         : drawerRestoreFallback(dialog);
       restoreTarget?.focus({ preventScroll: true });
     };
-  }, []);
+  }, [requestClose]);
 
   return createPortal(
     <>
-      <button className={["confirm-dialog-scrim", className ? `${className}-scrim` : ""].filter(Boolean).join(" ")} type="button" aria-label="关闭确认弹窗" onClick={onClose} tabIndex={-1} />
+      <button className={["confirm-dialog-scrim", className ? `${className}-scrim` : ""].filter(Boolean).join(" ")} data-closing={closing || undefined} type="button" aria-label="关闭确认弹窗" onClick={requestClose} tabIndex={-1} disabled={closing} />
       <div
         ref={dialogRef}
         className={["confirm-dialog", className].filter(Boolean).join(" ")}
+        data-closing={closing || undefined}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
+        inert={closing || undefined}
         tabIndex={-1}
       >
         <header>
           <span className={`confirm-dialog-icon ${tone}`}><AlertTriangle size={20} /></span>
           <strong id={titleId}>{title}</strong>
-          <button className="icon-action" type="button" aria-label="关闭确认弹窗" onClick={onClose}><X size={16} /></button>
+          <button className="icon-action" type="button" aria-label="关闭确认弹窗" disabled={closing} onClick={requestClose}><X size={16} /></button>
         </header>
         <div className="confirm-dialog-body">
           <p id={descriptionId}>{message}</p>
@@ -106,8 +110,8 @@ function ConfirmDialog({
           {children}
         </div>
         <footer>
-          <button className="ghost" type="button" data-confirm-cancel onClick={onClose}>取消</button>
-          <button className={tone === "danger" ? "trash-destructive" : "primary"} type="button" disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel}</button>
+          <button className="ghost" type="button" data-confirm-cancel disabled={busy || closing} onClick={requestClose}>取消</button>
+          <button className={tone === "danger" ? "trash-destructive" : "primary"} type="button" disabled={busy || closing || confirmDisabled} onClick={onConfirm}>{busy ? "处理中" : confirmLabel}</button>
         </footer>
       </div>
     </>,

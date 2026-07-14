@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTerminalTask } from "../api/terminalApi";
@@ -24,7 +24,8 @@ describe("terminal session page", () => {
     expect(within(drawer).getAllByText("198.18.0.10")).toHaveLength(2);
 
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: "stackpilot-agent@real-agent-01" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "stackpilot-agent@real-agent-01" })).toHaveAttribute("data-closing", "true");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "stackpilot-agent@real-agent-01" })).not.toBeInTheDocument());
   });
 
   it("reauthenticates before running an allowed read-only command", async () => {
@@ -45,7 +46,7 @@ describe("terminal session page", () => {
 
     await vi.waitFor(() => expect(createTerminalTask).toHaveBeenCalledWith(
       terminalNode.nodeId,
-      expect.objectContaining({ type: "service.status.read", parameters: { serviceName: "nginx" } }),
+      expect.objectContaining({ type: "terminal.command.execute", parameters: { command: "service-status", serviceName: "nginx" } }),
       expect.any(String),
     ));
     expect(input).toHaveValue("");

@@ -1,67 +1,15 @@
-import { useState } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
-import { initialTrashFiles } from "../mocks/demoData";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { FileTrashPage } from "../pages/FilesPages";
-import type { FileRecord, TrashFileRecord } from "../features/files/types";
-import type { Notify } from "../types/app";
 
-function TrashPageHarness({ notify }: { notify: Notify }) {
-  const [trashRows, setTrashRows] = useState<TrashFileRecord[]>(initialTrashFiles);
-  const [restoredRows, setRestoredRows] = useState<FileRecord[]>([]);
-  const [, setFiles] = useState<FileRecord[]>([]);
-  return (
-    <FileTrashPage
-      page="files-trash"
-      notify={notify}
-      trashRows={trashRows}
-      setTrashRows={setTrashRows}
-      restoredRows={restoredRows}
-      setRestoredRows={setRestoredRows}
-      setFiles={setFiles}
-    />
-  );
-}
-
+const entry = { id: "11111111-1111-4111-8111-111111111111", name: "old.log", originalPath: "/old.log", kind: "file", sizeBytes: 32, deletedAt: "2026-07-14T00:00:00.000Z", expiresAt: "2026-07-21T00:00:00.000Z", owner: "uid:1000" };
+const payload = { entries: [entry], collectedAt: "2026-07-14T00:00:00.000Z" };
 describe("files trash page", () => {
-  it("opens details in a body-level modal drawer", async () => {
-    const user = userEvent.setup();
-    render(<TrashPageHarness notify={vi.fn()} />);
-
-    await user.click(screen.getAllByRole("button", { name: "old-error.log" })[0]);
-
-    const drawer = screen.getByRole("dialog", { name: "删除详情" });
-    expect(drawer.parentElement).toBe(document.body);
-    expect(drawer).toHaveClass("trash-detail-drawer");
-    expect(within(drawer).getByText("/tmp/old-error.log")).toBeInTheDocument();
-  });
-
-  it("requires confirmation before permanently deleting a file", async () => {
-    const user = userEvent.setup();
-    const notify = vi.fn<Notify>();
-    render(<TrashPageHarness notify={notify} />);
-
-    await user.click(screen.getAllByRole("button", { name: "永久删除 old-error.log" })[0]);
-    const dialog = screen.getByRole("alertdialog", { name: "永久删除文件" });
-    expect(screen.getAllByText("old-error.log").length).toBeGreaterThan(0);
-
-    await user.click(within(dialog).getByRole("button", { name: "永久删除" }));
-
-    expect(screen.queryByText("old-error.log")).not.toBeInTheDocument();
-    expect(notify).toHaveBeenCalledWith("old-error.log 已永久删除", "danger");
-  });
-
-  it("cancels clearing the trash without removing files", async () => {
-    const user = userEvent.setup();
-    render(<TrashPageHarness notify={vi.fn()} />);
-
-    await user.click(screen.getByRole("button", { name: "清空回收站" }));
-    const dialog = screen.getByRole("alertdialog", { name: "清空回收站" });
-    expect(within(dialog).getByText(/3 个文件/)).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: "取消" }));
-
-    expect(screen.getAllByRole("button", { name: "old-error.log" })).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: "old-cache.tar" })).toHaveLength(2);
+  afterEach(() => vi.unstubAllGlobals());
+  it("requires confirmation before the real permanent-delete request", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(payload), { status: 200 })).mockResolvedValueOnce(new Response(JSON.stringify({ proof: "proof-value-held-in-memory-1234567890", expiresAt: "2026-07-14T00:05:00.000Z" }), { status: 200 })).mockResolvedValueOnce(new Response(JSON.stringify({ message: "文件已永久删除" }), { status: 200 })).mockResolvedValueOnce(new Response(JSON.stringify({ ...payload, entries: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock); const user = userEvent.setup(); render(<FileTrashPage page="files-trash" notify={vi.fn()} canWrite canDelete />); expect((await screen.findAllByText("old.log")).length).toBeGreaterThan(0); await user.click(screen.getAllByRole("button", { name: "永久删除" })[0]);
+    const dialog = screen.getByRole("alertdialog", { name: "永久删除文件" }); const password = within(dialog).getByLabelText("当前密码"); const confirm = within(dialog).getByRole("button", { name: "永久删除" }); expect(confirm).toBeDisabled(); await user.type(password, "current password"); expect(password).toHaveValue("current password"); expect(document.activeElement).toBe(password); expect(confirm).toBeEnabled(); await user.click(confirm); await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/auth/reauthenticate", expect.objectContaining({ body: JSON.stringify({ password: "current password" }) }))); await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/file-trash", expect.objectContaining({ method: "DELETE", body: JSON.stringify({ id: entry.id }), headers: expect.objectContaining({ "X-Reauth-Proof": "proof-value-held-in-memory-1234567890" }) })));
   });
 });

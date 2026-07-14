@@ -15,6 +15,7 @@ import { DatabaseSnapshotCache, SystemdDatabaseCollector } from "@stackpilot/hos
 import { NginxSiteCollector, SiteSnapshotCache } from "./sites/nginxCollector.js";
 import { certHelperAvailable } from "./sites/helperClient.js";
 import { TaskExecutor } from "./tasks/executor.js";
+import { terminalCommandsAvailable } from "./tasks/handlers/terminalCommand.js";
 import { ControllerClient } from "./transport/controllerClient.js";
 
 const sleep = (ms: number) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
@@ -43,7 +44,8 @@ export async function runAgent(env: NodeJS.ProcessEnv | Record<string, string | 
   if (env === process.env) delete process.env.STACKPILOT_AGENT_ENROLLMENT_TOKEN;
   if (typeof process.getuid === "function" && process.getuid() === 0 && !config.allowRoot) throw new Error("StackPilot Agent refuses to run as root; use a dedicated unprivileged user");
   const store = new IdentityStore(config.stateDir); const client = new ControllerClient(config.controllerUrl, config.caPath);
-  let capabilities = activeAgentCapabilities(config.platform, config.platform === "linux" && await certHelperAvailable());
+  const terminalCommandsReady = config.platform === "linux" && terminalCommandsAvailable();
+  let capabilities = activeAgentCapabilities(config.platform, config.platform === "linux" && await certHelperAvailable(), false, terminalCommandsReady);
   let identity = await ensureIdentity(store, client, config, capabilities);
   if (config.rotateCredential) { identity = await rotateIdentity(store, client, identity); if (env === process.env) delete process.env.STACKPILOT_AGENT_ROTATE_CREDENTIAL; }
   const executor = new TaskExecutor(store.receiptPath, identity.nodeId, config.platform, capabilities); await executor.load();
@@ -53,7 +55,7 @@ export async function runAgent(env: NodeJS.ProcessEnv | Record<string, string | 
   while (!signal?.aborted) {
     try {
       const databaseInventorySupported = client.supportsDatabaseInventory();
-      capabilities = activeAgentCapabilities(config.platform, config.platform === "linux" && await certHelperAvailable(), databaseInventorySupported);
+      capabilities = activeAgentCapabilities(config.platform, config.platform === "linux" && await certHelperAvailable(), databaseInventorySupported, terminalCommandsReady);
       executor.setCapabilities(capabilities);
       let telemetryCollectionFailed = false;
       const telemetry = await collectAgentTelemetry(config.platform).catch(() => { telemetryCollectionFailed = true; return undefined; });

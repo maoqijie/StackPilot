@@ -146,7 +146,7 @@ export const CertificateRenewalTaskParametersSchema = z.object({
 
 export const UpdateNodeCapabilitiesRequestSchema = z.object({
   allowedCapabilities: z.array(z.enum([
-    "system.summary.read", "service.status.read", "sites.inventory.read", "sites.logs.read",
+    "system.summary.read", "service.status.read", "terminal.command.execute", "sites.inventory.read", "sites.logs.read",
     "sites.deploy", "sites.lifecycle.manage", "sites.certificates.renew", "runtime.install",
   ])).max(16),
 }).strict().superRefine((value, context) => {

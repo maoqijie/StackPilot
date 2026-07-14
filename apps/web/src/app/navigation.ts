@@ -98,7 +98,7 @@ const navItems: NavItem[] = [
     label: "文件",
     icon: Folder,
     children: [
-      { id: "files-www", label: "站点目录", meta: "/var/www" },
+      { id: "files-www", label: "受管目录", meta: "虚拟根 /" },
       { id: "files-upload", label: "上传队列", meta: "传输记录" },
       { id: "files-trash", label: "回收站", meta: "7 天保留" },
     ],
@@ -229,9 +229,15 @@ function desktopTopbarChrome(page: PageKey): TopbarChrome {
   };
 }
 
-function topbarSearchResults(query: string, permissions?: readonly Permission[]): TopbarSearchResult[] {
+function navItemsForPermissions(permissions: readonly Permission[]) {
+  return navItems
+    .filter((item) => item.key !== "files" || permissions.includes("files:read"))
+    .map((item) => item.key === "sites" ? { ...item, children: item.children.filter((child) => child.id !== "sites-create" || permissions.includes("sites:deploy")) } : item);
+}
+
+function topbarSearchResults(query: string, permissions: readonly Permission[] = []): TopbarSearchResult[] {
   const normalized = query.trim().toLowerCase();
-  const entries: TopbarSearchResult[] = navItems.flatMap((item) => [
+  const entries: TopbarSearchResult[] = navItemsForPermissions(permissions).flatMap((item) => [
     { id: item.key, label: item.label, detail: resolvePageMeta(item.key).breadcrumb, page: item.key, kind: "模块" },
     ...item.children.map((child) => ({
       id: child.page ?? child.id,
@@ -247,7 +253,7 @@ function topbarSearchResults(query: string, permissions?: readonly Permission[])
     { id: "quick-create-rule", label: "新增防火墙规则", detail: "打开防火墙规则列表", page: "firewall", kind: "动作" },
     { id: "quick-audit-export", label: "导出审计日志", detail: "进入审计导出记录", page: "audit-export", kind: "动作" },
   ];
-  const allEntries = [...entries, ...quickActions].filter((item) => item.page !== "sites-create" || permissions?.includes("sites:deploy") !== false);
+  const allEntries = [...entries, ...quickActions];
   if (!normalized) return allEntries.slice(0, 6);
   return allEntries
     .filter((item) => `${item.label} ${item.detail} ${item.kind}`.toLowerCase().includes(normalized))
@@ -336,4 +342,4 @@ function resolvePageMeta(page: PageKey): PageMeta {
   return pageMeta.overview;
 }
 
-export { parentPageKeys, pageMeta, navItems, overviewChildPages, navPageFor, activeChildForPage, navChildMetaText, activeNavEntryForPage, desktopTopbarChrome, topbarSearchResults, viewContextForPage, resolvePageMeta };
+export { parentPageKeys, pageMeta, navItems, navItemsForPermissions, overviewChildPages, navPageFor, activeChildForPage, navChildMetaText, activeNavEntryForPage, desktopTopbarChrome, topbarSearchResults, viewContextForPage, resolvePageMeta };

@@ -32,6 +32,69 @@ test("database monitoring respects node scope and emits stable public ids", asyn
   assert.equal((await service.getInstances({ nodeScope: "all" })).instances.length, 2);
 });
 
+test("database monitoring includes cached Controller-local systemd inventory independently of Agent scope", async () => {
+  const repository = new MemoryAgentControlRepository();
+  let calls = 0;
+  const localSnapshot = {
+    collectedAt: new Date().toISOString(),
+    collectionStatus: "complete",
+    warnings: [],
+    instances: [{ ...node("11111111-1111-4111-8111-111111111111", "unused").databaseSnapshot.instances[0], host: "controller-db", status: "running" }],
+  };
+  const service = new DatabaseMonitoringService(repository, { collect: async () => { calls += 1; return localSnapshot; } }, 60_000);
+
+  const first = await service.getInstances({ nodeScope: "all" });
+  const second = await service.getInstances({ nodeScope: "all" });
+  assert.equal(calls, 1);
+  assert.equal(first.collectionStatus, "complete");
+  assert.equal(first.instances.length, 1);
+  assert.equal(first.instances[0].nodeId, "node-local");
+  assert.equal(first.instances[0].nodeName, "controller-db");
+  assert.equal(first.instances[0].id, publicDatabaseId("node-local", "postgresql.service"));
+  assert.deepEqual(second, first);
+
+  const scoped = await service.getInstances({ nodeScope: [] });
+  assert.equal(calls, 1);
+  assert.deepEqual(scoped.instances, first.instances);
+  assert.equal(scoped.collectionStatus, "complete");
+});
+
+test("database monitoring retains the last local inventory after a transient collection failure", async () => {
+  const repository = new MemoryAgentControlRepository();
+  let calls = 0;
+  const instance = node("11111111-1111-4111-8111-111111111111", "unused").databaseSnapshot.instances[0];
+  const service = new DatabaseMonitoringService(repository, {
+    collect: async () => calls++ === 0
+      ? { collectedAt: current, collectionStatus: "complete", warnings: [], instances: [instance] }
+      : { collectedAt: "2026-07-14T00:01:00.000Z", collectionStatus: "unavailable", warnings: ["systemd 数据库服务清单不可用"], instances: [] },
+  }, 0);
+
+  await service.getInstances({ nodeScope: "all" });
+  const retained = await service.getInstances({ nodeScope: "all" });
+  assert.equal(retained.instances.length, 1);
+  assert.equal(retained.collectionStatus, "partial");
+  assert.match(retained.warnings.join(" "), /保留 Controller 本机上次成功采集/);
+});
+
+test("database monitoring prefers Controller-local inventory when the local Agent reports the same systemd unit", async () => {
+  const repository = new MemoryAgentControlRepository();
+  const localNode = node("11111111-1111-4111-8111-111111111111", "controller-db");
+  localNode.databaseSnapshot.instances.unshift({
+    ...localNode.databaseSnapshot.instances[0], id: "postgresql@16-main.service", name: "postgresql-16-main",
+    source: "systemd:postgresql@16-main.service",
+  });
+  await repository.update((state) => state.nodes.push(localNode));
+  const localSnapshot = {
+    ...localNode.databaseSnapshot,
+    instances: [localNode.databaseSnapshot.instances[0]],
+  };
+
+  const payload = await new DatabaseMonitoringService(repository, { collect: async () => localSnapshot }).getInstances({ nodeScope: "all" });
+  assert.equal(payload.instances.length, 1);
+  assert.equal(payload.instances[0].nodeId, "node-local");
+  assert.equal(payload.instances[0].name, "postgresql-16-main");
+});
+
 test("database monitoring labels stale data and an empty authorized scope honestly", async () => {
   const repository = new MemoryAgentControlRepository(); const id = "11111111-1111-4111-8111-111111111111";
   await repository.update((state) => state.nodes.push(node(id, "db-stale", new Date(Date.now() - 180_000).toISOString())));

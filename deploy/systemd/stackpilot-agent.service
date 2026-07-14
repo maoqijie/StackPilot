@@ -14,7 +14,7 @@ Environment=STACKPILOT_AGENT_STATE_DIR=/var/lib/stackpilot-agent
 Environment=STACKPILOT_AGENT_ENROLLMENT_TOKEN_FILE=%d/agent-enrollment-token
 EnvironmentFile=/etc/stackpilot-agent/agent.env
 LoadCredential=agent-enrollment-token:/etc/stackpilot-agent/enrollment-token
-ExecStart=/usr/bin/node /opt/stackpilot-agent/current/apps/agent/dist/main.js
+ExecStart=/usr/bin/node --preserve-symlinks-main /opt/stackpilot-agent/current/apps/agent/dist/main.js
 Restart=on-failure
 RestartSec=10s
 TimeoutStopSec=30s

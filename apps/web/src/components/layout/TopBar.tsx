@@ -1,11 +1,11 @@
 import type { OverviewSummaryPayload } from "../../api/overviewApi";
-import type { Permission } from "@stackpilot/contracts";
 import { Bell, ChevronDown, CircleHelp, FileClock, KeyRound, LogOut, Moon, Search, Sun, UserRound, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { resolvePageMeta, topbarSearchResults } from "../../app/navigation";
 import { useTheme } from "../../theme/theme";
 import type { TopbarChrome, TopbarSearchResult } from "./types";
 import type { Notify, PageKey, SetPage } from "../../types/app";
+import type { Permission } from "@stackpilot/contracts";
 import { formatBackendDateTime, overviewCollectedAt } from "../../utils/time";
 
 function TopBar({
@@ -17,8 +17,8 @@ function TopBar({
   setUnreadCount,
   overview,
   interactionsDisabled,
-  permissions,
   onLogout,
+  permissions,
 }: {
   page: PageKey;
   setPage: SetPage;
@@ -28,8 +28,8 @@ function TopBar({
   setUnreadCount: React.Dispatch<React.SetStateAction<number>>;
   overview: OverviewSummaryPayload | null;
   interactionsDisabled: boolean;
-  permissions?: Permission[];
   onLogout: () => void;
+  permissions?: Permission[];
 }) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);

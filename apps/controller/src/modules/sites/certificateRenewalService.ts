@@ -26,6 +26,10 @@ function taskIdempotency(prefix: string, nodeId: string) {
   return `${prefix}${createHash("sha256").update(nodeId).digest("hex").slice(0, 16)}`;
 }
 
+function canonicalSiteIds(siteIds: readonly string[]) {
+  return [...siteIds].sort();
+}
+
 function taskCertificates(task: RemoteTaskRecord) {
   const parameters = task.parameters as { certificates?: Array<{ certificateId?: unknown; siteIds?: unknown }> };
   return (parameters.certificates ?? []).flatMap((item) =>
@@ -33,6 +37,17 @@ function taskCertificates(task: RemoteTaskRecord) {
       ? [{ certificateId: item.certificateId, siteIds: item.siteIds.filter((siteId): siteId is string => typeof siteId === "string") }]
       : [],
   );
+}
+
+function batchSiteIds(tasks: RemoteTaskRecord[], batchId: string) {
+  return canonicalSiteIds(tasks
+    .filter((task) => task.type === "sites.certificates.renew" && taskBatchId(task) === batchId)
+    .flatMap((task) => taskCertificates(task).flatMap((certificate) => certificate.siteIds)));
+}
+
+function locksCertificate(task: RemoteTaskRecord) {
+  return !terminal.has(task.status) || task.errorCode === "RESULT_UNKNOWN"
+    || (task.attempt > 0 && (task.status === "cancelled" || task.status === "expired"));
 }
 
 function operationStatus(task: RemoteTaskRecord) {
@@ -86,7 +101,15 @@ export class CertificateRenewalService {
     let batchId: string | null = null;
     await this.repository.update((state) => {
       const existing = state.tasks.find((task) => task.type === "sites.certificates.renew" && task.idempotencyKey.startsWith(prefix));
-      if (existing) { batchId = taskBatchId(existing); return; }
+      if (existing) {
+        const existingBatchId = taskBatchId(existing);
+        if (!existingBatchId) throw new ServiceError(500, "INTERNAL_ERROR", "既有证书续期任务缺少批次标识");
+        batchId = existingBatchId;
+        if (JSON.stringify(batchSiteIds(state.tasks, existingBatchId)) !== JSON.stringify(canonicalSiteIds(input.siteIds))) {
+          throw new ServiceError(409, "BAD_REQUEST", "幂等键已用于其他证书续期请求");
+        }
+        return;
+      }
 
       const requested = new Set(input.siteIds);
       const certificates = new Map<string, { nodeId: string; certificateId: string; siteIds: string[] }>();
@@ -121,7 +144,7 @@ export class CertificateRenewalService {
 
       for (const candidate of certificates.values()) {
         const duplicate = state.tasks.some((task) => task.type === "sites.certificates.renew"
-          && task.targetNodeId === candidate.nodeId && !terminal.has(task.status)
+          && task.targetNodeId === candidate.nodeId && locksCertificate(task)
           && taskCertificates(task).some((item) => item.certificateId === candidate.certificateId));
         if (duplicate) throw new ServiceError(409, "BAD_REQUEST", "证书已有进行中的续期任务");
       }
@@ -208,7 +231,11 @@ export class CertificateRenewalService {
           for (const certificate of taskCertificates(task)) await this.helperClient({ operation: "renew", certificateId: certificate.certificateId });
           result = { status: "succeeded", message: "Certificate renewal, Nginx validation and reload completed", errorCode: null };
         } catch (error) {
-          result = { status: "failed", message: "Local certificate renewal failed; inspect the root helper logs", errorCode: error instanceof CertHelperError ? error.code : "CERT_HELPER_FAILED" };
+          const code = error instanceof CertHelperError ? error.code : "CERT_HELPER_FAILED";
+          const unknown = new Set(["CERT_HELPER_TIMEOUT", "CERT_HELPER_CANCELLED", "CERT_HELPER_INVALID_RESPONSE", "CERT_HELPER_UNAVAILABLE", "CERT_HELPER_RESPONSE_TOO_LARGE"]);
+          result = unknown.has(code)
+            ? { status: "failed", message: "Local certificate renewal result is unknown; it will not be replayed", errorCode: "RESULT_UNKNOWN" }
+            : { status: "failed", message: "Local certificate renewal failed; inspect the root helper logs", errorCode: code };
         }
         await this.repository.update((next) => {
           const current = next.tasks.find((item) => item.taskId === taskId);
