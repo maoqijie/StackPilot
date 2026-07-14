@@ -1,7 +1,7 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AgentCapability, AgentDatabaseSnapshot, AgentHeartbeat, AgentNodeRecord, AgentSiteSnapshot, AgentTelemetrySnapshot, RemoteTaskRecord } from "@stackpilot/contracts";
-import { AgentDatabaseSnapshotSchema, AgentHealthSchema, AgentNodeRecordSchema, AgentSiteSnapshotSchema, AgentTelemetrySnapshotSchema, RemoteTaskRecordSchema } from "@stackpilot/contracts";
+import { AgentHeartbeatDatabaseSnapshotSchema, AgentHealthSchema, AgentNodeRecordSchema, AgentSiteSnapshotSchema, AgentTelemetrySnapshotSchema, RemoteTaskRecordSchema } from "@stackpilot/contracts";
 import { z } from "zod";
 
 export type EnrollmentState = { enrollmentId: string; tokenDigest: string; nodeName: string; expiresAt: string; usedAt: string | null; revokedAt: string | null };
@@ -10,7 +10,7 @@ export type AgentNodeState = AgentNodeRecord & { telemetry?: AgentTelemetrySnaps
 export const AgentNodeStateSchema = AgentNodeRecordSchema.extend({
   telemetry: AgentTelemetrySnapshotSchema.optional(),
   siteSnapshot: AgentSiteSnapshotSchema.optional(),
-  databaseSnapshot: AgentDatabaseSnapshotSchema.optional(),
+  databaseSnapshot: AgentHeartbeatDatabaseSnapshotSchema.optional(),
   heartbeatHealthStatus: AgentHealthSchema.shape.status.optional(),
 });
 export type AgentNonceConsumption = "accepted" | "replayed" | "unauthorized";
@@ -133,5 +133,6 @@ export class FileAgentControlRepository implements AgentControlRepository {
 export const CONTROLLER_SUPPORTED_AGENT_CAPABILITIES: readonly AgentCapability[] = [
   "system.summary.read", "service.status.read", "sites.inventory.read", "sites.logs.read",
   "terminal.command.execute", "sites.deploy", "sites.lifecycle.manage", "sites.certificates.renew", "runtime.install", "databases.inventory.read",
+  "database.inventory.read", "database.sql.read", "database.backup", "database.operate", "database.install", "database.restore",
 ];
 export const DEFAULT_AGENT_CAPABILITIES: readonly AgentCapability[] = ["system.summary.read", "service.status.read", "sites.inventory.read", "databases.inventory.read"];

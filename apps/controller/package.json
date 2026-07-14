@@ -1,7 +1,7 @@
 {
   "name": "@stackpilot/controller",
   "private": true,
-  "version": "0.2.0-preview.6",
+  "version": "0.3.0-preview.1",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
@@ -17,14 +17,14 @@
     "db:import-legacy": "node dist/cli.js import-legacy",
     "db:backup": "node dist/cli.js backup",
     "db:restore": "node dist/cli.js restore",
-    "audit:verify": "node dist/cli.js audit-verify"
-    ,"secrets:rotate": "node dist/cli.js secrets-rotate"
+    "audit:verify": "node dist/cli.js audit-verify",
+    "secrets:rotate": "node dist/cli.js secrets-rotate"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",
-    "@stackpilot/config": "0.2.0-preview.6",
-    "@stackpilot/contracts": "0.2.0-preview.6",
-    "@stackpilot/host-telemetry": "0.2.0-preview.6",
+    "@stackpilot/config": "0.3.0-preview.1",
+    "@stackpilot/contracts": "0.3.0-preview.1",
+    "@stackpilot/host-telemetry": "0.3.0-preview.1",
     "better-sqlite3": "^12.11.1",
     "zod": "^4.4.3"
   },

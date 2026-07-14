@@ -6,10 +6,15 @@ import type { RequestContext } from "./types.js";
 import { notFound } from "./errors/ApiError.js";
 import { sendJson } from "./response/json.js";
 import { parseSchema } from "./validation.js";
+import { routeDatabaseAgentRequest } from "./databaseAgentRouter.js";
 
 export async function routeAgentRequest(context: RequestContext) {
   const method = context.request.method ?? "GET";
   context.response.setHeader("X-StackPilot-Agent-Features", AGENT_FEATURE_DATABASE_INVENTORY);
+  if (context.url.pathname.startsWith("/api/agent/databases/")) {
+    await routeDatabaseAgentRequest(context);
+    return;
+  }
   if (context.url.pathname === "/api/agent/enroll" && method === "POST") {
     const input = parseSchema(AgentEnrollmentRequestSchema, context.body, "注册请求");
     sendJson(context.response, 201, await context.services.enrollments.enroll(input, context.requestId), AgentEnrollmentResponseSchema);
@@ -19,7 +24,11 @@ export async function routeAgentRequest(context: RequestContext) {
   if (!identity) throw notFound("Agent 身份不可用");
   if (context.url.pathname === "/api/agent/heartbeat" && method === "POST") {
     const input = parseSchema(AgentHeartbeatSchema, context.body, "心跳");
-    sendJson(context.response, 200, await context.services.nodes.heartbeat(identity.nodeId, input, context.requestId), AgentHeartbeatResponseSchema);
+    const result = await context.services.nodes.heartbeat(identity.nodeId, input, context.requestId);
+    if (input.databaseSnapshot && input.capabilities.includes("databases.inventory.read") && !input.capabilities.includes("database.inventory.read")) {
+      context.services.databaseInventory?.ingestSnapshot(identity.nodeId, input.databaseSnapshot);
+    }
+    sendJson(context.response, 200, result, AgentHeartbeatResponseSchema);
     return;
   }
   if (context.url.pathname === "/api/agent/tasks/poll" && method === "POST") {

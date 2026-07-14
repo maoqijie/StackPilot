@@ -1,8 +1,8 @@
 import { z } from "zod";
+import { AgentHeartbeatDatabaseSnapshotSchema } from "../databases/index.js";
+import { AgentSiteSnapshotSchema } from "../sites/index.js";
 import { ProtocolVersionSchema } from "../versioning/index.js";
 import { AgentCapabilitiesSchema, AgentPlatformSchema } from "./capabilities.js";
-import { AgentSiteSnapshotSchema } from "../sites/index.js";
-import { AgentDatabaseSnapshotSchema } from "../databases/index.js";
 const PercentSchema = z.number().finite().min(0).max(100);
 const BytesSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const AGENT_TELEMETRY_MAX_CPU_CORES = 512;
@@ -67,7 +67,7 @@ export const AgentHeartbeatSchema = z.object({
   health: AgentHealthSchema,
   telemetry: AgentTelemetrySnapshotSchema.optional(),
   siteSnapshot: AgentSiteSnapshotSchema.optional(),
-  databaseSnapshot: AgentDatabaseSnapshotSchema.optional(),
+  databaseSnapshot: AgentHeartbeatDatabaseSnapshotSchema.optional(),
 }).strict();
 
 export const AgentHeartbeatResponseSchema = z.object({

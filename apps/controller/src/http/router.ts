@@ -19,6 +19,7 @@ import { routeTerminalRequest } from "./terminalRouter.js";
 import type { OverviewAccess } from "../modules/overview/overviewService.js";
 import { routeDatabaseBackupRequest } from "./databaseBackupRouter.js";
 import { routeSiteRequest } from "./siteRouter.js";
+import { routeDatabaseRequest } from "./databaseRouter.js";
 import { routeFileRequest, routeFileUploadRequest } from "./fileRouter.js";
 
 function idAt(context: RequestContext, index: number) {
@@ -36,6 +37,17 @@ function overviewAccess(context:RequestContext):OverviewAccess{return{nodeScope:
 export async function routeRequest(context: RequestContext): Promise<void> {
   const { request, response, parts, services } = context;
   const method = request.method ?? "GET";
+  if (parts[0] === "api" && parts[1] === "databases" && services.databaseInventory && services.databaseWorkspace && services.databaseOperations) { await routeDatabaseRequest(context); return; }
+  if (context.url.pathname === "/api/databases" && method === "GET") {
+    context.identity?.require(context.principal, "databases:read");
+    sendJson(response, 200, await services.databaseInstances.getInstances({ nodeScope: context.principal?.nodeScope ?? [] }), DatabaseInstancesPayloadSchema);
+    return;
+  }
+  if (context.url.pathname === "/api/databases/slow-queries" && method === "GET" && [...context.url.searchParams.keys()].every((key) => key === "range")) {
+    context.identity?.require(context.principal, "databases:read");
+    sendJson(response, 200, await services.databaseSlowQueries.getSlowQueries(), DatabaseSlowQueriesPayloadSchema);
+    return;
+  }
   if (context.url.searchParams.size > 0 && context.url.pathname !== "/api/files") throw new ApiError(400, "BAD_REQUEST", "查询参数无效：当前接口不接受查询参数");
 
   if (context.url.pathname === "/healthz" && method === "GET") {

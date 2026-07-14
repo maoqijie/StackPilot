@@ -32,6 +32,10 @@ test("site mutations require a Linux helper and terminal commands require fixed 
   assert.deepEqual(activeAgentCapabilities("linux", true, true), ["system.summary.read", "service.status.read", "sites.inventory.read", "sites.logs.read", "sites.deploy", "sites.lifecycle.manage", "sites.certificates.renew", "runtime.install", "databases.inventory.read"]);
   assert.deepEqual(activeAgentCapabilities("linux", false, false, true), ["system.summary.read", "service.status.read", "sites.inventory.read", "terminal.command.execute"]);
   assert.deepEqual(activeAgentCapabilities("linux", true, false, true), ["system.summary.read", "service.status.read", "sites.inventory.read", "terminal.command.execute", "sites.logs.read", "sites.deploy", "sites.lifecycle.manage", "sites.certificates.renew", "runtime.install"]);
+  assert.deepEqual(activeAgentCapabilities("linux", true, true, true, true), [
+    "system.summary.read", "service.status.read", "sites.inventory.read", "terminal.command.execute", "sites.logs.read", "sites.deploy", "sites.lifecycle.manage", "sites.certificates.renew", "runtime.install", "databases.inventory.read",
+    "database.inventory.read", "database.sql.read", "database.backup", "database.operate", "database.install", "database.restore",
+  ]);
   assert.equal(terminalCommandsAvailable(() => true), true); assert.equal(terminalCommandsAvailable((path) => path !== "/usr/bin/top"), false);
 });
 
@@ -74,6 +78,75 @@ test("executor persists receipts before execution and prevents duplicate deliver
     const receipts = JSON.parse(await readFile(receiptPath, "utf8")); assert.equal(receipts.length, 1); assert.equal(receipts[0].reported, false);
     await executor.markReported(first.taskId); assert.equal(executor.pendingUpdates().length, 0);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("executor reserves concurrency slots before asynchronous receipt persistence", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "stackpilot-agent-test-"));
+  let activeHandlers = 0; let peakHandlers = 0; let releaseHandlers;
+  const release = new Promise((resolve) => { releaseHandlers = resolve; });
+  const concurrentRegistry = {
+    ...taskRegistry,
+    "system.summary.read": {
+      ...taskRegistry["system.summary.read"],
+      run: async () => {
+        activeHandlers += 1; peakHandlers = Math.max(peakHandlers, activeHandlers);
+        await release;
+        activeHandlers -= 1;
+        return { message: "complete", truncated: false };
+      },
+    },
+  };
+  try {
+    const executor = new TaskExecutor(join(directory, "concurrent.json"), nodeId, "linux", ["system.summary.read"], concurrentRegistry); await executor.load();
+    const executions = [];
+    for (let index = 0; index < 10; index += 1) {
+      const execution = executor.tryExecute(task({
+        taskId: `22222222-2222-4222-8222-${String(index).padStart(12, "0")}`,
+        idempotencyKey: `summary-concurrent-${index}`,
+      }), 4);
+      if (!execution) break;
+      executions.push(execution);
+    }
+    assert.equal(executions.length, 4);
+    assert.equal(executor.activeCount, 4);
+    while (activeHandlers < 4) await new Promise((resolve) => setTimeout(resolve, 1));
+    assert.equal(peakHandlers, 4);
+    releaseHandlers();
+    assert.deepEqual((await Promise.all(executions)).map((result) => result.status), ["succeeded", "succeeded", "succeeded", "succeeded"]);
+    assert.equal(executor.activeCount, 0);
+    assert.equal(JSON.parse(await readFile(join(directory, "concurrent.json"), "utf8")).length, 4);
+  } finally { releaseHandlers?.(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("executor serializes site helper tasks while allowing other work within the global limit", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "stackpilot-agent-test-"));
+  let releaseSite;
+  const siteFinished = new Promise((resolve) => { releaseSite = resolve; });
+  const serialRegistry = {
+    ...taskRegistry,
+    "sites.lifecycle.update": { ...taskRegistry["sites.lifecycle.update"], run: async () => { await siteFinished; return { message: "site complete", truncated: false }; } },
+    "system.summary.read": { ...taskRegistry["system.summary.read"], run: async () => ({ message: "summary complete", truncated: false }) },
+  };
+  try {
+    const executor = new TaskExecutor(join(directory, "site-serial.json"), nodeId, "linux", ["sites.lifecycle.manage", "system.summary.read"], serialRegistry); await executor.load();
+    const lifecycle = (index) => task({
+      taskId: `33333333-3333-4333-8333-${String(index).padStart(12, "0")}`,
+      type: "sites.lifecycle.update",
+      requiredCapability: "sites.lifecycle.manage",
+      idempotencyKey: `site-lifecycle-${index}`,
+      parameters: { operationId: `44444444-4444-4444-8444-${String(index).padStart(12, "0")}`, siteId: `site-${"a".repeat(32)}`, action: "stopped", expectedVersion: 1 },
+    });
+    const first = executor.tryExecute(lifecycle(1), 4);
+    assert.ok(first);
+    assert.equal(executor.activeSiteOperationCount, 1);
+    assert.equal(executor.tryExecute(lifecycle(2), 4), undefined);
+    const summary = executor.tryExecute(task({ taskId: "55555555-5555-4555-8555-555555555555", idempotencyKey: "parallel-summary-task" }), 4);
+    assert.ok(summary);
+    assert.equal((await summary).status, "succeeded");
+    releaseSite();
+    assert.equal((await first).status, "succeeded");
+    assert.equal(executor.activeSiteOperationCount, 0);
+  } finally { releaseSite?.(); await rm(directory, { recursive: true, force: true }); }
 });
 
 test("restart converts an uncertain running receipt to a reportable failure without re-execution", async () => {

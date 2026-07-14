@@ -42,7 +42,7 @@ if (isMainModule) {
     const secrets=new SecretStore(database,parseMasterKey(config.masterKey));
     const agentRepository=new SqliteAgentControlRepository(database,identity.audit,secrets);
     const siteRepository=new SqliteSiteManagementRepository(database,secrets);
-    const services = createControllerServices(platform, repoRoot, config, agentRepository, database, siteRepository);
+    const services = createControllerServices(platform, repoRoot, config, agentRepository, database, siteRepository, identity.audit);
     await services.sites.startup();
     await services.certificateRenewals.startup();
     const appOptions={ config, services, platform, repoRoot,database,identity,agentRepository };
@@ -63,6 +63,7 @@ if (isMainModule) {
     for (const signal of ["SIGINT", "SIGTERM"] as const) {
       process.once(signal, () => {
         services.sites.shutdown();
+        services.databaseRetention?.shutdown();
         const reconciliationStopped = services.siteManagement.stopBackgroundReconciliation();
         let remaining=agentServer?2:1;const closed=()=>{remaining-=1;if(remaining===0){void reconciliationStopped.finally(()=>{database.close();process.exit(0);});}};
         agentServer?.close(closed);

@@ -5,6 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 const adminPassword = "e2e administrator password";
 const fileBytes = Buffer.from("StackPilot real file backend E2E\n", "utf8");
+const runtime = process.env.STACKPILOT_E2E_RUNTIME ? resolve(process.env.STACKPILOT_E2E_RUNTIME) : resolve("output", "e2e", "runtime");
 
 async function login(page: Page) {
   await page.goto("/#files");
@@ -66,7 +67,7 @@ test("real file backend supports upload, rename, trash, restore, purge and polli
   await uploadDialog.getByRole("button", { name: "开始上传" }).click();
   await expect(page.getByText(originalName, { exact: true }).filter({ visible: true }).first()).toBeVisible();
 
-  const stored = await readFile(resolve("output", "e2e", "runtime", "files", originalName));
+  const stored = await readFile(resolve(runtime, "files", originalName));
   expect(createHash("sha256").update(stored).digest("hex")).toBe(createHash("sha256").update(fileBytes).digest("hex"));
 
   await openFilePage(page, "#files", "文件");

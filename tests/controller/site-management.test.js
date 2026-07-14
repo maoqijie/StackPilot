@@ -75,6 +75,24 @@ test("site plans persist idempotently while environment values remain encrypted 
   } finally { database.close(); }
 });
 
+test("site plan creation rolls back the plan, operation and encrypted references atomically", async () => {
+  const database = openDatabase(":memory:");
+  try {
+    const { service } = managementFixture(database);
+    database.exec("CREATE TRIGGER reject_site_operation BEFORE INSERT ON site_operations BEGIN SELECT RAISE(ABORT, 'injected operation failure'); END");
+
+    await assert.rejects(
+      () => service.createPlan({ ...planInput, idempotencyKey: "atomic-plan-failure-001" }, { nodeScope: "all" }, "user:test"),
+      /injected operation failure/,
+    );
+
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM site_plans").get().count, 0);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM site_operations").get().count, 0);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM site_environment_references").get().count, 0);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM encrypted_secrets WHERE key LIKE 'site-plan:%'").get().count, 0);
+  } finally { database.close(); }
+});
+
 test("activation rejects an agent site ID that does not match the plan node and primary domain", async () => {
   const database = openDatabase(":memory:");
   try {
@@ -97,6 +115,22 @@ test("activation rejects an agent site ID that does not match the plan node and 
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM site_releases").get().count, 0);
     assert.equal(repository.getPlan(plan.planId).status, "ready");
   } finally { database.close(); }
+});
+
+test("remote site results are bound to the requested operation and site", async () => {
+  const operationId = "11111111-1111-4111-8111-111111111111";
+  const taskId = "22222222-2222-4222-8222-222222222222";
+  const siteId = `site-${"a".repeat(32)}`;
+  const operation = { operationId, taskId, type: "log_query", nodeId: "node-local", siteId, planId: null, status: "running", stage: "agent_running", progressPercent: 50, result: null, errorCode: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  for (const data of [
+    { operationId: "33333333-3333-4333-8333-333333333333", siteId, logs: [] },
+    { operationId, siteId: `site-${"b".repeat(32)}`, logs: [] },
+  ]) {
+    const executor = new RemoteSiteExecutor({ list: async () => [{ taskId, status: "succeeded", parameters: { operationId }, result: { data } }] }, {});
+    const result = await executor.reconcile(operation);
+    assert.equal(result.status, "failed");
+    assert.equal(result.errorCode, "INVALID_REMOTE_TASK_RESULT");
+  }
 });
 
 test("dispatch failures persist as terminal operations and idempotent retries do not redispatch", async () => {

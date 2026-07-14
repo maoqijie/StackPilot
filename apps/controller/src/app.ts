@@ -51,6 +51,12 @@ import { FileUploadRepository } from "./repositories/fileUploadRepository.js";
 import { FileUploadService } from "./modules/files/fileUploadService.js";
 import { DatabaseSlowQueryService } from "./modules/databases/databaseSlowQueryService.js";
 import { PostgresSlowQueryCollector } from "./platform/postgresSlowQueryCollector.js";
+import { SqliteDatabaseRepository } from "./repositories/sqliteDatabaseRepository.js";
+import { DatabaseInventoryService } from "./modules/databases/databaseInventoryService.js";
+import { DatabaseBackupWorkspaceService } from "./modules/databases/databaseBackupWorkspaceService.js";
+import { DatabaseOperationService } from "./modules/databases/databaseOperationService.js";
+import { DatabaseRetentionService } from "./modules/databases/databaseRetentionService.js";
+import type { AuditRepository } from "./audit/auditRepository.js";
 import { SystemdDatabaseCollector } from "@stackpilot/host-telemetry";
 
 export type AppOptions = {
@@ -71,7 +77,15 @@ function createFileUploadService(database: Database.Database, repoRoot: string, 
   return new FileUploadService(new FileUploadRepository(database), uploadRoot, config.uploadMaxBytes, config.uploadChunkMaxBytes);
 }
 
-export function createControllerServices(platform: PlatformAdapter, repoRoot: string, config: ControllerConfig, agentRepository?: AgentControlRepository, database: Database.Database | null = null, siteRepository?: SiteManagementRepository): Services {
+export function createControllerServices(
+  platform: PlatformAdapter,
+  repoRoot: string,
+  config: ControllerConfig,
+  agentRepository?: AgentControlRepository,
+  database: Database.Database | null = null,
+  siteRepository?: SiteManagementRepository,
+  audit?: AuditRepository,
+): Services {
   const state = new MemoryTaskStateRepository();
   const exports = new FileExportRepository(repoRoot);
   const repository = agentRepository ?? new FileAgentControlRepository(isAbsolute(config.agentStatePath) ? config.agentStatePath : resolve(repoRoot, config.agentStatePath));
@@ -82,6 +96,10 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
   const managementRepository = siteRepository ?? new MemorySiteManagementRepository();
   const terminalRepository = database ? new SqliteTerminalSnippetRepository(database) : new MemoryTerminalSnippetRepository();
   const fileUploads = database ? createFileUploadService(database, repoRoot, config) : undefined;
+  const databaseRepository = database && config.masterKey
+    ? new SqliteDatabaseRepository(database, parseMasterKey(config.masterKey))
+    : undefined;
+  const nodes = new NodeService(repository);
   return {
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
@@ -96,9 +114,15 @@ export function createControllerServices(platform: PlatformAdapter, repoRoot: st
     risks: new RiskService(overview, exports),
     schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform),
     enrollments: new EnrollmentService(repository),
-    nodes: new NodeService(repository),
+    nodes,
     remoteTasks,
     terminalSnippets: new TerminalSnippetService(terminalRepository, remoteTasks),
+    ...(databaseRepository ? {
+      databaseInventory: new DatabaseInventoryService(databaseRepository),
+      databaseWorkspace: new DatabaseBackupWorkspaceService(databaseRepository, audit),
+      databaseOperations: new DatabaseOperationService(databaseRepository, nodes, audit),
+      databaseRetention: new DatabaseRetentionService(databaseRepository),
+    } : {}),
     ...(fileUploads ? { fileUploads } : {}),
   };
 }
@@ -120,7 +144,7 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
   const secrets = database && config.masterKey ? new SecretStore(database, parseMasterKey(config.masterKey)) : undefined;
   const agentRepository = options.agentRepository ?? (database ? new SqliteAgentControlRepository(database,identity?.audit,secrets) : undefined);
   const siteRepository = database && secrets ? new SqliteSiteManagementRepository(database, secrets) : undefined;
-  const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, database, siteRepository);
+  const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, database, siteRepository, identity?.audit);
   if (!services.fileUploads && database) services.fileUploads = createFileUploadService(database, repoRoot, config);
   const logger = options.logger ?? consoleLogger;
   const surface = options.surface ?? "all";
@@ -154,14 +178,15 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
       if (!isAgentPath && isWriteMethod(method) && !isLoginPath && principal && identity) requireCsrf(request, principal, identity, config.allowedOrigins);
       const isFileUpload = url.pathname === "/api/file-uploads" && method === "POST";
       if (isFileUpload) identity?.require(principal, "files:write");
-      const bodyLimit = url.pathname === "/api/agent/heartbeat" ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
+      const isLargeAgentPayload = url.pathname === "/api/agent/heartbeat" || url.pathname.startsWith("/api/agent/databases/");
+      const bodyLimit = isLargeAgentPayload ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
       const parsedBody = isFileUpload ? { value: {}, raw: Buffer.alloc(0) }
         : isWriteMethod(method) && !isFileChunkPath ? await readJsonRequest(request, bodyLimit) : { value: {}, raw: Buffer.alloc(0) };
       const parts = url.pathname.split("/").filter(Boolean);
       const authenticatedAgent = isAgentPath && url.pathname !== "/api/agent/enroll"
         ? await authenticateAgentRequest(request, `${url.pathname}${url.search}`, parsedBody.raw, services.nodes)
         : undefined;
-      const context = { request, response, requestId, url, parts, config, services, platform, logger, body: parsedBody.value, rawBody: parsedBody.raw, identity, ...(principal ? { principal } : {}), ...(authenticatedAgent ? { agentIdentity: { nodeId: authenticatedAgent.nodeId, credentialId: authenticatedAgent.credential.credentialId } } : {}) };
+      const context = { request, response, requestId, url, parts, config, services, platform, logger, body: parsedBody.value, rawBody: parsedBody.raw, identity, ...(principal ? { principal } : {}), ...(authenticatedAgent ? { agentIdentity: { nodeId: authenticatedAgent.nodeId, credentialId: authenticatedAgent.credential.credentialId, protocolVersion: authenticatedAgent.protocolVersion } } : {}) };
       if (isAgentPath) await routeAgentRequest(context);
       else await routeRequest(context);
     } catch (error) {

@@ -49,8 +49,8 @@ test("site TLS probes do not reuse sessions that omit peer certificate metadata"
   assert.doesNotMatch(source, /rejectUnauthorized: false/);
 });
 
-test("production server injects SQLite and encrypted site storage into stateful services", async () => {
+test("production server injects SQLite, encrypted site storage and audit storage into persistent services", async () => {
   const source = await readFile(join(sourceRoot, "server.ts"), "utf8");
   assert.match(source, /new SqliteSiteManagementRepository\(database,\s*secrets\)/);
-  assert.match(source, /createControllerServices\(platform,\s*repoRoot,\s*config,\s*agentRepository,\s*database,\s*siteRepository\)/);
+  assert.match(source, /createControllerServices\(platform,\s*repoRoot,\s*config,\s*agentRepository,\s*database,\s*siteRepository,\s*identity\.audit\)/);
 });

@@ -51,6 +51,8 @@ test("TLS Agent API supports two independent identities and rejects replay, revo
     const heartbeat = (agent) => ({ nodeId: agent.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read", "service.status.read"], health: { status: "healthy", uptimeSeconds: 5 } });
     assert.equal((await httpsJson(tlsUrl, "/api/agent/heartbeat", heartbeat(agents[0]), cert.cert, agents[0])).status, 200);
     assert.equal((await httpsJson(tlsUrl, "/api/agent/heartbeat", heartbeat(agents[1]), cert.cert, agents[1])).status, 200);
+    const emptyDatabaseSnapshot = { collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], instances: [] };
+    assert.equal((await httpsJson(tlsUrl, "/api/agent/databases/snapshot", emptyDatabaseSnapshot, cert.cert, agents[0], { protocolVersion: "1.0" })).status, 409);
     const largeTelemetry = {
       collectedAt: new Date().toISOString(), hostname: "large-agent", primaryIp: "192.0.2.10",
       cpu: { usagePercent: 20, coreUsagePercents: Array(512).fill(20) }, memory: { totalBytes: 1024, availableBytes: 512 },

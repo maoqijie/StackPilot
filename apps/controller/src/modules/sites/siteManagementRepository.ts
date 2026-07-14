@@ -20,6 +20,7 @@ export interface SiteManagementRepository {
   findPlanByIdempotency(digest: string): SitePlan | null;
   getPlan(planId: string): SitePlan | null;
   savePlan(plan: SitePlan, idempotencyDigest: string, certificateEmail: string, environment: Array<{ name: string; value: string }>): void;
+  savePlanWithOperation(plan: SitePlan, planDigest: string, certificateEmail: string, environment: Array<{ name: string; value: string }>, operation: SiteOperation, operationDigest: string): void;
   updatePlan(plan: SitePlan): void;
   getPlanExecutionSecrets(planId: string): SitePlanExecutionSecrets;
   findOperationByIdempotency(digest: string): SiteOperation | null;
@@ -45,6 +46,7 @@ export class MemorySiteManagementRepository implements SiteManagementRepository 
   findPlanByIdempotency(digest: string) { const id = this.planKeys.get(digest); return id ? structuredClone(this.plans.get(id) ?? null) : null; }
   getPlan(planId: string) { return structuredClone(this.plans.get(planId) ?? null); }
   savePlan(plan: SitePlan, digest: string, certificateEmail: string, environment: Array<{ name: string; value: string }>) { this.plans.set(plan.planId, structuredClone(plan)); this.planKeys.set(digest, plan.planId); this.certificateEmails.set(plan.planId, certificateEmail); this.environments.set(plan.planId, structuredClone(environment)); }
+  savePlanWithOperation(plan: SitePlan, planDigest: string, certificateEmail: string, environment: Array<{ name: string; value: string }>, operation: SiteOperation, operationDigest: string) { this.savePlan(plan, planDigest, certificateEmail, environment); this.saveOperation(operation, operationDigest); }
   updatePlan(plan: SitePlan) { this.plans.set(plan.planId, structuredClone(plan)); }
   getPlanExecutionSecrets(planId: string) { return { certificateEmail: this.certificateEmails.get(planId) ?? "", environmentVariables: structuredClone(this.environments.get(planId) ?? []) }; }
   findOperationByIdempotency(digest: string) { const id = this.operationKeys.get(digest); return id ? structuredClone(this.operations.get(id) ?? null) : null; }
@@ -86,6 +88,12 @@ export class SqliteSiteManagementRepository implements SiteManagementRepository 
         this.secrets.set(secretKey, Buffer.from(entry.value));
         insert.run(plan.planId, entry.name, secretKey);
       }
+    })();
+  }
+  savePlanWithOperation(plan: SitePlan, planDigest: string, certificateEmail: string, environment: Array<{ name: string; value: string }>, operation: SiteOperation, operationDigest: string) {
+    this.database.transaction(() => {
+      this.savePlan(plan, planDigest, certificateEmail, environment);
+      this.saveOperation(operation, operationDigest);
     })();
   }
   updatePlan(plan: SitePlan) {

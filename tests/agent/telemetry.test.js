@@ -180,9 +180,9 @@ test("collector exposes unavailable metrics without inventing zero values and he
   assert.equal(telemetry.cpu, null); assert.equal(telemetry.memory, null); assert.equal(telemetry.loadAverage, null); assert.equal(telemetry.primaryIp, null); assert.deepEqual(telemetry.disks, []);
   assert.equal(windowsLoadCalls, 0);
   const heartbeat = createHeartbeat({ agentVersion: "0.2.0", platform: "win32" }, "11111111-1111-4111-8111-111111111111", ["system.summary.read"], telemetry);
-  assert.deepEqual(heartbeat.telemetry, telemetry); assert.equal(heartbeat.protocolVersion, "1.0"); assert.equal(heartbeat.health.status, "degraded");
+  assert.deepEqual(heartbeat.telemetry, telemetry); assert.equal(heartbeat.protocolVersion, "1.1"); assert.equal(heartbeat.health.status, "degraded");
   const legacyHeartbeat = createHeartbeat({ agentVersion: "0.1.0", platform: "win32" }, "11111111-1111-4111-8111-111111111111", ["system.summary.read"]);
-  assert.equal("telemetry" in legacyHeartbeat, false); assert.equal(legacyHeartbeat.protocolVersion, "1.0");
+  assert.equal("telemetry" in legacyHeartbeat, false); assert.equal(legacyHeartbeat.protocolVersion, "1.1");
   const failedHeartbeat = createHeartbeat({ agentVersion: "0.2.0", platform: "win32" }, "11111111-1111-4111-8111-111111111111", ["system.summary.read"], undefined, true);
   assert.equal("telemetry" in failedHeartbeat, false); assert.equal(failedHeartbeat.health.status, "degraded");
 });

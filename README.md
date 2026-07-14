@@ -1,8 +1,8 @@
 # StackPilot
 
-StackPilot 是面向新手站长的开源自托管多服务器总控台。当前仓库采用 npm workspaces，包含前端控制台、本机 Node.js Controller API、共享契约和未实现的 Agent 占位包。
+StackPilot 是开源自托管多服务器总控台。当前仓库采用 npm workspaces，包含前端控制台、Node.js Controller API、非 root Agent、root-only 数据库 helper 和共享运行时契约。
 
-> **项目成熟度：预览版。** 当前版本为 `0.2.0-preview.6`，提供可重复的部署、迁移、回滚和发布验证流程，但尚未达到稳定生产发布条件，也不提供 SLA。正式支持范围和已验证边界见[兼容性矩阵](docs/compatibility.md)。
+> **项目成熟度：预览版。** 当前版本为 `0.3.0-preview.1`，提供可重复的部署、迁移、回滚和发布验证流程，但尚未达到稳定生产发布条件，也不提供 SLA。正式支持范围和已验证边界见[兼容性矩阵](docs/compatibility.md)。
 
 ## 当前前端范围
 
@@ -20,7 +20,8 @@ StackPilot 是面向新手站长的开源自托管多服务器总控台。当前
 apps/
   web/          React、Vite 和 TypeScript 前端
   controller/   严格 TypeScript Controller API（HTTP、业务、存储与平台适配分层）
-  agent/        独立低权限 Agent 开发原型，不可用于生产
+  agent/        独立非 root Agent，负责节点采集和签名任务投递
+  database-helper/ root-only 本机数据库操作边界，仅接受严格枚举参数
 packages/
   contracts/    前后端共享 API、错误和领域契约
   config/       Web 与 Controller 共用的安全开发默认值
@@ -115,7 +116,7 @@ npm run dev --workspace @stackpilot/web -- --host 0.0.0.0
 
 ## 本地 Controller-Agent 验证
 
-当前 Agent 协议版本为 `1.0`。Controller接受相同 major 的兼容版本，并拒绝不兼容 major。开发环境先显式生成 30 天本地证书：
+当前 Agent 协议版本为 `1.1`。Controller 仅接受明确列出的 `1.0` 和 `1.1`，其他协议版本均拒绝；数据库能力只在 `1.1` Agent 与本机 helper 均可用时启用。开发环境先显式生成 30 天本地证书：
 
 ```bash
 npm run agent:cert
@@ -152,7 +153,7 @@ npm run dev:agent
 
 第二个 Agent 必须创建另一个 enrollment，并使用不同状态目录。所有 Agent 请求由节点私钥签名，覆盖请求方法、路径、时间、nonce 和 body digest；Controller 持久化 nonce 以拒绝重放。用户会话和 API Token 不能代替 Agent 身份，来源 IP 也不参与认证。
 
-主机页面使用 `/api/hosts` 每 10 秒静默读取 Controller 本机和授权范围内的 Agent 遥测。Agent 每 15 秒随兼容 `1.0` 心跳上报 CPU、内存、负载、全部磁盘卷、主 IP 与运行时间；Windows 负载由忙碌逻辑核心数与 Processor Queue Length 生成等效的 1、5、15 分钟指数平均，页面会明确标注其来源。备份、服务和更新状态未采集时明确显示不可用。升级时先发布 Controller，再发布 Web，最后滚动升级 Agent。
+主机页面使用 `/api/hosts` 每 10 秒静默读取 Controller 本机和授权范围内的 Agent 遥测。Agent 每 15 秒上报主机遥测，并每 60 秒通过本机 helper 互斥采集数据库快照和有界查询数据；数据库页面的 10 秒轮询只读取 Controller 已保存的快照。升级顺序固定为 Controller/Web、database-helper、Agent。
 
 需要轮换单个 Agent身份时，在该 Agent下一次启动前设置 `STACKPILOT_AGENT_ROTATE_CREDENTIAL=1`。Agent会先安全保存 pending 私钥，再用当前身份执行带 rotation ID 的幂等轮换；响应丢失时可继续同一轮换，成功后旧凭据立即撤销。管理员撤销节点后，旧身份和轮换恢复路径都会被拒绝。
 
@@ -205,7 +206,7 @@ npm run build
 npm run test:e2e
 npm audit --audit-level=high
 npm run release:build
-npm run release:verify -- output/release/0.2.0-preview.6/SHA256SUMS
+npm run release:verify -- output/release/0.3.0-preview.1/SHA256SUMS
 npm run release:scan
 ```
 
@@ -237,7 +238,7 @@ npm run test --workspace @stackpilot/agent
 
 ## 生产部署与发布
 
-正式支持的生产运行时为 Linux x86_64、Node.js 22.x 和 SQLite schema 6。Docker Compose 默认仅公开 HTTPS 443；Controller 8787 位于内部网络，Agent 9443 默认只绑定回环地址。原生 systemd 方案为 Controller 与 Agent 创建不同的低权限用户，并通过 systemd credential 注入主密钥和 TLS 私钥。
+正式支持的 Controller/Web 运行时为 Debian 12 或 Ubuntu 24.04 x86_64、Node.js 22.x 和 SQLite schema 7。Docker Compose 默认仅公开 HTTPS 443；Controller 8787 位于内部网络，Agent 9443 默认只绑定回环地址。原生 systemd 方案为 Controller、Agent、站点 helper 和 database-helper 建立独立权限边界，并通过 systemd credential 注入主密钥和 TLS 私钥。Agent/helper 的其他发行版能力只有通过固定镜像集成测试后才列入兼容性矩阵。
 
 - [Docker Compose 安装](docs/installation/docker-compose.md)
 - [systemd 安装](docs/installation/systemd.md)

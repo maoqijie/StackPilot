@@ -19,7 +19,8 @@ export function openDatabase(path: string): Database.Database {
       { version: 3, name: "file-uploads", sql: readFileSync(resolve(migrationDirectory,"003_file_uploads.sql"), "utf8") },
       { version: 4, name: "terminal-snippets", sql: readFileSync(resolve(migrationDirectory,"004_terminal_snippets.sql"), "utf8") },
       { version: 5, name: "file-trash", sql: readFileSync(resolve(migrationDirectory,"005_file_trash.sql"), "utf8") },
-      { version: 6, name: "site-management", sql: readFileSync(resolve(migrationDirectory,"006_site_management.sql"), "utf8") },
+      { version: 6, name: "database-operations", sql: readFileSync(resolve(migrationDirectory,"006_databases.sql"), "utf8"), replaces: ["site-management"] },
+      { version: 7, name: "site-management", sql: readFileSync(resolve(migrationDirectory,"007_site_management.sql"), "utf8") },
     ]);
   } catch (error) {
     database.close();

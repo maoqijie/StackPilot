@@ -18,11 +18,37 @@ import type { TerminalSnippetService } from "../modules/terminal/terminalSnippet
 import type { FileService } from "../modules/files/fileService.js";
 import type { FileUploadService } from "../modules/files/fileUploadService.js";
 import type { DatabaseSlowQueryService } from "../modules/databases/databaseSlowQueryService.js";
+import type { DatabaseInventoryService } from "../modules/databases/databaseInventoryService.js";
+import type { DatabaseBackupWorkspaceService } from "../modules/databases/databaseBackupWorkspaceService.js";
+import type { DatabaseOperationService } from "../modules/databases/databaseOperationService.js";
+import type { DatabaseRetentionService } from "../modules/databases/databaseRetentionService.js";
 import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
 
-export type Services = { overview: OverviewService; hosts: HostMonitoringService; databaseInstances: DatabaseMonitoringService; databaseSlowQueries: DatabaseSlowQueryService; sites: SiteMonitoringService; siteManagement: SiteManagementService; certificateRenewals: CertificateRenewalService; databaseBackups: DatabaseBackupService; files: FileService; fileUploads?: FileUploadService; risks: RiskService; schedules: ScheduleService; tasks: TaskService; enrollments: EnrollmentService; nodes: NodeService; remoteTasks: RemoteTaskService; terminalSnippets: TerminalSnippetService };
+export type Services = {
+  overview: OverviewService;
+  hosts: HostMonitoringService;
+  databaseInstances: DatabaseMonitoringService;
+  databaseSlowQueries: DatabaseSlowQueryService;
+  databaseInventory?: DatabaseInventoryService;
+  databaseWorkspace?: DatabaseBackupWorkspaceService;
+  databaseOperations?: DatabaseOperationService;
+  databaseRetention?: DatabaseRetentionService;
+  sites: SiteMonitoringService;
+  siteManagement: SiteManagementService;
+  certificateRenewals: CertificateRenewalService;
+  databaseBackups: DatabaseBackupService;
+  files: FileService;
+  fileUploads?: FileUploadService;
+  risks: RiskService;
+  schedules: ScheduleService;
+  tasks: TaskService;
+  enrollments: EnrollmentService;
+  nodes: NodeService;
+  remoteTasks: RemoteTaskService;
+  terminalSnippets: TerminalSnippetService;
+};
 export type RequestContext = {
   request: IncomingMessage;
   response: ServerResponse;
@@ -37,5 +63,5 @@ export type RequestContext = {
   rawBody: Buffer;
   identity: IdentityService | null;
   principal?: Principal;
-  agentIdentity?: { nodeId: string; credentialId: string };
+  agentIdentity?: { nodeId: string; credentialId: string; protocolVersion: string };
 };

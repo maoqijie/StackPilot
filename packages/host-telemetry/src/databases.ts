@@ -33,9 +33,10 @@ export function parseSystemdDatabaseUnits(output: string, hostName: string): Age
     seen.add(unit); const template = unit.match(/^[^@]+@(.+)\.service$/)?.[1];
     instances.push({
       id: unit, name: template ? `${engine}-${template}` : engine, engine, version: null, host: hostName, port: null,
-      status: statusForUnit(columns[2] ?? "", columns[3] ?? ""), source: `systemd:${unit}`, latencyMs: null, storageBytes: null,
+      status: statusForUnit(columns[2] ?? "", columns[3] ?? ""), source: `systemd:${unit}`, managed: false, historicalSlowQueriesAvailable: false,
+      latencyMs: null, storageBytes: null,
       activeConnections: null, maxConnections: null, slowQueryCount: null, backupStatus: "unavailable", lastBackupAt: null,
-      accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null,
+      accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null, volumes: [],
     });
   }
   return instances.slice(0, 256);

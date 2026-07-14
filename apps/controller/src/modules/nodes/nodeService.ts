@@ -17,7 +17,7 @@ export type SignedAgentRequest = {
 export class NodeService {
   constructor(private readonly repository: AgentControlRepository, private readonly offlineAfterMs = 45_000) {}
 
-  async authenticate(input: SignedAgentRequest): Promise<{ nodeId: string; credential: AgentCredentialState }> {
+  async authenticate(input: SignedAgentRequest): Promise<{ nodeId: string; credential: AgentCredentialState; protocolVersion: string }> {
     if (!isAgentProtocolCompatible(input.protocolVersion)) throw new ServiceError(409, "BAD_REQUEST", "Agent 协议版本不兼容");
     const requestTime = Date.parse(input.timestamp);
     if (!Number.isFinite(requestTime) || Math.abs(Date.now() - requestTime) > AGENT_REQUEST_TIME_WINDOW_MS) throw new ServiceError(401, "UNAUTHORIZED", "Agent 请求时间无效");
@@ -40,7 +40,7 @@ export class NodeService {
     });
     if (nonceResult === "unauthorized") throw new ServiceError(401, "UNAUTHORIZED", "Agent 身份无效或已撤销");
     if (nonceResult === "replayed") throw new ServiceError(409, "BAD_REQUEST", "Agent 请求已重放");
-    return { nodeId: input.nodeId, credential };
+    return { nodeId: input.nodeId, credential, protocolVersion: input.protocolVersion };
   }
 
   async heartbeat(nodeId: string, heartbeat: AgentHeartbeat, traceId: string) {

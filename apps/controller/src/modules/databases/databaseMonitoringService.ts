@@ -7,7 +7,7 @@ export type DatabaseAccess = { nodeScope: "all" | string[] };
 export type LocalDatabaseCollector = { collect(): Promise<AgentDatabaseSnapshot> };
 const STALE_AFTER_MS = 150_000;
 const MAX_DATABASE_INSTANCES = 10_000;
-const LOCAL_NODE_ID = "node-local";
+const LOCAL_NODE_ID = "00000000-0000-0000-0000-000000000000";
 const LOCAL_NODE_NAME = "Controller";
 const LOCAL_COLLECTION_INTERVAL_MS = 60_000;
 
@@ -23,7 +23,10 @@ export function publicDatabaseId(nodeId: string, instanceId: string) {
 function runtimeRecord(node: AgentNodeState, instance: AgentDatabaseInstance): DatabaseInstanceRecord {
   const collectedAt = node.databaseSnapshot!.collectedAt;
   return {
-    ...instance, id: publicDatabaseId(node.nodeId, instance.id), nodeId: node.nodeId, nodeName: node.nodeName,
+    ...instance, managed: instance.managed ?? false,
+    historicalSlowQueriesAvailable: instance.historicalSlowQueriesAvailable ?? false,
+    volumes: instance.volumes ?? [],
+    id: publicDatabaseId(node.nodeId, instance.id), nodeId: node.nodeId, nodeName: node.nodeName,
     address: node.telemetry?.primaryIp ?? null, collectedAt,
     freshness: isStale(collectedAt) ? "stale" : "current",
   };
@@ -31,7 +34,9 @@ function runtimeRecord(node: AgentNodeState, instance: AgentDatabaseInstance): D
 
 function localRuntimeRecord(snapshot: AgentDatabaseSnapshot, instance: AgentDatabaseInstance): DatabaseInstanceRecord {
   return {
-    ...instance,
+    ...instance, managed: instance.managed ?? false,
+    historicalSlowQueriesAvailable: instance.historicalSlowQueriesAvailable ?? false,
+    volumes: instance.volumes ?? [],
     id: publicDatabaseId(LOCAL_NODE_ID, instance.id),
     nodeId: LOCAL_NODE_ID,
     nodeName: instance.host || LOCAL_NODE_NAME,

@@ -5,6 +5,8 @@ export const AGENT_FEATURE_DATABASE_INVENTORY = "database-inventory-v1";
 export const AgentCapabilitySchema = z.enum([
   "system.summary.read", "service.status.read", "terminal.command.execute", "sites.inventory.read", "sites.logs.read",
   "sites.deploy", "sites.lifecycle.manage", "sites.certificates.renew", "runtime.install", "databases.inventory.read",
+  "database.inventory.read", "database.sql.read",
+  "database.backup", "database.operate", "database.install", "database.restore",
 ]);
 export const AgentCapabilitiesSchema = z.array(AgentCapabilitySchema).max(16).transform((items) => [...new Set(items)]);
 

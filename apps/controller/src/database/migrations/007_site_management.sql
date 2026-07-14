@@ -1,4 +1,4 @@
-CREATE TABLE managed_sites (
+CREATE TABLE IF NOT EXISTS managed_sites (
   site_id TEXT PRIMARY KEY,
   node_id TEXT NOT NULL,
   domain_digest TEXT NOT NULL UNIQUE,
@@ -9,9 +9,9 @@ CREATE TABLE managed_sites (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-CREATE INDEX managed_sites_node_idx ON managed_sites(node_id, desired_state);
+CREATE INDEX IF NOT EXISTS managed_sites_node_idx ON managed_sites(node_id, desired_state);
 
-CREATE TABLE site_plans (
+CREATE TABLE IF NOT EXISTS site_plans (
   plan_id TEXT PRIMARY KEY,
   node_id TEXT NOT NULL,
   payload TEXT NOT NULL,
@@ -23,9 +23,9 @@ CREATE TABLE site_plans (
   updated_at TEXT NOT NULL,
   expires_at TEXT NOT NULL
 );
-CREATE INDEX site_plans_node_status_idx ON site_plans(node_id, status);
+CREATE INDEX IF NOT EXISTS site_plans_node_status_idx ON site_plans(node_id, status);
 
-CREATE TABLE site_operations (
+CREATE TABLE IF NOT EXISTS site_operations (
   operation_id TEXT PRIMARY KEY,
   task_id TEXT UNIQUE,
   node_id TEXT NOT NULL,
@@ -42,9 +42,9 @@ CREATE TABLE site_operations (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-CREATE INDEX site_operations_node_status_idx ON site_operations(node_id, status);
+CREATE INDEX IF NOT EXISTS site_operations_node_status_idx ON site_operations(node_id, status);
 
-CREATE TABLE site_releases (
+CREATE TABLE IF NOT EXISTS site_releases (
   release_id TEXT PRIMARY KEY,
   site_id TEXT NOT NULL REFERENCES managed_sites(site_id),
   plan_id TEXT NOT NULL REFERENCES site_plans(plan_id),
@@ -52,13 +52,13 @@ CREATE TABLE site_releases (
   created_at TEXT NOT NULL,
   activated_at TEXT
 );
-CREATE INDEX site_releases_site_idx ON site_releases(site_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS site_releases_site_idx ON site_releases(site_id, created_at DESC);
 
-CREATE TABLE site_environment_references (
+CREATE TABLE IF NOT EXISTS site_environment_references (
   plan_id TEXT NOT NULL REFERENCES site_plans(plan_id) ON DELETE CASCADE,
   variable_name TEXT NOT NULL,
   secret_key TEXT NOT NULL,
   PRIMARY KEY(plan_id, variable_name)
 );
 
-UPDATE release_metadata SET schema_version = 6, upgraded_at = CURRENT_TIMESTAMP WHERE singleton = 1;
+UPDATE release_metadata SET application_version = '0.3.0-preview.1', schema_version = 7, upgraded_at = CURRENT_TIMESTAMP WHERE singleton = 1;

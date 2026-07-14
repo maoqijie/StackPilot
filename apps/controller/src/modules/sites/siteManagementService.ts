@@ -134,8 +134,10 @@ export class SiteManagementService {
       createdAt: now, updatedAt: now, expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
     });
     preparing.planId = plan.planId;
-    this.repository.savePlan(plan, key, input.certificateEmail, input.environmentVariables);
-    this.repository.saveOperation(preparing, this.idempotency(requester, "prepare-operation", input.idempotencyKey));
+    this.repository.savePlanWithOperation(
+      plan, key, input.certificateEmail, input.environmentVariables, preparing,
+      this.idempotency(requester, "prepare-operation", input.idempotencyKey),
+    );
     const dispatched = await this.dispatch(preparing, { type: "prepare", planId: plan.planId });
     return dispatched.status === "failed" ? this.repository.getPlan(plan.planId)! : plan;
   }
@@ -369,9 +371,15 @@ export class RemoteSiteExecutor implements SiteExecutor {
   }
 
   private result(operation: SiteOperation, data: unknown): SiteOperationResult {
-    if (operation.type === "prepare") { const value = SitePlanPrepareTaskResultSchema.parse(data); return emptyResult({ stagingId: value.stagingId, planPreview: value.planPreview }); }
-    if (operation.type === "activate") { const value = SitePlanActivateTaskResultSchema.parse(data); return emptyResult({ siteId: value.siteId, releaseId: value.releaseId }); }
-    if (operation.type === "lifecycle") { const value = SiteLifecycleTaskResultSchema.parse(data); return emptyResult({ siteId: value.siteId, desiredState: value.desiredState }); }
-    const value = SiteLogQueryTaskResultSchema.parse(data); return emptyResult({ siteId: value.siteId, logs: value.logs });
+    if (operation.type === "prepare") { const value = SitePlanPrepareTaskResultSchema.parse(data); this.assertResultIdentity(operation, value); return emptyResult({ stagingId: value.stagingId, planPreview: value.planPreview }); }
+    if (operation.type === "activate") { const value = SitePlanActivateTaskResultSchema.parse(data); this.assertResultIdentity(operation, value); return emptyResult({ siteId: value.siteId, releaseId: value.releaseId }); }
+    if (operation.type === "lifecycle") { const value = SiteLifecycleTaskResultSchema.parse(data); this.assertResultIdentity(operation, value); return emptyResult({ siteId: value.siteId, desiredState: value.desiredState }); }
+    const value = SiteLogQueryTaskResultSchema.parse(data); this.assertResultIdentity(operation, value); return emptyResult({ siteId: value.siteId, logs: value.logs });
+  }
+
+  private assertResultIdentity(operation: SiteOperation, result: { operationId: string; siteId?: string }) {
+    if (result.operationId !== operation.operationId || (operation.siteId && result.siteId !== operation.siteId)) {
+      throw new Error("REMOTE_TASK_RESULT_IDENTITY_MISMATCH");
+    }
   }
 }

@@ -1,0 +1,25 @@
+#!/sbin/openrc-run
+
+name="StackPilot database-helper"
+description="Root-only local database operations helper"
+command="/usr/bin/node"
+command_args="/opt/stackpilot-database-helper/current/apps/database-helper/dist/main.js"
+supervisor="supervise-daemon"
+output_log="/var/log/stackpilot-database-helper.log"
+error_log="/var/log/stackpilot-database-helper.err"
+respawn_delay=5
+respawn_max=5
+
+depend() {
+  need localmount
+  after networking
+}
+
+start_pre() {
+  checkpath --directory --mode 0700 --owner root:root /var/lib/stackpilot-database-helper
+  checkpath --directory --mode 0755 --owner root:root /run/stackpilot
+  export STACKPILOT_DATABASE_HELPER_STATE_DIR=/var/lib/stackpilot-database-helper
+  export STACKPILOT_DATABASE_HELPER_SOCKET=/run/stackpilot/database-helper.sock
+  export STACKPILOT_DATABASE_HELPER_SOCKET_GID="$(awk -F: '$1=="stackpilot-agent"{print $3}' /etc/group)"
+  [ -n "$STACKPILOT_DATABASE_HELPER_SOCKET_GID" ] || { eerror "stackpilot-agent group is missing"; return 1; }
+}

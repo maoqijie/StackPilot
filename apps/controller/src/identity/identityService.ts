@@ -13,13 +13,15 @@ export const PERMISSIONS: ReadonlyArray<[Permission, "low" | "medium" | "high", 
   ["nodes:read","low","读取授权节点"],["nodes:manage","high","注册、轮换、撤销节点或授权高风险能力"],["sites:read","low","读取站点与证书"],["sites:logs","medium","读取站点结构化日志"],["sites:deploy","high","创建与激活站点部署计划"],["sites:operate","high","操作站点生命周期"],["sites:renew","high","续期站点证书"],["tasks:read","low","读取远程任务"],["tasks:create","high","创建远程任务"],["tasks:cancel","medium","取消远程任务"],
   ["terminal:read","low","读取受控命令片段"],["terminal:execute","high","执行受控命令片段"],
   ["databases:read","low","读取授权节点的数据库实例、运行状态与脱敏慢查询"],
+  ["databases:sql:read","high","读取数据库完整 SQL 文本"],["databases:backup","high","管理和执行数据库备份计划"],
+  ["databases:operate","high","执行数据库会话和查询治理操作"],["databases:install","high","安装和创建数据库实例"],["databases:restore","high","执行数据库原地恢复"],
   ["files:read","low","读取受管文件"],["files:write","high","修改和上传受管文件"],["files:delete","high","永久删除受管文件"],
   ["audit:read","low","读取审计日志"],["users:read","low","读取用户"],["users:manage","high","管理用户"],["roles:read","low","读取角色"],["roles:manage","high","管理角色"],["tokens:manage","high","管理 API Token"],["system:backup","high","备份与恢复数据库"],
 ];
 const roleDefinitions = [
   ["administrator","管理员",PERMISSIONS.map(([key]) => key)],
-  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","sites:read","sites:logs","sites:deploy","sites:operate","sites:renew","databases:read","files:read","files:write","tasks:read","tasks:create","tasks:cancel","terminal:read","terminal:execute"]],
-  ["audit-reader","只读审计员",["overview:read","nodes:read","sites:read","databases:read","files:read","tasks:read","audit:read"]],
+  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","sites:read","sites:logs","sites:deploy","sites:operate","sites:renew","files:read","files:write","tasks:read","tasks:create","tasks:cancel","terminal:read","terminal:execute"]],
+  ["audit-reader","只读审计员",["overview:read","nodes:read","sites:read","files:read","tasks:read","audit:read"]],
 ] as const;
 
 type UserRow = { id: string; username: string; display_name: string; password_hash: string; disabled_at: string | null };
