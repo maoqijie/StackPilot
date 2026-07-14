@@ -11,8 +11,18 @@ import { agentLogger } from "../logging/logger.js";
 import type { DatabaseHelperClient } from "./helperClient.js";
 import { MemoryDatabaseOperationOutbox, type DatabaseOperationOutbox } from "./operationOutbox.js";
 
-const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve) => {
-  const timer = setTimeout(resolve, ms); signal?.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+export const sleepWithAbort = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve) => {
+  let settled = false;
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", finish);
+    resolve();
+  };
+  const timer = setTimeout(finish, ms);
+  if (signal?.aborted) finish();
+  else signal?.addEventListener("abort", finish, { once: true });
 });
 
 const byteLength = (value: unknown) => Buffer.byteLength(JSON.stringify(value), "utf8");
@@ -38,7 +48,7 @@ export class DatabaseAgentRuntime {
   async run(signal?: AbortSignal) {
     while (!signal?.aborted) {
       await this.runCycle();
-      await sleep(10_000, signal);
+      await sleepWithAbort(10_000, signal);
     }
   }
   async runCycle() {

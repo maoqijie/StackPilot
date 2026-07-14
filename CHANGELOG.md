@@ -2,6 +2,13 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.15 - 2026-07-15
+
+### Fixed
+
+- Removed settled database-runtime abort listeners after every collection interval, preventing the long-running Agent from accumulating listeners and emitting `MaxListenersExceededWarning`.
+- Added regression coverage for repeated timer completion and an already-aborted shutdown signal.
+
 ## 0.3.0-preview.14 - 2026-07-15
 
 ### Fixed
