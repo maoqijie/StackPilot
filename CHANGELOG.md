@@ -2,6 +2,16 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.9 - 2026-07-15
+
+### Fixed
+
+- Updated the disposable systemd installer verification fixture to include the Web entry required by a complete Controller release, preserving the production installer's fail-closed integrity check while restoring the Linux hardening gate.
+
+### Changed
+
+- Promoted the deployment workbench real-backend release to a new preview version after `0.3.0-preview.8` had already been published to `main`, keeping package, Agent runtime, lockfile and release-document versions traceable to the corrected CI revision.
+
 ## 0.3.0-preview.8 - 2026-07-15
 
 ### Added
