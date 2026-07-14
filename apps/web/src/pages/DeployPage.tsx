@@ -20,7 +20,7 @@ function DeployPage({ page, permissions = ["sites:read", "sites:deploy"] }: { pa
   const canRead = permissions.includes("sites:read");
   const canDeploy = permissions.includes("sites:deploy");
   const preset = deployPagePreset(page);
-  const initialEnvironment: EnvironmentFilter = page === "deploy-prod" ? "production" : page === "deploy-staging" ? "staging" : "all";
+  const initialEnvironment: EnvironmentFilter = page === "deploy-rollbacks" ? "all" : page === "deploy-staging" ? "staging" : "production";
   const [environment, setEnvironment] = useState<EnvironmentFilter>(initialEnvironment);
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
   const [selectedReleaseId, setSelectedReleaseId] = useState<string | null>(null);
@@ -30,11 +30,12 @@ function DeployPage({ page, permissions = ["sites:read", "sites:deploy"] }: { pa
   const isReleaseView = preset.mode === "rollbacks";
   const filteredDeployments = deployments.filter((row) => environment === "all" || row.environment === environment);
   const filteredReleases = releases.filter((row) => environment === "all" || row.environment === environment);
-  const selectedDeployment = selectedDeploymentId ? deployments.find((row) => row.id === selectedDeploymentId) ?? null : null;
+  const selectedDeployment = selectedDeploymentId ? deployments.find((row) => row.planId === selectedDeploymentId) ?? null : null;
   const selectedRelease = selectedReleaseId ? releases.find((row) => row.releaseId === selectedReleaseId) ?? null : null;
 
   useEffect(() => { if (selectedDeploymentId && data && !selectedDeployment) queueMicrotask(() => setSelectedDeploymentId(null)); }, [data, selectedDeployment, selectedDeploymentId]);
   useEffect(() => { if (selectedReleaseId && data && !selectedRelease) queueMicrotask(() => setSelectedReleaseId(null)); }, [data, selectedRelease, selectedReleaseId]);
+  useEffect(() => { queueMicrotask(() => setEnvironment(initialEnvironment)); }, [initialEnvironment]);
 
   if (!canRead) return <section className="module-page module-page-deploy-prod"><h1>部署</h1><div className="overview-error-state" role="alert"><CircleAlert size={18} /><span>当前账号没有站点读取权限</span></div></section>;
   const freshness = backgroundError ? `后台刷新失败，保留上次数据：${backgroundError}` : `后端采集于 ${formatBackendDateTime(data?.collectedAt)}`;
@@ -59,18 +60,18 @@ function DeployPage({ page, permissions = ["sites:read", "sites:deploy"] }: { pa
 
 function DeploymentTable({ rows, loading, onOpen }: { rows: DeploymentRecord[]; loading: boolean; onOpen: (id: string) => void }) {
   return <DataTable columns={[
-    { key: "app", label: "发布项目", width: "220px", render: (row) => <button className="module-row-link deploy-project-link" type="button" title={deploymentApp(row)} onClick={() => onOpen(row.id)}><CloudUpload size={15} /><b>{deploymentApp(row)}</b></button> },
+    { key: "app", label: "发布项目", width: "220px", render: (row) => <button className="module-row-link deploy-project-link" type="button" title={deploymentApp(row)} onClick={() => onOpen(row.planId)}><CloudUpload size={15} /><b>{deploymentApp(row)}</b></button> },
     { key: "target", label: "目标节点", width: "190px", render: (row) => <code title={row.nodeId}>{row.nodeId}</code> },
     { key: "version", label: "版本", width: "210px", render: (row) => <code title={deploymentVersion(row)}>{deploymentVersion(row)}</code> },
     { key: "status", label: "状态", width: "110px", render: (row) => <span className={`pill status-with-icon ${deploymentStatusTone(row.status)}`}>{statusIcon(row)}{deploymentStatusLabel(row.status)}</span> },
     { key: "operator", label: "操作人", width: "110px", render: (row) => row.operator ?? "系统" },
     { key: "updated", label: "更新时间", width: "180px", render: (row) => formatBackendDateTime(row.updatedAt) },
-    { key: "ops", label: "操作", width: "90px", render: (row) => <span className="table-actions actions-1"><button type="button" aria-label={`查看 ${deploymentApp(row)} 发布详情`} onClick={() => onOpen(row.id)}><Eye size={15} />详情</button></span> },
-  ]} rows={rows} emptyText={loading ? "正在读取真实发布队列" : "当前环境还没有真实发布任务"} getRowKey={(row) => row.id} mobileCard={(row) => <DeploymentCard row={row} onOpen={onOpen} />} />;
+    { key: "ops", label: "操作", width: "90px", render: (row) => <span className="table-actions actions-1"><button type="button" aria-label={`查看 ${deploymentApp(row)} 发布详情`} onClick={() => onOpen(row.planId)}><Eye size={15} />详情</button></span> },
+  ]} rows={rows} emptyText={loading ? "正在读取真实发布队列" : "当前环境还没有真实发布任务"} getRowKey={(row) => row.planId} mobileCard={(row) => <DeploymentCard row={row} onOpen={onOpen} />} />;
 }
 
 function DeploymentCard({ row, onOpen }: { row: DeploymentRecord; onOpen: (id: string) => void }) {
-  return <><div className="module-card-head"><span className="module-card-title"><CloudUpload size={15} /><b title={deploymentApp(row)}>{deploymentApp(row)}</b></span><span className={`pill status-with-icon ${deploymentStatusTone(row.status)}`}>{statusIcon(row)}{deploymentStatusLabel(row.status)}</span></div><code className="module-card-code" title={deploymentVersion(row)}>{deploymentVersion(row)}</code><div className="module-card-meta"><span><b>环境</b><em>{deploymentEnvironmentLabel(row.environment)}</em></span><span><b>节点</b><em title={row.nodeId}>{row.nodeId}</em></span><span><b>操作人</b><em>{row.operator ?? "系统"}</em></span><span><b>更新时间</b><em>{formatBackendDateTime(row.updatedAt)}</em></span></div><div className="module-card-footer"><div className="table-actions actions-1"><button type="button" onClick={() => onOpen(row.id)}><Eye size={15} />详情</button></div></div></>;
+  return <><div className="module-card-head"><span className="module-card-title"><CloudUpload size={15} /><b title={deploymentApp(row)}>{deploymentApp(row)}</b></span><span className={`pill status-with-icon ${deploymentStatusTone(row.status)}`}>{statusIcon(row)}{deploymentStatusLabel(row.status)}</span></div><code className="module-card-code" title={deploymentVersion(row)}>{deploymentVersion(row)}</code><div className="module-card-meta"><span><b>环境</b><em>{deploymentEnvironmentLabel(row.environment)}</em></span><span><b>节点</b><em title={row.nodeId}>{row.nodeId}</em></span><span><b>操作人</b><em>{row.operator ?? "系统"}</em></span><span><b>更新时间</b><em>{formatBackendDateTime(row.updatedAt)}</em></span></div><div className="module-card-footer"><div className="table-actions actions-1"><button type="button" onClick={() => onOpen(row.planId)}><Eye size={15} />详情</button></div></div></>;
 }
 
 function ReleaseTable({ rows, loading, onOpen }: { rows: DeploymentReleaseRecord[]; loading: boolean; onOpen: (id: string) => void }) {

@@ -23,6 +23,7 @@ export function openDatabase(path: string): Database.Database {
       { version: 5, name: "file-trash", sql: readFileSync(resolve(migrationDirectory,"005_file_trash.sql"), "utf8") },
       { version: 6, name: "database-operations", sql: readFileSync(resolve(migrationDirectory,"006_databases.sql"), "utf8"), replaces: ["site-management"] },
       { version: 7, name: "site-management", sql: readFileSync(resolve(migrationDirectory,"007_site_management.sql"), "utf8") },
+      { version: 8, name: "deployment-environment", sql: readFileSync(resolve(migrationDirectory,"008_deployment_environment.sql"), "utf8") },
     ]);
     const schemaVersion = (database.prepare("SELECT max(version) AS version FROM schema_migrations").get() as { version: number }).version;
     database.prepare(`UPDATE release_metadata

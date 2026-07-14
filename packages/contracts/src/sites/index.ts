@@ -156,6 +156,7 @@ export const SiteOperationTypeSchema = z.enum(["prepare", "activate", "lifecycle
 export const SiteOperationStatusSchema = z.enum(["queued", "running", "succeeded", "failed", "cancelled"]);
 export const SiteLifecycleActionSchema = z.enum(["running", "stopped", "deleted", "restored"]);
 export const SitePlanRuntimeSchema = z.enum(["static", "node20", "node22"]);
+export const SiteDeploymentEnvironmentSchema = z.enum(["production", "staging"]);
 export const CertificateEnvironmentSchema = z.enum(["staging", "production"]);
 const RelativeSitePathSchema = z.string().min(1).max(256).refine((value) => !value.startsWith("/") && !value.split("/").includes("..") && !value.includes("\\"), "must be a safe relative path");
 
@@ -179,6 +180,7 @@ export const SiteEnvironmentVariableInputSchema = z.object({
 
 export const CreateSitePlanRequestSchema = z.object({
   nodeId: OpaqueIdSchema,
+  deploymentEnvironment: SiteDeploymentEnvironmentSchema.default("production"),
   domains: z.array(DomainNameSchema).min(1).max(20),
   repositoryUrl: PublicGithubRepositorySchema,
   repositoryRef: z.string().min(1).max(160).regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/).default("main"),
@@ -204,6 +206,7 @@ export const SitePlanPreviewSchema = z.object({
 export const SitePlanSchema = z.object({
   planId: z.string().uuid(),
   nodeId: OpaqueIdSchema,
+  deploymentEnvironment: SiteDeploymentEnvironmentSchema,
   domains: z.array(DomainNameSchema).min(1).max(20),
   repositoryUrl: PublicGithubRepositorySchema,
   repositoryRef: z.string().min(1).max(160),
@@ -334,6 +337,7 @@ export type CreateSitePlanRequest = z.infer<typeof CreateSitePlanRequestSchema>;
 export type SitePlan = z.infer<typeof SitePlanSchema>;
 export type SitePlanPreview = z.infer<typeof SitePlanPreviewSchema>;
 export type SiteDeploymentManifest = z.infer<typeof SiteDeploymentManifestSchema>;
+export type SiteDeploymentEnvironment = z.infer<typeof SiteDeploymentEnvironmentSchema>;
 export type CertificateEnvironment = z.infer<typeof CertificateEnvironmentSchema>;
 export type ActivateSitePlanRequest = z.infer<typeof ActivateSitePlanRequestSchema>;
 export type UpdateSiteLifecycleRequest = z.infer<typeof UpdateSiteLifecycleRequestSchema>;

@@ -3,13 +3,16 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import rootPackage from "../../package.json" with { type: "json" };
 import { loadAgentConfig } from "../../apps/agent/dist/config/environment.js";
 import { IdentityStore } from "../../apps/agent/dist/identity/identityStore.js";
 import { rotateIdentity, shouldUseSystemdDatabaseFallback } from "../../apps/agent/dist/main.js";
 
 test("Agent configuration requires a verified HTTPS Controller URL", () => {
   assert.throws(() => loadAgentConfig({ STACKPILOT_CONTROLLER_URL: "http://127.0.0.1:9443", STACKPILOT_AGENT_CA_PATH: "ca.pem" }), /HTTPS/);
-  assert.equal(loadAgentConfig({ STACKPILOT_CONTROLLER_URL: "https://localhost:9443", STACKPILOT_AGENT_CA_PATH: "ca.pem" }).controllerUrl, "https://localhost:9443");
+  const config = loadAgentConfig({ STACKPILOT_CONTROLLER_URL: "https://localhost:9443", STACKPILOT_AGENT_CA_PATH: "ca.pem" });
+  assert.equal(config.controllerUrl, "https://localhost:9443");
+  assert.equal(config.agentVersion, rootPackage.version);
 });
 
 test("database-helper inventory takes precedence over the systemd fallback", () => {

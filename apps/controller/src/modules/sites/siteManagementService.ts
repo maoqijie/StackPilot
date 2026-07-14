@@ -48,7 +48,8 @@ function operation(input: Pick<SiteOperation, "type" | "nodeId" | "siteId" | "pl
 
 function planDigest(input: CreateSitePlanRequest) {
   return sha256(JSON.stringify({
-    nodeId: input.nodeId, domains: input.domains, repositoryUrl: input.repositoryUrl,
+    nodeId: input.nodeId, deploymentEnvironment: input.deploymentEnvironment,
+    domains: input.domains, repositoryUrl: input.repositoryUrl,
     repositoryRef: input.repositoryRef, certificateEnvironment: input.certificateEnvironment,
     certificateEmailDigest: sha256(input.certificateEmail),
     environment: input.environmentVariables.map((entry) => ({ name: entry.name, valueDigest: sha256(entry.value) })),
@@ -127,7 +128,8 @@ export class SiteManagementService {
     const now = new Date().toISOString();
     const preparing = operation({ type: "prepare", nodeId: input.nodeId, siteId: null, planId: null });
     const plan = SitePlanSchema.parse({
-      planId: randomUUID(), nodeId: input.nodeId, domains: input.domains, repositoryUrl: input.repositoryUrl,
+      planId: randomUUID(), nodeId: input.nodeId, deploymentEnvironment: input.deploymentEnvironment,
+      domains: input.domains, repositoryUrl: input.repositoryUrl,
       repositoryRef: input.repositoryRef, certificateEnvironment: input.certificateEnvironment,
       environmentVariableNames: input.environmentVariables.map((entry) => entry.name), operator, status: "queued",
       digest: planDigest(input), version: 1, preview: null, operationId: preparing.operationId,
@@ -145,10 +147,16 @@ export class SiteManagementService {
   async activate(planId: string, input: ActivateSitePlanRequest, access: SiteAccess, requester: string) {
     const key = this.idempotency(requester, `activate:${planId}`, input.idempotencyKey);
     const existing = this.repository.findOperationByIdempotency(key);
-    if (existing) { this.assertNodeAccess(existing.nodeId, access); return existing; }
+    if (existing) {
+      this.assertNodeAccess(existing.nodeId, access);
+      const existingPlan = existing.planId ? this.repository.getPlan(existing.planId) : null;
+      if (existingPlan?.deploymentEnvironment === "staging") throw new ServiceError(409, "BAD_REQUEST", "预发环境计划不能切换生产流量");
+      return existing;
+    }
     const plan = this.repository.getPlan(planId);
     if (!plan) throw new ServiceError(404, "NOT_FOUND", "站点计划不存在");
     this.assertNodeAccess(plan.nodeId, access);
+    if (plan.deploymentEnvironment === "staging") throw new ServiceError(409, "BAD_REQUEST", "预发环境计划不能切换生产流量");
     if (plan.status !== "ready" || Date.parse(plan.expiresAt) <= Date.now()) throw new ServiceError(409, "BAD_REQUEST", "站点计划尚未就绪或已过期");
     if (plan.version !== input.planVersion || plan.digest !== input.planDigest) throw new ServiceError(409, "BAD_REQUEST", "站点计划版本或摘要已变化");
     const stagingId = this.repository.getOperation(plan.operationId)?.result?.stagingId;
@@ -202,7 +210,7 @@ export class SiteManagementService {
     const found = this.repository.getOperation(operationId);
     if (!found) throw new ServiceError(404, "NOT_FOUND", "站点操作不存在");
     this.assertNodeAccess(found.nodeId, access);
-    return this.reconcileOperation(found, access);
+    return found;
   }
 
   startBackgroundReconciliation(intervalMs = 10_000, onError: (error: unknown) => void = () => undefined) {

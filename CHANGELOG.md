@@ -2,6 +2,14 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.10 - 2026-07-15
+
+### Fixed
+
+- Added explicit production/staging environments to site deployment plans and schema 8, preserving legacy staging refs during migration while preventing staging plans from switching production traffic.
+- Made operation polling read-only, aligned it to the 10-second monitoring interval, and marked scoped deployment responses as `no-store`.
+- Added an indexed, integrity-checked deployment projection and stabilized filters and detail selection across route and operation changes.
+
 ## 0.3.0-preview.9 - 2026-07-15
 
 ### Fixed

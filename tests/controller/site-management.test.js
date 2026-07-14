@@ -61,6 +61,7 @@ test("site plans persist idempotently while environment values remain encrypted 
     assert.equal(repeated.planId, first.planId);
     assert.equal(dispatched.length, 1);
     assert.deepEqual(first.environmentVariableNames, ["API_MODE"]);
+    assert.equal(first.deploymentEnvironment, "production");
     assert.equal(Object.hasOwn(first, "certificateEmail"), false);
     assert.doesNotMatch(JSON.stringify(first), /API_MODE.*production|"value":"production"/);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM site_plans").get().count, 1);
@@ -72,6 +73,42 @@ test("site plans persist idempotently while environment values remain encrypted 
     const activation = await service.activate(first.planId, { planVersion: ready.version, planDigest: ready.digest, idempotencyKey: "activate-site-001" }, { nodeScope: "all" }, "user:test");
     assert.equal(activation.status, "queued");
     assert.equal(dispatched[1].instruction.type, "activate");
+  } finally { database.close(); }
+});
+
+test("deployment environment changes the plan digest and staging activation performs no writes or dispatch", async () => {
+  const database = openDatabase(":memory:");
+  try {
+    const { repository, service, dispatched } = managementFixture(database);
+    const production = await service.createPlan({ ...planInput, idempotencyKey: "environment-production-001" }, { nodeScope: "all" }, "user:test");
+    const staging = await service.createPlan({ ...planInput, deploymentEnvironment: "staging", domains: ["staging.example.com"], idempotencyKey: "environment-staging-001" }, { nodeScope: "all" }, "user:test");
+    assert.equal(staging.deploymentEnvironment, "staging");
+    assert.notEqual(staging.digest, production.digest);
+    service.complete(staging.operationId, true, { ...emptyResult(), stagingId: "staging-environment-001" }, null);
+    const ready = repository.getPlan(staging.planId);
+    const before = database.prepare("SELECT COUNT(*) AS count FROM site_operations").get().count;
+    await assert.rejects(
+      () => service.activate(staging.planId, { planVersion: ready.version, planDigest: ready.digest, idempotencyKey: "activate-staging-001" }, { nodeScope: "all" }, "user:test"),
+      (error) => error.status === 409 && /预发环境/.test(error.message),
+    );
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM site_operations").get().count, before);
+    assert.equal(repository.getPlan(staging.planId).status, "ready");
+    assert.equal(dispatched.length, 2);
+  } finally { database.close(); }
+});
+
+test("operation reads are side-effect free", async () => {
+  const database = openDatabase(":memory:"); let reconciliations = 0;
+  try {
+    const { repository, service } = managementFixture(database, {
+      dispatch: async () => crypto.randomUUID(),
+      reconcile: async () => { reconciliations += 1; return { status: "running", result: null, errorCode: null }; },
+    });
+    const plan = await service.createPlan({ ...planInput, idempotencyKey: "operation-read-only-001" }, { nodeScope: "all" }, "user:test");
+    const before = repository.getOperation(plan.operationId);
+    assert.deepEqual(await service.getOperation(plan.operationId, { nodeScope: "all" }), before);
+    assert.deepEqual(repository.getOperation(plan.operationId), before);
+    assert.equal(reconciliations, 0);
   } finally { database.close(); }
 });
 
@@ -338,6 +375,7 @@ test("site management HTTP endpoints enforce permission, CSRF, one-time reauthen
     assert.equal((await fetch(`${base}/api/site-plans`, { method: "POST", headers: { ...headers, "X-Reauth-Proof": reauth.proof }, body: JSON.stringify(planInput) })).status, 403);
     const operation = await fetch(`${base}/api/site-operations/${plan.operationId}`, { headers: { Cookie: cookie } });
     assert.equal(operation.status, 200);
+    assert.equal(operation.headers.get("cache-control"), "no-store");
     assert.equal((await operation.json()).operationId, plan.operationId);
     const readOnly = identity.createApiToken((await identity.login("admin", "correct horse battery staple", "test", "ua")).principal, { name: "sites-reader", permissions: ["sites:read"], nodeScope: "all", expiresAt: null }).token;
     assert.equal((await fetch(`${base}/api/site-plans`, { method: "POST", headers: { Authorization: `Bearer ${readOnly}`, "Content-Type": "application/json" }, body: JSON.stringify(planInput) })).status, 403);

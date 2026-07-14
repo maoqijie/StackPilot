@@ -172,7 +172,7 @@
 }
 
 .deploy-detail-summary > strong {
-  font: 700 18px/1.4 var(--font-heading);
+  font: 700 18px/1.4 var(--font-display);
   color: var(--text);
 }
 
@@ -191,7 +191,7 @@
   align-items: center;
   gap: 8px;
   margin: 0 0 12px;
-  font: 600 16px/1.5 var(--font-heading);
+  font: 600 16px/1.5 var(--font-display);
 }
 
 .deploy-source-detail code {

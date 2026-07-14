@@ -62,6 +62,7 @@ export async function routeSiteRequest(context: RequestContext): Promise<void> {
   }
   if (parts[1] === "site-operations" && parts.length === 3 && method === "GET") {
     requirePermission(context, "sites:read");
+    response.setHeader("Cache-Control", "no-store");
     sendJson(response, 200, await services.siteManagement.getOperation(idAt(context, 2), access(context)), SiteOperationSchema); return;
   }
   throw notFound("站点管理接口不存在");

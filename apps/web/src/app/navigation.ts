@@ -140,7 +140,7 @@ const navItems: NavItem[] = [
     children: [
       { id: "deploy-prod", label: "生产发布", meta: "发布队列" },
       { id: "deploy-staging", label: "预发环境", meta: "预发布" },
-      { id: "deploy-rollbacks", label: "回滚记录", meta: "近 30 天" },
+      { id: "deploy-rollbacks", label: "版本记录", meta: "发布历史" },
     ],
   },
   {

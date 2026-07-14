@@ -77,6 +77,7 @@ export async function routeRequest(context: RequestContext): Promise<void> {
   if (parts[0] === "api" && ["site-plans", "site-operations"].includes(parts[1] ?? "")) { await routeSiteRequest(context); return; }
   if (context.url.pathname === "/api/deployments" && method === "GET") {
     context.identity?.require(context.principal, "sites:read");
+    response.setHeader("Cache-Control", "no-store");
     sendJson(response, 200, services.deployments.list({ nodeScope: context.principal?.nodeScope ?? [] }), DeploymentPayloadSchema); return;
   }
   if (context.url.pathname === "/api/hosts" && method === "GET") {

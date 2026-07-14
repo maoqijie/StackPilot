@@ -40,6 +40,19 @@ describe("real deployment page", () => {
     expect(within(dialog).getByText("https://github.com/example/stackpilot.git")).toBeInTheDocument();
   });
 
+  it("treats the default deploy route as the production view", async () => {
+    render(<DeployPage page="deploy" permissions={["sites:read"]} />);
+    expect(await screen.findByRole("button", { name: "生产" })).toHaveClass("active");
+  });
+
+  it("synchronizes the environment filter when the route changes", async () => {
+    const view = render(<DeployPage page="deploy-prod" permissions={["sites:read"]} />);
+    expect(await screen.findByRole("button", { name: "生产" })).toHaveClass("active");
+    view.rerender(<DeployPage page="deploy-staging" permissions={["sites:read"]} />);
+    await act(async () => Promise.resolve());
+    expect(screen.getByRole("button", { name: "预发" })).toHaveClass("active");
+  });
+
   it("polls every ten seconds and preserves the selected record", async () => {
     vi.useFakeTimers();
     render(<DeployPage page="deploy-prod" permissions={["sites:read"]} />);
@@ -47,6 +60,19 @@ describe("real deployment page", () => {
     fireEvent.click(screen.getByRole("button", { name: "查看 stackpilot.example.com 发布详情" }));
     await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
     expect(fetchDeployments).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("dialog", { name: "发布详情" })).toBeInTheDocument();
+  });
+
+  it("preserves deployment details by plan id when the current operation changes", async () => {
+    const refreshed = structuredClone(payload);
+    refreshed.deployments[0].id = "33333333-3333-4333-8333-333333333333";
+    refreshed.deployments[0].operationId = refreshed.deployments[0].id;
+    vi.mocked(fetchDeployments).mockResolvedValueOnce(payload).mockResolvedValue(refreshed);
+    vi.useFakeTimers();
+    render(<DeployPage page="deploy-prod" permissions={["sites:read"]} />);
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getByRole("button", { name: "查看 stackpilot.example.com 发布详情" }));
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
     expect(screen.getByRole("dialog", { name: "发布详情" })).toBeInTheDocument();
   });
 

@@ -8,7 +8,7 @@ import {
   SiteRuntimePayloadSchema,
   ExecuteTerminalSnippetRequestSchema, TerminalSnippetListResponseSchema,
   AgentSiteSnapshotSchema, CertificateRenewalTaskParametersSchema, CreateCertificateRenewalRequestSchema,
-  CreateSitePlanRequestSchema, SiteDeploymentManifestSchema, SiteAccessLogRecordSchema,
+  CreateSitePlanRequestSchema, SiteDeploymentManifestSchema, SiteAccessLogRecordSchema, SitePlanSchema,
   CreateFileUploadRequestSchema, ResumableFileUploadRecordSchema,
   AgentDatabaseBackupPlanPollResponseSchema, AgentDatabaseOperationUpdateSchema, AgentDatabaseQueryUploadSchema, AgentDatabaseScheduledBackupResultsRequestSchema,
   BusinessDatabaseBackupsPayloadSchema, CreateBusinessDatabaseBackupPlanRequestSchema, CreateDatabaseOperationPlanRequestSchema, DatabaseOperationPlanSchema,
@@ -134,7 +134,9 @@ test("site management contracts accept declarative public deployments and reject
     repositoryRef: "main", certificateEmail: "operator@example.com",
     environmentVariables: [{ name: "API_MODE", value: "production" }], idempotencyKey: "site-plan-001",
   };
-  assert.equal(CreateSitePlanRequestSchema.safeParse(request).success, true);
+  assert.equal(CreateSitePlanRequestSchema.parse(request).deploymentEnvironment, "production");
+  assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, deploymentEnvironment: "staging" }).success, true);
+  assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, deploymentEnvironment: "development" }).success, false);
   assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, repositoryUrl: "ssh://github.com/example/project.git" }).success, false);
   assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, repositoryUrl: "https://user:secret@github.com/example/project.git" }).success, false);
   assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, repositoryUrl: "https://192.0.2.10/example/project.git" }).success, false);
@@ -148,6 +150,19 @@ test("site management contracts accept declarative public deployments and reject
   assert.equal(SiteAccessLogRecordSchema.safeParse(log).success, true);
   assert.equal(SiteAccessLogRecordSchema.safeParse({ ...log, path: "/callback?token=secret" }).success, false);
   assert.equal(SiteAccessLogRecordSchema.safeParse({ ...log, authorization: "secret" }).success, false);
+});
+
+test("site plans require an explicit persisted deployment environment", () => {
+  const createdAt = "2026-07-15T00:00:00.000Z";
+  const plan = {
+    planId: "11111111-1111-4111-8111-111111111111", nodeId: "node-contract-01",
+    domains: ["app.example.com"], repositoryUrl: "https://github.com/example/project.git", repositoryRef: "main",
+    certificateEnvironment: "production", environmentVariableNames: [], operator: null, status: "queued",
+    digest: "a".repeat(64), version: 1, preview: null, operationId: "22222222-2222-4222-8222-222222222222",
+    createdAt, updatedAt: createdAt, expiresAt: "2026-07-15T00:30:00.000Z",
+  };
+  assert.equal(SitePlanSchema.safeParse(plan).success, false);
+  assert.equal(SitePlanSchema.safeParse({ ...plan, deploymentEnvironment: "staging" }).success, true);
 });
 
 test("deployment workbench contract keeps backend freshness and stable identities", async () => {
