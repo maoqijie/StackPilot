@@ -139,7 +139,9 @@ jobs:
           docker build -f deploy/docker/Dockerfile.agent -t stackpilot-agent:ci .
       - name: Resolve release version
         id: release
-        run: echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
       - name: Confirm container runtime identities
         run: |
           test "$(docker image inspect stackpilot-web:ci --format '{{.Config.User}}')" = "101:101"
