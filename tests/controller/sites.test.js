@@ -133,6 +133,41 @@ test("site monitoring aggregates authorized Agent snapshots and computes freshne
   assert.equal(payload.sites[0].freshness, "current");
 });
 
+test("site monitoring removes local mirrors while retaining the Agent identity for managed sites", async () => {
+  const repository = new MemoryAgentControlRepository();
+  const sameHost = remoteNode("11111111-1111-4111-8111-111111111111");
+  sameHost.siteSnapshot.sites[0].host = " CONTROLLER-1 ";
+  sameHost.siteSnapshot.sites[0].domain = " Remote.Example.com ";
+  const otherHost = remoteNode("22222222-2222-4222-8222-222222222222");
+  otherHost.siteSnapshot.sites[0].host = "controller-2";
+  await repository.update((state) => state.nodes.push(sameHost, otherHost));
+  const localSite = {
+    ...sameHost.siteSnapshot.sites[0], id: "nginx-local", nodeId: "node-local", host: "controller-1",
+    collectedAt: new Date().toISOString(), freshness: "current",
+    renewal: { batchId: null, taskId: null, status: "idle", message: null, updatedAt: null },
+  };
+  const service = new SiteMonitoringService({ collectSites: async () => ({
+    collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], sites: [localSite],
+  }) }, repository);
+
+  const payload = await service.getSites({ nodeScope: "all" });
+  assert.deepEqual(payload.sites.map((site) => [site.nodeId, site.host.trim(), site.domain.trim()]), [
+    [sameHost.nodeId, "CONTROLLER-1", "Remote.Example.com"],
+    [otherHost.nodeId, "controller-2", "remote.example.com"],
+  ]);
+  const managedSiteId = publicSiteId(sameHost.nodeId, sameHost.siteSnapshot.sites[0].id);
+  const managedRepository = new MemorySiteManagementRepository();
+  managedRepository.saveManagedSite({
+    siteId: managedSiteId, nodeId: sameHost.nodeId, domainDigest: "unused", desiredState: "running",
+    protected: false, version: 2, activeReleaseId: "release-1", createdAt: collectedAt, updatedAt: collectedAt,
+  });
+  const management = new SiteManagementService(managedRepository, service, {});
+  const managed = (await management.getSites({ nodeScope: "all" })).sites.find((site) => site.id === managedSiteId);
+  assert.equal(managed?.nodeId, sameHost.nodeId);
+  assert.equal(managed?.manageability, "managed");
+  assert.equal(managed?.version, 2);
+});
+
 test("certificate renewal batches are atomic, idempotent, deduplicated and non-retryable", async () => {
   const repository = new MemoryAgentControlRepository();
   const nodeId = "11111111-1111-4111-8111-111111111111";
