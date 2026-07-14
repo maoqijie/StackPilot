@@ -26,6 +26,21 @@ describe("database slow queries page", () => {
     expect(screen.queryByRole("button", { name: "刷新采样" })).not.toBeInTheDocument();
   });
 
+  it("states when historical slow queries are unavailable", () => {
+    const payload = { ...initialPayload, instances: initialPayload.instances.map((instance) => ({ ...instance, historicalSlowQueriesAvailable: false })) };
+    render(<DatabaseSlowQueriesPage page="databases-slow" notify={vi.fn()} initialPayload={payload} />);
+    expect(screen.getByText("历史慢查询不可用，仅展示当前长查询")).toBeInTheDocument();
+  });
+
+  it("states when only part of the inventory lacks historical slow queries", () => {
+    const payload = { ...initialPayload, instances: [
+      { ...initialPayload.instances[0], historicalSlowQueriesAvailable: false },
+      { ...initialPayload.instances[0], id: "mysql-orders", name: "orders-mysql", engine: "MySQL 8.4", port: 3306, historicalSlowQueriesAvailable: true },
+    ] };
+    render(<DatabaseSlowQueriesPage page="databases-slow" notify={vi.fn()} initialPayload={payload} />);
+    expect(screen.getByText("部分实例历史慢查询不可用，仅展示其当前长查询")).toBeInTheDocument();
+  });
+
   it("opens stable portal details and labels unavailable historical statistics", async () => {
     const user = userEvent.setup();
     render(<DatabaseSlowQueriesPage page="databases-slow" notify={vi.fn()} initialPayload={initialPayload} />);
