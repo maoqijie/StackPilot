@@ -2,11 +2,11 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.4 - 2026-07-15
+## 0.3.0-preview.5 - 2026-07-15
 
 ### Added
 
-- Added authenticated systemd inventory, bounded journal reads and allowlisted start, stop and restart operations through the existing root-only local helper boundary.
+- Added authenticated Controller-host systemd inventory, bounded journal reads and allowlisted start, stop and restart operations through a dedicated Controller-only root helper socket.
 - Added strict shared systemd response contracts and Controller routes with CSRF, RBAC, one-time reauthentication and audit enforcement.
 
 ### Changed
@@ -16,8 +16,19 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 ### Security
 
-- systemd actions accept only validated service, timer, socket and target unit names and an explicit deployment allowlist; arbitrary commands and paths remain unavailable.
+- systemd actions accept only validated service, timer, socket and target unit names and an explicit deployment allowlist; the Agent cannot access the dedicated socket and arbitrary commands and paths remain unavailable.
 - Journal results are line-bounded, size-bounded and redact common credential fields before crossing the helper boundary.
+
+## 0.3.0-preview.4 - 2026-07-14
+
+### Fixed
+
+- Updated desktop and mobile browser motion coverage to assert the modal enter and exit contract used by the file creation dialog.
+- Restored clean `npm ci` installation in Linux, Windows and container release jobs by completing the CycloneDX optional dependency lock graph.
+
+### Documentation
+
+- Added complete rollout, compatibility and rollback guidance for physical-host identity and schema 7 releases.
 
 ## 0.3.0-preview.3 - 2026-07-14
 
