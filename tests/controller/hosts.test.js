@@ -16,6 +16,7 @@ import { FakePlatformAdapter } from "./support/fakePlatform.js";
 
 const nodeId = "11111111-1111-4111-8111-111111111111";
 const otherNodeId = "22222222-2222-4222-8222-222222222222";
+const localPhysicalHostId = "ph_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const now = () => new Date().toISOString();
 const node = (id, status = "online") => ({ nodeId: id, nodeName: `agent-${id[0]}`, status, agentVersion: "0.2.0", protocolVersion: "1.0", platform: "linux", declaredCapabilities: ["system.summary.read"], allowedCapabilities: ["system.summary.read"], enrolledAt: now(), lastSeenAt: status === "pending" ? null : now(), revokedAt: null });
 const telemetry = () => ({
@@ -46,6 +47,42 @@ test("host monitoring aggregates local and scoped remote hosts without fixtures"
   assert.equal(pending.connectionStatus, "pending");
   assert.equal(pending.healthStatus, "unknown");
   assert.equal(pending.cpuPercent, null);
+});
+
+test("host monitoring merges only Agents with the Controller physical identity", async () => {
+  const repository = new MemoryAgentControlRepository();
+  await repository.update((state) => state.nodes.push(
+    { ...node(nodeId), physicalHostId: localPhysicalHostId, telemetry: { ...telemetry(), hostname: "fake-host", primaryIp: "127.0.0.1" } },
+    { ...node(otherNodeId), telemetry: { ...telemetry(), hostname: "fake-host", primaryIp: "127.0.0.1" } },
+  ));
+
+  const payload = await new HostMonitoringService(new FakePlatformAdapter(), repository).getHosts(true, "all");
+
+  assert.deepEqual(payload.hosts.map((host) => host.id), ["node-local", otherNodeId]);
+  assert.equal(payload.hosts[1].name, "fake-host");
+  assert.equal(payload.hosts[1].address, "127.0.0.1");
+  assert.equal(payload.hosts[0].services.at(-1).name, "StackPilot Agent 控制通道");
+  assert.equal(payload.hosts[0].services.at(-1).status, "running");
+});
+
+test("host monitoring keeps clone conflicts visible and surfaces a mirrored Agent outage", async () => {
+  const repository = new MemoryAgentControlRepository();
+  const stale = new Date(Date.now() - 120_000).toISOString();
+  await repository.update((state) => state.nodes.push({
+    ...node(nodeId), physicalHostId: localPhysicalHostId, lastSeenAt: stale,
+    telemetry: { ...telemetry(), hostname: "fake-host", primaryIp: "127.0.0.1", collectedAt: stale },
+  }));
+  let payload = await new HostMonitoringService(new FakePlatformAdapter(), repository).getHosts(true, "all");
+  assert.deepEqual(payload.hosts.map((host) => host.id), ["node-local"]);
+  assert.equal(payload.hosts[0].healthStatus, "degraded");
+  assert.equal(payload.hosts[0].services.at(-1).status, "stopped");
+
+  await repository.update((state) => state.nodes.push({
+    ...node(otherNodeId), physicalHostId: localPhysicalHostId,
+    telemetry: { ...telemetry(), hostname: "fake-host", primaryIp: "127.0.0.1" },
+  }));
+  payload = await new HostMonitoringService(new FakePlatformAdapter(), repository).getHosts(true, "all");
+  assert.deepEqual(payload.hosts.map((host) => host.id), ["node-local", nodeId, otherNodeId]);
 });
 
 test("runtime mode classifies the controller host environment", async () => {
@@ -159,10 +196,11 @@ test("SQLite heartbeat updates only its node row and appends one audit", async (
     });
     database.exec("CREATE TRIGGER test_no_task_delete BEFORE DELETE ON remote_tasks BEGIN SELECT RAISE(ABORT, 'tasks untouched'); END");
     database.exec("CREATE TRIGGER test_no_audit_delete BEFORE DELETE ON agent_protocol_audits BEGIN SELECT RAISE(ABORT, 'audits append only'); END");
-    await new NodeService(repository).heartbeat(nodeId, { nodeId, agentVersion: "0.2.1", protocolVersion: "1.0", timestamp: now(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 10 }, telemetry: telemetry() }, crypto.randomUUID());
+    await new NodeService(repository).heartbeat(nodeId, { nodeId, agentVersion: "0.2.1", protocolVersion: "1.0", timestamp: now(), platform: "linux", physicalHostId: localPhysicalHostId, capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 10 }, telemetry: telemetry() }, crypto.randomUUID());
     const state = await repository.read();
     assert.equal(state.tasks.length, 1);
     assert.equal(state.nodes[0].telemetry.hostname, "remote-host");
+    assert.equal(state.nodes[0].physicalHostId, localPhysicalHostId);
     assert.equal(state.audits.filter((event) => event.event === "node.heartbeat").length, 1);
   } finally { database.close(); }
 });
@@ -200,6 +238,20 @@ test("targeted heartbeat preserves unauthorized semantics for an unknown node", 
     new NodeService(repository).heartbeat(nodeId, { nodeId, agentVersion: "0.2.1", protocolVersion: "1.0", timestamp: now(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID()),
     (error) => error.status === 401 && error.code === "UNAUTHORIZED",
   );
+});
+
+test("legacy heartbeat preserves an existing physical identity during rolling upgrades", async () => {
+  const repository = new MemoryAgentControlRepository();
+  await repository.update((state) => state.nodes.push({ ...node(nodeId), physicalHostId: localPhysicalHostId }));
+
+  await new NodeService(repository).heartbeat(nodeId, {
+    nodeId, agentVersion: "0.2.1", protocolVersion: "1.0", timestamp: now(), platform: "linux",
+    capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 10 }, telemetry: telemetry(),
+  }, crypto.randomUUID());
+
+  const state = await repository.read();
+  assert.equal(state.nodes[0].physicalHostId, localPhysicalHostId);
+  assert.equal(state.audits.at(-1).parameters.physicalHostIdentity, "legacy");
 });
 
 test("GET /api/hosts requires overview read and exposes only the principal node scope", async () => {

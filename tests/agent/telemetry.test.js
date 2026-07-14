@@ -185,6 +185,9 @@ test("collector exposes unavailable metrics without inventing zero values and he
   assert.equal("telemetry" in legacyHeartbeat, false); assert.equal(legacyHeartbeat.protocolVersion, "1.1");
   const failedHeartbeat = createHeartbeat({ agentVersion: "0.2.0", platform: "win32" }, "11111111-1111-4111-8111-111111111111", ["system.summary.read"], undefined, true);
   assert.equal("telemetry" in failedHeartbeat, false); assert.equal(failedHeartbeat.health.status, "degraded");
+  const physicalHostId = `ph_${"a".repeat(64)}`;
+  const identifiedHeartbeat = createHeartbeat({ agentVersion: "0.2.0", platform: "win32" }, "11111111-1111-4111-8111-111111111111", ["system.summary.read"], undefined, true, undefined, undefined, physicalHostId);
+  assert.equal(identifiedHeartbeat.physicalHostId, physicalHostId); assert.equal("telemetry" in identifiedHeartbeat, false);
 });
 
 test("collector degrades individual source failures to unavailable values", async () => {

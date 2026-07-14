@@ -2,7 +2,7 @@ import { access, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs
 import { platform, release, tmpdir } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import type { OverviewNode, OverviewService, OverviewTaskRecord } from "@stackpilot/contracts";
-import { collectHostTelemetry } from "@stackpilot/host-telemetry";
+import { collectHostTelemetry, collectPhysicalHostId } from "@stackpilot/host-telemetry";
 import type { ControllerConfig } from "../config/environment.js";
 import { runFixedCommand } from "./commandRunner.js";
 import { hasResourceWarning } from "./resourceHealth.js";
@@ -91,10 +91,11 @@ function service(id: string, name: string, target: string, result: Awaited<Retur
 
 export class NativePlatformAdapter implements PlatformAdapter {
   readonly nodeId = nodeId;
+  private readonly physicalHostId = collectPhysicalHostId();
   constructor(private readonly config: ControllerConfig, private readonly repoRoot: string) {}
 
   async collectSnapshot(): Promise<PlatformSnapshot> {
-    const telemetry = await collectHostTelemetry();
+    const [telemetry, physicalHostId] = await Promise.all([collectHostTelemetry(), this.physicalHostId]);
     const cpuCorePercents = telemetry.cpu?.coreUsagePercents ?? [];
     const cpuPercent = telemetry.cpu?.usagePercent ?? 0;
     const memoryTotal = telemetry.memory?.totalBytes ?? 0;
@@ -153,7 +154,7 @@ export class NativePlatformAdapter implements PlatformAdapter {
     }) : [];
     const loadAverages = telemetry.loadAverage ?? [];
     return {
-      node, cpuPercent, memoryPercent, diskPercent: aggregateDiskPercent,
+      physicalHostId, node, cpuPercent, memoryPercent, diskPercent: aggregateDiskPercent,
       loadPercent: clamp((loadAverages[0] ?? 0) / Math.max(cpuCorePercents.length, 1) * 100),
       changedFiles, branch, commit, behind, version, auditRows, cpuCorePercents, loadAverages,
       totalMemoryBytes: memoryTotal, availableMemoryBytes: memoryAvailable, disks,

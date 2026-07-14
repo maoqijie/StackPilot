@@ -1,8 +1,12 @@
 import { createHash, randomBytes, sign } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { request } from "node:https";
-import { AGENT_FEATURE_DATABASE_INVENTORY, AGENT_PROTOCOL_VERSION, agentSignaturePayload, type AgentEnrollmentRequest } from "@stackpilot/contracts";
+import { AGENT_FEATURE_DATABASE_INVENTORY, AGENT_FEATURE_PHYSICAL_HOST_IDENTITY, AGENT_PROTOCOL_VERSION, agentSignaturePayload, type AgentEnrollmentRequest } from "@stackpilot/contracts";
 import type { AgentIdentity } from "../identity/identityStore.js";
+
+class ControllerRequestError extends Error {
+  constructor(readonly status: number) { super(`Controller request failed with status ${status}`); }
+}
 
 export class ControllerClient {
   private ca: Buffer | null = null;
@@ -10,6 +14,14 @@ export class ControllerClient {
   constructor(private readonly baseUrl: string, private readonly caPath: string) {}
   private async trustedCa() { this.ca ??= await readFile(this.caPath); return this.ca; }
   async json<T>(path: string, body: unknown, identity?: AgentIdentity): Promise<T> {
+    try { return await this.requestJson<T>(path, body, identity); }
+    catch (error) {
+      if (!(error instanceof ControllerRequestError) || error.status !== 400 || !identity || path !== "/api/agent/heartbeat" || !body || typeof body !== "object" || !("physicalHostId" in body)) throw error;
+      const compatibleBody = { ...(body as Record<string, unknown>) }; delete compatibleBody.physicalHostId;
+      return this.requestJson<T>(path, compatibleBody, identity);
+    }
+  }
+  private async requestJson<T>(path: string, body: unknown, identity?: AgentIdentity): Promise<T> {
     const raw = Buffer.from(JSON.stringify(body), "utf8"); const url = new URL(path, this.baseUrl);
     const headers: Record<string, string> = { "Content-Type": "application/json", "Content-Length": String(raw.length), "X-StackPilot-Protocol": AGENT_PROTOCOL_VERSION };
     if (identity) {
@@ -24,11 +36,12 @@ export class ControllerClient {
         this.agentFeatures = new Set(features);
         const chunks: Buffer[] = []; let size = 0;
         response.on("data", (chunk: Buffer) => { size += chunk.length; if (size <= 256 * 1024) chunks.push(chunk); else req.destroy(new Error("Controller 响应过大")); });
-        response.on("end", () => { try { const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as T; if ((response.statusCode ?? 500) >= 400) rejectPromise(new Error(`Controller request failed with status ${response.statusCode}`)); else resolvePromise(parsed); } catch (error) { rejectPromise(error); } });
+        response.on("end", () => { try { const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as T; if ((response.statusCode ?? 500) >= 400) rejectPromise(new ControllerRequestError(response.statusCode ?? 500)); else resolvePromise(parsed); } catch (error) { rejectPromise(error); } });
       });
       req.on("timeout", () => req.destroy(new Error("Controller 请求超时"))); req.on("error", rejectPromise); req.end(raw);
     });
   }
   supportsDatabaseInventory() { return this.agentFeatures.has(AGENT_FEATURE_DATABASE_INVENTORY); }
+  supportsPhysicalHostIdentity() { return this.agentFeatures.has(AGENT_FEATURE_PHYSICAL_HOST_IDENTITY); }
   enroll(input: AgentEnrollmentRequest) { return this.json("/api/agent/enroll", input); }
 }

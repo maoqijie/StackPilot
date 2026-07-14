@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   API_CLIENT_PREFIX, API_ROOT_SEGMENTS, ApiErrorResponseSchema, CreateScheduleJobRequestSchema,
   OverviewSummaryPayloadSchema, PathIdSchema, WRITE_METHODS,
-  AGENT_PROTOCOL_VERSION, AgentDatabaseSnapshotSchema, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema,
+  AGENT_PROTOCOL_VERSION, AgentDatabaseSnapshotSchema, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, PhysicalHostIdSchema,
   CreateRemoteTaskRequestSchema, RemoteTaskListResponseSchema, isAgentProtocolCompatible,
   SiteRuntimePayloadSchema,
   ExecuteTerminalSnippetRequestSchema, TerminalSnippetListResponseSchema,
@@ -56,6 +56,17 @@ test("agent telemetry remains optional and strictly validates bounded snapshots"
   assert.equal(AgentTelemetrySnapshotSchema.safeParse({ ...telemetry, disks: [{ ...telemetry.disks[0], usedBytes: 4096 }] }).success, false);
   const unsafeAggregate = [{ ...telemetry.disks[0], totalBytes: Number.MAX_SAFE_INTEGER, usedBytes: Number.MAX_SAFE_INTEGER }, { ...telemetry.disks[0], label: "/dev/sdb1", mount: "/data", totalBytes: 1, usedBytes: 1 }];
   assert.equal(AgentTelemetrySnapshotSchema.safeParse({ ...telemetry, disks: unsafeAggregate }).success, false);
+});
+
+test("physical host identity is optional and accepts only opaque versioned hashes", () => {
+  const heartbeat = { nodeId: crypto.randomUUID(), agentVersion: "0.2.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 1 } };
+  const physicalHostId = `ph_${"a".repeat(64)}`;
+  assert.equal(AgentHeartbeatSchema.safeParse(heartbeat).success, true);
+  assert.equal(AgentHeartbeatSchema.safeParse({ ...heartbeat, physicalHostId }).success, true);
+  assert.equal(PhysicalHostIdSchema.safeParse(physicalHostId).success, true);
+  for (const invalid of ["a".repeat(64), `ph_${"A".repeat(64)}`, `ph_${"a".repeat(63)}`, "/etc/machine-id", "host-1"]) {
+    assert.equal(AgentHeartbeatSchema.safeParse({ ...heartbeat, physicalHostId: invalid }).success, false, invalid);
+  }
 });
 
 test("database inventory is optional on legacy heartbeats and rejects duplicate instance ids", () => {
