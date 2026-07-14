@@ -29,7 +29,7 @@ function operation(overrides: Partial<SiteOperation> = {}): SiteOperation {
 function plan(): SitePlan {
   return {
     planId, nodeId, domains: ["app.example.com"], repositoryUrl: "https://github.com/example/site.git",
-    repositoryRef: "main", certificateEnvironment: "staging", environmentVariableNames: [], status: "queued",
+    repositoryRef: "main", certificateEnvironment: "staging", environmentVariableNames: [], operator: "管理员", status: "queued",
     digest: "a".repeat(64), version: 1, preview: null, operationId, createdAt: now, updatedAt: now,
     expiresAt: "2026-07-14T00:30:00.000Z",
   };

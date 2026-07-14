@@ -3,7 +3,7 @@ import {
   OverviewCheckUpdatesResponseSchema, OverviewHealthRefreshResponseSchema, OverviewNodeMutationResponseSchema,
   OverviewRisksPayloadSchema, OverviewRisksScanResponseSchema, OverviewSummaryPayloadSchema,
   OverviewTasksPayloadSchema, OverviewTasksRefreshResponseSchema, PathIdSchema,
-  CreateCertificateRenewalRequestSchema, CertificateRenewalBatchSchema,
+  CreateCertificateRenewalRequestSchema, CertificateRenewalBatchSchema, DeploymentPayloadSchema,
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, HostMonitoringPayloadSchema, ReadinessResponseSchema,
   RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
@@ -75,6 +75,10 @@ export async function routeRequest(context: RequestContext): Promise<void> {
   if (parts[0] === "api" && ["files", "file-trash", "file-uploads"].includes(parts[1] ?? "")) { await routeFileRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "resumable-file-uploads") { await routeFileUploadRequest(context); return; }
   if (parts[0] === "api" && ["site-plans", "site-operations"].includes(parts[1] ?? "")) { await routeSiteRequest(context); return; }
+  if (context.url.pathname === "/api/deployments" && method === "GET") {
+    context.identity?.require(context.principal, "sites:read");
+    sendJson(response, 200, services.deployments.list({ nodeScope: context.principal?.nodeScope ?? [] }), DeploymentPayloadSchema); return;
+  }
   if (context.url.pathname === "/api/hosts" && method === "GET") {
     context.identity?.require(context.principal, "overview:read");
     const nodeScope = context.principal?.nodeScope ?? [];

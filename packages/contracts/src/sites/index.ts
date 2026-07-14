@@ -209,6 +209,7 @@ export const SitePlanSchema = z.object({
   repositoryRef: z.string().min(1).max(160),
   certificateEnvironment: CertificateEnvironmentSchema,
   environmentVariableNames: z.array(z.string().regex(/^[A-Z_][A-Z0-9_]*$/)).max(100),
+  operator: z.string().min(1).max(160).nullable().default(null),
   status: SitePlanStatusSchema,
   digest: z.string().regex(/^[a-f0-9]{64}$/),
   version: z.number().int().positive(),

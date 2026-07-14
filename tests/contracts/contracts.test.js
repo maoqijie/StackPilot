@@ -150,6 +150,16 @@ test("site management contracts accept declarative public deployments and reject
   assert.equal(SiteAccessLogRecordSchema.safeParse({ ...log, authorization: "secret" }).success, false);
 });
 
+test("deployment workbench contract keeps backend freshness and stable identities", async () => {
+  const { DeploymentPayloadSchema } = await import("@stackpilot/contracts");
+  const collectedAt = new Date().toISOString();
+  const deployment = { id: crypto.randomUUID(), planId: crypto.randomUUID(), operationId: crypto.randomUUID(), nodeId: "node-production-01", siteId: "site-production-01", domains: ["app.example.com"], repositoryUrl: "https://github.com/example/project.git", repositoryRef: "main", environment: "production", certificateEnvironment: "production", runtime: "node22", healthCheckPath: "/healthz", status: "succeeded", stage: "complete", progressPercent: 100, errorCode: null, releaseId: "release-example-01", operator: "Operator", createdAt: collectedAt, updatedAt: collectedAt };
+  const release = { releaseId: "release-example-01", siteId: "site-production-01", planId: deployment.planId, nodeId: deployment.nodeId, domains: deployment.domains, repositoryRef: "main", environment: "production", status: "active", createdAt: collectedAt, activatedAt: collectedAt };
+  assert.equal(DeploymentPayloadSchema.safeParse({ collectedAt, deployments: [deployment], releases: [release] }).success, true);
+  assert.equal(DeploymentPayloadSchema.safeParse({ collectedAt, deployments: [deployment, deployment], releases: [] }).success, false);
+  assert.equal(DeploymentPayloadSchema.safeParse({ collectedAt, clientCollectedAt: collectedAt, deployments: [], releases: [] }).success, false);
+});
+
 test("database slow-query contract preserves nullable historical statistics", () => {
   const collectedAt = new Date().toISOString();
   const payload = { collectedAt, collectionStatus: "complete", warnings: [], thresholdMs: 1_000,

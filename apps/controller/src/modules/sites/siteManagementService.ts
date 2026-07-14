@@ -115,7 +115,7 @@ export class SiteManagementService {
     }
   }
 
-  async createPlan(input: CreateSitePlanRequest, access: SiteAccess, requester: string) {
+  async createPlan(input: CreateSitePlanRequest, access: SiteAccess, requester: string, operator: string | null = null) {
     input = CreateSitePlanRequestSchema.parse(input);
     this.assertNodeAccess(input.nodeId, access);
     const key = this.idempotency(requester, "prepare", input.idempotencyKey);
@@ -129,7 +129,7 @@ export class SiteManagementService {
     const plan = SitePlanSchema.parse({
       planId: randomUUID(), nodeId: input.nodeId, domains: input.domains, repositoryUrl: input.repositoryUrl,
       repositoryRef: input.repositoryRef, certificateEnvironment: input.certificateEnvironment,
-      environmentVariableNames: input.environmentVariables.map((entry) => entry.name), status: "queued",
+      environmentVariableNames: input.environmentVariables.map((entry) => entry.name), operator, status: "queued",
       digest: planDigest(input), version: 1, preview: null, operationId: preparing.operationId,
       createdAt: now, updatedAt: now, expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
     });

@@ -15,16 +15,19 @@ export type ManagedSiteState = {
   updatedAt: string;
 };
 export type SitePlanExecutionSecrets = { certificateEmail: string; environmentVariables: Array<{ name: string; value: string }> };
+export type SiteReleaseState = { releaseId: string; siteId: string; planId: string; status: string; createdAt: string; activatedAt: string | null };
 
 export interface SiteManagementRepository {
   findPlanByIdempotency(digest: string): SitePlan | null;
   getPlan(planId: string): SitePlan | null;
+  listPlans(): SitePlan[];
   savePlan(plan: SitePlan, idempotencyDigest: string, certificateEmail: string, environment: Array<{ name: string; value: string }>): void;
   savePlanWithOperation(plan: SitePlan, planDigest: string, certificateEmail: string, environment: Array<{ name: string; value: string }>, operation: SiteOperation, operationDigest: string): void;
   updatePlan(plan: SitePlan): void;
   getPlanExecutionSecrets(planId: string): SitePlanExecutionSecrets;
   findOperationByIdempotency(digest: string): SiteOperation | null;
   getOperation(operationId: string): SiteOperation | null;
+  listOperations(): SiteOperation[];
   listNonTerminalOperations(): SiteOperation[];
   saveOperation(operation: SiteOperation, idempotencyDigest: string): void;
   updateOperation(operation: SiteOperation): void;
@@ -33,6 +36,7 @@ export interface SiteManagementRepository {
   listManagedSites(): ManagedSiteState[];
   saveManagedSite(site: ManagedSiteState): void;
   saveRelease(releaseId: string, siteId: string, planId: string, createdAt: string): void;
+  listReleases(): SiteReleaseState[];
 }
 
 export class MemorySiteManagementRepository implements SiteManagementRepository {
@@ -43,14 +47,17 @@ export class MemorySiteManagementRepository implements SiteManagementRepository 
   private sites = new Map<string, ManagedSiteState>();
   private environments = new Map<string, Array<{ name: string; value: string }>>();
   private certificateEmails = new Map<string, string>();
+  private releases = new Map<string, SiteReleaseState>();
   findPlanByIdempotency(digest: string) { const id = this.planKeys.get(digest); return id ? structuredClone(this.plans.get(id) ?? null) : null; }
   getPlan(planId: string) { return structuredClone(this.plans.get(planId) ?? null); }
+  listPlans() { return structuredClone([...this.plans.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))); }
   savePlan(plan: SitePlan, digest: string, certificateEmail: string, environment: Array<{ name: string; value: string }>) { this.plans.set(plan.planId, structuredClone(plan)); this.planKeys.set(digest, plan.planId); this.certificateEmails.set(plan.planId, certificateEmail); this.environments.set(plan.planId, structuredClone(environment)); }
   savePlanWithOperation(plan: SitePlan, planDigest: string, certificateEmail: string, environment: Array<{ name: string; value: string }>, operation: SiteOperation, operationDigest: string) { this.savePlan(plan, planDigest, certificateEmail, environment); this.saveOperation(operation, operationDigest); }
   updatePlan(plan: SitePlan) { this.plans.set(plan.planId, structuredClone(plan)); }
   getPlanExecutionSecrets(planId: string) { return { certificateEmail: this.certificateEmails.get(planId) ?? "", environmentVariables: structuredClone(this.environments.get(planId) ?? []) }; }
   findOperationByIdempotency(digest: string) { const id = this.operationKeys.get(digest); return id ? structuredClone(this.operations.get(id) ?? null) : null; }
   getOperation(operationId: string) { return structuredClone(this.operations.get(operationId) ?? null); }
+  listOperations() { return structuredClone([...this.operations.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))); }
   listNonTerminalOperations() { return structuredClone([...this.operations.values()].filter((item) => !["succeeded", "failed", "cancelled"].includes(item.status))); }
   saveOperation(operation: SiteOperation, digest: string) { this.operations.set(operation.operationId, structuredClone(operation)); this.operationKeys.set(digest, operation.operationId); }
   updateOperation(operation: SiteOperation) { this.operations.set(operation.operationId, structuredClone(operation)); }
@@ -58,7 +65,8 @@ export class MemorySiteManagementRepository implements SiteManagementRepository 
   findManagedSite(nodeId: string, domainDigest: string) { return structuredClone([...this.sites.values()].find((site) => site.nodeId === nodeId && site.domainDigest === domainDigest) ?? null); }
   listManagedSites() { return structuredClone([...this.sites.values()]); }
   saveManagedSite(site: ManagedSiteState) { this.sites.set(site.siteId, structuredClone(site)); }
-  saveRelease() {}
+  saveRelease(releaseId: string, siteId: string, planId: string, createdAt: string) { this.releases.set(releaseId, { releaseId, siteId, planId, status: "active", createdAt, activatedAt: createdAt }); }
+  listReleases() { return structuredClone([...this.releases.values()].sort((left, right) => (right.activatedAt ?? right.createdAt).localeCompare(left.activatedAt ?? left.createdAt))); }
 }
 
 type PlanRow = { payload: string };
@@ -75,6 +83,7 @@ export class SqliteSiteManagementRepository implements SiteManagementRepository 
   }
   findPlanByIdempotency(digest: string) { return this.plan(this.database.prepare("SELECT payload FROM site_plans WHERE idempotency_digest=?").get(digest) as PlanRow | undefined); }
   getPlan(planId: string) { return this.plan(this.database.prepare("SELECT payload FROM site_plans WHERE plan_id=?").get(planId) as PlanRow | undefined); }
+  listPlans() { return (this.database.prepare("SELECT payload FROM site_plans ORDER BY updated_at DESC, plan_id DESC").all() as PlanRow[]).map((row) => this.plan(row)!); }
   savePlan(plan: SitePlan, digest: string, certificateEmail: string, environment: Array<{ name: string; value: string }>) {
     this.database.transaction(() => {
       this.database.prepare("INSERT INTO site_plans(plan_id,node_id,payload,status,digest,idempotency_digest,version,created_at,updated_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
@@ -113,6 +122,7 @@ export class SqliteSiteManagementRepository implements SiteManagementRepository 
   }
   findOperationByIdempotency(digest: string) { return this.operation(this.database.prepare("SELECT payload,result FROM site_operations WHERE idempotency_digest=?").get(digest) as OperationRow | undefined); }
   getOperation(operationId: string) { return this.operation(this.database.prepare("SELECT payload,result FROM site_operations WHERE operation_id=?").get(operationId) as OperationRow | undefined); }
+  listOperations() { return (this.database.prepare("SELECT payload,result FROM site_operations ORDER BY updated_at DESC, operation_id DESC").all() as OperationRow[]).map((row) => this.operation(row)!); }
   listNonTerminalOperations() {
     return (this.database.prepare("SELECT payload,result FROM site_operations WHERE status NOT IN ('succeeded','failed','cancelled') ORDER BY created_at").all() as OperationRow[])
       .map((row) => this.operation(row)!);
@@ -138,5 +148,8 @@ export class SqliteSiteManagementRepository implements SiteManagementRepository 
   saveRelease(releaseId: string, siteId: string, planId: string, createdAt: string) {
     this.database.prepare("INSERT INTO site_releases(release_id,site_id,plan_id,status,created_at,activated_at) VALUES(?,?,?,?,?,?)")
       .run(releaseId, siteId, planId, "active", createdAt, createdAt);
+  }
+  listReleases() {
+    return this.database.prepare("SELECT release_id AS releaseId,site_id AS siteId,plan_id AS planId,status,created_at AS createdAt,activated_at AS activatedAt FROM site_releases ORDER BY COALESCE(activated_at,created_at) DESC,release_id DESC").all() as SiteReleaseState[];
   }
 }

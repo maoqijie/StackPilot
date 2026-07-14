@@ -38,7 +38,7 @@ export async function routeSiteRequest(context: RequestContext): Promise<void> {
   if (parts[1] === "site-plans" && parts.length === 2 && method === "POST") {
     requirePermission(context, "sites:deploy", true);
     const input = parseSchema(CreateSitePlanRequestSchema, context.body, "站点部署计划");
-    sendJson(response, 202, await services.siteManagement.createPlan(input, access(context), requester(context)), SitePlanSchema); return;
+    sendJson(response, 202, await services.siteManagement.createPlan(input, access(context), requester(context), context.principal?.user.displayName ?? null), SitePlanSchema); return;
   }
   if (parts[1] === "site-plans" && parts[3] === "activate" && parts.length === 4 && method === "POST") {
     requirePermission(context, "sites:deploy", true);

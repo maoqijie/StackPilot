@@ -11,6 +11,7 @@ import type { HostMonitoringService } from "../modules/hosts/hostMonitoringServi
 import type { SiteMonitoringService } from "../modules/sites/siteMonitoringService.js";
 import type { CertificateRenewalService } from "../modules/sites/certificateRenewalService.js";
 import type { SiteManagementService } from "../modules/sites/siteManagementService.js";
+import type { DeploymentQueryService } from "../modules/deployments/deploymentQueryService.js";
 import type { DatabaseMonitoringService } from "../modules/databases/databaseMonitoringService.js";
 import type { DatabaseBackupService } from "../modules/databases/databaseBackupService.js";
 import type { RemoteTaskService } from "../modules/remote-tasks/remoteTaskService.js";
@@ -38,6 +39,7 @@ export type Services = {
   databaseRetention?: DatabaseRetentionService;
   sites: SiteMonitoringService;
   siteManagement: SiteManagementService;
+  deployments: DeploymentQueryService;
   certificateRenewals: CertificateRenewalService;
   databaseBackups: DatabaseBackupService;
   files: FileService;
