@@ -244,7 +244,7 @@ npm run test --workspace @stackpilot/agent
 - [systemd 安装](docs/installation/systemd.md)
 - [反向代理与安全加固](docs/security-hardening.md)
 - [Agent 证书生命周期](docs/operations/agent-certificates.md)
-- [升级说明](docs/upgrades/0.2.0-preview.1.md)
+- [升级说明](docs/upgrades/0.3.0-preview.1.md)
 - [备份与恢复](docs/backup-restore/README.md)
 - [生产排障](docs/troubleshooting/production.md)
 
