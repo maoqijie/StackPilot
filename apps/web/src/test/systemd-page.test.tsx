@@ -22,4 +22,12 @@ describe("systemd service page", () => {
     render(<SystemdPage page="systemd-failed" notify={vi.fn()} />); const table = await screen.findByRole("table");
     expect(within(table).getByText("failed.service")).toBeInTheDocument(); expect(within(table).queryByText("nginx.service")).not.toBeInTheDocument();
   });
+  it("paginates large inventories and marks transitional states as warnings", async () => {
+    const many = Array.from({ length: 101 }, (_, index) => ({ ...services[0]!, id: `11111111-1111-4111-8111-111111111111:unit-${index}.service`, unit: `unit-${index}.service`, activeState: index === 0 ? "activating" as const : "active" as const }));
+    vi.mocked(fetchSystemdServices).mockResolvedValueOnce({ ...payload, services: many });
+    render(<SystemdPage page="systemd" notify={vi.fn()} />);
+    expect(await screen.findByText("第 1 / 2 页 · 共 101 条")).toBeInTheDocument();
+    expect(screen.getAllByText("启动中").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("启动中")[0]?.closest(".systemd-status")).toHaveClass("orange");
+  });
 });

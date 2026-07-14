@@ -8,8 +8,9 @@ import {
 
 export const RemoteTaskStatusSchema = z.enum(["queued", "dispatched", "running", "succeeded", "failed", "cancelled", "expired"]);
 export const SystemSummaryTaskParametersSchema = z.object({ includeLoad: z.boolean().default(true) }).strict();
-export const ServiceStatusTaskParametersSchema = z.object({ serviceName: z.string().min(1).max(120).regex(/^[A-Za-z0-9_.@:-]+$/) }).strict();
-const TerminalServiceNameSchema = z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9_.@:-]*$/);
+const ServiceNameSchema = z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9_.@:-]*$/);
+export const ServiceStatusTaskParametersSchema = z.object({ serviceName: ServiceNameSchema }).strict();
+const TerminalServiceNameSchema = ServiceNameSchema;
 export const TerminalCommandTaskParametersSchema = z.discriminatedUnion("command", [
   z.object({ command: z.literal("disk-usage") }).strict(),
   z.object({ command: z.literal("uptime") }).strict(),

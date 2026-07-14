@@ -51,6 +51,7 @@ export async function routeRequest(context: RequestContext): Promise<void> {
   }
   if (context.url.pathname === "/api/systemd/services" && method === "GET") {
     context.identity?.require(context.principal, "systemd:read");
+    response.setHeader("Cache-Control", "no-store");
     sendJson(response, 200, await services.systemd.list(context.principal?.nodeScope ?? []), SystemdServicesPayloadSchema);
     return;
   }

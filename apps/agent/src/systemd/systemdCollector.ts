@@ -13,11 +13,19 @@ const unitPattern = /^[A-Za-z0-9_.@:-]+\.service$/;
 const secretPatterns = [
   /(authorization\s*[:=]\s*(?:bearer\s+)?)[^\s,;]+/gi,
   /((?:password|passwd|token|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+/gi,
+  /(["']?(?:password|passwd|token|secret|api[_-]?key|authorization)["']?\s*:\s*)["'][^"'\r\n]*["']/gi,
+  /([?&](?:password|passwd|token|secret|api[_-]?key|authorization)=)[^\s&#]+/gi,
+  /\b(?:postgres(?:ql)?|mysql|mariadb):\/\/[^\s/@:]+:[^\s/@]+@/gi,
   /\b(?:sk|sp)_[A-Za-z0-9_-]{16,}\b/g,
 ] as const;
 
 function bounded(value: unknown, limit: number) { return [...String(value ?? "")].map((char) => { const code = char.charCodeAt(0); return code < 32 && char !== "\t" && char !== "\n" && char !== "\r" || code === 127 ? " " : char; }).join("").slice(0, limit); }
-function redact(message: unknown) { return secretPatterns.reduce((value, pattern) => value.replace(pattern, (_match, prefix = "") => `${prefix}[REDACTED]`), bounded(message, 512)); }
+function redact(message: unknown) {
+  return secretPatterns.reduce((value, pattern) => value.replace(pattern, (match, prefix = "") => {
+    if (/^(?:postgres(?:ql)?|mysql|mariadb):\/\//i.test(match)) return `${match.slice(0, match.indexOf("://") + 3)}[REDACTED]@`;
+    return `${prefix}[REDACTED]`;
+  }), bounded(message, 512));
+}
 function integer(value: string | undefined) { const number = Number(value); return Number.isSafeInteger(number) && number >= 0 ? number : null; }
 function timestampFromMicroseconds(value: string | undefined) { const microseconds = integer(value); return microseconds === null || microseconds === 0 ? null : new Date(Math.floor(microseconds / 1_000)).toISOString(); }
 

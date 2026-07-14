@@ -2,6 +2,14 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.7 - 2026-07-15
+
+### Fixed
+
+- Extended Agent-side journal redaction to cover JSON secrets, URL query credentials and database connection strings before snapshots leave a node.
+- Rejected option-like service names in legacy `service.status.read` tasks and marked systemd activating/reloading states as warnings instead of healthy services.
+- Added bounded pagination for aggregated systemd rows and logs, mobile-safe long-text wrapping and `no-store` API responses.
+
 ## 0.3.0-preview.6 - 2026-07-15
 
 ### Fixed

@@ -45,6 +45,6 @@ test("systemd HTTP route enforces authentication and returns scoped snapshots", 
     assert.equal((await fetch(`${base}/api/systemd/services`)).status, 401);
     const login = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ username: "admin", password: "correct horse battery staple" }) });
     const cookie = login.headers.get("set-cookie").split(";")[0]; const response = await fetch(`${base}/api/systemd/services`, { headers: { Cookie: cookie } }); const body = await response.json();
-    assert.equal(response.status, 200); assert.equal(body.services[0].unit, "nginx.service");
+    assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store"); assert.equal(body.services[0].unit, "nginx.service");
   } finally { server.close(); await once(server, "close"); database.close(); }
 });
