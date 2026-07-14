@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { AGENT_PROTOCOL_VERSION } from "@stackpilot/contracts";
+import { AGENT_PROTOCOL_VERSION, ServiceStatusTaskParametersSchema } from "@stackpilot/contracts";
 import { TaskExecutor } from "../../apps/agent/dist/tasks/executor.js";
 import { taskRegistry } from "../../apps/agent/dist/tasks/registry.js";
 import { activeAgentCapabilities } from "../../apps/agent/dist/capabilities/index.js";
@@ -11,6 +11,11 @@ import { terminalCommandHandler, terminalCommandInvocation, terminalCommandsAvai
 
 const nodeId = "11111111-1111-4111-8111-111111111111";
 const task = (overrides = {}) => ({ protocolVersion: AGENT_PROTOCOL_VERSION, taskId: "22222222-2222-4222-8222-222222222222", type: "system.summary.read", targetNodeId: nodeId, parameters: { includeLoad: false }, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), idempotencyKey: "summary-once-123", requester: "test", traceId: "33333333-3333-4333-8333-333333333333", requiredCapability: "system.summary.read", attempt: 1, maxAttempts: 3, ...overrides });
+
+test("service status tasks reject systemctl option injection", () => {
+  assert.equal(ServiceStatusTaskParametersSchema.safeParse({ serviceName: "nginx.service" }).success, true);
+  for (const serviceName of ["-Hroot@example.com", "--host=example.com", "-Mcontainer"]) assert.equal(ServiceStatusTaskParametersSchema.safeParse({ serviceName }).success, false);
+});
 
 test("task registry exposes only structured handlers and keeps side effects non-retryable", () => {
   assert.deepEqual(Object.keys(taskRegistry).sort(), ["service.status.read", "sites.certificates.renew", "sites.lifecycle.update", "sites.logs.read", "sites.plan.activate", "sites.plan.prepare", "system.summary.read", "terminal.command.execute"]);

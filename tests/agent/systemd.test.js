@@ -25,6 +25,8 @@ test("journal parser groups entries by unit and redacts credentials", () => {
   const entries = parseJournal(output).get("nginx.service");
   assert.equal(entries.length, 2); assert.match(entries[0].message, /\[REDACTED\]/); assert.doesNotMatch(JSON.stringify(entries), /live-secret|abcdefghijklmnopqrstuvwxyz/);
   assert.equal(redact("password=hunter2 token=abc123"), "password=[REDACTED] token=[REDACTED]");
+  const variants = redact('{"secret":"json-secret"} https://example.test/?api_key=query-secret postgresql://user:dbpass@localhost/db');
+  assert.doesNotMatch(variants, /json-secret|query-secret|dbpass/);
 });
 
 test("collector uses fixed read-only programs and reports partial journal access", async () => {
