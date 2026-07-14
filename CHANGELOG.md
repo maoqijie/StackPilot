@@ -2,6 +2,22 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.5 - 2026-07-15
+
+### Added
+
+- Added bounded Agent-side systemd service and journal snapshot collection with credential redaction, strict shared contracts and node-scoped `systemd:read` access.
+- Added authenticated `GET /api/systemd/services` and a visibility-aware 10-second Web polling path backed by saved Agent snapshots.
+
+### Changed
+
+- Replaced the systemd workbench's fixture services, generated journal lines and simulated lifecycle mutations with real read-only status, memory, restart, freshness and log data.
+- Added the Agent service account to `systemd-journal` so native Linux deployments can read system journal entries without running the Agent as root.
+
+### Security
+
+- systemd collection uses only fixed `systemctl` and `journalctl` argument forms, enforces response bounds, redacts common credential forms before upload and preserves RBAC node scope.
+
 ## 0.3.0-preview.3 - 2026-07-14
 
 ### Added

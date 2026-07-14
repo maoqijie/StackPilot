@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 export async function runPlatformProbe(executable: string, args: readonly string[], signal: AbortSignal, timeoutMs: number, maxOutputBytes: number) {
-  const allowed = new Set(["systemctl", "launchctl", "sc.exe"]);
+  const allowed = new Set(["systemctl", "journalctl", "launchctl", "sc.exe"]);
   if (!allowed.has(executable)) throw new Error("Agent 拒绝未知平台程序");
   try {
     const { stdout } = await execFileAsync(executable, [...args], { signal, timeout: timeoutMs, maxBuffer: maxOutputBytes, windowsHide: true });

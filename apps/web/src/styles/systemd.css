@@ -28,6 +28,21 @@
   min-width: 0;
 }
 .systemd-content.logs-mode { grid-template-columns: minmax(0, 1fr); }
+.systemd-freshness {
+  min-width: 0;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text);
+  background: var(--surface-soft);
+  box-shadow: var(--shadow-subtle);
+}
+.systemd-freshness > svg { flex: 0 0 auto; color: var(--primary); }
+.systemd-freshness > div { min-width: 0; display: grid; gap: 4px; }
+.systemd-freshness strong { font-size: 14px; }
+.systemd-freshness span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 
 .systemd-service-identity,
 .systemd-status,
@@ -152,6 +167,7 @@
 .systemd-journal p { min-width: 0; margin: 0; display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 8px; }
 .systemd-journal time { overflow: hidden; color: #94a3b8; text-overflow: ellipsis; white-space: nowrap; }
 .systemd-journal span { min-width: 0; overflow-wrap: anywhere; }
+.systemd-journal-empty { margin: 0; color: #94a3b8; font: 400 12px/1.5 var(--font-mono); }
 
 .detail-drawer.systemd-service-drawer {
   width: min(560px, 100vw);

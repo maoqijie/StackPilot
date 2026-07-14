@@ -7,6 +7,7 @@ import {
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, HostMonitoringPayloadSchema, ReadinessResponseSchema,
   RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
+  SystemdServicesPayloadSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
 import { ApiNoticeSchema } from "@stackpilot/contracts";
@@ -46,6 +47,11 @@ export async function routeRequest(context: RequestContext): Promise<void> {
   if (context.url.pathname === "/api/databases/slow-queries" && method === "GET" && [...context.url.searchParams.keys()].every((key) => key === "range")) {
     context.identity?.require(context.principal, "databases:read");
     sendJson(response, 200, await services.databaseSlowQueries.getSlowQueries(), DatabaseSlowQueriesPayloadSchema);
+    return;
+  }
+  if (context.url.pathname === "/api/systemd/services" && method === "GET") {
+    context.identity?.require(context.principal, "systemd:read");
+    sendJson(response, 200, await services.systemd.list(context.principal?.nodeScope ?? []), SystemdServicesPayloadSchema);
     return;
   }
   if (context.url.searchParams.size > 0 && context.url.pathname !== "/api/files") throw new ApiError(400, "BAD_REQUEST", "查询参数无效：当前接口不接受查询参数");
