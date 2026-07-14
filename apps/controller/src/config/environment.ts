@@ -52,6 +52,7 @@ const environmentSchema = z.object({
   STACKPILOT_AGENT_STATE_PATH: z.string().default(".stackpilot/controller-agent-state.json"),
   STACKPILOT_TRUSTED_PROXIES: z.string().default(""),
   STACKPILOT_PRODUCTION: z.enum(["0", "1"]).default("0"),
+  STACKPILOT_PROTECTED_SITE_IDS: z.string().default(""),
 }).passthrough();
 
 export type ControllerConfig = {
@@ -80,6 +81,7 @@ export type ControllerConfig = {
   agentStatePath: string;
   trustedProxies: string[];
   production: boolean;
+  protectedSiteIds: string[];
 };
 
 export function loadControllerConfig(env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env): ControllerConfig {
@@ -115,5 +117,6 @@ export function loadControllerConfig(env: NodeJS.ProcessEnv | Record<string, str
     agentStatePath: parsed.STACKPILOT_AGENT_STATE_PATH,
     trustedProxies,
     production:parsed.STACKPILOT_PRODUCTION==="1",
+    protectedSiteIds: parsed.STACKPILOT_PROTECTED_SITE_IDS.split(",").map((value) => value.trim()).filter((value) => /^[A-Za-z0-9:_-]{8,160}$/.test(value)),
   };
 }

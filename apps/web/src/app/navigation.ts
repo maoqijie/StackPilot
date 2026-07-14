@@ -30,6 +30,7 @@ const pageMeta: Record<string, PageMeta> = {
   "overview-risks": { title: "风险中心", breadcrumb: "工作台", search: "搜索风险、主机、对象..." },
   hosts: { title: "主机", breadcrumb: "资源管理", search: "搜索主机名、IP、环境..." },
   sites: { title: "网站", breadcrumb: "应用管理", search: "搜索域名、服务、证书..." },
+  "sites-create": { title: "部署站点", breadcrumb: "网站", search: "搜索部署计划..." },
   databases: { title: "数据库管理", breadcrumb: "资源管理", search: "搜索数据库名称" },
   "databases-backups": { title: "备份恢复", breadcrumb: "数据库", search: "搜索备份文件" },
   files: { title: "文件", breadcrumb: "资源管理", search: "搜索文件名、路径、类型..." },
@@ -75,6 +76,7 @@ const navItems: NavItem[] = [
     label: "网站",
     icon: Globe2,
     children: [
+      { id: "sites-create", label: "部署站点", meta: "Git 计划" },
       { id: "sites-running", label: "运行中站点", meta: "站点列表" },
       { id: "sites-cert", label: "证书续期", meta: "续期检查" },
       { id: "sites-runtime", label: "服务分组", meta: "Node / PHP" },

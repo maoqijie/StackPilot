@@ -11,6 +11,8 @@ import { loadControllerConfig } from "../../../apps/controller/dist/config/envir
 import { openDatabase } from "../../../apps/controller/dist/database/database.js";
 import { IdentityService } from "../../../apps/controller/dist/identity/identityService.js";
 import { SqliteAgentControlRepository } from "../../../apps/controller/dist/repositories/sqliteAgentControlRepository.js";
+import { SqliteSiteManagementRepository } from "../../../apps/controller/dist/modules/sites/siteManagementRepository.js";
+import { SecretStore } from "../../../apps/controller/dist/security/secretStore.js";
 import { FakePlatformAdapter } from "../../controller/support/fakePlatform.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -49,11 +51,13 @@ if (!identity.hasAdministrator()) {
   const administrator = await identity.login("e2e-admin", "e2e administrator password", "e2e-fixture", "stackpilot-e2e");
   await identity.createUser(administrator.principal, "e2e-reader", "E2E Reader", "e2e reader password", ["audit-reader"], []);
 }
-const repository = new SqliteAgentControlRepository(database, identity.audit);
+const secrets = new SecretStore(database, Buffer.alloc(32, 8));
+const repository = new SqliteAgentControlRepository(database, identity.audit, secrets);
+const siteRepository = new SqliteSiteManagementRepository(database, secrets);
 const platform = new FakePlatformAdapter();
 const collectFixtureSnapshot = platform.collectSnapshot.bind(platform);
 platform.collectSnapshot = async () => ({ ...await collectFixtureSnapshot(), platformLabel: "win32 10.0" });
-const services = createControllerServices(platform, root, config, repository, database);
+const services = createControllerServices(platform, root, config, repository, database, siteRepository);
 const options = { config, database, identity, agentRepository: repository, platform, services, repoRoot: root };
 const management = createStackPilotServer(options);
 const agent = createStackPilotAgentServer({ cert: certificate.cert, key: certificate.private }, options);

@@ -21,6 +21,13 @@ function site(overrides: Partial<SiteRuntimeRecord> = {}): SiteRuntimeRecord {
     source: "Nginx · api.conf",
     latencyMs: 38,
     trafficBytes: null,
+    errorRatePercent: null,
+    lastDeployAt: null,
+    manageability: "monitored",
+    managementReason: null,
+    protected: false,
+    version: 1,
+    desiredState: null,
     nodeId: "node-local",
     collectedAt,
     freshness: "current",
@@ -123,6 +130,24 @@ describe("sites live monitoring page", () => {
     expect(screen.queryByRole("button", { name: /刷新|添加|启动|停止|续期/ })).not.toBeInTheDocument();
   });
 
+  it("keeps old Agent sites visible while awaiting collection", async () => {
+    const domain = "legacy-agent-with-a-very-long-hostname.monitoring.example.invalid";
+    vi.mocked(fetchSites).mockResolvedValue(payload([site({
+      id: "site-legacy-agent",
+      domain,
+      status: "unknown",
+      host: "legacy-agent.example.invalid",
+      latencyMs: null,
+    })]));
+
+    render(<SitesPage page="sites-running" notify={notify} />);
+    expect((await screen.findAllByTitle(domain)).length).toBeGreaterThan(0);
+    expect(screen.getByText("已发现站点")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("状态"), { target: { value: "待采集" } });
+    expect(screen.getAllByTitle(domain).length).toBeGreaterThan(0);
+  });
+
   it("derives an open runtime detail from the latest polling snapshot", async () => {
     vi.useFakeTimers();
     vi.mocked(fetchSites)
@@ -132,8 +157,6 @@ describe("sites live monitoring page", () => {
 
     render(<SitesPage page="sites-runtime" notify={notify} />);
     await act(async () => undefined);
-    expect(document.querySelector(".page-head")).not.toBeInTheDocument();
-    expect(document.querySelector(".module-view-context")).not.toBeInTheDocument();
     expect(screen.queryByText("服务容量视图")).not.toBeInTheDocument();
     expect(screen.queryByText(/数据来源：/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "查看 反向代理 服务详情" }));
@@ -227,7 +250,6 @@ describe("sites live monitoring page", () => {
     expect(await screen.findByRole("button", { name: "查看 api.example.com 证书详情" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /续期/ })).not.toBeInTheDocument();
   });
-
 });
 
 function renewalBatch(status: CertificateRenewalBatch["status"], siteIds: string[]): CertificateRenewalBatch {

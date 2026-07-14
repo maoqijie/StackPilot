@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const webPort = Number(process.env.STACKPILOT_E2E_WEB_PORT ?? 18443);
+const webPort = Number(process.env.STACKPILOT_E2E_WEB_PORT ?? 18_443);
+const baseURL = `https://127.0.0.1:${webPort}`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -10,10 +11,10 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"], ["html", { outputFolder: "output/playwright/report", open: "never" }]],
   outputDir: "output/playwright/results",
-  use: { baseURL: `https://127.0.0.1:${webPort}`, ignoreHTTPSErrors: true, trace: "retain-on-failure", screenshot: "only-on-failure" },
+  use: { baseURL, ignoreHTTPSErrors: true, trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [
     { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
     { name: "mobile-chromium", use: { ...devices["iPhone 13"], browserName: "chromium" } },
   ],
-  webServer: { command: "node tests/e2e/support/production-server.mjs", url: `https://127.0.0.1:${webPort}/healthz`, ignoreHTTPSErrors: true, reuseExistingServer: false, timeout: 60_000 },
+  webServer: { command: "node tests/e2e/support/production-server.mjs", url: `${baseURL}/healthz`, ignoreHTTPSErrors: true, reuseExistingServer: false, timeout: 60_000 },
 });

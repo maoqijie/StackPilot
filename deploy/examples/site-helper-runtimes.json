@@ -1,0 +1,14 @@
+[
+  {
+    "runtime": "node20",
+    "version": "v20.19.5",
+    "url": "https://nodejs.org/dist/v20.19.5/node-v20.19.5-linux-x64.tar.xz",
+    "sha256": "315046739a513a70e03a4a55a8afda8cf979f30852e576075c340084e3f8ac0f"
+  },
+  {
+    "runtime": "node22",
+    "version": "v22.22.0",
+    "url": "https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-x64.tar.xz",
+    "sha256": "9aa8e9d2298ab68c600bd6fb86a6c13bce11a4eca1ba9b39d79fa021755d7c37"
+  }
+]

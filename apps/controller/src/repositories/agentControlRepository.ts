@@ -131,6 +131,7 @@ export class FileAgentControlRepository implements AgentControlRepository {
 }
 
 export const CONTROLLER_SUPPORTED_AGENT_CAPABILITIES: readonly AgentCapability[] = [
-  "system.summary.read", "service.status.read", "sites.inventory.read", "sites.certificates.renew", "databases.inventory.read",
+  "system.summary.read", "service.status.read", "sites.inventory.read", "sites.logs.read", "sites.deploy",
+  "sites.lifecycle.manage", "sites.certificates.renew", "runtime.install", "databases.inventory.read",
 ];
 export const DEFAULT_AGENT_CAPABILITIES: readonly AgentCapability[] = ["system.summary.read", "service.status.read", "sites.inventory.read", "databases.inventory.read"];

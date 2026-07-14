@@ -93,9 +93,9 @@ export class NginxSiteCollector {
     }
     const helperCertificates = await this.helperInventory().catch(() => new Map<string, SiteCertificate>()); const sites: AgentSiteSnapshotRecord[] = [];
     for (const candidate of [...merged.values()].slice(0, 2_000)) {
-      const signature = candidate.listeners.map((item) => `${item.port}:${Number(item.secure)}`).sort().join(",");
-      const id = `site_${createHash("sha256").update(`${this.nodeId}\0${candidate.domain.toLowerCase()}\0${signature}`).digest("hex").slice(0, 32)}`;
+      const id = `site_${createHash("sha256").update(`${this.nodeId}\0${candidate.domain.toLowerCase()}`).digest("hex").slice(0, 32)}`;
       sites.push({ id, domain: candidate.domain, status: "unknown", runtime: candidate.runtime, host: this.hostName, upstream: candidate.upstream, source: candidate.source, latencyMs: null, trafficBytes: null,
+        errorRatePercent: null, lastDeployAt: null, manageability: "monitored", managementReason: "Discovered from existing Nginx configuration", protected: false, version: 1, desiredState: null,
         certificate: this.certificate(candidate.certificatePath, helperCertificates) });
     }
     const unique = [...new Map(sites.map((site) => [site.id, site])).values()];

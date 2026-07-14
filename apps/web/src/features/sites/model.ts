@@ -4,9 +4,10 @@ import type { SiteRuntimeRecord } from "@stackpilot/contracts";
 import type { PageKey, Tone } from "../../types/app";
 
 function sitesPagePreset(page: PageKey) {
+  if (page === "sites-create") return { status: "全部", runtime: "全部", search: "", subtitle: "通过严格部署计划发布公开 GitHub 仓库。" };
   if (page === "sites-cert") return { status: "全部", runtime: "全部", search: "", subtitle: "证书续期视图，优先展示即将过期的站点。" };
   if (page === "sites-runtime") return { status: "全部", runtime: "全部", search: "", subtitle: "服务分组视图，按 Node、PHP、静态站点聚合容量与风险。" };
-  if (page === "sites-running") return { status: "活跃", runtime: "全部", search: "", subtitle: "监控正在运行或处于告警状态的站点、上游延迟和错误率。" };
+  if (page === "sites-running") return { status: "活跃", runtime: "全部", search: "", subtitle: "监控已发现站点、上游延迟和采集状态。" };
   return { status: "全部", runtime: "全部", search: "", subtitle: "自动发现 Controller 本机的 Nginx 虚拟主机与证书状态。" };
 }
 
@@ -61,6 +62,8 @@ function runtimeSiteFromApi(site: SiteRuntimeRecord, collectedAt: string): SiteR
     latencyMs: site.latencyMs, latency: site.latencyMs === null ? "暂不可用" : `${site.latencyMs}ms`,
     nodeId: site.nodeId, collectedAt: site.collectedAt, freshness: site.freshness,
     certificate: site.certificate, renewal: site.renewal,
+    manageability: site.manageability, managementReason: site.managementReason,
+    protected: site.protected, version: site.version, desiredState: site.desiredState,
   };
 }
 

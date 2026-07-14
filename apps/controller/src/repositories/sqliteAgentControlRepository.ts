@@ -1,18 +1,33 @@
 import type Database from "better-sqlite3";
 import { AgentNodeStateSchema, type AgentControlRepository, type AgentControlState, type AgentNodeState, type AgentNonceRequest, type AuditEvent } from "./agentControlRepository.js";
 import type { AuditRepository } from "../audit/auditRepository.js";
+import type { RemoteTaskRecord } from "@stackpilot/contracts";
+import type { SecretStore } from "../security/secretStore.js";
 
 const empty = (): AgentControlState => ({ enrollments: [], credentials: [], nodes: [], nonces: [], tasks: [], audits: [] });
 export class SqliteAgentControlRepository implements AgentControlRepository {
   private queue=Promise.resolve();
-  constructor(private readonly database: Database.Database,private readonly audit?:AuditRepository) {}
+  constructor(private readonly database: Database.Database,private readonly audit?:AuditRepository,private readonly secrets?:SecretStore) {}
+  private task(row:{payload:string}):RemoteTaskRecord{
+    const payload=JSON.parse(row.payload) as {encryptedTaskKey:string}|RemoteTaskRecord;
+    if(!("encryptedTaskKey" in payload))return payload;
+    const decrypted=this.secrets?.get(payload.encryptedTaskKey);
+    if(!decrypted)throw new Error("Encrypted remote task payload is unavailable");
+    return JSON.parse(decrypted.toString("utf8")) as RemoteTaskRecord;
+  }
+  private taskPayload(task:RemoteTaskRecord):string{
+    if(!this.secrets)return JSON.stringify(task);
+    const encryptedTaskKey=`remote-task:${task.taskId}`;
+    this.secrets.set(encryptedTaskKey,Buffer.from(JSON.stringify(task)));
+    return JSON.stringify({encryptedTaskKey});
+  }
   async read(): Promise<AgentControlState> {
     const state = empty();
     state.enrollments = (this.database.prepare("SELECT * FROM agent_enrollments").all() as Array<Record<string, unknown>>).map((r) => ({ enrollmentId:r.enrollment_id as string,tokenDigest:r.token_digest as string,nodeName:r.node_name as string,expiresAt:r.expires_at as string,usedAt:r.used_at as string|null,revokedAt:r.revoked_at as string|null }));
     state.credentials = (this.database.prepare("SELECT * FROM agent_credentials").all() as Array<Record<string, unknown>>).map((r)=>({credentialId:r.credential_id as string,nodeId:r.node_id as string,publicKey:r.public_key as string,createdAt:r.created_at as string,revokedAt:r.revoked_at as string|null,replacedBy:r.replaced_by as string|null,rotationId:r.rotation_id as string|null}));
     state.nodes = (this.database.prepare("SELECT payload FROM agent_nodes").all() as Array<{payload:string}>).map((r)=>JSON.parse(r.payload));
     state.nonces = (this.database.prepare("SELECT credential_id,nonce,expires_at FROM agent_nonces WHERE expires_at>?").all(new Date().toISOString()) as Array<{credential_id:string;nonce:string;expires_at:string}>).map((r)=>({credentialId:r.credential_id,nonce:r.nonce,expiresAt:r.expires_at}));
-    state.tasks = (this.database.prepare("SELECT payload FROM remote_tasks").all() as Array<{payload:string}>).map((r)=>JSON.parse(r.payload));
+    state.tasks = (this.database.prepare("SELECT payload FROM remote_tasks").all() as Array<{payload:string}>).map((r)=>this.task(r));
     state.audits = (this.database.prepare("SELECT payload FROM agent_protocol_audits ORDER BY occurred_at").all() as Array<{payload:string}>).map((r)=>JSON.parse(r.payload));
     return structuredClone(state);
   }
@@ -24,7 +39,7 @@ export class SqliteAgentControlRepository implements AgentControlRepository {
       for(const x of state.nodes)this.database.prepare("INSERT INTO agent_nodes(node_id,payload,revoked_at,updated_at)VALUES(?,?,?,?)").run(x.nodeId,JSON.stringify(x),x.revokedAt,x.lastSeenAt??x.enrolledAt);
       for(const x of state.credentials)this.database.prepare("INSERT INTO agent_credentials VALUES(?,?,?,?,?,?,?)").run(x.credentialId,x.nodeId,x.publicKey,x.createdAt,x.revokedAt,x.replacedBy,x.rotationId);
       for(const x of state.nonces)this.database.prepare("INSERT INTO agent_nonces VALUES(?,?,?)").run(x.credentialId,x.nonce,x.expiresAt);
-      for(const x of state.tasks)this.database.prepare("INSERT INTO remote_tasks(task_id,node_id,payload,status,updated_at)VALUES(?,?,?,?,?)").run(x.taskId,x.targetNodeId,JSON.stringify(x),x.status,x.updatedAt);
+      for(const x of state.tasks)this.database.prepare("INSERT INTO remote_tasks(task_id,node_id,payload,status,updated_at)VALUES(?,?,?,?,?)").run(x.taskId,x.targetNodeId,this.taskPayload(x),x.status,x.updatedAt);
       for(const x of state.audits)this.database.prepare("INSERT INTO agent_protocol_audits VALUES(?,?,?)").run(x.eventId,JSON.stringify(x),x.timestamp);
     })();for(const event of state.audits.filter(x=>!previousAudits.has(x.eventId)))this.appendAudit(event);return structuredClone(state);});this.queue=operation.then(()=>undefined,()=>undefined);return operation;
   }

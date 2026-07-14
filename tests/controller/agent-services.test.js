@@ -112,6 +112,17 @@ test("Controller policy and Agent declaration are both required for a task", asy
   assert.equal(authorizationCount, 0);
 });
 
+test("site prepare derives runtime installation authorization from current node policy", async () => {
+  const fixture = await enrolledFixture();
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["sites.deploy", "runtime.install"], health: { status: "healthy", uptimeSeconds: 1 } }, crypto.randomUUID());
+  await fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["sites.deploy"], "admin", crypto.randomUUID());
+  const parameters = { operationId: crypto.randomUUID(), planId: crypto.randomUUID(), domains: ["app.example.com"], repositoryUrl: "https://github.com/example/site.git", repositoryRef: "main", certificateContact: "ops@example.com", certificateEnvironment: "staging", environmentVariables: [], expectedPlanDigest: "a".repeat(64), runtimeInstallAuthorized: true };
+  const created = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "sites.plan.prepare", parameters, expiresInSeconds: 1_800, idempotencyKey: "runtime-policy-prepare" }, "controller:site-management", crypto.randomUUID());
+  assert.equal(created.parameters.runtimeInstallAuthorized, false);
+  await fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["sites.deploy", "runtime.install"], "admin", crypto.randomUUID());
+  assert.equal((await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID()))[0].parameters.runtimeInstallAuthorized, true);
+});
+
 test("task expiry, queue limits and audit redaction are persisted", async () => {
   const fixture = await enrolledFixture(); await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 1 } }, crypto.randomUUID());
   const first = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "expire-task-one" }, "admin", crypto.randomUUID());

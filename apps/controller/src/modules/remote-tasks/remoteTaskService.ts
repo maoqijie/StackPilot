@@ -14,6 +14,10 @@ const transitions: Record<RemoteTaskStatus, readonly RemoteTaskStatus[]> = {
 const requiredCapability: Record<CreateRemoteTaskRequest["type"], AgentCapability> = {
   "system.summary.read": "system.summary.read",
   "service.status.read": "service.status.read",
+  "sites.plan.prepare": "sites.deploy",
+  "sites.plan.activate": "sites.deploy",
+  "sites.lifecycle.update": "sites.lifecycle.manage",
+  "sites.logs.read": "sites.logs.read",
   "sites.certificates.renew": "sites.certificates.renew",
 };
 const audit = (event: Omit<AuditEvent, "eventId" | "timestamp">): AuditEvent => ({ eventId: randomUUID(), timestamp: new Date().toISOString(), ...event });
@@ -22,6 +26,12 @@ function containsSensitiveKey(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(containsSensitiveKey);
   if (value && typeof value === "object") return Object.entries(value).some(([key, nested]) => sensitiveResultKey.test(key) || containsSensitiveKey(nested));
   return false;
+}
+
+function parametersForNode(type: CreateRemoteTaskRequest["type"], parameters: Record<string, unknown>, node: { allowedCapabilities: AgentCapability[]; declaredCapabilities: AgentCapability[] }) {
+  if (type !== "sites.plan.prepare") return parameters;
+  const runtimeInstallAuthorized = node.allowedCapabilities.includes("runtime.install") && node.declaredCapabilities.includes("runtime.install");
+  return { ...parameters, runtimeInstallAuthorized };
 }
 
 function expireTask(task: RemoteTaskRecord, now: string): RemoteTaskStatus | null {
@@ -68,7 +78,7 @@ export class RemoteTaskService {
       const now = new Date().toISOString();
       created = RemoteTaskRecordSchema.parse({
         protocolVersion: AGENT_PROTOCOL_VERSION, taskId: randomUUID(), type: input.type, targetNodeId: nodeId,
-        parameters: input.parameters, createdAt: now, expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
+        parameters: parametersForNode(input.type, input.parameters, node), createdAt: now, expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
         idempotencyKey: input.idempotencyKey, requester, traceId, requiredCapability: capability, attempt: 0,
         maxAttempts: input.type.startsWith("sites.") ? 1 : 3,
         status: "queued", updatedAt: now, result: null, errorCode: null,
@@ -105,6 +115,7 @@ export class RemoteTaskService {
         if (dispatched.length >= 10) break;
         if (task.type === "sites.certificates.renew" && renewalActive) continue;
         if (!node.allowedCapabilities.includes(task.requiredCapability) || !node.declaredCapabilities.includes(task.requiredCapability)) { task.status = "cancelled"; task.errorCode = "CAPABILITY_REVOKED"; continue; }
+        if (task.type === "sites.plan.prepare") task.parameters = parametersForNode(task.type, task.parameters, node);
         transitionTask(task, "dispatched"); task.attempt += 1; dispatched.push(structuredClone(task));
         if (task.type === "sites.certificates.renew") renewalActive = true;
         state.audits.push(audit({ requester: `agent:${nodeId}`, nodeId, taskId: task.taskId, event: "task.dispatched", taskType: task.type, parameters: null, fromStatus: "queued", toStatus: "dispatched", resultSummary: null, traceId }));

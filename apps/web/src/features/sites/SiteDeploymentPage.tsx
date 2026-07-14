@@ -1,0 +1,86 @@
+import { CheckCircle2, GitBranch, Server, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { listAgentNodes } from "../../api/agentApi";
+import { activateSitePlan, createSitePlan } from "../../api/sitesApi";
+import type { SitePlan } from "../../api/sitesApi";
+import { reauthenticate } from "../../api/identityApi";
+import { resolvePageMeta } from "../../app/navigation";
+import { ModulePageShell } from "../../components/layout/ModulePageShell";
+import { FormLine, FormSelectLine } from "../../components/ui/FormControls";
+import type { Notify } from "../../types/app";
+import { SiteOperationStatus } from "./SiteOperationStatus";
+import { useSiteOperation } from "./useSiteOperation";
+
+type Draft = { nodeId: string; domains: string; repositoryUrl: string; repositoryRef: string; certificateEmail: string; certificateEnvironment: "staging" | "production"; password: string };
+const initialDraft: Draft = { nodeId: "", domains: "", repositoryUrl: "", repositoryRef: "main", certificateEmail: "", certificateEnvironment: "staging", password: "" };
+
+function SiteDeploymentPage({ notify, canListNodes }: { notify: Notify; canListNodes: boolean }) {
+  const [nodes, setNodes] = useState<Array<{ nodeId: string; nodeName: string }>>([]);
+  const [draft, setDraft] = useState(initialDraft);
+  const [plan, setPlan] = useState<SitePlan | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const { operation, error: operationError, watch, clear } = useSiteOperation();
+  const currentPlan = useMemo(() => operation?.status === "succeeded" && operation.result?.planPreview && operation.operationId === plan?.operationId
+    ? { ...plan, status: "ready" as const, preview: operation.result.planPreview }
+    : plan, [operation, plan]);
+  const nodeOptions = useMemo(() => nodes.map((node) => `${node.nodeName} · ${node.nodeId}`), [nodes]);
+
+  useEffect(() => {
+    if (!canListNodes) return;
+    const controller = new AbortController();
+    listAgentNodes(controller.signal).then((payload) => {
+      const allowed = payload.nodes.filter((node) => node.allowedCapabilities.includes("sites.deploy") && node.declaredCapabilities.includes("sites.deploy"));
+      setNodes(allowed);
+      setDraft((current) => current.nodeId || !allowed[0] ? current : { ...current, nodeId: allowed[0].nodeId });
+    }).catch((reason: unknown) => { if (!controller.signal.aborted) setFormError(reason instanceof Error ? reason.message : "节点列表加载失败"); });
+    return () => controller.abort();
+  }, [canListNodes]);
+
+  const submitPlan = async (event: React.FormEvent) => {
+    event.preventDefault(); setSubmitting(true); setFormError(null);
+    try {
+      const proof = await reauthenticate(draft.password);
+      const created = await createSitePlan({ nodeId: draft.nodeId, domains: draft.domains.split(",").map((value) => value.trim()).filter(Boolean), repositoryUrl: draft.repositoryUrl, repositoryRef: draft.repositoryRef, certificateEmail: draft.certificateEmail, certificateEnvironment: draft.certificateEnvironment, environmentVariables: [], idempotencyKey: crypto.randomUUID() }, proof.proof);
+      setPlan(created); setDraft((current) => ({ ...current, password: "" }));
+      watch({ operationId: created.operationId, taskId: null, type: "prepare", nodeId: created.nodeId, siteId: null, planId: created.planId, status: "queued", stage: "awaiting_executor", progressPercent: 0, result: null, errorCode: null, createdAt: created.createdAt, updatedAt: created.updatedAt });
+    } catch (reason) { setFormError(reason instanceof Error ? reason.message : "部署计划创建失败"); }
+    finally { setSubmitting(false); }
+  };
+
+  const activate = async () => {
+    if (!currentPlan) return; setSubmitting(true); setFormError(null);
+    try {
+      const proof = await reauthenticate(draft.password);
+      const operation = await activateSitePlan(currentPlan.planId, { planVersion: currentPlan.version, planDigest: currentPlan.digest, idempotencyKey: crypto.randomUUID() }, proof.proof);
+      watch(operation); setDraft((current) => ({ ...current, password: "" })); notify("部署计划已进入激活队列", "info");
+    } catch (reason) { setFormError(reason instanceof Error ? reason.message : "部署激活失败"); }
+    finally { setSubmitting(false); }
+  };
+
+  return <ModulePageShell title={resolvePageMeta("sites-create").title} subtitle="先构建和预检，再确认摘要上线；失败时由节点恢复旧版本。" page="sites-create" viewContext={false}>
+    <div className="site-deployment-layout">
+      <form className="site-deployment-form" onSubmit={(event) => void submitPlan(event)}>
+        <header><GitBranch size={18} /><span><strong>Git 部署计划</strong><small>仅接受公开 github.com HTTPS 仓库</small></span></header>
+        {canListNodes
+          ? <FormSelectLine label="目标节点" required value={nodeOptions.find((option) => option.endsWith(draft.nodeId)) ?? "暂无已授权节点"} options={nodeOptions} disabled={!nodeOptions.length || submitting || Boolean(plan)} onChange={(value) => setDraft((current) => ({ ...current, nodeId: value.split(" · ").at(-1) ?? "" }))} />
+          : <FormLine label="目标节点 ID" required value={draft.nodeId} disabled={submitting || Boolean(plan)} onChange={(value) => setDraft((current) => ({ ...current, nodeId: value }))} />}
+        <FormLine label="域名" required value={draft.domains} disabled={submitting || Boolean(plan)} hint="多个普通域名使用英文逗号分隔，不支持通配符" onChange={(value) => setDraft((current) => ({ ...current, domains: value }))} />
+        <FormLine label="仓库地址" required value={draft.repositoryUrl} disabled={submitting || Boolean(plan)} inputType="url" onChange={(value) => setDraft((current) => ({ ...current, repositoryUrl: value }))} />
+        <FormLine label="Git ref" required value={draft.repositoryRef} disabled={submitting || Boolean(plan)} onChange={(value) => setDraft((current) => ({ ...current, repositoryRef: value }))} />
+        <FormLine label="证书邮箱" required value={draft.certificateEmail} disabled={submitting || Boolean(plan)} inputType="email" onChange={(value) => setDraft((current) => ({ ...current, certificateEmail: value }))} />
+        <FormSelectLine label="ACME 环境" required value={draft.certificateEnvironment === "staging" ? "Staging" : "Production"} options={["Staging", "Production"]} disabled={submitting || Boolean(plan)} onChange={(value) => setDraft((current) => ({ ...current, certificateEnvironment: value === "Production" ? "production" : "staging" }))} />
+        <FormLine label="当前密码" required value={draft.password} disabled={submitting} inputType="password" onChange={(value) => setDraft((current) => ({ ...current, password: value }))} />
+        {formError && <p className="form-error" role="alert">{formError}</p>}
+        <footer>{!plan ? <button className="primary" type="submit" disabled={submitting || !draft.nodeId || !draft.domains || !draft.repositoryUrl || !draft.certificateEmail || !draft.password}>{submitting ? "提交中..." : "创建并预检"}</button> : <button className="ghost" type="button" onClick={() => { setPlan(null); clear(); }}>重新填写</button>}</footer>
+      </form>
+      <section className="site-plan-summary" aria-label="部署计划摘要">
+        <header><ShieldCheck size={18} /><span><strong>变更摘要</strong><small>只有后端预检成功后才能激活</small></span></header>
+        {!plan && <div className="site-plan-empty"><Server size={24} /><span>等待创建部署计划</span></div>}
+        {currentPlan && <><dl><div><dt>状态</dt><dd>{currentPlan.status}</dd></div><div><dt>运行时</dt><dd>{currentPlan.preview?.runtime ?? "正在识别"}</dd></div><div><dt>健康检查</dt><dd>{currentPlan.preview?.healthCheckPath ?? "暂未生成"}</dd></div><div><dt>环境变量</dt><dd>{currentPlan.environmentVariableNames.length} 个名称</dd></div></dl>{currentPlan.preview && <div className="site-plan-changes">{currentPlan.preview.changes.map((change) => <span key={change}><CheckCircle2 size={14} />{change}</span>)}</div>}{operation && <SiteOperationStatus operation={operation} error={operationError} />}{currentPlan.status === "ready" && <button className="primary" type="button" disabled={!draft.password || submitting} onClick={() => void activate()}>{submitting ? "激活中..." : "确认摘要并上线"}</button>}</>}
+      </section>
+    </div>
+  </ModulePageShell>;
+}
+
+export { SiteDeploymentPage };

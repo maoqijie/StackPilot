@@ -18,29 +18,33 @@ import {
 } from "./model";
 import type { SiteRuntimeGroup, SiteRuntimeView } from "./types";
 import { useSitesData } from "./useSitesData";
+import { SiteOperationsDrawer } from "./SiteOperationsDrawer";
 
 type SiteMode = "inventory" | "running" | "runtime";
 
-function SitesMonitoringView({ page }: { page: PageKey }) {
+function SitesMonitoringView({ page, canReadLogs, canOperate }: { page: PageKey; canReadLogs: boolean; canOperate: boolean }) {
   const preset = sitesPagePreset(page);
   const mode: SiteMode = page === "sites-runtime" ? "runtime" : page === "sites-running" ? "running" : "inventory";
   const [search, setSearch] = useState(preset.search);
   const [statusFilter, setStatusFilter] = useState(preset.status);
   const [runtimeFilter, setRuntimeFilter] = useState(preset.runtime);
   const [selectedRuntime, setSelectedRuntime] = useState<string | null>(null);
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
   const reconcileRows = useCallback((nextRows: SiteRuntimeView[]) => {
     setSelectedRuntime((current) => current && nextRows.some((row) => row.runtime === current) ? current : null);
+    setSelectedSiteId((current) => current && nextRows.some((row) => row.id === current) ? current : null);
   }, []);
   const { rows, payload, loading, error, retry } = useSitesData(reconcileRows);
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
     const matchSearch = !query || [row.domain, row.runtime, row.host, row.upstream, row.source].join(" ").toLowerCase().includes(query);
     const matchStatus = statusFilter === "全部" || (statusFilter === "活跃"
-      ? row.status === "运行中" || row.status === "告警" : row.status === statusFilter);
+      ? row.status === "运行中" || row.status === "告警" || row.status === "待采集" : row.status === statusFilter);
     return matchSearch && matchStatus && (runtimeFilter === "全部" || row.runtime === runtimeFilter);
   });
   const runtimeGroups = runtimeGroupsFromSites(filteredRows);
   const selectedGroup = selectedRuntime ? runtimeGroupsFromSites(rows).find((group) => group.runtime === selectedRuntime) ?? null : null;
+  const selectedSite = selectedSiteId ? rows.find((row) => row.id === selectedSiteId) ?? null : null;
   const latencySamples = filteredRows.map((row) => row.latencyMs).filter((value): value is number => value !== null);
   const averageLatency = latencySamples.length
     ? `${Math.round(latencySamples.reduce((sum, value) => sum + value, 0) / latencySamples.length)}ms` : "暂不可用";
@@ -55,7 +59,7 @@ function SitesMonitoringView({ page }: { page: PageKey }) {
   const metrics = mode === "runtime"
     ? <><MetricTile icon={Code2} label="服务组" value={`${runtimeGroups.length}`} tone="blue" /><MetricTile icon={Globe2} label="覆盖站点" value={`${filteredRows.length}`} tone="green" /><MetricTile icon={Shield} label="证书风险" value={certDataAvailable ? `${filteredRows.filter(isSiteCertDue).length}` : "暂不可用"} tone="orange" /></>
     : mode === "running"
-      ? <><MetricTile icon={Activity} label="活跃站点" value={`${filteredRows.length}`} tone="green" /><MetricTile icon={Clock3} label="平均延迟" value={averageLatency} tone="blue" /><MetricTile icon={Shield} label="异常站点" value={`${filteredRows.filter((row) => row.status === "告警").length}`} tone="orange" /></>
+      ? <><MetricTile icon={Activity} label="已发现站点" value={`${filteredRows.length}`} tone="green" /><MetricTile icon={Clock3} label="平均延迟" value={averageLatency} tone="blue" /><MetricTile icon={Shield} label="异常站点" value={`${filteredRows.filter((row) => row.status === "告警").length}`} tone="orange" /></>
       : <><MetricTile icon={Globe2} label="站点" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="green" /><MetricTile icon={Shield} label="证书告警" value={certDataAvailable ? `${rows.filter(isSiteCertDue).length}` : "暂不可用"} tone="orange" /></>;
   const emptyText = error ? "实时采集失败，未显示示例站点" : loading ? "正在采集站点状态" : "未发现匹配的 Nginx 站点，系统将继续自动采集";
 
@@ -65,14 +69,14 @@ function SitesMonitoringView({ page }: { page: PageKey }) {
     hideHeading={mode === "runtime"}
     page={page}
     viewContext={initialError || mode === "runtime" ? false : context}
-    filters={initialError ? undefined : <><ModuleSearch value={search} placeholder="搜索域名、上游、主机或数据源" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={mode === "running" ? ["活跃", "运行中", "告警"] : ["全部", "运行中", "告警", "已停止", "待采集"]} onChange={setStatusFilter} /><FieldSelect label="服务" value={runtimeFilter} options={["全部", ...uniqueSorted(rows.map((row) => row.runtime))]} onChange={setRuntimeFilter} /></>}
+    filters={initialError ? undefined : <><ModuleSearch value={search} placeholder="搜索域名、上游、主机或数据源" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={mode === "running" ? ["活跃", "运行中", "告警", "待采集"] : ["全部", "运行中", "告警", "已停止", "待采集"]} onChange={setStatusFilter} /><FieldSelect label="服务" value={runtimeFilter} options={["全部", ...uniqueSorted(rows.map((row) => row.runtime))]} onChange={setRuntimeFilter} /></>}
     metrics={initialError ? undefined : metrics}
-    side={selectedGroup ? <RuntimeDetail group={selectedGroup} onClose={() => setSelectedRuntime(null)} /> : null}
+    side={selectedGroup ? <RuntimeDetail group={selectedGroup} onClose={() => setSelectedRuntime(null)} /> : selectedSite ? <SiteOperationsDrawer site={selectedSite} onClose={() => setSelectedSiteId(null)} onChanged={() => void retry(undefined, true)} canReadLogs={canReadLogs} canOperate={canOperate} /> : null}
   >
     <SitesLoadState loading={loading} error={error} payload={payload} retry={() => void retry()} showCollectionNote={mode !== "runtime"} />
     {!initialError && (mode === "runtime"
       ? <DataTable columns={runtimeColumns(setSelectedRuntime)} rows={runtimeGroups} emptyText={emptyText} getRowKey={(group) => group.runtime} mobileCard={(group) => <RuntimeMobileCard group={group} onOpen={setSelectedRuntime} />} />
-      : <DataTable columns={siteColumns(mode)} rows={filteredRows} emptyText={emptyText} getRowKey={(row) => row.id} mobileCard={(row) => <SiteMobileCard row={row} mode={mode} />} />)}
+      : <DataTable columns={siteColumns(mode, setSelectedSiteId)} rows={filteredRows} emptyText={emptyText} getRowKey={(row) => row.id} mobileCard={(row) => <SiteMobileCard row={row} mode={mode} onOpen={setSelectedSiteId} />} />)}
   </ModulePageShell>;
 }
 
@@ -89,7 +93,8 @@ function siteStatus(row: SiteRuntimeView) {
   return <span className={`site-status ${siteStatusTone(row.status)}`}><Icon size={14} /><span>{row.status}</span></span>;
 }
 
-function siteColumns(mode: SiteMode): Array<TableColumn<SiteRuntimeView>> {
+function siteColumns(mode: SiteMode, onOpen: (id: string) => void): Array<TableColumn<SiteRuntimeView>> {
+  const openColumn: TableColumn<SiteRuntimeView> = { key: "ops", label: "操作", width: "64px", render: (row) => <span className="table-icon-actions"><button type="button" title="查看操作" aria-label={`查看 ${row.domain} 站点操作`} onClick={() => onOpen(row.id)}><Eye size={16} /></button></span> };
   if (mode === "running") return [
     { key: "domain", label: "域名", width: "208px", render: (row) => <SiteIdentity row={row} /> },
     { key: "status", label: "状态", width: "96px", render: siteStatus },
@@ -98,6 +103,7 @@ function siteColumns(mode: SiteMode): Array<TableColumn<SiteRuntimeView>> {
     { key: "traffic", label: "流量", width: "112px", sortValue: (row) => row.trafficBytes, render: (row) => row.traffic },
     { key: "host", label: "主机", width: "160px", render: (row) => <span className="site-truncate" title={row.host}>{row.host}</span> },
     { key: "source", label: "数据源", render: (row) => row.source },
+    openColumn,
   ];
   return [
     { key: "domain", label: "域名", width: "208px", render: (row) => <SiteIdentity row={row} /> },
@@ -107,6 +113,7 @@ function siteColumns(mode: SiteMode): Array<TableColumn<SiteRuntimeView>> {
     { key: "cert", label: "证书", width: "112px", sortValue: (row) => row.certDays, render: (row) => row.certDays === null ? <span className="gray-text">暂不可用</span> : <span className={isSiteCertDue(row) ? "orange-text" : "green-text"}>{row.certDays < 0 ? `过期 ${Math.abs(row.certDays)} 天` : `${row.certDays} 天`}</span> },
     { key: "traffic", label: "流量", width: "112px", sortValue: siteTrafficGb, render: (row) => row.traffic },
     { key: "source", label: "数据源", render: (row) => row.source },
+    openColumn,
   ];
 }
 
@@ -130,6 +137,6 @@ function RuntimeDetail({ group, onClose }: { group: SiteRuntimeGroup; onClose: (
 
 function SiteIdentity({ row }: { row: SiteRuntimeView }) { return <span className="site-domain" title={row.domain}><Globe2 size={14} /><b>{row.domain}</b></span>; }
 function RuntimeMobileCard({ group, onOpen }: { group: SiteRuntimeGroup; onOpen: (runtime: string) => void }) { const health = runtimeGroupHealth(group); return <><div className="module-card-head"><span className="module-card-title"><Code2 size={16} /><b>{group.runtime}</b></span><StatusDot tone={health.tone} text={health.label} /></div><div className="module-card-meta"><span><b>站点容量</b><em>{group.sites.length} 个</em></span><span><b>运行 / 关注 / 停止</b><em>{group.running} / {group.warning + group.unknown} / {group.stopped}</em></span><span><b>流量 / 延迟</b><em>{group.traffic} / {group.avgLatency}</em></span><span><b>证书风险</b><em>{group.certificateDataAvailable ? `${group.certDue} 个` : "暂不可用"}</em></span></div><div className="module-card-footer"><button className="ghost small" type="button" onClick={() => onOpen(group.runtime)}><Eye size={15} /> 查看详情</button></div></>; }
-function SiteMobileCard({ row, mode }: { row: SiteRuntimeView; mode: SiteMode }) { return <><div className="module-card-head"><span className="module-card-title site-mobile-domain"><Globe2 size={16} /><b title={row.domain}>{row.domain}</b></span>{siteStatus(row)}</div><code className="module-card-code" title={mode === "running" ? row.upstream : row.host}>{mode === "running" ? row.upstream : row.host}</code><div className="module-card-meta"><span><b>服务</b><em>{row.runtime}</em></span><span><b>{mode === "running" ? "延迟" : "证书"}</b><em>{mode === "running" ? row.latency : row.certDays === null ? "暂不可用" : `${row.certDays} 天`}</em></span><span><b>流量</b><em>{row.traffic}</em></span><span><b>数据源</b><em>{row.source}</em></span></div></>; }
+function SiteMobileCard({ row, mode, onOpen }: { row: SiteRuntimeView; mode: SiteMode; onOpen: (id: string) => void }) { return <><div className="module-card-head"><span className="module-card-title site-mobile-domain"><Globe2 size={16} /><b title={row.domain}>{row.domain}</b></span>{siteStatus(row)}</div><code className="module-card-code" title={mode === "running" ? row.upstream : row.host}>{mode === "running" ? row.upstream : row.host}</code><div className="module-card-meta"><span><b>服务</b><em>{row.runtime}</em></span><span><b>{mode === "running" ? "延迟" : "证书"}</b><em>{mode === "running" ? row.latency : row.certDays === null ? "暂不可用" : `${row.certDays} 天`}</em></span><span><b>流量</b><em>{row.traffic}</em></span><span><b>数据源</b><em>{row.source}</em></span></div><div className="module-card-footer"><button className="ghost small" type="button" onClick={() => onOpen(row.id)}><Eye size={15} /> 查看操作</button></div></>; }
 
 export { SitesLoadState, SitesMonitoringView };

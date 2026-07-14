@@ -3,7 +3,8 @@ import { z } from "zod";
 export const AgentPlatformSchema = z.enum(["linux", "darwin", "win32"]);
 export const AGENT_FEATURE_DATABASE_INVENTORY = "database-inventory-v1";
 export const AgentCapabilitySchema = z.enum([
-  "system.summary.read", "service.status.read", "sites.inventory.read", "sites.certificates.renew", "databases.inventory.read",
+  "system.summary.read", "service.status.read", "sites.inventory.read", "sites.logs.read",
+  "sites.deploy", "sites.lifecycle.manage", "sites.certificates.renew", "runtime.install", "databases.inventory.read",
 ]);
 export const AgentCapabilitiesSchema = z.array(AgentCapabilitySchema).max(16).transform((items) => [...new Set(items)]);
 

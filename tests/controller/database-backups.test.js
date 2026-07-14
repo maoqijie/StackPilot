@@ -20,6 +20,7 @@ test("database backup service creates, verifies and drills a real isolated SQLit
   const service = new DatabaseBackupService(database, databasePath, loadControllerConfig({ STACKPILOT_BACKUP_DIRS: backupRoot }), root);
   try {
     const before = await service.snapshot();
+    assert.equal(before.source.schemaVersion, 4);
     assert.equal(before.backups.length, 0);
     assert.match(JSON.stringify(before), /backups/);
     assert.doesNotMatch(JSON.stringify(before), new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));

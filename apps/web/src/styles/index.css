@@ -10,6 +10,7 @@
 @import "./sites.css";
 @import "./sites-runtime.css";
 @import "./sites-certificates.css";
+@import "./sites-management.css";
 @import "./database-slow.css";
 @import "./database-instances.css";
 @import "./files-main.css";

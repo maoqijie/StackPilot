@@ -212,6 +212,7 @@ function DesktopShellContent({
         onNavigate={() => {
           if (isNarrowSidebar) setSidebarCollapsed(true);
         }}
+        permissions={user.permissions}
       />
       <div className="desktop-main" inert={sidebarOverlayOpen} aria-hidden={sidebarOverlayOpen ? "true" : undefined}>
         <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={overview} interactionsDisabled={sessionLocked} onLogout={onLogout} />

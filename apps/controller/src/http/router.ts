@@ -3,7 +3,7 @@ import {
   OverviewCheckUpdatesResponseSchema, OverviewHealthRefreshResponseSchema, OverviewNodeMutationResponseSchema,
   OverviewRisksPayloadSchema, OverviewRisksScanResponseSchema, OverviewSummaryPayloadSchema,
   OverviewTasksPayloadSchema, OverviewTasksRefreshResponseSchema, PathIdSchema,
-  CreateCertificateRenewalRequestSchema, CertificateRenewalBatchSchema, SiteRuntimePayloadSchema,
+  CreateCertificateRenewalRequestSchema, CertificateRenewalBatchSchema,
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, HostMonitoringPayloadSchema, ReadinessResponseSchema,
   RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
@@ -16,6 +16,7 @@ import { parseSchema } from "./validation.js";
 import { routeControlPlaneRequest } from "./controlPlaneRouter.js";
 import { routeIdentityRequest } from "./identityRouter.js";
 import type { OverviewAccess } from "../modules/overview/overviewService.js";
+import { routeSiteRequest } from "./siteRouter.js";
 import { routeDatabaseBackupRequest } from "./databaseBackupRouter.js";
 import { routeFileManagerRequest, routeFileUploadRequest } from "./fileRouter.js";
 
@@ -50,6 +51,7 @@ export async function routeRequest(context: RequestContext): Promise<void> {
   if (parts[0] === "api" && ["enrollments", "nodes", "remote-tasks"].includes(parts[1] ?? "")) {
     await routeControlPlaneRequest(context); return;
   }
+  if (parts[0] === "api" && ["site-plans", "site-operations"].includes(parts[1] ?? "")) { await routeSiteRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "database-backups") { await routeDatabaseBackupRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "file-uploads") { await routeFileUploadRequest(context); return; }
   if (context.url.pathname === "/api/hosts" && method === "GET") {
@@ -78,11 +80,7 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     sendJson(response, 200, await services.databaseSlowQueries.getSlowQueries(), DatabaseSlowQueriesPayloadSchema);
     return;
   }
-  if (context.url.pathname === "/api/sites" && method === "GET") {
-    context.identity?.require(context.principal, "sites:read");
-    sendJson(response, 200, await services.sites.getSites({ nodeScope: context.principal?.nodeScope ?? [] }), SiteRuntimePayloadSchema);
-    return;
-  }
+  if (context.url.pathname === "/api/sites" || (parts[0] === "api" && parts[1] === "sites")) { await routeSiteRequest(context); return; }
   if (parts[0] !== "api" || parts[1] !== "overview") throw notFound();
   context.identity?.require(context.principal, "overview:read");
   const access=overviewAccess(context);

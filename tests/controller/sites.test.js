@@ -8,6 +8,8 @@ import { NginxSiteCollector } from "../../apps/controller/dist/platform/siteColl
 import { SiteMonitoringService } from "../../apps/controller/dist/modules/sites/siteMonitoringService.js";
 import { publicSiteId } from "../../apps/controller/dist/modules/sites/siteMonitoringService.js";
 import { CertificateRenewalService } from "../../apps/controller/dist/modules/sites/certificateRenewalService.js";
+import { SiteManagementService } from "../../apps/controller/dist/modules/sites/siteManagementService.js";
+import { MemorySiteManagementRepository } from "../../apps/controller/dist/modules/sites/siteManagementRepository.js";
 import { createControllerServices } from "../../apps/controller/dist/app.js";
 import { createStackPilotServer } from "../../apps/controller/dist/server.js";
 import { loadControllerConfig } from "../../apps/controller/dist/config/environment.js";
@@ -199,6 +201,7 @@ test("GET /api/sites requires sites read and returns the contracted payload", as
   const admin = (await identity.login("admin", "correct horse battery staple", "test", "ua")).principal;
   const services = createControllerServices(new FakePlatformAdapter(), process.cwd(), loadControllerConfig({}), new MemoryAgentControlRepository());
   services.sites = new SiteMonitoringService({ collectSites: async () => ({ collectedAt, collectionStatus: "partial", warnings: ["one unreadable config"], sites: [] }) });
+  services.siteManagement = new SiteManagementService(new MemorySiteManagementRepository(), services.sites, services.certificateRenewals);
   const overviewToken = identity.createApiToken(admin, { name: "overview", permissions: ["overview:read"], nodeScope: [], expiresAt: null }).token;
   const sitesToken = identity.createApiToken(admin, { name: "sites", permissions: ["sites:read"], nodeScope: [], expiresAt: null }).token;
   const nodesToken = identity.createApiToken(admin, { name: "nodes", permissions: ["nodes:read"], nodeScope: "all", expiresAt: null }).token;

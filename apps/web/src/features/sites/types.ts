@@ -50,6 +50,11 @@ type SiteRuntimeView = {
   freshness: SiteRuntimeRecord["freshness"];
   certificate: SiteCertificate;
   renewal: SiteRuntimeRecord["renewal"];
+  manageability: SiteRuntimeRecord["manageability"];
+  managementReason: string | null;
+  protected: boolean;
+  version: number;
+  desiredState: SiteRuntimeRecord["desiredState"];
 };
 
 type CertificateRenewalSelection = {

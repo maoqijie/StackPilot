@@ -258,6 +258,8 @@ export class NginxSiteCollector {
       return {
         id: `nginx-${id}`, nodeId: "node-local", domain: candidate.domain, runtime: candidate.runtime, host: this.hostName,
         upstream: candidate.upstream, source: candidate.source, trafficBytes: null, collectedAt, freshness: "current",
+        errorRatePercent: null, lastDeployAt: null, manageability: "monitored", managementReason: "站点尚未纳入 StackPilot 受管模板",
+        protected: false, version: 1, desiredState: null,
         renewal: { batchId: null, taskId: null, status: "idle", message: null, updatedAt: null },
         status: result.status, latencyMs: result.latencyMs, certificate,
       };

@@ -7,6 +7,7 @@ import {
   CreateRemoteTaskRequestSchema, RemoteTaskListResponseSchema, isAgentProtocolCompatible,
   SiteRuntimePayloadSchema,
   AgentSiteSnapshotSchema, CertificateRenewalTaskParametersSchema, CreateCertificateRenewalRequestSchema,
+  CreateSitePlanRequestSchema, SiteDeploymentManifestSchema, SiteAccessLogRecordSchema,
   CreateFileUploadRequestSchema, FileUploadRecordSchema,
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
@@ -101,6 +102,28 @@ test("certificate renewal contracts reject generic commands, paths and duplicate
   assert.equal(CertificateRenewalTaskParametersSchema.safeParse(parameters).success, true);
   assert.equal(CertificateRenewalTaskParametersSchema.safeParse({ ...parameters, command: "certbot renew" }).success, false);
   assert.equal(CertificateRenewalTaskParametersSchema.safeParse({ ...parameters, certificates: [{ certificateId: "/etc/letsencrypt/live/app", siteIds: ["site-opaque-1"] }] }).success, false);
+});
+
+test("site management contracts accept declarative public deployments and reject command or path injection", () => {
+  const request = {
+    nodeId: "node-local", domains: ["app.example.com"], repositoryUrl: "https://github.com/example/project.git",
+    repositoryRef: "main", certificateEmail: "operator@example.com",
+    environmentVariables: [{ name: "API_MODE", value: "production" }], idempotencyKey: "site-plan-001",
+  };
+  assert.equal(CreateSitePlanRequestSchema.safeParse(request).success, true);
+  assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, repositoryUrl: "ssh://github.com/example/project.git" }).success, false);
+  assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, repositoryUrl: "https://user:secret@github.com/example/project.git" }).success, false);
+  assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, repositoryUrl: "https://192.0.2.10/example/project.git" }).success, false);
+  assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, command: "curl example.com | sh" }).success, false);
+  assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, repositoryRef: "../private" }).success, false);
+  assert.equal(SiteDeploymentManifestSchema.safeParse({ schemaVersion: 1, runtime: "static", outputDirectory: "dist" }).success, true);
+  assert.equal(SiteDeploymentManifestSchema.safeParse({ schemaVersion: 1, runtime: "node22", startScript: "start", healthCheckPath: "/healthz" }).success, true);
+  assert.equal(SiteDeploymentManifestSchema.safeParse({ schemaVersion: 1, runtime: "static", outputDirectory: "/srv/www", command: "npm run build" }).success, false);
+  assert.equal(SiteDeploymentManifestSchema.safeParse({ schemaVersion: 1, runtime: "static", outputDirectory: "../private" }).success, false);
+  const log = { timestamp: new Date().toISOString(), method: "GET", path: "/healthz", status: 200, bytesSent: 42, clientAddressMasked: "192.0.2.0/24" };
+  assert.equal(SiteAccessLogRecordSchema.safeParse(log).success, true);
+  assert.equal(SiteAccessLogRecordSchema.safeParse({ ...log, path: "/callback?token=secret" }).success, false);
+  assert.equal(SiteAccessLogRecordSchema.safeParse({ ...log, authorization: "secret" }).success, false);
 });
 
 test("database slow-query contract preserves nullable historical statistics", () => {
