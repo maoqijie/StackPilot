@@ -8,8 +8,8 @@ export const postgresInventorySql = `SELECT json_build_object(
 
 export const postgresQueriesSql = `SELECT json_build_object(
   'sessions', COALESCE((SELECT json_agg(row_to_json(s)) FROM (
-    SELECT pid::text id, datname database, usename username, application_name "applicationName",
-      client_addr::text "clientAddress", CASE WHEN wait_event IS NOT NULL THEN 'waiting' WHEN state='active' THEN 'active' WHEN state LIKE 'idle%' THEN 'idle' ELSE 'unknown' END state,
+    SELECT pid::text id, datname database, usename username, NULLIF(application_name,'') "applicationName",
+      host(client_addr) "clientAddress", CASE WHEN wait_event IS NOT NULL THEN 'waiting' WHEN state='active' THEN 'active' WHEN state LIKE 'idle%' THEN 'idle' ELSE 'unknown' END state,
       backend_start "startedAt", xact_start "transactionStartedAt",
       (backend_type <> 'client backend' OR usename IN ('postgres','stackpilot')) protected,
       CASE WHEN backend_type <> 'client backend' THEN backend_type WHEN usename IN ('postgres','stackpilot') THEN 'system-or-helper-user' ELSE NULL END "protectedReason"

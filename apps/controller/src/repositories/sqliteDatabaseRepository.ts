@@ -36,6 +36,12 @@ export class SqliteDatabaseRepository implements DatabaseRepository {
       const node = JSON.parse(nodeRow.payload) as { nodeName?: string; telemetry?: { hostname?: string; primaryIp?: string | null } };
       const nodeName = node.nodeName ?? node.telemetry?.hostname ?? nodeId;
       const address = node.telemetry?.primaryIp ?? null;
+      if (snapshot.collectionStatus === "complete") {
+        const reportedIds = new Set(snapshot.instances.map((item) => item.id));
+        const existing = this.database.prepare("SELECT id,local_id FROM database_instances WHERE node_id=?").all(nodeId) as Array<{ id: string; local_id: string }>;
+        const remove = this.database.prepare("DELETE FROM database_instances WHERE id=?");
+        for (const item of existing) if (!reportedIds.has(item.local_id)) remove.run(item.id);
+      }
       for (const item of snapshot.instances) {
         const record = DatabaseInstanceRecordSchema.parse({ ...item, id: instanceId(nodeId, item.id), nodeId, nodeName, address, collectedAt: snapshot.collectedAt, freshness: "current" });
         this.database.prepare(`INSERT INTO database_instances(id,node_id,local_id,snapshot,managed,collected_at,updated_at) VALUES(?,?,?,?,?,?,?)

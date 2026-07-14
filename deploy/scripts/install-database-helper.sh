@@ -29,5 +29,5 @@ else
   rc-update add stackpilot-database-helper default
   rc-service stackpilot-database-helper start
 fi
-/usr/bin/node "$prefix/current/apps/database-helper/dist/cli.js" backup-plan install-scheduler
+/usr/bin/node --preserve-symlinks-main "$prefix/current/apps/database-helper/dist/cli.js" backup-plan install-scheduler
 echo "Installed and started database-helper $version with local backup scheduling enabled."

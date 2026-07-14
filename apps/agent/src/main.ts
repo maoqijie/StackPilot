@@ -24,6 +24,7 @@ import { FileDatabaseOperationOutbox } from "./databases/operationOutbox.js";
 
 const sleep = (ms: number) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 const backoff = (attempt: number) => Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5)) + Math.floor(Math.random() * 500);
+export const shouldUseSystemdDatabaseFallback = (controllerSupportsInventory: boolean, helperReady: boolean) => controllerSupportsInventory && !helperReady;
 
 async function ensureIdentity(store: IdentityStore, client: ControllerClient, config: ReturnType<typeof loadAgentConfig>, capabilities: AgentEnrollmentRequest["capabilities"]): Promise<AgentIdentity> {
   const existing = await store.read(); if (existing) return existing;
@@ -85,8 +86,10 @@ export async function runAgent(env: NodeJS.ProcessEnv | Record<string, string | 
       let telemetryCollectionFailed = false;
       const telemetry = await collectAgentTelemetry(config.platform).catch(() => { telemetryCollectionFailed = true; return undefined; });
       void siteSnapshots.refreshIfDue().catch((error) => agentLogger.log({ level: "warn", time: new Date().toISOString(), message: "Site inventory collection failed", errorName: error instanceof Error ? error.name : "UnknownError" }));
-      void databaseSnapshots.refreshIfDue().catch((error) => agentLogger.log({ level: "warn", time: new Date().toISOString(), message: "Database inventory collection failed", errorName: error instanceof Error ? error.name : "UnknownError" }));
-      AgentHeartbeatResponseSchema.parse(await client.json("/api/agent/heartbeat", createHeartbeat(config, identity.nodeId, capabilities, telemetry, telemetryCollectionFailed, siteSnapshots.current, databaseInventorySupported ? databaseSnapshots.current : undefined), identity));
+      const systemdDatabaseFallback = shouldUseSystemdDatabaseFallback(databaseInventorySupported, databaseHelperReady);
+      if (systemdDatabaseFallback) void databaseSnapshots.refreshIfDue().catch((error) => agentLogger.log({ level: "warn", time: new Date().toISOString(), message: "Database inventory collection failed", errorName: error instanceof Error ? error.name : "UnknownError" }));
+      const fallbackDatabaseSnapshot = systemdDatabaseFallback ? databaseSnapshots.current : undefined;
+      AgentHeartbeatResponseSchema.parse(await client.json("/api/agent/heartbeat", createHeartbeat(config, identity.nodeId, capabilities, telemetry, telemetryCollectionFailed, siteSnapshots.current, fallbackDatabaseSnapshot), identity));
       for (const pending of executor.pendingUpdates()) { await client.json("/api/agent/tasks/status", pending, identity); await executor.markReported(pending.taskId); }
       const poll = RemoteTaskPollResponseSchema.parse(await client.json("/api/agent/tasks/poll", {}, identity));
       for (const taskId of poll.cancelledTaskIds) executor.cancel(taskId);

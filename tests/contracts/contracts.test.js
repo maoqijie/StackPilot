@@ -15,12 +15,20 @@ import {
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
   CreateDirectoryRequestSchema,
+  UpdateNodeCapabilitiesRequestSchema,
 } from "@stackpilot/contracts";
 
 test("shared API constants preserve the existing HTTP contract", () => {
   assert.equal(API_CLIENT_PREFIX, "/api");
   assert.deepEqual(API_ROOT_SEGMENTS, ["api", "overview"]);
   assert.deepEqual(WRITE_METHODS, ["POST", "PATCH", "DELETE"]);
+});
+
+test("node capability updates accept the complete shared Agent capability set", () => {
+  const allowedCapabilities = ["system.summary.read", "database.inventory.read", "database.sql.read", "database.backup", "database.operate", "database.install", "database.restore"];
+  assert.deepEqual(UpdateNodeCapabilitiesRequestSchema.parse({ allowedCapabilities }).allowedCapabilities, allowedCapabilities);
+  assert.equal(UpdateNodeCapabilitiesRequestSchema.safeParse({ allowedCapabilities: ["database.shell"] }).success, false);
+  assert.equal(UpdateNodeCapabilitiesRequestSchema.safeParse({ allowedCapabilities: ["database.backup", "database.backup"] }).success, false);
 });
 
 test("remote task history accepts collection timestamps from upgraded Controllers", () => {

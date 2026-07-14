@@ -5,11 +5,17 @@ import { join } from "node:path";
 import test from "node:test";
 import { loadAgentConfig } from "../../apps/agent/dist/config/environment.js";
 import { IdentityStore } from "../../apps/agent/dist/identity/identityStore.js";
-import { rotateIdentity } from "../../apps/agent/dist/main.js";
+import { rotateIdentity, shouldUseSystemdDatabaseFallback } from "../../apps/agent/dist/main.js";
 
 test("Agent configuration requires a verified HTTPS Controller URL", () => {
   assert.throws(() => loadAgentConfig({ STACKPILOT_CONTROLLER_URL: "http://127.0.0.1:9443", STACKPILOT_AGENT_CA_PATH: "ca.pem" }), /HTTPS/);
   assert.equal(loadAgentConfig({ STACKPILOT_CONTROLLER_URL: "https://localhost:9443", STACKPILOT_AGENT_CA_PATH: "ca.pem" }).controllerUrl, "https://localhost:9443");
+});
+
+test("database-helper inventory takes precedence over the systemd fallback", () => {
+  assert.equal(shouldUseSystemdDatabaseFallback(false, false), false);
+  assert.equal(shouldUseSystemdDatabaseFallback(true, false), true);
+  assert.equal(shouldUseSystemdDatabaseFallback(true, true), false);
 });
 
 test("credential rotation persists one pending key and retries the same rotation id", async () => {

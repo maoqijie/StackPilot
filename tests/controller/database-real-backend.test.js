@@ -64,6 +64,25 @@ test("node status refresh preserves schema 6 database snapshots and plans",async
   }finally{value.database.close();}
 });
 
+test("complete snapshots replace disappeared instances and their dependent plans",async()=>{
+  const value=await fixture();try{
+    const first=snapshot(),legacy={...first.instances[0],id:"postgresql.service",name:"legacy",source:"systemd:postgresql.service",managed:false,historicalSlowQueriesAvailable:false};
+    value.inventory.ingestSnapshot(value.nodeId,{...first,instances:[legacy,first.instances[0]]});
+    const current=value.inventory.list("all").instances.find((item)=>item.name==="main");value.backups.create({instanceId:current.id,name:"preserved",cron:"0 2 * * *",retentionCount:7,enabled:true},"all");
+    value.inventory.ingestSnapshot(value.nodeId,{...snapshot(),instances:[]});
+    assert.deepEqual(value.inventory.list("all").instances,[]);
+    assert.equal(value.database.prepare("SELECT count(*) count FROM database_backup_plans").get().count,0);
+  }finally{value.database.close();}
+});
+
+test("partial snapshots retain instances that may be temporarily unavailable",async()=>{
+  const value=await fixture();try{
+    value.inventory.ingestSnapshot(value.nodeId,snapshot());
+    value.inventory.ingestSnapshot(value.nodeId,{collectedAt:at(),collectionStatus:"partial",warnings:["temporary collection failure"],instances:[]});
+    assert.equal(value.inventory.list("all").instances.length,1);
+  }finally{value.database.close();}
+});
+
 test("two-phase operations enforce sessions, versions, idempotency and managed boundaries",async()=>{
   const value=await fixture();try{
     value.inventory.ingestSnapshot(value.nodeId,snapshot());value.inventory.ingestQueryUpload(value.nodeId,upload());const instance=value.inventory.list("all").instances[0];
