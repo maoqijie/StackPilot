@@ -1,0 +1,229 @@
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) {
+  min-width: 0;
+}
+
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-view-context {
+  border: 0;
+  box-shadow: none;
+}
+
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-filter-line {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-metrics article,
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-table-wrap,
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-row {
+  border: 0;
+  box-shadow: var(--shadow-subtle);
+}
+
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-metrics article:is(:hover, :focus, :focus-within),
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-table-wrap:is(:hover, :focus, :focus-within),
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-row:is(:hover, :focus, :focus-within) {
+  border: 0;
+  outline: 0;
+}
+
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .mini-table th,
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .mini-table td {
+  border-bottom: 0;
+}
+
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .table-actions button,
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .table-actions button:is(:hover, :focus-visible, :active) {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .table-actions button {
+  color: var(--muted);
+  background: transparent;
+}
+
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .table-actions button:is(:hover, :focus-visible, :active) {
+  color: var(--primary-hover);
+  background: var(--primary-soft);
+}
+
+.deploy-tabs {
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.deploy-tabs button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.deploy-tabs button:hover,
+.deploy-tabs button:focus-visible {
+  color: var(--text);
+  outline: 0;
+  background: var(--surface-hover);
+}
+
+.deploy-tabs button.active {
+  color: var(--primary-hover);
+  background: var(--primary-soft);
+}
+
+:is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) {
+  border: 0;
+  outline: 0;
+}
+
+.deploy-create-drawer {
+  inset: 50% auto auto 50%;
+  width: min(560px, calc(100vw - 32px));
+  height: auto;
+  max-height: min(760px, calc(100dvh - 32px));
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+}
+
+:is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-head,
+:is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-actions {
+  border: 0;
+  box-shadow: none;
+}
+
+:is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-head {
+  padding: 24px;
+}
+
+:is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-body {
+  padding: 24px;
+}
+
+:is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-actions {
+  padding: 16px 24px 24px;
+}
+
+:is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-close-button {
+  border: 0;
+  box-shadow: none;
+}
+
+:is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-close-button:is(:hover, :focus-visible, :active) {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+:is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-actions .ghost,
+:is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-actions .ghost:is(:hover, :focus-visible, :active) {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+:is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .detail-kv p {
+  border: 0;
+  background: var(--surface-soft);
+}
+
+.deploy-preview-kv {
+  margin-top: 24px;
+}
+
+.deploy-create-drawer .drawer-body {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  overflow: auto;
+}
+
+.module-page-deploy-prod .module-card-title b,
+.module-page-deploy-staging .module-card-title b,
+.module-page-deploy-rollbacks .module-card-title b {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.compact-log {
+  min-width: 0;
+  padding: 16px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-dark);
+  color: var(--sidebar-text);
+  overflow: auto;
+}
+
+.compact-log p {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font: 14px/1.5 var(--font-mono);
+}
+
+.compact-log p + p {
+  margin-top: 8px;
+}
+
+@media (max-width: 773px) {
+  :is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-list {
+    padding-inline: 0;
+  }
+
+  :is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) {
+    inset: 8px;
+    width: auto;
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-overlay);
+  }
+
+  :is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-head,
+  :is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-body,
+  :is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-actions {
+    padding-inline: 16px;
+  }
+
+  :is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-head {
+    padding-top: 16px;
+  }
+
+  :is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-actions {
+    padding-bottom: 16px;
+  }
+
+  :is(.deploy-create-drawer, .deploy-log-drawer, .deploy-rollback-drawer) .drawer-actions > * {
+    flex: 1 1 0;
+  }
+
+  .deploy-create-drawer {
+    inset: 50% auto auto 50%;
+    width: min(560px, calc(100vw - 32px));
+    height: auto;
+    max-height: calc(100dvh - 32px);
+    transform: translate(-50%, -50%);
+  }
+
+  .deploy-create-drawer .drawer-actions {
+    position: static;
+  }
+}
+
+@media (max-width: 480px) {
+  .deploy-create-drawer {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+}

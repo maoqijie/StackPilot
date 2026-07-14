@@ -2,6 +2,18 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.3 - 2026-07-14
+
+### Changed
+
+- Refined deployment and rollback workspaces with responsive layouts, semantic status icons, accessible logs and a body-level creation modal.
+- Improved firewall rule and deny-record surfaces with stable responsive actions, clearer detail and confirmation hierarchy, and semantic allow/deny indicators.
+- Hardened shared dialog and drawer focus restoration across animated exits, with focused deployment and firewall interaction coverage.
+
+### Repository
+
+- Added explicit Git submission and push requirements to the repository agent guidance.
+
 ## 0.3.0-preview.2 - 2026-07-14
 
 ### Changed

@@ -13,11 +13,12 @@
 :is(.module-page-firewall, .module-page-firewall-open) .module-filter-line,
 :is(.module-page-firewall, .module-page-firewall-open) .module-metrics article,
 :is(.module-page-firewall, .module-page-firewall-open) .module-table-wrap {
-  border: 0;
+  border: 1px solid var(--line);
 }
 
 :is(.module-page-firewall, .module-page-firewall-open) .module-view-context {
-  box-shadow: none;
+  border-color: var(--primary-line);
+  box-shadow: var(--shadow-subtle);
 }
 
 :is(.module-page-firewall, .module-page-firewall-open) .module-view-context em {
@@ -26,9 +27,9 @@
 }
 
 :is(.module-page-firewall, .module-page-firewall-open) .module-filter-line {
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
+  padding: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-subtle);
 }
 
 :is(.module-page-firewall, .module-page-firewall-open) .module-metrics article,
@@ -37,7 +38,11 @@
 }
 
 :is(.module-page-firewall, .module-page-firewall-open) .module-table :is(th, td) {
-  border-bottom: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .module-table {
+  min-width: 0;
 }
 
 :is(.module-page-firewall, .module-page-firewall-open) .module-table tbody tr {
@@ -64,14 +69,18 @@
 }
 
 :is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions button,
-:is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions button:is(:hover, :focus, :focus-visible, :active) { border: 0; }
+:is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions button:is(:hover, :focus, :focus-visible, :active) {
+  border: 1px solid var(--line);
+}
 
 :is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions button {
+  border: 1px solid var(--line);
   color: var(--muted);
   background: transparent;
 }
 
 :is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions button:is(:hover, :focus-visible) {
+  border-color: var(--primary-line);
   color: var(--text);
   background: var(--surface-hover);
 }
@@ -92,7 +101,10 @@
 .firewall-rule-delete-confirm,
 .firewall-rule-drawer:is(:hover, :focus, :focus-visible, :focus-within, :active),
 .firewall-rule-modal:is(:hover, :focus, :focus-visible, :focus-within, :active),
-.firewall-rule-delete-confirm:is(:hover, :focus, :focus-visible, :focus-within, :active) { border: 0; }
+.firewall-rule-delete-confirm:is(:hover, :focus, :focus-visible, :focus-within, :active) {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
 
 .firewall-rule-drawer-scrim,
 .firewall-rule-modal-scrim,
@@ -118,22 +130,27 @@
 .firewall-rule-drawer .drawer-head .icon-action,
 .firewall-rule-modal .drawer-head .icon-action,
 .firewall-rule-delete-confirm > header .icon-action,
-.firewall-rule-drawer .drawer-actions button,
-.firewall-rule-modal .drawer-actions button,
-.firewall-rule-delete-confirm > footer button,
+.firewall-rule-drawer .drawer-actions .ghost,
+.firewall-rule-modal .drawer-actions .ghost,
+.firewall-rule-delete-confirm > footer .ghost,
 .firewall-rule-drawer .drawer-head .icon-action:is(:hover, :focus-visible, :active),
 .firewall-rule-modal .drawer-head .icon-action:is(:hover, :focus-visible, :active),
 .firewall-rule-delete-confirm > header .icon-action:is(:hover, :focus-visible, :active),
-.firewall-rule-drawer .drawer-actions button:is(:hover, :focus-visible, :active),
-.firewall-rule-modal .drawer-actions button:is(:hover, :focus-visible, :active),
-.firewall-rule-delete-confirm > footer button:is(:hover, :focus-visible, :active) { border: 0; }
+.firewall-rule-drawer .drawer-actions .ghost:is(:hover, :focus-visible, :active),
+.firewall-rule-modal .drawer-actions .ghost:is(:hover, :focus-visible, :active),
+.firewall-rule-delete-confirm > footer .ghost:is(:hover, :focus-visible, :active) {
+  border: 0;
+}
 
 .firewall-rule-drawer .drawer-body,
-.firewall-rule-modal .drawer-body { padding: 24px; }
+.firewall-rule-modal .drawer-body {
+  min-width: 0;
+  padding: 24px;
+}
 
 .firewall-rule-drawer .detail-kv p {
   padding: 12px;
-  border: 0;
+  border: 1px solid var(--line);
   background: var(--surface-soft);
 }
 
@@ -149,6 +166,8 @@
   max-height: calc(100dvh - 32px);
   border-radius: var(--radius-lg);
   transform: translate(-50%, -50%);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
 }
 
@@ -181,6 +200,7 @@
 .firewall-rule-delete-confirm {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-overlay);
+  z-index: 230;
 }
 
 .firewall-rule-delete-confirm > footer .trash-destructive { color: #fff; background: var(--danger); }
@@ -193,8 +213,13 @@
   :is(.module-page-firewall, .module-page-firewall-open) .module-card-list { padding: 0; gap: 8px; }
   :is(.module-page-firewall, .module-page-firewall-open) .module-card-row {
     padding: 16px;
-    border: 0;
+    border: 1px solid var(--line);
     box-shadow: var(--shadow-subtle);
+  }
+  :is(.module-page-firewall, .module-page-firewall-open) .module-card-row:hover {
+    border-color: var(--line-strong);
+    box-shadow: var(--shadow-subtle);
+    transform: none;
   }
   :is(.module-page-firewall, .module-page-firewall-open) .module-card-head { align-items: flex-start; flex-wrap: nowrap; }
 
@@ -207,22 +232,46 @@
   :is(.module-page-firewall, .module-page-firewall-open) .module-card-footer .firewall-rule-actions button { flex: 1 1 0; }
 
   .firewall-rule-drawer {
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 100vw;
-    height: 100dvh;
-    border-radius: 0;
+    inset: 8px;
+    width: auto;
+    height: calc(100dvh - 16px);
+    border-radius: var(--radius-lg);
   }
 
   .firewall-rule-drawer :is(.drawer-head, .drawer-body, .drawer-actions),
   .firewall-rule-modal :is(.drawer-head, .drawer-body, .drawer-actions) { padding: 16px; }
 }
 
+@media (min-width: 774px) {
+  :is(.module-page-firewall, .module-page-firewall-open) .module-table th,
+  :is(.module-page-firewall, .module-page-firewall-open) .module-table td {
+    padding-inline: 10px;
+  }
+
+  :is(.module-page-firewall, .module-page-firewall-open) .module-table th:first-child,
+  :is(.module-page-firewall, .module-page-firewall-open) .module-table td:first-child {
+    padding-left: 14px;
+  }
+
+  :is(.module-page-firewall, .module-page-firewall-open) .module-table th:last-child,
+  :is(.module-page-firewall, .module-page-firewall-open) .module-table td:last-child {
+    padding-right: 14px;
+  }
+
+  :is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions {
+    flex-wrap: nowrap;
+    gap: 2px;
+  }
+
+  :is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions button {
+    padding-inline: 7px;
+  }
+}
+
 @media (max-width: 480px) {
   .firewall-rule-modal {
-    width: calc(100vw - 16px);
-    max-height: calc(100dvh - 16px);
+    width: calc(100vw - 32px);
+    max-height: calc(100dvh - 32px);
   }
 
   .firewall-rule-modal .drawer-actions > button,
