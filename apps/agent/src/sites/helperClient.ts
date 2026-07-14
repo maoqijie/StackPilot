@@ -9,6 +9,7 @@ export type SiteHelperRequest =
   | { operation: "renew"; certificateId: string }
   | { operation: "prepare"; requestId: string; planId: string; nodeId: string; domains: string[]; repositoryUrl: string; repositoryRef: string; certificateEmail: string; certificateEnvironment: "staging" | "production"; environmentVariables: Array<{ name: string; value: string }>; expectedPlanDigest: string; runtimeInstallAuthorized: boolean }
   | { operation: "activate"; requestId: string; planId: string; stagingId: string; expectedPlanDigest: string }
+  | { operation: "rollback"; requestId: string; siteId: string; targetPlanId: string; targetReleaseId: string; expectedVersion: number }
   | { operation: "lifecycle"; requestId: string; siteId: string; action: "running" | "stopped" | "deleted" | "restored"; expectedVersion: number }
   | { operation: "logs"; requestId: string; siteId: string; since: string | null; limit: number };
 type HelperResponse = { ok: boolean; operation: SiteHelperRequest["operation"]; errorCode?: string; message?: string; data?: Record<string, unknown> };
@@ -27,7 +28,7 @@ export function requestCertHelper(request: SiteHelperRequest, signal?: AbortSign
     const fail = (error: unknown) => { socket.destroy(); reject(error instanceof CertHelperError ? error : new CertHelperError("CERT_HELPER_UNAVAILABLE")); };
     const abort = () => fail(new CertHelperError("CERT_HELPER_CANCELLED"));
     signal?.addEventListener("abort", abort, { once: true });
-    socket.setTimeout(request.operation === "status" ? 2_000 : request.operation === "logs" || request.operation === "lifecycle" ? 120_000 : 1_790_000, () => fail(new CertHelperError("CERT_HELPER_TIMEOUT")));
+    socket.setTimeout(request.operation === "status" ? 2_000 : request.operation === "logs" || request.operation === "lifecycle" || request.operation === "rollback" ? 120_000 : 1_790_000, () => fail(new CertHelperError("CERT_HELPER_TIMEOUT")));
     socket.once("connect", () => socket.end(`${JSON.stringify(request)}\n`));
     socket.on("data", (chunk: Buffer) => {
       response += chunk.toString("utf8");

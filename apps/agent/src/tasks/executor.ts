@@ -18,8 +18,8 @@ export class TaskExecutor {
       const rows = z.array(ReceiptSchema).max(1000).parse(JSON.parse(await readFile(this.receiptPath, "utf8")));
       this.receipts = new Map(rows.map((row) => {
         if (row.status !== "running") return [row.taskId, row];
-        const renewal = row.taskType === "sites.certificates.renew" || row.idempotencyKey.startsWith("renew-");
-        const update: RemoteTaskStatusUpdate = { taskId: row.taskId, attempt: row.attempt ?? 1, status: "failed", timestamp: new Date().toISOString(), errorCode: renewal ? "RESULT_UNKNOWN" : "AGENT_RESTARTED_DURING_TASK", result: { message: renewal ? "Certificate renewal result is unknown after Agent restart; it will not be replayed" : "Agent restarted before task completion", truncated: false } };
+        const irreversible = row.taskType === "sites.certificates.renew" || row.taskType === "sites.rollback" || row.idempotencyKey.startsWith("renew-");
+        const update: RemoteTaskStatusUpdate = { taskId: row.taskId, attempt: row.attempt ?? 1, status: "failed", timestamp: new Date().toISOString(), errorCode: irreversible ? "RESULT_UNKNOWN" : "AGENT_RESTARTED_DURING_TASK", result: { message: irreversible ? "Irreversible task result is unknown after Agent restart; it will not be replayed" : "Agent restarted before task completion", truncated: false } };
         return [row.taskId, { ...row, attempt: row.attempt ?? 1, status: "failed" as const, updatedAt: update.timestamp, reported: false, update }];
       }));
       await this.persist();

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { siteLifecycleHandler, sitePlanPrepareHandler } from "../../apps/agent/dist/tasks/handlers/siteOperations.js";
+import { siteLifecycleHandler, sitePlanPrepareHandler, siteRollbackHandler } from "../../apps/agent/dist/tasks/handlers/siteOperations.js";
 
 test("site prepare handler sends only the fixed helper request over Unix socket", { skip: process.platform === "win32" ? "Unix socket site helper is Linux-only" : false }, async () => {
   const directory = await mkdtemp(join(tmpdir(), "stackpilot-agent-helper-")); const socketPath = join(directory, "helper.sock"); let received;
@@ -38,4 +39,16 @@ test("site lifecycle forwards the optimistic version to the root helper", { skip
     assert.equal(received.expectedVersion, 7);
     assert.deepEqual(Object.keys(received).sort(), ["action", "expectedVersion", "operation", "requestId", "siteId"]);
   } finally { await new Promise((resolve) => server.close(resolve)); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("site rollback forwards only opaque release identity to the root helper", { skip: process.platform === "win32" ? "Unix socket site helper is Linux-only" : false }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), "stackpilot-site-helper-")); const socketPath = join(directory, "helper.sock"); let request;
+    const server = createServer((socket) => { let raw = ""; socket.on("data", (chunk) => { raw += chunk; }); socket.on("end", () => { request = JSON.parse(raw.trim()); socket.end(JSON.stringify({ ok: true, operation: "rollback", data: { operationId: request.requestId, siteId: request.siteId, releaseId: request.targetReleaseId, version: request.expectedVersion + 1 } })); }); });
+  server.listen(socketPath); await once(server, "listening");
+  try {
+    const parameters = { operationId: crypto.randomUUID(), siteId: `site-${"a".repeat(32)}`, targetPlanId: crypto.randomUUID(), targetReleaseId: `release_${"b".repeat(32)}`, expectedVersion: 2 };
+    const result = await siteRollbackHandler(parameters, new AbortController().signal, undefined, socketPath);
+    assert.deepEqual(request, { operation: "rollback", requestId: parameters.operationId, siteId: parameters.siteId, targetPlanId: parameters.targetPlanId, targetReleaseId: parameters.targetReleaseId, expectedVersion: 2 });
+    assert.equal(result.data.releaseId, parameters.targetReleaseId); assert.doesNotMatch(JSON.stringify(request), /command|path|shell/i);
+  } finally { server.close(); await once(server, "close"); await rm(directory, { recursive: true, force: true }); }
 });

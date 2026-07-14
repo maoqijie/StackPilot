@@ -20,7 +20,7 @@ const nodeId = "node-example-01";
 
 function operation(overrides: Partial<SiteOperation> = {}): SiteOperation {
   return {
-    operationId, taskId: null, type: "prepare", nodeId, siteId: null, planId, status: "queued",
+    operationId, taskId: null, type: "prepare", nodeId, siteId: null, planId, rollback: null, status: "queued",
     stage: "awaiting_executor", progressPercent: 0, result: null, errorCode: null, createdAt: now, updatedAt: now,
     ...overrides,
   };
@@ -80,7 +80,7 @@ describe("site management UI", () => {
     vi.mocked(createSitePlan).mockResolvedValue(plan());
     vi.mocked(fetchSiteOperation).mockResolvedValue(operation({
       status: "succeeded", stage: "complete", progressPercent: 100,
-      result: { message: null, siteId: null, releaseId: null, stagingId: "staging-example-01", desiredState: null, certificateRenewalBatchId: null, planPreview: { runtime: "static", healthCheckPath: "/health", changes: ["repository", "nginx"] }, logs: [] },
+      result: { message: null, siteId: null, releaseId: null, stagingId: "staging-example-01", desiredState: null, siteVersion: null, certificateRenewalBatchId: null, planPreview: { runtime: "static", healthCheckPath: "/health", changes: ["repository", "nginx"] }, logs: [] },
     }));
 
     render(<SitesPage page="sites-create" notify={vi.fn()} permissions={["sites:read", "sites:deploy", "nodes:read"]} />);
@@ -108,7 +108,7 @@ describe("site management UI", () => {
     vi.mocked(createSitePlan).mockImplementation(async (input) => ({ ...plan(), deploymentEnvironment: input.deploymentEnvironment }));
     vi.mocked(fetchSiteOperation).mockResolvedValue(operation({
       status: "succeeded", stage: "complete", progressPercent: 100,
-      result: { message: null, siteId: null, releaseId: null, stagingId: "staging-example-01", desiredState: null, certificateRenewalBatchId: null, planPreview: { runtime: "static", healthCheckPath: "/health", changes: ["repository", "nginx"] }, logs: [] },
+      result: { message: null, siteId: null, releaseId: null, stagingId: "staging-example-01", desiredState: null, siteVersion: null, certificateRenewalBatchId: null, planPreview: { runtime: "static", healthCheckPath: "/health", changes: ["repository", "nginx"] }, logs: [] },
     }));
 
     render(<SitesPage page="sites-create" notify={vi.fn()} permissions={["sites:read", "sites:deploy", "nodes:read"]} />);
@@ -157,7 +157,7 @@ describe("site management UI", () => {
     vi.mocked(querySiteLogs).mockResolvedValue(operation({ type: "log_query", planId: null, siteId: "site-example-01" }));
     vi.mocked(fetchSiteOperation).mockResolvedValue(operation({
       type: "log_query", planId: null, siteId: "site-example-01", status: "succeeded", stage: "complete", progressPercent: 100,
-      result: { message: null, siteId: "site-example-01", releaseId: null, stagingId: null, desiredState: null, certificateRenewalBatchId: null, planPreview: null, logs: [{ timestamp: now, method: "GET", path: "/health", status: 200, bytesSent: 12, clientAddressMasked: "client_abcdef123456" }] },
+      result: { message: null, siteId: "site-example-01", releaseId: null, stagingId: null, desiredState: null, siteVersion: null, certificateRenewalBatchId: null, planPreview: null, logs: [{ timestamp: now, method: "GET", path: "/health", status: 200, bytesSent: 12, clientAddressMasked: "client_abcdef123456" }] },
     }));
     render(<SitesPage page="sites-running" notify={vi.fn()} permissions={["sites:read", "sites:logs"]} />);
     await act(async () => Promise.resolve());
@@ -174,7 +174,7 @@ describe("site management UI", () => {
     vi.mocked(querySiteLogs).mockResolvedValue(operation({ type: "log_query", planId: null, siteId: "site-example-01" }));
     vi.mocked(fetchSiteOperation).mockResolvedValue(operation({
       type: "log_query", planId: null, siteId: "site-example-01", status: "succeeded", stage: "complete", progressPercent: 100,
-      result: { message: null, siteId: "site-example-01", releaseId: null, stagingId: null, desiredState: null, certificateRenewalBatchId: null, planPreview: null, logs: [] },
+      result: { message: null, siteId: "site-example-01", releaseId: null, stagingId: null, desiredState: null, siteVersion: null, certificateRenewalBatchId: null, planPreview: null, logs: [] },
     }));
     render(<SitesPage page="sites-running" notify={vi.fn()} permissions={["sites:read", "sites:logs"]} />);
     await act(async () => Promise.resolve());
@@ -190,7 +190,7 @@ describe("site management UI", () => {
     vi.mocked(updateSiteLifecycle).mockResolvedValue(operation({ type: "lifecycle", planId: null, siteId: "site-example-01", stage: "lifecycle_stopped" }));
     vi.mocked(fetchSiteOperation).mockRejectedValueOnce(new Error("临时网络错误")).mockResolvedValueOnce(operation({
       type: "lifecycle", planId: null, siteId: "site-example-01", status: "succeeded", stage: "complete", progressPercent: 100,
-      result: { message: null, siteId: "site-example-01", releaseId: null, stagingId: null, desiredState: "stopped", certificateRenewalBatchId: null, planPreview: null, logs: [] },
+      result: { message: null, siteId: "site-example-01", releaseId: null, stagingId: null, desiredState: "stopped", siteVersion: null, certificateRenewalBatchId: null, planPreview: null, logs: [] },
     }));
     render(<SitesPage page="sites-running" notify={vi.fn()} permissions={["sites:read", "sites:operate"]} />);
     await act(async () => Promise.resolve());

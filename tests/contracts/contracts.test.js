@@ -8,7 +8,8 @@ import {
   SiteRuntimePayloadSchema,
   ExecuteTerminalSnippetRequestSchema, TerminalSnippetListResponseSchema,
   AgentSiteSnapshotSchema, CertificateRenewalTaskParametersSchema, CreateCertificateRenewalRequestSchema,
-  CreateSitePlanRequestSchema, SiteDeploymentManifestSchema, SiteAccessLogRecordSchema, SitePlanSchema,
+  CreateSitePlanRequestSchema, SiteDeploymentManifestSchema, SiteAccessLogRecordSchema,
+  CreateSiteRollbackRequestSchema, SiteRollbackPayloadSchema, SiteRollbackTaskParametersSchema, SiteRollbackTaskResultSchema, SitePlanSchema,
   CreateFileUploadRequestSchema, ResumableFileUploadRecordSchema,
   AgentDatabaseBackupPlanPollResponseSchema, AgentDatabaseOperationUpdateSchema, AgentDatabaseQueryUploadSchema, AgentDatabaseScheduledBackupResultsRequestSchema,
   BusinessDatabaseBackupsPayloadSchema, CreateBusinessDatabaseBackupPlanRequestSchema, CreateDatabaseOperationPlanRequestSchema, DatabaseOperationPlanSchema,
@@ -150,6 +151,19 @@ test("site management contracts accept declarative public deployments and reject
   assert.equal(SiteAccessLogRecordSchema.safeParse(log).success, true);
   assert.equal(SiteAccessLogRecordSchema.safeParse({ ...log, path: "/callback?token=secret" }).success, false);
   assert.equal(SiteAccessLogRecordSchema.safeParse({ ...log, authorization: "secret" }).success, false);
+});
+
+test("site rollback contracts are strict and preserve backend-owned records", () => {
+  const request = { targetReleaseId: "release_target_001", expectedSiteVersion: 3, reason: "Restore stable release", idempotencyKey: "rollback-request-001" };
+  assert.equal(CreateSiteRollbackRequestSchema.safeParse(request).success, true);
+  assert.equal(CreateSiteRollbackRequestSchema.safeParse({ ...request, command: "ln -s release" }).success, false);
+  const operationId = crypto.randomUUID(); const siteId = "site-rollback-001";
+  assert.equal(SiteRollbackTaskParametersSchema.safeParse({ operationId, siteId, targetPlanId: crypto.randomUUID(), targetReleaseId: request.targetReleaseId, expectedVersion: 3 }).success, true);
+  assert.equal(SiteRollbackTaskResultSchema.safeParse({ operationId, siteId, releaseId: request.targetReleaseId, version: 4 }).success, true);
+  const now = new Date().toISOString();
+  const record = { id: "release_target_001", siteId, nodeId: "node-local", domain: "app.example.com", currentReleaseId: "release_current_001", targetReleaseId: request.targetReleaseId, targetPlanId: crypto.randomUUID(), repositoryRef: "main", status: "available", requestedBy: null, reason: null, createdAt: now, updatedAt: now, progressPercent: 0, errorCode: null, siteVersion: 3 };
+  assert.equal(SiteRollbackPayloadSchema.safeParse({ collectedAt: now, rollbacks: [record] }).success, true);
+  assert.equal(SiteRollbackPayloadSchema.safeParse({ collectedAt: now, rollbacks: [{ ...record, logs: ["invented"] }] }).success, false);
 });
 
 test("site plans require an explicit persisted deployment environment", () => {

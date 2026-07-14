@@ -50,6 +50,7 @@ export type HelperRequest =
   | { operation: "renew"; certificateId: string }
   | { operation: "prepare"; requestId: string; planId: string; nodeId: string; domains: string[]; repositoryUrl: string; repositoryRef: string; certificateEmail: string; certificateEnvironment: "staging" | "production"; environmentVariables: EnvironmentVariable[]; expectedPlanDigest: string; runtimeInstallAuthorized: boolean }
   | { operation: "activate"; requestId: string; planId: string; stagingId: string; expectedPlanDigest: string }
+  | { operation: "rollback"; requestId: string; siteId: string; targetPlanId: string; targetReleaseId: string; expectedVersion: number }
   | { operation: "lifecycle"; requestId: string; siteId: string; action: LifecycleAction; expectedVersion: number }
   | { operation: "logs"; requestId: string; siteId: string; since: string | null; limit: number };
 

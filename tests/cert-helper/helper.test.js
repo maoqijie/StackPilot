@@ -12,6 +12,7 @@ import { updateLifecycle } from "../../apps/cert-helper/dist/lifecycle.js";
 import { fitLogBudget, parseAccessLine } from "../../apps/cert-helper/dist/logs.js";
 import { assertDomainsUnclaimed } from "../../apps/cert-helper/dist/nginx.js";
 import { prepareRepository } from "../../apps/cert-helper/dist/repository.js";
+import { rollbackRelease } from "../../apps/cert-helper/dist/rollback.js";
 import { siteId, SiteStateStore, stagingId } from "../../apps/cert-helper/dist/siteState.js";
 import { handleRequest, parseRequest } from "../../apps/cert-helper/dist/protocol.js";
 
@@ -42,9 +43,30 @@ test("helper protocol accepts only fixed operation schemas and public GitHub HTT
     { ...prepareRequest, repositoryUrl: "https://github.com/example/site.git?token=x" },
     { ...prepareRequest, environmentVariables: [{ name: "SAFE", value: "line1\nline2" }] },
     { operation: "lifecycle", requestId, siteId: "/etc/passwd", action: "deleted", expectedVersion: 1 },
+    { operation: "rollback", requestId, siteId: `site-${"a".repeat(32)}`, targetPlanId: planId, targetReleaseId: "/etc/passwd", expectedVersion: 1 },
     { operation: "shell", command: "id" },
   ];
+  assert.deepEqual(parseRequest(JSON.stringify({ operation: "rollback", requestId, siteId: `site-${"a".repeat(32)}`, targetPlanId: planId, targetReleaseId: `release_${"b".repeat(32)}`, expectedVersion: 2 })), { operation: "rollback", requestId, siteId: `site-${"a".repeat(32)}`, targetPlanId: planId, targetReleaseId: `release_${"b".repeat(32)}`, expectedVersion: 2 });
   for (const value of invalid) assert.throws(() => parseRequest(JSON.stringify(value)));
+});
+
+test("rollback switches an installed release and restores the previous release when health fails", async () => {
+  const root = await mkdtemp(join(tmpdir(), "stackpilot-helper-")); const cfg = config(root); const store = new SiteStateStore(cfg);
+  const first = prepared(); const second = prepared({ planId: "44444444-4444-4444-8444-444444444444", releaseId: `release_${"d".repeat(32)}`, commitSha: "e".repeat(40) });
+  const id = siteId(nodeId, first.domains[0]); const releases = join(cfg.sitesRoot, id, "releases"); await mkdir(releases, { recursive: true });
+  for (const plan of [first, second]) { const release = join(releases, plan.releaseId); await mkdir(join(release, "public"), { recursive: true }); await writeFile(join(release, ".stackpilot-release.json"), JSON.stringify({ releaseId: plan.releaseId, commitSha: plan.commitSha })); await store.savePlan(plan); }
+  const site = { siteId: id, planId: first.planId, domains: first.domains, manifest: first.manifest, releaseId: first.releaseId, port: null, desiredState: "running", protected: false, version: 1, certificateName: first.domains[0], runtimePath: null, createdAt: first.preparedAt, updatedAt: first.preparedAt };
+  await store.saveSite(site); await mkdir(cfg.nginxRoot, { recursive: true }); await mkdir(cfg.environmentRoot, { recursive: true }); await mkdir(cfg.unitRoot, { recursive: true }); await symlink(`releases/${first.releaseId}`, join(cfg.sitesRoot, id, "current")); await writeFile(join(cfg.nginxRoot, `stackpilot-${id}.conf`), "previous-nginx"); await writeFile(join(cfg.environmentRoot, `${id}.env`), "OLD=1\n");
+  try {
+    const success = await rollbackRelease(id, second.planId, second.releaseId, 1, cfg, async () => ({ stdout: "", stderr: "" }));
+    assert.equal(success.releaseId, second.releaseId); assert.equal(await readlink(join(cfg.sitesRoot, id, "current")), `releases/${second.releaseId}`); assert.equal((await store.site(id)).version, 2);
+    await writeFile(join(releases, first.releaseId, ".stackpilot-release.json"), JSON.stringify({ releaseId: first.releaseId, commitSha: "f".repeat(40) }));
+    await assert.rejects(() => rollbackRelease(id, first.planId, first.releaseId, 2, cfg, async () => ({ stdout: "", stderr: "" })), /marker is invalid/);
+    await writeFile(join(releases, first.releaseId, ".stackpilot-release.json"), JSON.stringify({ releaseId: first.releaseId, commitSha: first.commitSha }));
+    let checks = 0; const failingRun = async (executable) => { if (executable === "/usr/bin/curl" && ++checks === 1) throw new Error("target unhealthy"); return { stdout: "", stderr: "" }; };
+    await assert.rejects(() => rollbackRelease(id, first.planId, first.releaseId, 2, cfg, failingRun), /target unhealthy/);
+    assert.equal(await readlink(join(cfg.sitesRoot, id, "current")), `releases/${second.releaseId}`); assert.equal((await store.site(id)).releaseId, second.releaseId);
+  } finally { await writableTree(root); await rm(root, { recursive: true, force: true }); }
 });
 
 test("prepare runs a fixed non-root Git clone and enforces strict prebuilt manifest", async () => {

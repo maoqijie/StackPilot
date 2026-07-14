@@ -74,7 +74,7 @@ export async function routeRequest(context: RequestContext): Promise<void> {
   if (parts[0] === "api" && parts[1] === "database-backups") { await routeDatabaseBackupRequest(context); return; }
   if (parts[0] === "api" && ["files", "file-trash", "file-uploads"].includes(parts[1] ?? "")) { await routeFileRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "resumable-file-uploads") { await routeFileUploadRequest(context); return; }
-  if (parts[0] === "api" && ["site-plans", "site-operations"].includes(parts[1] ?? "")) { await routeSiteRequest(context); return; }
+  if (parts[0] === "api" && ["site-plans", "site-operations", "site-rollbacks"].includes(parts[1] ?? "")) { await routeSiteRequest(context); return; }
   if (context.url.pathname === "/api/deployments" && method === "GET") {
     context.identity?.require(context.principal, "sites:read");
     response.setHeader("Cache-Control", "no-store");

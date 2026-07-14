@@ -13,6 +13,31 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Removed obsolete systemd lifecycle-action styles so the Web surface consistently represents the node-scoped read-only monitoring boundary.
 
+## 0.3.0-preview.13 - 2026-07-15
+
+### Fixed
+
+- Serialized same-process site-helper lock contenders and tolerated lock handoff races while reading owner metadata, preventing concurrent activations from failing when the previous lock disappears between inspection and `readlink`.
+
+## 0.3.0-preview.12 - 2026-07-15
+
+### Security
+
+- Revalidated the current principal node scope before returning an idempotent site-plan result, preventing a previously authorized plan from bypassing a later scope reduction.
+
+## 0.3.0-preview.11 - 2026-07-15
+
+### Added
+
+- Added authenticated, node-scoped site rollback history and execution APIs backed by the existing Controller, RemoteTask, Agent and root-only site-helper boundary.
+- Added strict rollback contracts, release/plan ownership checks, optimistic site versions, idempotency, protected-site guards and atomic success reconciliation.
+- Added a real rollback workbench with backend freshness, visibility-aware 10-second polling, stable detail selection, permission-aware actions and reauthentication.
+
+### Security
+
+- Rollback execution requires a current user session, CSRF, `sites:deploy`, node scope and a one-time reauthentication proof; API tokens cannot execute rollbacks.
+- The site helper accepts only opaque plan and release identities, validates immutable commit markers, serializes site changes and restores the previous release after a failed health check.
+
 ## 0.3.0-preview.10 - 2026-07-15
 
 ### Fixed
