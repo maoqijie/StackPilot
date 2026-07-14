@@ -21,6 +21,7 @@ import { routeDatabaseBackupRequest } from "./databaseBackupRouter.js";
 import { routeSiteRequest } from "./siteRouter.js";
 import { routeDatabaseRequest } from "./databaseRouter.js";
 import { routeFileRequest, routeFileUploadRequest } from "./fileRouter.js";
+import { routeSystemdRequest } from "./systemdRouter.js";
 
 function idAt(context: RequestContext, index: number) {
   try {
@@ -64,6 +65,7 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     await routeControlPlaneRequest(context); return;
   }
   if (parts[0] === "api" && parts[1] === "terminal") { await routeTerminalRequest(context); return; }
+  if (parts[0] === "api" && parts[1] === "systemd" && parts[2] === "services") { await routeSystemdRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "database-backups") { await routeDatabaseBackupRequest(context); return; }
   if (parts[0] === "api" && ["files", "file-trash", "file-uploads"].includes(parts[1] ?? "")) { await routeFileRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "resumable-file-uploads") { await routeFileUploadRequest(context); return; }

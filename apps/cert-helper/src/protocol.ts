@@ -9,6 +9,7 @@ import { prepareRepository } from "./repository.js";
 import { SiteStateStore } from "./siteState.js";
 import { HelperError, type HelperRequest, type HelperResponse } from "./types.js";
 import { parseRequest } from "./validation.js";
+import { listSystemdUnits, readSystemdLogs, runIdempotentSystemdAction } from "./systemd.js";
 
 export type Dependencies = {
   config?: HelperConfig;
@@ -19,10 +20,23 @@ export type Dependencies = {
   lifecycle?: typeof updateLifecycle;
   logs?: typeof queryLogs;
   renew?: typeof renewOpaqueCertificate;
+  systemdList?: typeof listSystemdUnits;
+  systemdLogs?: typeof readSystemdLogs;
+  systemdAction?: typeof runIdempotentSystemdAction;
 };
 
 async function execute(request: HelperRequest, dependencies: Dependencies): Promise<HelperResponse> {
   const config = dependencies.config ?? loadConfig();
+  const managedUnits = config.systemdManagedUnits ?? new Set<string>();
+  if (request.operation === "systemd-list") {
+    return { ok: true, operation: request.operation, data: await (dependencies.systemdList ?? listSystemdUnits)(managedUnits) };
+  }
+  if (request.operation === "systemd-logs") {
+    return { ok: true, operation: request.operation, data: await (dependencies.systemdLogs ?? readSystemdLogs)(request.unit, request.limit) };
+  }
+  if (request.operation === "systemd-action") {
+    return { ok: true, operation: request.operation, data: await (dependencies.systemdAction ?? runIdempotentSystemdAction)(request.requestId, request.unit, request.action, config.stateRoot, managedUnits) };
+  }
   if (request.operation === "status") {
     const ready = await (dependencies.ready ?? helperReady)();
     return ready && config.protectedDomains.size > 0

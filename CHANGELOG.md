@@ -2,6 +2,23 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.4 - 2026-07-15
+
+### Added
+
+- Added authenticated systemd inventory, bounded journal reads and allowlisted start, stop and restart operations through the existing root-only local helper boundary.
+- Added strict shared systemd response contracts and Controller routes with CSRF, RBAC, one-time reauthentication and audit enforcement.
+
+### Changed
+
+- Replaced the systemd workbench fixtures, synthetic journal output and browser-only mutations with real backend data, visible collection timestamps and silent visibility-aware 10-second polling.
+- Preserved service filters and stable detail selection across refreshes, while loading journal entries only when an operator opens a service.
+
+### Security
+
+- systemd actions accept only validated service, timer, socket and target unit names and an explicit deployment allowlist; arbitrary commands and paths remain unavailable.
+- Journal results are line-bounded, size-bounded and redact common credential fields before crossing the helper boundary.
+
 ## 0.3.0-preview.3 - 2026-07-14
 
 ### Added

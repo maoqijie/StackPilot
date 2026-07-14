@@ -5,6 +5,7 @@ export type RuntimeDefinition = { runtime: Exclude<RuntimeKind, "static">; versi
 export type HelperConfig = {
   stateRoot: string; sitesRoot: string; nginxRoot: string; environmentRoot: string; unitRoot: string;
   challengeRoot: string; runtimeRoot: string; runtimeCatalogPath: string; protectedDomains: ReadonlySet<string>;
+  systemdManagedUnits?: ReadonlySet<string>;
 };
 
 const absolute = (value: string | undefined, fallback: string) => {
@@ -20,6 +21,13 @@ function protectedDomains(value: string | undefined) {
   return new Set(domains.filter((domain) => !domain.endsWith(".invalid")));
 }
 
+function systemdManagedUnits(value: string | undefined) {
+  const units = (value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+  if (units.some((unit) => !/^[A-Za-z0-9][A-Za-z0-9_.@:-]*\.(?:service|timer|socket|target)$/.test(unit))) throw new HelperError("INVALID_CONFIGURATION", "Managed systemd units are invalid");
+  if (units.some((unit) => /^stackpilot-(?:controller|cert-helper)(?:@[^.]*)?\.(?:service|socket)$/.test(unit))) throw new HelperError("INVALID_CONFIGURATION", "Core StackPilot control units cannot be managed from the web console");
+  return new Set(units);
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): HelperConfig {
   return {
     stateRoot: absolute(env.STACKPILOT_SITE_HELPER_STATE_ROOT, "/var/lib/stackpilot-site-helper"),
@@ -31,6 +39,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HelperConfig {
     runtimeRoot: absolute(env.STACKPILOT_RUNTIME_ROOT, "/opt/stackpilot-runtimes"),
     runtimeCatalogPath: absolute(env.STACKPILOT_RUNTIME_CATALOG, "/etc/stackpilot-site-helper/runtimes.json"),
     protectedDomains: protectedDomains(env.STACKPILOT_CORE_SITE_DOMAINS),
+    systemdManagedUnits: systemdManagedUnits(env.STACKPILOT_SYSTEMD_MANAGED_UNITS),
   };
 }
 

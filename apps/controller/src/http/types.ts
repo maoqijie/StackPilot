@@ -25,6 +25,7 @@ import type { DatabaseRetentionService } from "../modules/databases/databaseRete
 import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
+import type { SystemdBackend } from "../platform/systemdClient.js";
 
 export type Services = {
   overview: OverviewService;
@@ -48,6 +49,7 @@ export type Services = {
   nodes: NodeService;
   remoteTasks: RemoteTaskService;
   terminalSnippets: TerminalSnippetService;
+  systemd: SystemdBackend;
 };
 export type RequestContext = {
   request: IncomingMessage;

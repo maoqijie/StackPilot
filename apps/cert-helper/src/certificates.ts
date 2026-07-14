@@ -6,7 +6,7 @@ import type { PreparedPlan } from "./types.js";
 import { HelperError } from "./types.js";
 
 export async function helperReady() {
-  try { await Promise.all(["/usr/bin/git", "/usr/bin/systemd-run", "/usr/bin/systemctl", "/usr/sbin/nginx", "/usr/bin/certbot", "/usr/bin/curl", "/usr/bin/tar"].map((path) => access(path, constants.X_OK))); return true; } catch { return false; }
+  try { await Promise.all(["/usr/bin/git", "/usr/bin/systemd-run", "/usr/bin/systemctl", "/usr/bin/journalctl", "/usr/sbin/nginx", "/usr/bin/certbot", "/usr/bin/curl", "/usr/bin/tar"].map((path) => access(path, constants.X_OK))); return true; } catch { return false; }
 }
 
 export async function issueCertificate(plan: PreparedPlan, challengeRoot: string, run: FixedCommandRunner = runFixedCommand) {

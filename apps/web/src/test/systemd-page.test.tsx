@@ -1,55 +1,55 @@
-import { render, screen, within } from "@testing-library/react";
+import type { SystemdUnit } from "@stackpilot/contracts";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchSystemdJournal, fetchSystemdUnits, mutateSystemdUnit } from "../api/systemdApi";
+import { reauthenticate } from "../api/identityApi";
 import { SystemdPage } from "../pages/SystemdPage";
 
+vi.mock("../api/systemdApi", () => ({ fetchSystemdUnits: vi.fn(), fetchSystemdJournal: vi.fn(), mutateSystemdUnit: vi.fn() }));
+vi.mock("../api/identityApi", () => ({ reauthenticate: vi.fn() }));
+
+const collectedAt = "2026-07-15T00:00:00.000Z";
+const units: SystemdUnit[] = [
+  { id: "nginx.service", name: "nginx.service", description: "Nginx web server", host: "prod-host", state: "active", activeState: "active", subState: "running", restarts: 0, memoryBytes: 88_080_384, stateChangedAt: collectedAt, availableActions: ["start", "stop", "restart"] },
+  { id: "mysql.service", name: "mysql.service", description: "MySQL", host: "prod-host", state: "failed", activeState: "failed", subState: "failed", restarts: 6, memoryBytes: 1_288_490_188, stateChangedAt: collectedAt, availableActions: [] },
+];
+
 describe("systemd service page", () => {
-  it("opens a complete portaled service drawer", async () => {
-    const user = userEvent.setup();
+  beforeEach(() => {
+    vi.mocked(fetchSystemdUnits).mockReset().mockResolvedValue({ units: [...units], host: "prod-host", collectedAt, warnings: [] });
+    vi.mocked(fetchSystemdJournal).mockReset().mockResolvedValue({ unit: "nginx.service", entries: [{ timestamp: collectedAt, message: "Started Nginx" }], collectedAt, truncated: false });
+    vi.mocked(reauthenticate).mockReset().mockResolvedValue({ proof: "proof-value-with-more-than-thirty-two-characters", expiresAt: collectedAt });
+    vi.mocked(mutateSystemdUnit).mockReset().mockResolvedValue({ unit: units[0], collectedAt, message: "nginx.service 已停止", tone: "warning" });
+  });
+
+  it("loads real services and opens a portaled journal drawer", async () => {
     render(<SystemdPage page="systemd" notify={vi.fn()} />);
-    const table = screen.getByRole("table");
-
-    await user.click(within(table).getByRole("button", { name: "查看服务 nginx.service 日志" }));
-
-    const drawer = screen.getByRole("dialog", { name: "nginx.service" });
+    const table = await screen.findByRole("table");
+    await userEvent.click(within(table).getByRole("button", { name: "查看服务 nginx.service 日志" }));
+    const drawer = await screen.findByRole("dialog", { name: "nginx.service" });
     expect(drawer.parentElement).toBe(document.body);
-    expect(drawer).toHaveClass("systemd-service-drawer");
-    expect(within(drawer).getByText("panel-se-01", { selector: "dd" })).toBeInTheDocument();
-    expect(within(drawer).getByText("内存")).toBeInTheDocument();
-    expect(within(drawer).getByText("重启次数")).toBeInTheDocument();
-    expect(within(drawer).getByRole("log", { name: "nginx.service journal 摘要" })).toBeInTheDocument();
+    expect(within(drawer).getByText("prod-host", { selector: "dd" })).toBeInTheDocument();
+    expect(await within(drawer).findByText("Started Nginx")).toBeInTheDocument();
+    expect(fetchSystemdJournal).toHaveBeenCalledWith("nginx.service", expect.any(AbortSignal));
   });
 
-  it("confirms service mutations before updating the selected service", async () => {
-    const user = userEvent.setup();
-    const notify = vi.fn();
-    render(<SystemdPage page="systemd" notify={notify} />);
-    const table = screen.getByRole("table");
-
-    await user.click(within(table).getByRole("button", { name: "停止服务 nginx.service" }));
-
+  it("reauthenticates before a real service mutation", async () => {
+    const notify = vi.fn(); render(<SystemdPage page="systemd" notify={notify} />);
+    const table = await screen.findByRole("table");
+    await userEvent.click(within(table).getByRole("button", { name: "停止服务 nginx.service" }));
     const dialog = screen.getByRole("alertdialog", { name: "确认停止服务" });
-    expect(dialog.parentElement).toBe(document.body);
-    expect(dialog).toHaveClass("systemd-action-confirm");
-    expect(screen.getAllByText("运行中").length).toBeGreaterThan(0);
-
-    await user.click(within(dialog).getByRole("button", { name: "确认停止" }));
-
-    expect(screen.queryByRole("alertdialog", { name: "确认停止服务" })).not.toBeInTheDocument();
-    expect(screen.getAllByText("未运行").length).toBeGreaterThan(0);
-    expect(notify).toHaveBeenCalledWith("nginx.service 已停止", "warning");
+    await userEvent.type(within(dialog).getByLabelText("当前密码"), "current password");
+    await userEvent.click(within(dialog).getByRole("button", { name: "确认停止" }));
+    await waitFor(() => expect(mutateSystemdUnit).toHaveBeenCalledWith("nginx.service", "stop", "proof-value-with-more-than-thirty-two-characters", expect.stringMatching(/^[0-9a-f-]{36}$/)));
+    expect(reauthenticate).toHaveBeenCalledWith("current password"); expect(notify).toHaveBeenCalledWith("nginx.service 已停止", "warning");
   });
 
-  it("marks a failed alert handled without hiding the failed service", async () => {
-    const user = userEvent.setup();
-    render(<SystemdPage page="systemd-failed" notify={vi.fn()} />);
-    const table = screen.getByRole("table");
-
-    expect(screen.queryByRole("button", { name: /刷新|重新采集|重新扫描/ })).not.toBeInTheDocument();
-    await user.click(within(table).getByRole("button", { name: "标记服务 mysql.service 已处理" }));
-    await user.click(within(screen.getByRole("alertdialog", { name: "确认标记已处理" })).getByRole("button", { name: "确认标记" }));
-
-    expect(screen.getAllByText("故障 · 已处理").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("mysql.service").length).toBeGreaterThan(0);
+  it("shows an initial backend error without demo services", async () => {
+    vi.mocked(fetchSystemdUnits).mockRejectedValueOnce(new Error("systemd 运维后端暂不可用"));
+    render(<SystemdPage page="systemd-active" notify={vi.fn()} />);
+    expect(await screen.findByText("systemd 运维后端暂不可用")).toBeInTheDocument();
+    expect(screen.queryByText("nginx.service")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
   });
 });

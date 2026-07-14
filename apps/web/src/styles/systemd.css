@@ -28,6 +28,14 @@
   min-width: 0;
 }
 .systemd-content.logs-mode { grid-template-columns: minmax(0, 1fr); }
+.systemd-collection-note {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
 
 .systemd-service-identity,
 .systemd-status,
@@ -147,6 +155,7 @@
 .systemd-log-list article > button:hover,
 .systemd-log-list article > button:focus-visible { border: 0; color: #f8fafc; background: var(--primary-active); }
 .systemd-log-empty { margin: 0; padding: 40px 16px; color: #94a3b8; text-align: center; }
+.systemd-log-hint { margin: 8px 0 0; color: #94a3b8; font-size: 12px; }
 
 .systemd-journal { min-width: 0; display: grid; gap: 4px; color: #cbd5e1; font: 400 12px/1.5 var(--font-mono); }
 .systemd-journal p { min-width: 0; margin: 0; display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 8px; }
@@ -219,6 +228,9 @@
 .systemd-action-confirm > header .icon-action:focus-visible { border: 0; }
 .systemd-action-confirm > footer :is(.ghost, .primary),
 .systemd-action-confirm > footer :is(.ghost, .primary):is(:hover, :focus, :focus-visible, :active) { border: 0; }
+.systemd-reauth-field { display: grid; gap: 8px; }
+.systemd-reauth-field > span { display: flex; align-items: center; gap: 8px; color: var(--text-soft); font-size: 14px; font-weight: 500; }
+.systemd-reauth-field input { width: 100%; height: var(--control-md); padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); }
 
 @media (max-width: 773px) {
   .systemd-page .module-card-row { min-width: 0; }

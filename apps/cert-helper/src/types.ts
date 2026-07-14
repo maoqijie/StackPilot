@@ -51,7 +51,10 @@ export type HelperRequest =
   | { operation: "prepare"; requestId: string; planId: string; nodeId: string; domains: string[]; repositoryUrl: string; repositoryRef: string; certificateEmail: string; certificateEnvironment: "staging" | "production"; environmentVariables: EnvironmentVariable[]; expectedPlanDigest: string }
   | { operation: "activate"; requestId: string; planId: string; stagingId: string; expectedPlanDigest: string }
   | { operation: "lifecycle"; requestId: string; siteId: string; action: LifecycleAction; expectedVersion: number }
-  | { operation: "logs"; requestId: string; siteId: string; since: string | null; limit: number };
+  | { operation: "logs"; requestId: string; siteId: string; since: string | null; limit: number }
+  | { operation: "systemd-list" }
+  | { operation: "systemd-logs"; unit: string; limit: number }
+  | { operation: "systemd-action"; requestId: string; unit: string; action: "start" | "stop" | "restart" };
 
 export type HelperResponse = {
   ok: boolean;

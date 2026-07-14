@@ -14,6 +14,7 @@ import { assertDomainsUnclaimed } from "../../apps/cert-helper/dist/nginx.js";
 import { prepareRepository } from "../../apps/cert-helper/dist/repository.js";
 import { siteId, SiteStateStore, stagingId } from "../../apps/cert-helper/dist/siteState.js";
 import { handleRequest, parseRequest } from "../../apps/cert-helper/dist/protocol.js";
+import { parseSystemdShow, redactSystemdMessage, runIdempotentSystemdAction, runSystemdAction } from "../../apps/cert-helper/dist/systemd.js";
 
 const planId = "11111111-1111-4111-8111-111111111111";
 const requestId = "22222222-2222-4222-8222-222222222222";
@@ -43,8 +44,47 @@ test("helper protocol accepts only fixed operation schemas and public GitHub HTT
     { ...prepareRequest, environmentVariables: [{ name: "SAFE", value: "line1\nline2" }] },
     { operation: "lifecycle", requestId, siteId: "/etc/passwd", action: "deleted", expectedVersion: 1 },
     { operation: "shell", command: "id" },
+    { operation: "systemd-logs", unit: "../../etc/passwd", limit: 100 },
+    { operation: "systemd-action", requestId, unit: "nginx.service", action: "enable" },
   ];
   for (const value of invalid) assert.throws(() => parseRequest(JSON.stringify(value)));
+});
+
+test("systemd helper exposes bounded records and only mutates allowlisted units", async () => {
+  const show = [
+    "Id=nginx.service", "Description=Nginx web server", "LoadState=loaded", "ActiveState=active", "SubState=running",
+    "NRestarts=2", "MemoryCurrent=1048576", "StateChangeTimestamp=Tue 2026-07-14 12:00:00 UTC", "",
+  ].join("\n");
+  const rows = parseSystemdShow(show, new Set(["nginx.service"]), "panel-prod-01");
+  assert.equal(rows.length, 1); assert.equal(rows[0].host, "panel-prod-01"); assert.equal(rows[0].memoryBytes, 1048576);
+  assert.deepEqual(rows[0].availableActions, ["start", "stop", "restart"]);
+  assert.equal(redactSystemdMessage("password=hunter2 Authorization=Bearer-token token=abc"), "password=[REDACTED] Authorization=[REDACTED] token=[REDACTED]");
+  await assert.rejects(() => runSystemdAction("ssh.service", "restart", new Set(["nginx.service"]), async () => ({ stdout: show, stderr: "" })), /allowlist/);
+  const calls = []; const result = await runSystemdAction("nginx.service", "restart", new Set(["nginx.service"]), async (executable, args) => { calls.push([executable, args]); return { stdout: args[0] === "show" ? show : "", stderr: "" }; });
+  assert.deepEqual(calls[0], ["/usr/bin/systemctl", ["restart", "nginx.service"]]); assert.equal(result.unit.state, "active");
+});
+
+test("systemd restart receipts prevent replay after completion or an unknown result", async () => {
+  const root = await mkdtemp(join(tmpdir(), "stackpilot-systemd-receipt-"));
+  const show = ["Id=nginx.service", "Description=Nginx", "LoadState=loaded", "ActiveState=active", "SubState=running", "NRestarts=1", "MemoryCurrent=1024", "StateChangeTimestamp=Tue 2026-07-14 12:00:00 UTC", ""].join("\n");
+  let mutations = 0;
+  const run = async (_executable, args) => { if (args[0] === "restart") mutations += 1; return { stdout: args[0] === "show" ? show : "", stderr: "" }; };
+  try {
+    const first = await runIdempotentSystemdAction(requestId, "nginx.service", "restart", root, new Set(["nginx.service"]), run);
+    const repeated = await runIdempotentSystemdAction(requestId, "nginx.service", "restart", root, new Set(["nginx.service"]), run);
+    assert.equal(first.unit.id, "nginx.service"); assert.deepEqual(repeated, first); assert.equal(mutations, 1);
+    await assert.rejects(() => runIdempotentSystemdAction(requestId, "nginx.service", "stop", root, new Set(["nginx.service"]), run), /idempotency key changed/);
+    const unknownId = "44444444-4444-4444-8444-444444444444";
+    await assert.rejects(() => runIdempotentSystemdAction(unknownId, "nginx.service", "restart", root, new Set(["nginx.service"]), async () => { throw new Error("interrupted"); }));
+    await assert.rejects(() => runIdempotentSystemdAction(unknownId, "nginx.service", "restart", root, new Set(["nginx.service"]), run), /will not be replayed/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("systemd inventory enumerates unit names before reading bounded properties", async () => {
+  const { listSystemdUnits } = await import("../../apps/cert-helper/dist/systemd.js"); const calls = [];
+  const show = ["Id=nginx.service", "Description=Nginx", "LoadState=loaded", "ActiveState=active", "SubState=running", "NRestarts=0", "MemoryCurrent=1024", "StateChangeTimestamp=Tue 2026-07-14 12:00:00 UTC", ""].join("\n");
+  const result = await listSystemdUnits(new Set(), async (executable, args) => { calls.push([executable, args]); return { stdout: args[0] === "list-units" ? "nginx.service loaded active running Nginx\ninvalid/path loaded active running unsafe" : show, stderr: "" }; });
+  assert.equal(result.units.length, 1); assert.equal(result.units[0].name, "nginx.service"); assert.equal(calls[0][1][0], "list-units"); assert.ok(calls[1][1].includes("nginx.service")); assert.equal(calls[1][1].includes("invalid/path"), false);
 });
 
 test("prepare runs a fixed non-root Git clone and enforces strict prebuilt manifest", async () => {

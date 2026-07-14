@@ -8,6 +8,7 @@ const CERTIFICATE_ID = /^cert_[a-f0-9]{32}$/;
 const DOMAIN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
 const ENV_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/;
 const REF = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,159}$/;
+const SYSTEMD_UNIT = /^[A-Za-z0-9][A-Za-z0-9_.@:-]*\.(?:service|timer|socket|target)$/;
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new HelperError("INVALID_REQUEST", "Request must be an object");
@@ -56,6 +57,17 @@ export function parseRequest(raw: string): HelperRequest {
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { throw new HelperError("INVALID_REQUEST", "Request must be valid JSON"); }
   const value = record(parsed);
+  if (value.operation === "systemd-list") { exactKeys(value, ["operation"]); return { operation: "systemd-list" }; }
+  if (value.operation === "systemd-logs") {
+    exactKeys(value, ["operation", "unit", "limit"]);
+    if (typeof value.unit !== "string" || !SYSTEMD_UNIT.test(value.unit) || !Number.isInteger(value.limit) || Number(value.limit) < 1 || Number(value.limit) > 200) throw new HelperError("INVALID_REQUEST", "systemd log request is invalid");
+    return { operation: "systemd-logs", unit: value.unit, limit: Number(value.limit) };
+  }
+  if (value.operation === "systemd-action") {
+    exactKeys(value, ["operation", "requestId", "unit", "action"]);
+    if (typeof value.unit !== "string" || !SYSTEMD_UNIT.test(value.unit) || !["start", "stop", "restart"].includes(String(value.action))) throw new HelperError("INVALID_REQUEST", "systemd action request is invalid");
+    return { operation: "systemd-action", requestId: requestId(value.requestId), unit: value.unit, action: value.action as "start" | "stop" | "restart" };
+  }
   if (value.operation === "status") { exactKeys(value, ["operation"]); return { operation: "status" }; }
   if (value.operation === "renew") {
     exactKeys(value, ["operation", "certificateId"]);
