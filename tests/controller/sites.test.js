@@ -65,7 +65,10 @@ test("Nginx site collector reports unavailable sources instead of demo sites", a
 test("Controller local collector exposes a renewable opaque Certbot identity only when helper is ready", async () => {
   const root = await mkdtemp(join(tmpdir(), "stackpilot-local-cert-"));
   try {
-    await writeFile(join(root, "site.conf"), "server { listen 443 ssl; server_name local.example.com; ssl_certificate /etc/letsencrypt/live/local.example.com/fullchain.pem; }");
+    await writeFile(join(root, "site.conf"), `
+      server { listen 80; server_name local.example.com; }
+      server { listen 443 ssl; server_name local.example.com; ssl_certificate /etc/letsencrypt/live/local.example.com/fullchain.pem; }
+    `);
     const certificate = { ...(await probe("local.example.com", [{ port: 443, secure: true }])).certificate, renewalMode: "automatic", renewable: true, unavailableReason: null, certificateId: `cert_${"a".repeat(32)}` };
     const sourceId = `source_${(await import("node:crypto")).createHash("sha256").update("public-certificate:/etc/letsencrypt/live/local.example.com/fullchain.pem").digest("hex").slice(0, 32)}`;
     const payload = await new NginxSiteCollector([root], probe, "controller", async () => new Map([[sourceId, certificate]])).collectSites();
@@ -130,6 +133,46 @@ test("site monitoring aggregates authorized Agent snapshots and computes freshne
   assert.equal(payload.sites[0].freshness, "current");
 });
 
+test("site monitoring removes local mirrors while retaining the Agent identity for managed sites", async () => {
+  const repository = new MemoryAgentControlRepository();
+  const sameHost = remoteNode("11111111-1111-4111-8111-111111111111");
+  sameHost.siteSnapshot.sites[0].host = " CONTROLLER-1 ";
+  sameHost.siteSnapshot.sites[0].domain = " Remote.Example.com ";
+  sameHost.siteSnapshot.sites[0].status = "unknown";
+  sameHost.siteSnapshot.sites[0].latencyMs = null;
+  const otherHost = remoteNode("22222222-2222-4222-8222-222222222222");
+  otherHost.siteSnapshot.sites[0].host = "controller-2";
+  await repository.update((state) => state.nodes.push(sameHost, otherHost));
+  const localSite = {
+    ...sameHost.siteSnapshot.sites[0], id: "nginx-local", nodeId: "node-local", host: "controller-1",
+    status: "running", latencyMs: 7, collectedAt: new Date().toISOString(), freshness: "current",
+    renewal: { batchId: null, taskId: null, status: "idle", message: null, updatedAt: null },
+  };
+  const service = new SiteMonitoringService({ collectSites: async () => ({
+    collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], sites: [localSite],
+  }) }, repository);
+
+  const payload = await service.getSites({ nodeScope: "all" });
+  assert.deepEqual(payload.sites.map((site) => [site.nodeId, site.host.trim(), site.domain.trim()]), [
+    [sameHost.nodeId, "CONTROLLER-1", "Remote.Example.com"],
+    [otherHost.nodeId, "controller-2", "remote.example.com"],
+  ]);
+  const managedSiteId = publicSiteId(sameHost.nodeId, sameHost.siteSnapshot.sites[0].id);
+  const managedRepository = new MemorySiteManagementRepository();
+  managedRepository.saveManagedSite({
+    siteId: managedSiteId, nodeId: sameHost.nodeId, domainDigest: "unused", desiredState: "running",
+    protected: false, version: 2, activeReleaseId: "release-1", createdAt: collectedAt, updatedAt: collectedAt,
+  });
+  const management = new SiteManagementService(managedRepository, service, {});
+  const managed = (await management.getSites({ nodeScope: "all" })).sites.find((site) => site.id === managedSiteId);
+  assert.equal(managed?.nodeId, sameHost.nodeId);
+  assert.equal(managed?.manageability, "managed");
+  assert.equal(managed?.version, 2);
+  assert.equal(managed?.status, "running");
+  assert.equal(managed?.latencyMs, 7);
+  assert.equal(managed?.certificate.certificateId, "cert-agent-1");
+});
+
 test("certificate renewal batches are atomic, idempotent, deduplicated and non-retryable", async () => {
   const repository = new MemoryAgentControlRepository();
   const nodeId = "11111111-1111-4111-8111-111111111111";
@@ -139,6 +182,7 @@ test("certificate renewal batches are atomic, idempotent, deduplicated and non-r
   const first = await service.create(input, { nodeScope: [nodeId] }, "user:test", crypto.randomUUID());
   const repeated = await service.create(input, { nodeScope: [nodeId] }, "user:test", crypto.randomUUID());
   assert.equal(repeated.batchId, first.batchId);
+  await assert.rejects(() => service.create({ siteIds: [publicSiteId(nodeId, "agent-site-other")], idempotencyKey: input.idempotencyKey }, { nodeScope: [nodeId] }, "user:test", crypto.randomUUID()), /幂等键/);
   let state = await repository.read();
   assert.equal(state.tasks.length, 1);
   assert.equal(state.tasks[0].maxAttempts, 1);
@@ -150,6 +194,39 @@ test("certificate renewal batches are atomic, idempotent, deduplicated and non-r
   await assert.rejects(() => service.get(first.batchId, { nodeScope: [] }), /授权范围/);
   state = await repository.read();
   assert.doesNotMatch(JSON.stringify(state.audits), /private|ssl_certificate|BEGIN/);
+});
+
+test("unknown certificate renewal results remain locked and running renewals cannot be cancelled", async () => {
+  const repository = new MemoryAgentControlRepository();
+  const nodeId = "11111111-1111-4111-8111-111111111111";
+  await repository.update((state) => state.nodes.push(remoteNode(nodeId)));
+  const renewals = new CertificateRenewalService(repository);
+  const first = await renewals.create({ siteIds: [publicSiteId(nodeId, "agent-site-1")], idempotencyKey: "unknown-renewal-1" }, { nodeScope: [nodeId] }, "user:test", crypto.randomUUID());
+  const { RemoteTaskService } = await import("../../apps/controller/dist/modules/remote-tasks/remoteTaskService.js");
+  const tasks = new RemoteTaskService(repository);
+  const [dispatched] = await tasks.poll(nodeId, crypto.randomUUID());
+  await tasks.update(nodeId, { taskId: dispatched.taskId, attempt: 1, status: "running", timestamp: new Date().toISOString() }, crypto.randomUUID());
+  await assert.rejects(() => tasks.cancel(dispatched.taskId, "user:test", "stop", crypto.randomUUID()), /不能取消/);
+  await tasks.update(nodeId, { taskId: dispatched.taskId, attempt: 1, status: "failed", timestamp: new Date().toISOString(), errorCode: "RESULT_UNKNOWN", result: { message: "unknown", truncated: false } }, crypto.randomUUID());
+  assert.equal((await renewals.get(first.batchId, { nodeScope: [nodeId] })).status, "failed");
+  await assert.rejects(() => renewals.create({ siteIds: [publicSiteId(nodeId, "agent-site-1")], idempotencyKey: "unknown-renewal-2" }, { nodeScope: [nodeId] }, "user:test", crypto.randomUUID()), /进行中/);
+  await tasks.update(nodeId, { taskId: dispatched.taskId, attempt: 1, status: "succeeded", timestamp: new Date().toISOString(), result: { message: "late confirmation", truncated: false } }, crypto.randomUUID());
+  assert.equal((await renewals.get(first.batchId, { nodeScope: [nodeId] })).status, "succeeded");
+});
+
+test("legacy Agent cancellation of a started renewal is retained as an unknown result", async () => {
+  const repository = new MemoryAgentControlRepository();
+  const nodeId = "11111111-1111-4111-8111-111111111111";
+  await repository.update((state) => state.nodes.push(remoteNode(nodeId)));
+  const renewals = new CertificateRenewalService(repository);
+  await renewals.create({ siteIds: [publicSiteId(nodeId, "agent-site-1")], idempotencyKey: "legacy-cancel-renewal" }, { nodeScope: [nodeId] }, "user:test", crypto.randomUUID());
+  const { RemoteTaskService } = await import("../../apps/controller/dist/modules/remote-tasks/remoteTaskService.js");
+  const tasks = new RemoteTaskService(repository);
+  const [dispatched] = await tasks.poll(nodeId, crypto.randomUUID());
+  await tasks.update(nodeId, { taskId: dispatched.taskId, attempt: 1, status: "cancelled", timestamp: new Date().toISOString(), errorCode: "TASK_CANCELLED_OR_TIMEOUT", result: { message: "old Agent cancelled", truncated: false } }, crypto.randomUUID());
+  const task = (await repository.read()).tasks[0];
+  assert.equal(task.status, "failed");
+  assert.equal(task.errorCode, "RESULT_UNKNOWN");
 });
 
 test("remote certificate renewals dispatch only one Certbot task per node at a time", async () => {

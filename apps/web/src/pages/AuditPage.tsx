@@ -1,5 +1,6 @@
 import { CheckCircle2, Download, FileText, Shield } from "lucide-react";
 import { useEffect, useState } from "react";
+import { fetchAuditEvents, type AuditEvent } from "../api/auditApi";
 import { auditPagePreset } from "../app/pagePresets";
 import { resolvePageMeta } from "../app/navigation";
 import { clearAuditSourceRoute, consumePendingAuditSource, readAuditSourceParam } from "../app/routing";
@@ -9,9 +10,10 @@ import { DataTable } from "../components/ui/DataTable";
 import { DetailDrawer } from "../components/ui/DetailDrawer";
 import { FieldSelect } from "../components/ui/FormControls";
 import type { AuditExportRecord, AuditRecord } from "../features/audit/types";
-import { databaseAuditRecords, initialAuditExports, initialAuditRecords } from "../mocks/demoData";
+import { initialAuditExports, initialAuditRecords } from "../mocks/demoData";
 import type { AuditSource, Notify, PageKey } from "../types/app";
 import { currentClock } from "../utils/time";
+import { usePollingResource } from "../hooks/usePollingResource";
 
 function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const auditPreset = auditPagePreset(page);
@@ -28,7 +30,10 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [selectedExport, setSelectedExport] = useState<AuditExportRecord | null>(null);
   const isExportMode = auditPreset.mode === "exports";
   const auditSource = sourceByPage[page];
-  const auditRecords = auditSource === "database" ? databaseAuditRecords : initialAuditRecords;
+  const databaseAudit = usePollingResource(fetchAuditEvents, null, auditSource === "database");
+  const auditRecords = auditSource === "database"
+    ? (databaseAudit.data ?? []).filter((event) => event.action.startsWith("database.")).map(databaseAuditRecord)
+    : initialAuditRecords;
   const users = ["全部", ...Array.from(new Set(auditRecords.map((row) => row.user)))];
   const search = searchByPage[page] ?? auditPreset.search;
   const userFilter = userByPage[page] ?? auditPreset.user;
@@ -70,8 +75,9 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
     return matchSearch && (formatFilter === "全部" || row.format === formatFilter) && (exportStatusFilter === "全部" || row.status === exportStatusFilter);
   });
   const createExport = () => {
+    const exportId = crypto.randomUUID();
     const next: AuditExportRecord = {
-      id: `exp-${Date.now()}`,
+      id: `exp-${exportId}`,
       name: `审计导出 ${exportRows.length + 1}`,
       format: formatFilter === "全部" ? "CSV" : formatFilter as AuditExportRecord["format"],
       range: "当前筛选范围",
@@ -81,7 +87,7 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
       creator: "管理员",
       createdAt: currentClock(),
       expiresAt: "7 天后",
-      traceId: `EXP-${Date.now()}`,
+      traceId: `EXP-${exportId}`,
     };
     setExportRows((current) => [next, ...current]);
     setExportStatusFilter("全部");
@@ -201,6 +207,8 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
           />
         </>
       ) : (
+        <>{auditSource === "database" && databaseAudit.loading && !databaseAudit.data && <span className="sr-only" role="status">正在读取数据库审计</span>}
+        {auditSource === "database" && databaseAudit.error && !databaseAudit.data && <div className="overview-error-state"><Shield size={18} /><span>{databaseAudit.error}</span><button type="button" onClick={() => void databaseAudit.retry()}>重试</button></div>}
         <DataTable
           columns={[
             { key: "time", label: "时间", width: "130px", render: (row) => row.time },
@@ -233,10 +241,25 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
               </div>
             </>
           )}
-        />
+        /></>
       )}
     </ModulePageShell>
   );
+}
+
+function databaseAuditRecord(event: AuditEvent): AuditRecord {
+  const result = ["failed", "failure", "denied", "error"].includes(event.outcome.toLowerCase()) ? "失败" : "成功";
+  return {
+    id: event.eventId,
+    time: new Date(event.occurredAt).toLocaleString("zh-CN", { hour12: false }),
+    ip: event.source,
+    user: event.actorId ?? event.actorType,
+    action: event.action,
+    object: event.targetId ?? event.targetType ?? "数据库",
+    result,
+    traceId: event.traceId,
+    summary: `${event.action} · ${event.outcome}`,
+  };
 }
 
 export { AuditPage };

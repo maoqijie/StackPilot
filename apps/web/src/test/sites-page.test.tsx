@@ -130,22 +130,28 @@ describe("sites live monitoring page", () => {
     expect(screen.queryByRole("button", { name: /刷新|添加|启动|停止|续期/ })).not.toBeInTheDocument();
   });
 
-  it("keeps old Agent sites visible while awaiting collection", async () => {
-    const domain = "legacy-agent-with-a-very-long-hostname.monitoring.example.invalid";
-    vi.mocked(fetchSites).mockResolvedValue(payload([site({
-      id: "site-legacy-agent",
-      domain,
-      status: "unknown",
-      host: "legacy-agent.example.invalid",
-      latencyMs: null,
-    })]));
+  it("keeps an unknown site reported by a remote agent visible on the running page", async () => {
+    vi.mocked(fetchSites).mockResolvedValue(payload([
+      site(),
+      site({
+        id: "site-agent-unknown",
+        domain: "agent-pending.example.com",
+        status: "unknown",
+        host: "edge-node-01",
+        source: "Agent · edge-node-01",
+        nodeId: "node-edge-01",
+        latencyMs: null,
+      }),
+    ]));
 
     render(<SitesPage page="sites-running" notify={notify} />);
-    expect((await screen.findAllByTitle(domain)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByTitle("agent-pending.example.com")).length).toBeGreaterThan(0);
     expect(screen.getByText("已发现站点")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("状态"), { target: { value: "待采集" } });
-    expect(screen.getAllByTitle(domain).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("combobox", { name: /状态 活跃/ }));
+    fireEvent.click(screen.getByRole("option", { name: "待采集" }));
+    expect(screen.getAllByTitle("agent-pending.example.com").length).toBeGreaterThan(0);
+    expect(screen.queryAllByTitle("api.example.com")).toHaveLength(0);
   });
 
   it("derives an open runtime detail from the latest polling snapshot", async () => {

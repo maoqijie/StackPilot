@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { siteLifecycleHandler, sitePlanPrepareHandler } from "../../apps/agent/dist/tasks/handlers/siteOperations.js";
 
-test("site prepare handler sends only the fixed helper request over Unix socket", async () => {
+test("site prepare handler sends only the fixed helper request over Unix socket", { skip: process.platform === "win32" ? "Unix socket site helper is Linux-only" : false }, async () => {
   const directory = await mkdtemp(join(tmpdir(), "stackpilot-agent-helper-")); const socketPath = join(directory, "helper.sock"); let received;
   const server = createServer((socket) => {
     let raw = ""; socket.on("data", (chunk) => { raw += chunk; }); socket.on("end", () => {
@@ -24,7 +24,7 @@ test("site prepare handler sends only the fixed helper request over Unix socket"
   } finally { await new Promise((resolve) => server.close(resolve)); await rm(directory, { recursive: true, force: true }); }
 });
 
-test("site lifecycle forwards the optimistic version to the root helper", async () => {
+test("site lifecycle forwards the optimistic version to the root helper", { skip: process.platform === "win32" ? "Unix socket site helper is Linux-only" : false }, async () => {
   const directory = await mkdtemp(join(tmpdir(), "stackpilot-agent-helper-")); const socketPath = join(directory, "helper.sock"); let received;
   const server = createServer((socket) => {
     let raw = ""; socket.on("data", (chunk) => { raw += chunk; }); socket.on("end", () => {

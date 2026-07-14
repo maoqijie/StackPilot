@@ -13,6 +13,8 @@ const schema = z.object({
   STACKPILOT_AGENT_HEARTBEAT_SECONDS: z.coerce.number().int().min(5).max(300).default(15),
   STACKPILOT_AGENT_ALLOW_ROOT: z.enum(["0", "1"]).default("0"),
   STACKPILOT_AGENT_ROTATE_CREDENTIAL: z.enum(["0", "1"]).default("0"),
+  STACKPILOT_DATABASE_HELPER_SOCKET: z.string().default("/run/stackpilot/database-helper.sock"),
+  STACKPILOT_DATABASE_COLLECTION_SECONDS: z.coerce.number().int().min(60).max(3_600).default(60),
 }).passthrough();
 
 export type AgentConfig = {
@@ -24,6 +26,8 @@ export type AgentConfig = {
   heartbeatSeconds: number;
   allowRoot: boolean;
   rotateCredential: boolean;
+  databaseHelperSocket: string;
+  databaseCollectionSeconds: number;
   agentVersion: string;
   platform: "linux" | "darwin" | "win32";
 };
@@ -44,7 +48,9 @@ export function loadAgentConfig(env: NodeJS.ProcessEnv | Record<string, string |
     heartbeatSeconds: value.STACKPILOT_AGENT_HEARTBEAT_SECONDS,
     allowRoot: value.STACKPILOT_AGENT_ALLOW_ROOT === "1",
     rotateCredential: value.STACKPILOT_AGENT_ROTATE_CREDENTIAL === "1",
-    agentVersion: "0.2.0-preview.6",
+    databaseHelperSocket: resolve(value.STACKPILOT_DATABASE_HELPER_SOCKET),
+    databaseCollectionSeconds: value.STACKPILOT_DATABASE_COLLECTION_SECONDS,
+    agentVersion: "0.3.0-preview.4",
     platform: currentPlatform as AgentConfig["platform"],
   };
 }

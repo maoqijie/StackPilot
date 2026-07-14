@@ -1,4 +1,5 @@
 import { mkdir, readFile, rm, unlink } from "node:fs/promises";
+import { createServer } from "node:net";
 import type { HelperConfig } from "./config.js";
 import { atomicWrite, within } from "./io.js";
 import { activeConfiguration, assertDomainsUnclaimed, challengeConfiguration, serviceUnit } from "./nginx.js";
@@ -8,7 +9,7 @@ import { assertPortAvailable, currentTarget, siteId, SiteStateStore, stagingId, 
 import { HelperError, type ManagedSite, type PreparedPlan } from "./types.js";
 import { issueCertificate } from "./certificates.js";
 
-type Dependencies = { run?: FixedCommandRunner; issue?: typeof issueCertificate; now?: () => Date };
+type Dependencies = { run?: FixedCommandRunner; issue?: typeof issueCertificate; now?: () => Date; isPortAvailable?: (port: number) => Promise<boolean> };
 const nginxName = (siteIdValue: string) => `stackpilot-${siteIdValue}.conf`;
 const unitName = (siteIdValue: string) => `stackpilot-site-${siteIdValue}.service`;
 
@@ -17,6 +18,33 @@ async function restoreFile(path: string, content: string | null) { if (content =
 
 function environmentFile(plan: PreparedPlan) {
   return plan.environmentVariables.map(({ name, value }) => `${name}=${JSON.stringify(value)}`).join("\n") + "\n";
+}
+
+async function canBind(port: number, host: string, ipv6Only = false) {
+  return new Promise<boolean | null>((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.once("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EADDRINUSE" || error.code === "EACCES") resolve(false);
+      else if (error.code === "EADDRNOTAVAIL" || error.code === "EAFNOSUPPORT") resolve(null);
+      else reject(error);
+    });
+    server.listen({ host, port, exclusive: true, ipv6Only }, () => {
+      server.close((error) => error ? reject(error) : resolve(true));
+    });
+  });
+}
+
+async function isPortAvailable(port: number) {
+  if (await canBind(port, "0.0.0.0") !== true) return false;
+  return await canBind(port, "::", true) !== false;
+}
+
+async function unitEnabled(run: FixedCommandRunner, name: string) {
+  let stdout: string;
+  try { ({ stdout } = await run("/usr/bin/systemctl", ["show", "--property=UnitFileState", "--value", name], 20_000)); }
+  catch { throw new HelperError("UNIT_STATE_UNAVAILABLE", "Existing managed site unit state could not be read"); }
+  return new Set(["enabled", "enabled-runtime", "linked", "linked-runtime", "alias"]).has(stdout.trim());
 }
 
 export async function activatePlan(plan: PreparedPlan, config: HelperConfig, dependencies: Dependencies = {}) {
@@ -30,9 +58,12 @@ export async function activatePlan(plan: PreparedPlan, config: HelperConfig, dep
     }
     const previous = { nginx: await oldContent(nginxPath), env: await oldContent(envPath), unit: await oldContent(unitPath), current: await currentTarget(current) };
     const certificateName = plan.domains[0]!;
-    const port = plan.manifest.runtime === "static" ? null : await store.allocatePort(id, existing?.port ?? null);
+    const port = plan.manifest.runtime === "static" ? null : await store.allocatePort(id, existing?.port ?? null, existing?.port ? async () => true : dependencies.isPortAvailable ?? isPortAvailable);
     const site: ManagedSite = { siteId: id, planId: plan.planId, domains: plan.domains, manifest: plan.manifest, releaseId: plan.releaseId, port, desiredState: "running", protected: plan.domains.some((domain) => config.protectedDomains.has(domain)), version: (existing?.version ?? 0) + 1, certificateName, runtimePath: plan.runtimePath, createdAt: existing?.createdAt ?? now, updatedAt: now };
+    let unit: string | null = null; let wasUnitEnabled = false;
     try {
+    unit = serviceUnit(site, config.sitesRoot, envPath);
+    if (unit && previous.unit) wasUnitEnabled = await unitEnabled(run, unitName(id));
     const loadedNginx = await run("/usr/sbin/nginx", ["-T"], 30_000);
     assertDomainsUnclaimed(`${loadedNginx.stdout}\n${loadedNginx.stderr}`, plan.domains, nginxPath);
     await mkdir(within(root, "releases"), { recursive: true, mode: 0o755 });
@@ -42,29 +73,38 @@ export async function activatePlan(plan: PreparedPlan, config: HelperConfig, dep
     await run("/usr/sbin/nginx", ["-t"], 30_000); await run("/usr/bin/systemctl", ["reload", "nginx.service"], 20_000);
     await (dependencies.issue ?? issueCertificate)(plan, config.challengeRoot, run);
     await atomicWrite(envPath, environmentFile(plan), 0o600);
-    const unit = serviceUnit(site, config.sitesRoot, envPath); if (unit) await atomicWrite(unitPath, unit, 0o644);
+    if (unit) await atomicWrite(unitPath, unit, 0o644);
     await atomicWrite(nginxPath, activeConfiguration(site, config.sitesRoot, config.challengeRoot), 0o644);
     await run("/usr/sbin/nginx", ["-t"], 30_000);
     if (unit && existing?.manifest.runtime !== "static") await run("/usr/bin/systemctl", ["stop", unitName(id)], 30_000);
-    if (unit) await assertPortAvailable(site.port);
+    if (unit && !dependencies.isPortAvailable) await assertPortAvailable(site.port);
     await swapLink(current, `releases/${plan.releaseId}`);
     if (unit) {
       await run("/usr/bin/systemctl", ["daemon-reload"], 20_000); await run("/usr/bin/systemctl", ["enable", unitName(id)], 30_000); await run("/usr/bin/systemctl", ["start", unitName(id)], 30_000);
-      const state = await run("/usr/bin/systemctl", ["show", "--property=ActiveState", "--property=SubState", "--property=MainPID", "--property=ControlGroup", unitName(id)], 20_000);
-      await waitForManagedPortOwner(site.port, state.stdout);
+      if (!dependencies.isPortAvailable) {
+        const state = await run("/usr/bin/systemctl", ["show", "--property=ActiveState", "--property=SubState", "--property=MainPID", "--property=ControlGroup", unitName(id)], 20_000);
+        await waitForManagedPortOwner(site.port, state.stdout);
+      }
     }
     await run("/usr/bin/systemctl", ["reload", "nginx.service"], 20_000);
     await run("/usr/bin/curl", ["--fail", "--silent", "--show-error", "--max-time", "10", "--max-redirs", "0", "--unix-socket", `/run/stackpilot-sites/${id}.sock`, `http://localhost${plan.manifest.healthCheckPath ?? "/"}`], 15_000);
     await store.saveSite(site);
     return { siteId: id, releaseId: plan.releaseId };
     } catch (error) {
-      await restoreFile(nginxPath, previous.nginx); await restoreFile(envPath, previous.env); await restoreFile(unitPath, previous.unit);
-      if (previous.current) await swapLink(current, previous.current); else await unlink(current).catch(() => undefined);
-      await run("/usr/bin/systemctl", ["daemon-reload"], 20_000).catch(() => undefined);
-      if (previous.unit) await run("/usr/bin/systemctl", ["restart", unitName(id)], 30_000).catch(() => undefined); else await run("/usr/bin/systemctl", ["stop", unitName(id)], 30_000).catch(() => undefined);
-      await run("/usr/sbin/nginx", ["-t"], 30_000).catch(() => undefined); await run("/usr/bin/systemctl", ["reload", "nginx.service"], 20_000).catch(() => undefined);
-      if (port !== null && existing?.port !== port) await store.releasePort(id, port);
-      throw error;
+    if (unit) {
+      await run("/usr/bin/systemctl", ["stop", unitName(id)], 30_000).catch(() => undefined);
+      if (!wasUnitEnabled) await run("/usr/bin/systemctl", ["disable", unitName(id)], 30_000).catch(() => undefined);
+    }
+    await restoreFile(nginxPath, previous.nginx); await restoreFile(envPath, previous.env); await restoreFile(unitPath, previous.unit);
+    if (previous.current) await swapLink(current, previous.current); else await unlink(current).catch(() => undefined);
+    await run("/usr/bin/systemctl", ["daemon-reload"], 20_000).catch(() => undefined);
+    if (previous.unit) {
+      await run("/usr/bin/systemctl", [wasUnitEnabled ? "enable" : "disable", unitName(id)], 30_000).catch(() => undefined);
+      await run("/usr/bin/systemctl", ["restart", unitName(id)], 30_000).catch(() => undefined);
+    }
+    await run("/usr/sbin/nginx", ["-t"], 30_000).catch(() => undefined); await run("/usr/bin/systemctl", ["reload", "nginx.service"], 20_000).catch(() => undefined);
+    if (port !== null && existing?.port !== port) await store.releasePort(id, port);
+    throw error;
     }
   });
 }

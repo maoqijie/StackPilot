@@ -1,4 +1,4 @@
-import { Activity, CheckCircle2, CloudUpload, Plus, RefreshCw } from "lucide-react";
+import { Activity, CheckCircle2, CircleAlert, CircleCheck, CircleDot, CloudUpload, Plus, RefreshCw } from "lucide-react";
 import { useRef, useState } from "react";
 import { deployPagePreset } from "../app/pagePresets";
 import { resolvePageMeta } from "../app/navigation";
@@ -140,6 +140,14 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
     row.status === "已回滚" ? "rollback completed, traffic restored" : row.status === "回滚中" ? "switching release pointer and draining traffic" : "rollback candidate is ready",
     row.reason,
   ];
+  const rollbackStatusIcon = (status: RollbackRecord["status"]) => {
+    if (status === "已回滚") return <CircleCheck size={14} aria-hidden="true" />;
+    if (status === "回滚中") return <CircleDot size={14} aria-hidden="true" />;
+    return <CircleAlert size={14} aria-hidden="true" />;
+  };
+  const rollbackStatusClass = (status: RollbackRecord["status"]) => (
+    status === "已回滚" ? "green" : status === "回滚中" ? "blue" : "orange"
+  );
 
   return (
     <ModulePageShell
@@ -151,8 +159,9 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
       metrics={isRollbackMode
         ? <><MetricTile icon={RefreshCw} label="可回滚" value={`${rollbackRows.filter((row) => row.status === "可回滚").length}`} tone="blue" /><MetricTile icon={Activity} label="回滚中" value={`${rollbackRows.filter((row) => row.status === "回滚中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="已回滚" value={`${rollbackRows.filter((row) => row.status === "已回滚").length}`} tone="green" /></>
         : <><MetricTile icon={CloudUpload} label="当前环境" value={env} tone="blue" /><MetricTile icon={Activity} label="运行中" value={`${rows.filter((row) => row.status === "运行中").length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="成功" value={`${rows.filter((row) => row.status === "成功").length}`} tone="green" /></>}
+      sideModal={drawer?.type === "create"}
       side={drawer?.type === "create" ? (
-        <DetailDrawer title="创建部署任务" subtitle={env} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={createDeploy}>创建并运行</button></>}>
+        <DetailDrawer className="deploy-create-drawer" modal title="创建部署任务" subtitle={env} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" onClick={createDeploy}>创建并运行</button></>}>
           <FormLine label="应用" required value={draft.app} inputRef={deployAppRef} error={draftErrors.app} onChange={(value) => { setDraft((current) => ({ ...current, app: value })); setDraftErrors((current) => ({ ...current, app: undefined })); }} />
           <FormLine label="版本" required value={draft.version} inputRef={deployVersionRef} error={draftErrors.version} onChange={(value) => { setDraft((current) => ({ ...current, version: value })); setDraftErrors((current) => ({ ...current, version: undefined })); }} />
           <FormLine label="操作人" value={draft.operator} onChange={(value) => setDraft((current) => ({ ...current, operator: value }))} />
@@ -162,7 +171,7 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
           </div>
         </DetailDrawer>
       ) : selectedDeploy ? (
-        <DetailDrawer title="部署日志" subtitle={`${selectedDeploy.app} ${selectedDeploy.version}`} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => redeployJob(selectedDeploy)}>重部署</button>{selectedDeploy.status === "运行中" ? <button className="primary" type="button" onClick={() => completeDeploy(selectedDeploy)}>完成</button> : <button className="primary" type="button" onClick={() => rollbackDeploy(selectedDeploy)}>回滚</button>}</>}>
+        <DetailDrawer className="deploy-log-drawer" title="部署日志" subtitle={`${selectedDeploy.app} ${selectedDeploy.version}`} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => redeployJob(selectedDeploy)}>重部署</button>{selectedDeploy.status === "运行中" ? <button className="primary" type="button" onClick={() => completeDeploy(selectedDeploy)}>完成</button> : <button className="primary" type="button" onClick={() => rollbackDeploy(selectedDeploy)}>回滚</button>}</>}>
           <div className="terminal-log compact-log">
             {deployLogLines(selectedDeploy).map((line) => <p key={line}>{line}</p>)}
           </div>
@@ -172,7 +181,7 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
           </div>
         </DetailDrawer>
       ) : selectedRollback ? (
-        <DetailDrawer title="回滚日志" subtitle={`${selectedRollback.app} ${selectedRollback.fromVersion} -> ${selectedRollback.targetVersion}`} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => retryRollback(selectedRollback)}>重试</button>{selectedRollback.status !== "已回滚" && <button className="primary" type="button" onClick={() => toggleRollback(selectedRollback)}>{selectedRollback.status === "回滚中" ? "完成回滚" : "执行回滚"}</button>}</>}>
+        <DetailDrawer className="deploy-rollback-drawer" title="回滚日志" subtitle={`${selectedRollback.app} ${selectedRollback.fromVersion} -> ${selectedRollback.targetVersion}`} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => retryRollback(selectedRollback)}>重试</button>{selectedRollback.status !== "已回滚" && <button className="primary" type="button" onClick={() => toggleRollback(selectedRollback)}>{selectedRollback.status === "回滚中" ? "完成回滚" : "执行回滚"}</button>}</>}>
           <div className="terminal-log compact-log">
             {rollbackLogLines(selectedRollback).map((line) => <p key={line}>{line}</p>)}
           </div>
@@ -182,11 +191,11 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
       {isRollbackMode ? (
         <DataTable
           columns={[
-            { key: "app", label: "应用", width: "190px", render: (row) => <b className="blue-text">{row.app}</b> },
+            { key: "app", label: "应用", width: "190px", render: (row) => <b className="blue-text" title={row.app}>{row.app}</b> },
             { key: "env", label: "环境", render: (row) => <span className="pill blue">{row.env}</span> },
             { key: "from", label: "当前版本", render: (row) => row.fromVersion },
             { key: "target", label: "目标版本", render: (row) => row.targetVersion },
-            { key: "status", label: "状态", render: (row) => <span className={`pill ${row.status === "已回滚" ? "green" : row.status === "回滚中" ? "blue" : "orange"}`}>{row.status}</span> },
+            { key: "status", label: "状态", render: (row) => <span className={`pill status-with-icon ${rollbackStatusClass(row.status)}`}>{rollbackStatusIcon(row.status)}{row.status}</span> },
             { key: "reason", label: "原因", render: (row) => row.reason },
             { key: "ops", label: "操作", width: "220px", render: (row) => <span className="table-actions">{row.status !== "已回滚" && <button type="button" onClick={() => toggleRollback(row)}>{row.status === "回滚中" ? "完成" : "执行"}</button>}<button type="button" onClick={() => setDrawer({ type: "rollback", id: row.id })}>日志</button>{row.status !== "已回滚" && <button type="button" onClick={() => retryRollback(row)}>重试</button>}</span> },
           ]}
@@ -197,7 +206,7 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
             <>
               <div className="module-card-head">
                 <span className="module-card-title"><RefreshCw size={15} /><b>{row.app}</b></span>
-                <span className={`pill ${row.status === "已回滚" ? "green" : row.status === "回滚中" ? "blue" : "orange"}`}>{row.status}</span>
+                <span className={`pill status-with-icon ${rollbackStatusClass(row.status)}`}>{rollbackStatusIcon(row.status)}{row.status}</span>
               </div>
               <code className="module-card-code">{`${row.fromVersion} -> ${row.targetVersion}`}</code>
               <div className="module-card-meta">
@@ -219,7 +228,7 @@ function DeployPage({ page, notify }: { page: PageKey; notify: Notify }) {
       ) : (
         <DataTable
           columns={[
-            { key: "app", label: "应用", width: "210px", render: (row) => <b className="blue-text">{row.app}</b> },
+            { key: "app", label: "应用", width: "210px", render: (row) => <b className="blue-text" title={row.app}>{row.app}</b> },
             { key: "env", label: "环境", render: (row) => <span className="pill blue">{row.env}</span> },
             { key: "version", label: "版本", render: (row) => row.version },
             { key: "status", label: "状态", render: (row) => <span className={`pill ${row.status === "成功" ? "green" : row.status === "失败" ? "red" : "blue"}`}>{row.status}</span> },

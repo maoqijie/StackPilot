@@ -4,7 +4,7 @@ import {
   SitePlanActivateTaskResultSchema, SitePlanPrepareTaskResultSchema, SitePlanSchema,
   type ActivateSitePlanRequest, type CreateSiteCertificateRenewalRequest,
   type CreateSiteLogQueryRequest, type CreateSitePlanRequest, type SiteOperation, type SiteOperationResult,
-  type SiteRuntimePayload, type UpdateSiteLifecycleRequest,
+  type SitePlan, type SiteRuntimePayload, type UpdateSiteLifecycleRequest,
 } from "@stackpilot/contracts";
 import { ServiceError } from "../serviceError.js";
 import type { CertificateRenewalService } from "./certificateRenewalService.js";
@@ -21,7 +21,7 @@ export type SiteExecutionInstruction =
 
 export interface SiteExecutor {
   dispatch(operationId: string, nodeId: string, instruction: SiteExecutionInstruction): Promise<string>;
-  reconcile(operation: SiteOperation): Promise<{ status: SiteOperation["status"]; result: SiteOperationResult | null; errorCode: string | null } | null>;
+  reconcile(operation: SiteOperation): Promise<{ status: SiteOperation["status"]; result: SiteOperationResult | null; errorCode: string | null; taskId?: string } | null>;
 }
 
 export class DeferredSiteExecutor implements SiteExecutor {
@@ -35,6 +35,11 @@ const emptyResult = (overrides: Partial<SiteOperationResult> = {}): SiteOperatio
 });
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 const terminal = new Set<SiteOperation["status"]>(["succeeded", "failed", "cancelled"]);
+
+function managedSiteId(nodeId: string, primaryDomain: string) {
+  const agentSiteId = `site_${sha256(`${nodeId}\0${primaryDomain.toLowerCase()}`).slice(0, 32)}`;
+  return publicSiteId(nodeId, agentSiteId);
+}
 
 function operation(input: Pick<SiteOperation, "type" | "nodeId" | "siteId" | "planId">): SiteOperation {
   const now = new Date().toISOString();
@@ -51,6 +56,11 @@ function planDigest(input: CreateSitePlanRequest) {
 }
 
 export class SiteManagementService {
+  private reconciliationTimer: NodeJS.Timeout | undefined;
+  private reconciliationRun: Promise<void> | undefined;
+  private reconciliationActive = false;
+  private readonly operationReconciliations = new Map<string, Promise<SiteOperation>>();
+
   constructor(
     private readonly repository: SiteManagementRepository,
     private readonly monitoring: SiteMonitoringService,
@@ -83,11 +93,16 @@ export class SiteManagementService {
 
   private async dispatch(operation: SiteOperation, instruction: SiteExecutionInstruction) {
     try {
-      operation.taskId = await this.executor.dispatch(operation.operationId, operation.nodeId, instruction);
-      this.repository.updateOperation(operation);
-      return operation;
+      const taskId = await this.executor.dispatch(operation.operationId, operation.nodeId, instruction);
+      const current = this.repository.getOperation(operation.operationId);
+      if (!current || terminal.has(current.status)) return current ?? operation;
+      const dispatched = { ...current, taskId };
+      this.repository.updateOperation(dispatched);
+      return dispatched;
     } catch {
-      const failed = SiteOperationSchema.parse({ ...operation, status: "failed", stage: "dispatch_failed", progressPercent: 100, errorCode: "DISPATCH_FAILED", updatedAt: new Date().toISOString() });
+      const current = this.repository.getOperation(operation.operationId);
+      if (current && terminal.has(current.status)) return current;
+      const failed = SiteOperationSchema.parse({ ...(current ?? operation), status: "failed", stage: "dispatch_failed", progressPercent: 100, errorCode: "DISPATCH_FAILED", updatedAt: new Date().toISOString() });
       this.repository.updateOperation(failed);
       if (operation.type === "prepare" && operation.planId) {
         const plan = this.repository.getPlan(operation.planId);
@@ -119,8 +134,10 @@ export class SiteManagementService {
       createdAt: now, updatedAt: now, expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
     });
     preparing.planId = plan.planId;
-    this.repository.savePlan(plan, key, input.certificateEmail, input.environmentVariables);
-    this.repository.saveOperation(preparing, this.idempotency(requester, "prepare-operation", input.idempotencyKey));
+    this.repository.savePlanWithOperation(
+      plan, key, input.certificateEmail, input.environmentVariables, preparing,
+      this.idempotency(requester, "prepare-operation", input.idempotencyKey),
+    );
     const dispatched = await this.dispatch(preparing, { type: "prepare", planId: plan.planId });
     return dispatched.status === "failed" ? this.repository.getPlan(plan.planId)! : plan;
   }
@@ -182,11 +199,61 @@ export class SiteManagementService {
   }
 
   async getOperation(operationId: string, access: SiteAccess) {
-    let found = this.repository.getOperation(operationId);
+    const found = this.repository.getOperation(operationId);
     if (!found) throw new ServiceError(404, "NOT_FOUND", "站点操作不存在");
     this.assertNodeAccess(found.nodeId, access);
-    if (found.taskId && !terminal.has(found.status)) {
+    return this.reconcileOperation(found, access);
+  }
+
+  startBackgroundReconciliation(intervalMs = 10_000, onError: (error: unknown) => void = () => undefined) {
+    if (this.reconciliationActive) return;
+    this.reconciliationActive = true;
+    const report = (error: unknown) => { try { onError(error); } catch { /* Error reporting must not stop reconciliation. */ } };
+    const run = async () => {
+      if (!this.reconciliationActive) return;
+      try {
+        for (const operation of this.repository.listNonTerminalOperations()) {
+          try { await this.reconcileOperation(operation, { nodeScope: "all" }); }
+          catch (error) { report(error); }
+        }
+      } catch (error) {
+        report(error);
+      } finally {
+        if (this.reconciliationActive) this.reconciliationTimer = setTimeout(() => { this.reconciliationRun = run(); }, intervalMs);
+      }
+    };
+    this.reconciliationRun = run();
+  }
+
+  async stopBackgroundReconciliation() {
+    this.reconciliationActive = false;
+    if (this.reconciliationTimer) clearTimeout(this.reconciliationTimer);
+    this.reconciliationTimer = undefined;
+    await this.reconciliationRun;
+    this.reconciliationRun = undefined;
+  }
+
+  private async reconcileOperation(initial: SiteOperation, access: SiteAccess) {
+    const active = this.operationReconciliations.get(initial.operationId);
+    if (active) return active;
+    const reconciliation = this.reconcileOperationOnce(initial, access);
+    this.operationReconciliations.set(initial.operationId, reconciliation);
+    try { return await reconciliation; }
+    finally { this.operationReconciliations.delete(initial.operationId); }
+  }
+
+  private async reconcileOperationOnce(initial: SiteOperation, access: SiteAccess) {
+    let found = this.repository.getOperation(initial.operationId) ?? initial;
+    if (terminal.has(found.status)) return found;
+    if (found.type !== "certificate_renewal") {
       const reconciled = await this.executor.reconcile(found);
+      const current = this.repository.getOperation(found.operationId);
+      if (!current || terminal.has(current.status)) return current ?? found;
+      found = current;
+      if (reconciled?.taskId && found.taskId !== reconciled.taskId) {
+        found = { ...found, taskId: reconciled.taskId, updatedAt: new Date().toISOString() };
+        this.repository.updateOperation(found);
+      }
       if (reconciled?.status === "running") found = this.markRunning(found.operationId, 50, "agent_running");
       else if (reconciled && terminal.has(reconciled.status)) found = this.complete(found.operationId, reconciled.status === "succeeded", reconciled.result, reconciled.errorCode);
     }
@@ -216,24 +283,34 @@ export class SiteManagementService {
     const current = this.repository.getOperation(operationId);
     if (!current || terminal.has(current.status)) throw new ServiceError(409, "BAD_REQUEST", "站点操作不能完成");
     const now = new Date().toISOString();
+    const activationPlan = current.type === "activate" && current.planId ? this.repository.getPlan(current.planId) : null;
+    if (succeeded && current.type === "activate") {
+      const expectedSiteId = activationPlan ? managedSiteId(activationPlan.nodeId, activationPlan.domains[0]!) : null;
+      if (!expectedSiteId || result?.siteId !== expectedSiteId) {
+        succeeded = false;
+        result = null;
+        errorCode = "INVALID_REMOTE_TASK_RESULT";
+      }
+    }
     const next = SiteOperationSchema.parse({ ...current, status: succeeded ? "succeeded" : "failed", stage: "complete", progressPercent: 100, result, errorCode: succeeded ? null : (errorCode ?? "EXECUTION_FAILED"), updatedAt: now });
     this.repository.updateOperation(next);
     if (current.type === "prepare" && current.planId) {
       const plan = this.repository.getPlan(current.planId);
       if (plan) this.repository.updatePlan({ ...plan, status: succeeded ? "ready" : "failed", preview: succeeded ? result?.planPreview ?? null : null, updatedAt: now });
     }
-    if (current.type === "activate" && current.planId && succeeded) this.activateManagedSite(current, result, now);
+    if (current.type === "activate" && current.planId) {
+      if (succeeded) this.activateManagedSite(result!, activationPlan!, now);
+      else if (activationPlan) this.repository.updatePlan({ ...activationPlan, status: "ready", updatedAt: now });
+    }
     if (current.type === "lifecycle" && current.siteId && succeeded) this.completeLifecycle(current, result, now);
     return next;
   }
 
-  private activateManagedSite(current: SiteOperation, result: SiteOperationResult | null, now: string) {
-    const plan = this.repository.getPlan(current.planId!);
-    if (!plan) return;
+  private activateManagedSite(result: SiteOperationResult, plan: SitePlan, now: string) {
     const domainDigest = sha256(plan.domains.join("\0"));
     const existing = this.repository.findManagedSite(plan.nodeId, domainDigest);
-    const siteId = result?.siteId ?? existing?.siteId ?? publicSiteId(plan.nodeId, `managed:${domainDigest}`);
-    const releaseId = result?.releaseId ?? `release-${randomUUID()}`;
+    const siteId = managedSiteId(plan.nodeId, plan.domains[0]!);
+    const releaseId = result.releaseId ?? `release-${randomUUID()}`;
     this.repository.saveManagedSite({ siteId, nodeId: plan.nodeId, domainDigest, desiredState: "running", protected: existing?.protected ?? false, version: (existing?.version ?? 0) + 1, activeReleaseId: releaseId, createdAt: existing?.createdAt ?? now, updatedAt: now });
     this.repository.saveRelease(releaseId, siteId, plan.planId, now);
     this.repository.updatePlan({ ...plan, status: "activated", updatedAt: now });
@@ -256,13 +333,15 @@ export class RemoteSiteExecutor implements SiteExecutor {
   }
 
   async reconcile(operation: SiteOperation) {
-    const task = (await this.tasks.list(operation.nodeId)).find((item) => item.taskId === operation.taskId);
-    if (!task) return { status: "failed" as const, result: null, errorCode: "REMOTE_TASK_NOT_FOUND" };
-    if (["queued", "dispatched"].includes(task.status)) return { status: "queued" as const, result: null, errorCode: null };
-    if (task.status === "running") return { status: "running" as const, result: null, errorCode: null };
-    if (task.status !== "succeeded") return { status: "failed" as const, result: null, errorCode: task.errorCode ?? "REMOTE_TASK_FAILED" };
-    try { return { status: "succeeded" as const, result: this.result(operation, task.result?.data), errorCode: null }; }
-    catch { return { status: "failed" as const, result: null, errorCode: "INVALID_REMOTE_TASK_RESULT" }; }
+    const task = (await this.tasks.list(operation.nodeId)).find((item) => item.taskId === operation.taskId
+      || (!operation.taskId && (item.parameters as { operationId?: unknown }).operationId === operation.operationId));
+    if (!task && !operation.taskId && Date.now() - Date.parse(operation.updatedAt) < 60_000) return null;
+    if (!task) return { status: "failed" as const, result: null, errorCode: operation.taskId ? "REMOTE_TASK_NOT_FOUND" : "DISPATCH_RESULT_UNKNOWN" };
+    if (["queued", "dispatched"].includes(task.status)) return { status: "queued" as const, result: null, errorCode: null, taskId: task.taskId };
+    if (task.status === "running") return { status: "running" as const, result: null, errorCode: null, taskId: task.taskId };
+    if (task.status !== "succeeded") return { status: "failed" as const, result: null, errorCode: task.errorCode ?? "REMOTE_TASK_FAILED", taskId: task.taskId };
+    try { return { status: "succeeded" as const, result: this.result(operation, task.result?.data), errorCode: null, taskId: task.taskId }; }
+    catch { return { status: "failed" as const, result: null, errorCode: "INVALID_REMOTE_TASK_RESULT", taskId: task.taskId }; }
   }
 
   private taskRequest(operationId: string, instruction: SiteExecutionInstruction) {
@@ -292,9 +371,15 @@ export class RemoteSiteExecutor implements SiteExecutor {
   }
 
   private result(operation: SiteOperation, data: unknown): SiteOperationResult {
-    if (operation.type === "prepare") { const value = SitePlanPrepareTaskResultSchema.parse(data); return emptyResult({ stagingId: value.stagingId, planPreview: value.planPreview }); }
-    if (operation.type === "activate") { const value = SitePlanActivateTaskResultSchema.parse(data); return emptyResult({ siteId: value.siteId, releaseId: value.releaseId }); }
-    if (operation.type === "lifecycle") { const value = SiteLifecycleTaskResultSchema.parse(data); return emptyResult({ siteId: value.siteId, desiredState: value.desiredState }); }
-    const value = SiteLogQueryTaskResultSchema.parse(data); return emptyResult({ siteId: value.siteId, logs: value.logs });
+    if (operation.type === "prepare") { const value = SitePlanPrepareTaskResultSchema.parse(data); this.assertResultIdentity(operation, value); return emptyResult({ stagingId: value.stagingId, planPreview: value.planPreview }); }
+    if (operation.type === "activate") { const value = SitePlanActivateTaskResultSchema.parse(data); this.assertResultIdentity(operation, value); return emptyResult({ siteId: value.siteId, releaseId: value.releaseId }); }
+    if (operation.type === "lifecycle") { const value = SiteLifecycleTaskResultSchema.parse(data); this.assertResultIdentity(operation, value); return emptyResult({ siteId: value.siteId, desiredState: value.desiredState }); }
+    const value = SiteLogQueryTaskResultSchema.parse(data); this.assertResultIdentity(operation, value); return emptyResult({ siteId: value.siteId, logs: value.logs });
+  }
+
+  private assertResultIdentity(operation: SiteOperation, result: { operationId: string; siteId?: string }) {
+    if (result.operationId !== operation.operationId || (operation.siteId && result.siteId !== operation.siteId)) {
+      throw new Error("REMOTE_TASK_RESULT_IDENTITY_MISMATCH");
+    }
   }
 }

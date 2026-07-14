@@ -1,4 +1,4 @@
-import { CircleHelp, Eye, KeyRound, RefreshCw, Shield, ShieldAlert, TriangleAlert } from "lucide-react";
+import { CheckCircle2, CircleHelp, Eye, KeyRound, RefreshCw, Shield, ShieldAlert, TriangleAlert } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import type { CertificateRenewalBatch } from "../../api/sitesApi";
 import { resolvePageMeta } from "../../app/navigation";
@@ -98,7 +98,7 @@ function certificateColumns(canRenew: boolean, onOpen: (id: string) => void, onR
 }
 
 function CertificateRisk({ site }: { site: SiteRuntimeView }) {
-  const Icon = ["expired", "critical"].includes(site.certificate.status) ? ShieldAlert : site.certificate.status === "unavailable" ? CircleHelp : TriangleAlert;
+  const Icon = ["expired", "critical"].includes(site.certificate.status) ? ShieldAlert : site.certificate.status === "unavailable" ? CircleHelp : site.certificate.status === "valid" ? CheckCircle2 : TriangleAlert;
   return <span className={`cert-risk ${certificateRiskTone(site)}`}><Icon size={16} /><b>{certificateRiskLabel(site)}</b><em>{certificateRemainingLabel(site)}</em></span>;
 }
 

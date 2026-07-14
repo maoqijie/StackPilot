@@ -8,8 +8,22 @@ function SiteOperationStatus({ operation, error }: { operation: SiteOperation; e
   const Icon = done ? CircleCheck : failed ? CircleAlert : LoaderCircle;
   return <section className={`site-operation-status is-${operation.status}`} aria-live="polite">
     <Icon size={18} className={!done && !failed ? "is-spinning" : undefined} />
-    <span><strong>{operationLabel(operation)}</strong><small>{operation.progressPercent}% · {operation.stage} · {formatBackendDateTime(operation.updatedAt)}</small>{error && <em>{error}</em>}</span>
+    <span><strong>{operationLabel(operation)}</strong><small>{operation.progressPercent}% · {stageLabel(operation.stage)} · {formatBackendDateTime(operation.updatedAt)}</small>{error && <em>{error}</em>}</span>
   </section>;
+}
+
+function stageLabel(stage: string) {
+  return {
+    awaiting_executor: "等待执行器",
+    agent_running: "节点执行中",
+    certificate_renewal: "证书续期中",
+    dispatch_failed: "任务下发失败",
+    complete: "已完成",
+    lifecycle_running: "正在启动",
+    lifecycle_stopped: "正在停止",
+    lifecycle_deleted: "正在软删除",
+    lifecycle_restored: "正在恢复",
+  }[stage] ?? "处理中";
 }
 
 function operationLabel(operation: SiteOperation) {

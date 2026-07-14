@@ -2,15 +2,24 @@ import type { AgentCapability } from "@stackpilot/contracts";
 
 export const LEGACY_AGENT_CAPABILITIES: readonly AgentCapability[] = ["system.summary.read", "service.status.read"];
 export const BASE_AGENT_CAPABILITIES: readonly AgentCapability[] = [...LEGACY_AGENT_CAPABILITIES, "sites.inventory.read"];
-export const AGENT_CAPABILITIES: readonly AgentCapability[] = [...BASE_AGENT_CAPABILITIES, "databases.inventory.read"];
-const HELPER_CAPABILITIES: readonly AgentCapability[] = ["sites.logs.read", "sites.deploy", "sites.lifecycle.manage", "sites.certificates.renew", "runtime.install"];
+const SITE_HELPER_CAPABILITIES: readonly AgentCapability[] = ["sites.logs.read", "sites.deploy", "sites.lifecycle.manage", "sites.certificates.renew", "runtime.install"];
+const DATABASE_HELPER_CAPABILITIES: readonly AgentCapability[] = [
+  "database.inventory.read", "database.sql.read", "database.backup", "database.operate", "database.install", "database.restore",
+];
+const LINUX_CAPABILITIES: readonly AgentCapability[] = ["terminal.command.execute"];
+export const AGENT_CAPABILITIES: readonly AgentCapability[] = [...BASE_AGENT_CAPABILITIES, ...SITE_HELPER_CAPABILITIES, ...LINUX_CAPABILITIES, "databases.inventory.read", ...DATABASE_HELPER_CAPABILITIES];
 
 export function activeAgentCapabilities(
   platform: "linux" | "darwin" | "win32",
-  certificateHelperReady: boolean,
+  siteHelperReady: boolean,
   databaseInventorySupported = false,
+  terminalCommandsReady = false,
+  databaseHelperReady = false,
 ): AgentCapability[] {
-  const capabilities = databaseInventorySupported ? [...AGENT_CAPABILITIES] : [...BASE_AGENT_CAPABILITIES];
-  if (platform === "linux" && certificateHelperReady) capabilities.push(...HELPER_CAPABILITIES);
+  const capabilities: AgentCapability[] = [...BASE_AGENT_CAPABILITIES];
+  if (platform === "linux" && terminalCommandsReady) capabilities.push(...LINUX_CAPABILITIES);
+  if (platform === "linux" && siteHelperReady) capabilities.push(...SITE_HELPER_CAPABILITIES);
+  if (databaseInventorySupported) capabilities.push("databases.inventory.read");
+  if (platform === "linux" && databaseInventorySupported && databaseHelperReady) capabilities.push(...DATABASE_HELPER_CAPABILITIES);
   return capabilities;
 }

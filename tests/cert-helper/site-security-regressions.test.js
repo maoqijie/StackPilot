@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmod, lstat, mkdir, mkdtemp, readFile, readlink, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, readlink, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -37,7 +37,7 @@ test("Nginx ownership rejects exact, wildcard and regex claims and fails closed"
   for (const claim of ["app.example.com", "*.example.com", ".example.com", "app.*", "~^app\\.example\\.com$", "~*^APP\\.EXAMPLE\\.COM$"]) {
     assert.throws(() => assertDomainsUnclaimed(nginx(`server_name ${claim};`), ["app.example.com"], "/etc/nginx/conf.d/owned.conf"), (error) => error.code === "DOMAIN_ALREADY_CLAIMED");
   }
-  for (const claim of ["$host", "~^(app|api)\\.example\\.com$", "~app\\.example\\.com", "~^app[.]example[.]com$", "api*example.com"]) {
+  for (const claim of ["$host", "~^(app|api)\\.example\\.com$", "~app\\.example\\.com", "~^app[.]example[.]com$", "api*example.com", "app.example.com { }"]) {
     assert.throws(() => assertDomainsUnclaimed(nginx(`server_name ${claim};`), ["app.example.com"], "/etc/nginx/conf.d/owned.conf"), (error) => error.code === "DOMAIN_OWNERSHIP_UNDETERMINED");
   }
   assert.doesNotThrow(() => assertDomainsUnclaimed(nginx("server_name api.example.net docs.example.net;"), ["app.example.com"], "/etc/nginx/conf.d/owned.conf"));
@@ -70,6 +70,17 @@ test("port allocations are persistent and unique across concurrent stores and up
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("failed availability probes release a new port lease", async () => {
+  const root = await mkdtemp(join(tmpdir(), "stackpilot-security-")); const cfg = config(root); const first = new SiteStateStore(cfg); const second = new SiteStateStore(cfg);
+  const firstId = `site-${"6".repeat(32)}`; const secondId = `site-${"7".repeat(32)}`;
+  try {
+    const port = await first.allocatePort(firstId, 31_347, async (candidate) => candidate !== 31_347);
+    assert.notEqual(port, 31_347); assert.equal(await second.allocatePort(secondId, 31_347), 31_347);
+    const throwingId = `site-${"8".repeat(32)}`; await assert.rejects(() => first.allocatePort(throwingId, 31_348, async () => { throw new Error("probe failed"); }), /probe failed/);
+    assert.equal(await second.allocatePort(`site-${"9".repeat(32)}`, 31_348), 31_348);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("site lock serializes concurrent holders and recovers a dead process owner", async () => {
   const root = await mkdtemp(join(tmpdir(), "stackpilot-security-")); const cfg = config(root); const first = new SiteStateStore(cfg); const second = new SiteStateStore(cfg); const id = `site-${"4".repeat(32)}`;
   let release; const gate = new Promise((resolve) => { release = resolve; }); const order = [];
@@ -85,8 +96,7 @@ test("site lock serializes concurrent holders and recovers a dead process owner"
 
 test("site lock never evicts a live owner based only on elapsed time", async () => {
   const root = await mkdtemp(join(tmpdir(), "stackpilot-security-")); const cfg = config(root); const store = new SiteStateStore(cfg); const id = `site-${"5".repeat(32)}`;
-  const lock = join(cfg.stateRoot, "locks", `${id}.lock`); await mkdir(lock, { recursive: true }); await writeFile(join(lock, "owner.json"), JSON.stringify({ token: "live", pid: process.pid }));
-  const old = new Date(Date.now() - 3 * 60 * 60 * 1000); await utimes(lock, old, old); let entered = false;
+  const lockRoot = join(cfg.stateRoot, "locks"); const lock = join(lockRoot, `${id}.lock`); await mkdir(lockRoot, { recursive: true }); await symlink(`${process.pid}:unknown:11111111-1111-4111-8111-111111111111`, lock); let entered = false;
   try {
     const waiting = store.withSiteLock(id, async () => { entered = true; }); await new Promise((resolve) => setTimeout(resolve, 50)); assert.equal(entered, false);
     await rm(lock, { recursive: true, force: true }); await waiting; assert.equal(entered, true);

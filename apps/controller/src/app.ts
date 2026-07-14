@@ -26,6 +26,8 @@ import { DatabaseMonitoringService } from "./modules/databases/databaseMonitorin
 import { DatabaseBackupService } from "./modules/databases/databaseBackupService.js";
 import { NginxSiteCollector } from "./platform/siteCollector.js";
 import { RemoteTaskService } from "./modules/remote-tasks/remoteTaskService.js";
+import { TerminalSnippetService } from "./modules/terminal/terminalSnippetService.js";
+import { MemoryTerminalSnippetRepository, SqliteTerminalSnippetRepository } from "./modules/terminal/terminalSnippetRepository.js";
 import { NativePlatformAdapter } from "./platform/nativeAdapter.js";
 import type { PlatformAdapter } from "./platform/types.js";
 import { FileExportRepository } from "./repositories/exportRepository.js";
@@ -37,19 +39,25 @@ import type Database from "better-sqlite3";
 import { IdentityService } from "./identity/identityService.js";
 import { authenticateUser, requireCsrf } from "./http/middleware/userAuthentication.js";
 import { parseMasterKey } from "./security/crypto.js";
-import { loadOrCreateAuditKey, SecretStore } from "./security/secretStore.js";
+import { loadOrCreateAuditKey } from "./security/secretStore.js";
 import { openDatabase } from "./database/database.js";
 import { SqliteAgentControlRepository } from "./repositories/sqliteAgentControlRepository.js";
 import { requestSource } from "./http/trustedProxy.js";
-import {
-  MemorySiteManagementRepository, SqliteSiteManagementRepository, type SiteManagementRepository,
-} from "./modules/sites/siteManagementRepository.js";
+import { SecretStore } from "./security/secretStore.js";
+import { MemorySiteManagementRepository, SqliteSiteManagementRepository, type SiteManagementRepository } from "./modules/sites/siteManagementRepository.js";
 import { RemoteSiteExecutor, SiteManagementService } from "./modules/sites/siteManagementService.js";
 import { FileService } from "./modules/files/fileService.js";
 import { FileUploadRepository } from "./repositories/fileUploadRepository.js";
 import { FileUploadService } from "./modules/files/fileUploadService.js";
 import { DatabaseSlowQueryService } from "./modules/databases/databaseSlowQueryService.js";
 import { PostgresSlowQueryCollector } from "./platform/postgresSlowQueryCollector.js";
+import { SqliteDatabaseRepository } from "./repositories/sqliteDatabaseRepository.js";
+import { DatabaseInventoryService } from "./modules/databases/databaseInventoryService.js";
+import { DatabaseBackupWorkspaceService } from "./modules/databases/databaseBackupWorkspaceService.js";
+import { DatabaseOperationService } from "./modules/databases/databaseOperationService.js";
+import { DatabaseRetentionService } from "./modules/databases/databaseRetentionService.js";
+import type { AuditRepository } from "./audit/auditRepository.js";
+import { SystemdDatabaseCollector } from "@stackpilot/host-telemetry";
 
 export type AppOptions = {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -76,6 +84,7 @@ export function createControllerServices(
   agentRepository?: AgentControlRepository,
   database: Database.Database | null = null,
   siteRepository?: SiteManagementRepository,
+  audit?: AuditRepository,
 ): Services {
   const state = new MemoryTaskStateRepository();
   const exports = new FileExportRepository(repoRoot);
@@ -85,23 +94,35 @@ export function createControllerServices(
   const certificateRenewals = new CertificateRenewalService(repository, sites);
   const remoteTasks = new RemoteTaskService(repository);
   const managementRepository = siteRepository ?? new MemorySiteManagementRepository();
+  const terminalRepository = database ? new SqliteTerminalSnippetRepository(database) : new MemoryTerminalSnippetRepository();
   const fileUploads = database ? createFileUploadService(database, repoRoot, config) : undefined;
+  const databaseRepository = database && config.masterKey
+    ? new SqliteDatabaseRepository(database, parseMasterKey(config.masterKey))
+    : undefined;
+  const nodes = new NodeService(repository);
   return {
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
     databaseSlowQueries: new DatabaseSlowQueryService(new PostgresSlowQueryCollector()),
-    databaseInstances: new DatabaseMonitoringService(repository),
+    databaseInstances: new DatabaseMonitoringService(repository, new SystemdDatabaseCollector()),
     sites,
     siteManagement: new SiteManagementService(managementRepository, sites, certificateRenewals, new RemoteSiteExecutor(remoteTasks, managementRepository), config.protectedSiteIds),
     certificateRenewals,
-    fileManager: new FileService(config.fileRoots),
+    files: new FileService(config.fileRoot, config.fileTrashDir, config.fileUploadLimitBytes, repoRoot),
     databaseBackups: new DatabaseBackupService(database, isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath), config, repoRoot),
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
     schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform),
     enrollments: new EnrollmentService(repository),
-    nodes: new NodeService(repository),
+    nodes,
     remoteTasks,
+    terminalSnippets: new TerminalSnippetService(terminalRepository, remoteTasks),
+    ...(databaseRepository ? {
+      databaseInventory: new DatabaseInventoryService(databaseRepository),
+      databaseWorkspace: new DatabaseBackupWorkspaceService(databaseRepository, audit),
+      databaseOperations: new DatabaseOperationService(databaseRepository, nodes, audit),
+      databaseRetention: new DatabaseRetentionService(databaseRepository),
+    } : {}),
     ...(fileUploads ? { fileUploads } : {}),
   };
 }
@@ -123,7 +144,7 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
   const secrets = database && config.masterKey ? new SecretStore(database, parseMasterKey(config.masterKey)) : undefined;
   const agentRepository = options.agentRepository ?? (database ? new SqliteAgentControlRepository(database,identity?.audit,secrets) : undefined);
   const siteRepository = database && secrets ? new SqliteSiteManagementRepository(database, secrets) : undefined;
-  const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, database, siteRepository);
+  const services = options.services ?? createControllerServices(platform, repoRoot, config, agentRepository, database, siteRepository, identity?.audit);
   if (!services.fileUploads && database) services.fileUploads = createFileUploadService(database, repoRoot, config);
   const logger = options.logger ?? consoleLogger;
   const surface = options.surface ?? "all";
@@ -149,21 +170,23 @@ export function createStackPilotApp(options: AppOptions = {}): RequestListener {
       const isHealthPath = url.pathname === "/healthz" || url.pathname === "/readyz";
       const isLoginPath = url.pathname === "/api/auth/login";
       const isSessionStatusPath = url.pathname === "/api/auth/session";
-      const isFileChunkPath = /^\/api\/file-uploads\/[0-9a-f-]+\/chunks$/i.test(url.pathname) && method === "POST";
+      const isFileChunkPath = /^\/api\/resumable-file-uploads\/[0-9a-f-]+\/chunks$/i.test(url.pathname) && method === "POST";
       if (surface === "agent" && !isAgentPath && !isHealthPath) throw new ServiceError(404, "NOT_FOUND", "接口不存在");
       if (isAgentPath && (!("encrypted" in request.socket) || request.socket.encrypted !== true)) throw new ServiceError(426, "BAD_REQUEST", "Agent API 要求 TLS");
       if (surface === "management" && isAgentPath) throw new ServiceError(426, "BAD_REQUEST", "Agent API 仅在 TLS 监听器可用");
       principal = !isAgentPath && !isHealthPath && !isLoginPath && !isSessionStatusPath ? authenticateUser(request, identity) : isSessionStatusPath && identity ? (()=>{try{return authenticateUser(request,identity);}catch{return undefined;}})() : undefined;
       if (!isAgentPath && isWriteMethod(method) && !isLoginPath && principal && identity) requireCsrf(request, principal, identity, config.allowedOrigins);
-      const isFileUpload = url.pathname === "/api/files/upload" && method === "POST";
-      if (isFileUpload) identity?.require(principal, "files:manage");
-      const bodyLimit = isFileUpload ? config.fileUploadLimitBytes : url.pathname === "/api/agent/heartbeat" ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
-      const parsedBody = isWriteMethod(method) && !isFileChunkPath ? await readJsonRequest(request, bodyLimit, isFileUpload) : { value: {}, raw: Buffer.alloc(0) };
+      const isFileUpload = url.pathname === "/api/file-uploads" && method === "POST";
+      if (isFileUpload) identity?.require(principal, "files:write");
+      const isLargeAgentPayload = url.pathname === "/api/agent/heartbeat" || url.pathname.startsWith("/api/agent/databases/");
+      const bodyLimit = isLargeAgentPayload ? Math.max(config.jsonBodyLimitBytes, AGENT_API_BODY_LIMIT_BYTES) : config.jsonBodyLimitBytes;
+      const parsedBody = isFileUpload ? { value: {}, raw: Buffer.alloc(0) }
+        : isWriteMethod(method) && !isFileChunkPath ? await readJsonRequest(request, bodyLimit) : { value: {}, raw: Buffer.alloc(0) };
       const parts = url.pathname.split("/").filter(Boolean);
       const authenticatedAgent = isAgentPath && url.pathname !== "/api/agent/enroll"
         ? await authenticateAgentRequest(request, `${url.pathname}${url.search}`, parsedBody.raw, services.nodes)
         : undefined;
-      const context = { request, response, requestId, url, parts, config, services, platform, logger, body: parsedBody.value, rawBody: parsedBody.raw, identity, ...(principal ? { principal } : {}), ...(authenticatedAgent ? { agentIdentity: { nodeId: authenticatedAgent.nodeId, credentialId: authenticatedAgent.credential.credentialId } } : {}) };
+      const context = { request, response, requestId, url, parts, config, services, platform, logger, body: parsedBody.value, rawBody: parsedBody.raw, identity, ...(principal ? { principal } : {}), ...(authenticatedAgent ? { agentIdentity: { nodeId: authenticatedAgent.nodeId, credentialId: authenticatedAgent.credential.credentialId, protocolVersion: authenticatedAgent.protocolVersion } } : {}) };
       if (isAgentPath) await routeAgentRequest(context);
       else await routeRequest(context);
     } catch (error) {

@@ -56,7 +56,7 @@ export async function routeSiteRequest(context: RequestContext): Promise<void> {
     sendJson(response, 202, await services.siteManagement.renewCertificate(idAt(context, 2), input, access(context), requester(context), context.requestId), SiteOperationSchema); return;
   }
   if (parts[1] === "sites" && parts[3] === "log-queries" && parts.length === 4 && method === "POST") {
-    requirePermission(context, "sites:logs", true);
+    requirePermission(context, "sites:logs");
     const input = parseSchema(CreateSiteLogQueryRequestSchema, context.body, "站点日志查询");
     sendJson(response, 202, await services.siteManagement.queryLogs(idAt(context, 2), input, access(context), requester(context)), SiteOperationSchema); return;
   }

@@ -3,22 +3,33 @@ import test from "node:test";
 import {
   API_CLIENT_PREFIX, API_ROOT_SEGMENTS, ApiErrorResponseSchema, CreateScheduleJobRequestSchema,
   OverviewSummaryPayloadSchema, PathIdSchema, WRITE_METHODS,
-  AGENT_PROTOCOL_VERSION, AgentDatabaseSnapshotSchema, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema,
+  AGENT_PROTOCOL_VERSION, AgentDatabaseSnapshotSchema, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, PhysicalHostIdSchema,
   CreateRemoteTaskRequestSchema, RemoteTaskListResponseSchema, isAgentProtocolCompatible,
   SiteRuntimePayloadSchema,
+  ExecuteTerminalSnippetRequestSchema, TerminalSnippetListResponseSchema,
   AgentSiteSnapshotSchema, CertificateRenewalTaskParametersSchema, CreateCertificateRenewalRequestSchema,
   CreateSitePlanRequestSchema, SiteDeploymentManifestSchema, SiteAccessLogRecordSchema,
-  CreateFileUploadRequestSchema, FileUploadRecordSchema,
-  DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema,
+  CreateFileUploadRequestSchema, ResumableFileUploadRecordSchema,
+  AgentDatabaseBackupPlanPollResponseSchema, AgentDatabaseOperationUpdateSchema, AgentDatabaseQueryUploadSchema, AgentDatabaseScheduledBackupResultsRequestSchema,
+  BusinessDatabaseBackupsPayloadSchema, CreateBusinessDatabaseBackupPlanRequestSchema, CreateDatabaseOperationPlanRequestSchema, DatabaseOperationPlanSchema,
+  DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, ExecuteDatabaseOperationPlanRequestSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
-  CreateDirectoryRequestSchema, FileNameSchema, FilePathSchema,
+  CreateDirectoryRequestSchema,
+  UpdateNodeCapabilitiesRequestSchema,
 } from "@stackpilot/contracts";
 
 test("shared API constants preserve the existing HTTP contract", () => {
   assert.equal(API_CLIENT_PREFIX, "/api");
   assert.deepEqual(API_ROOT_SEGMENTS, ["api", "overview"]);
   assert.deepEqual(WRITE_METHODS, ["POST", "PATCH", "DELETE"]);
+});
+
+test("node capability updates accept the complete shared Agent capability set", () => {
+  const allowedCapabilities = ["system.summary.read", "database.inventory.read", "database.sql.read", "database.backup", "database.operate", "database.install", "database.restore"];
+  assert.deepEqual(UpdateNodeCapabilitiesRequestSchema.parse({ allowedCapabilities }).allowedCapabilities, allowedCapabilities);
+  assert.equal(UpdateNodeCapabilitiesRequestSchema.safeParse({ allowedCapabilities: ["database.shell"] }).success, false);
+  assert.equal(UpdateNodeCapabilitiesRequestSchema.safeParse({ allowedCapabilities: ["database.backup", "database.backup"] }).success, false);
 });
 
 test("remote task history accepts collection timestamps from upgraded Controllers", () => {
@@ -47,11 +58,24 @@ test("agent telemetry remains optional and strictly validates bounded snapshots"
   assert.equal(AgentTelemetrySnapshotSchema.safeParse({ ...telemetry, disks: unsafeAggregate }).success, false);
 });
 
+test("physical host identity is optional and accepts only opaque versioned hashes", () => {
+  const heartbeat = { nodeId: crypto.randomUUID(), agentVersion: "0.2.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 1 } };
+  const physicalHostId = `ph_${"a".repeat(64)}`;
+  assert.equal(AgentHeartbeatSchema.safeParse(heartbeat).success, true);
+  assert.equal(AgentHeartbeatSchema.safeParse({ ...heartbeat, physicalHostId }).success, true);
+  assert.equal(PhysicalHostIdSchema.safeParse(physicalHostId).success, true);
+  for (const invalid of ["a".repeat(64), `ph_${"A".repeat(64)}`, `ph_${"a".repeat(63)}`, "/etc/machine-id", "host-1"]) {
+    assert.equal(AgentHeartbeatSchema.safeParse({ ...heartbeat, physicalHostId: invalid }).success, false, invalid);
+  }
+});
+
 test("database inventory is optional on legacy heartbeats and rejects duplicate instance ids", () => {
   const snapshot = { collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], instances: [{ id: "postgresql.service", name: "postgresql", engine: "postgresql", version: null, host: "node-a", port: null, status: "running", source: "systemd:postgresql.service", latencyMs: null, storageBytes: null, activeConnections: null, maxConnections: null, slowQueryCount: null, backupStatus: "unavailable", lastBackupAt: null, accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null }] };
-  assert.equal(AgentDatabaseSnapshotSchema.safeParse(snapshot).success, true);
-  assert.equal(AgentDatabaseSnapshotSchema.safeParse({ ...snapshot, instances: [snapshot.instances[0], snapshot.instances[0]] }).success, false);
-  assert.equal(AgentHeartbeatSchema.safeParse({ nodeId: crypto.randomUUID(), agentVersion: "0.2.0", protocolVersion: "1.0", timestamp: new Date().toISOString(), platform: "linux", capabilities: ["databases.inventory.read"], health: { status: "healthy", uptimeSeconds: 1 }, databaseSnapshot: snapshot }).success, true);
+  assert.equal(AgentDatabaseSnapshotSchema.safeParse(snapshot).success, false);
+  const heartbeat = AgentHeartbeatSchema.safeParse({ nodeId: crypto.randomUUID(), agentVersion: "0.2.0", protocolVersion: "1.0", timestamp: new Date().toISOString(), platform: "linux", capabilities: ["databases.inventory.read"], health: { status: "healthy", uptimeSeconds: 1 }, databaseSnapshot: snapshot });
+  assert.equal(heartbeat.success, true);
+  if (heartbeat.success) assert.deepEqual(heartbeat.data.databaseSnapshot?.instances[0]?.volumes, []);
+  assert.equal(AgentHeartbeatSchema.safeParse({ nodeId: crypto.randomUUID(), agentVersion: "0.2.0", protocolVersion: "1.0", timestamp: new Date().toISOString(), platform: "linux", capabilities: ["databases.inventory.read"], health: { status: "healthy", uptimeSeconds: 1 }, databaseSnapshot: { ...snapshot, instances: [snapshot.instances[0], snapshot.instances[0]] } }).success, false);
 });
 
 test("database instance payload exposes scoped records with strict freshness fields", () => {
@@ -59,9 +83,9 @@ test("database instance payload exposes scoped records with strict freshness fie
   const instance = {
     id: `database-${"a".repeat(32)}`, nodeId: crypto.randomUUID(), nodeName: "database-node", address: "192.0.2.10",
     collectedAt, freshness: "current", name: "postgresql", engine: "postgresql", version: "16.9", host: "database-node",
-    port: 5432, status: "running", source: "systemd:postgresql.service", latencyMs: null, storageBytes: null,
+    port: 5432, status: "running", source: "systemd:postgresql.service", managed: false, historicalSlowQueriesAvailable: false, latencyMs: null, storageBytes: null,
     activeConnections: null, maxConnections: null, slowQueryCount: null, backupStatus: "unavailable", lastBackupAt: null,
-    accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null,
+    accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null, volumes: [],
   };
   const payload = { collectedAt, collectionStatus: "complete", warnings: [], instances: [instance] };
   assert.equal(DatabaseInstancesPayloadSchema.safeParse(payload).success, true);
@@ -136,13 +160,38 @@ test("database slow-query contract preserves nullable historical statistics", ()
   assert.equal(DatabaseSlowQueriesPayloadSchema.safeParse({ ...payload, queries: [{ ...payload.queries[0], sql: "x".repeat(2_001) }] }).success, false);
 });
 
+test("database contracts strictly validate inventory, SQL uploads, backups and two-phase operations", () => {
+  const collectedAt = new Date().toISOString();
+  const instance = { id:"postgres-main",name:"main",engine:"postgresql",version:"16.9",host:"db-1",port:5432,status:"running",source:"postgresql",managed:false,historicalSlowQueriesAvailable:false,latencyMs:3,storageBytes:1024,activeConnections:2,maxConnections:100,slowQueryCount:1,backupStatus:"unavailable",lastBackupAt:null,accessMode:"read-write",owner:null,region:null,autoBackup:false,remoteAccess:true,volumes:[] };
+  assert.equal(AgentDatabaseSnapshotSchema.safeParse({collectedAt,collectionStatus:"complete",warnings:[],instances:[instance]}).success,true);
+  assert.equal(AgentDatabaseSnapshotSchema.safeParse({collectedAt,collectionStatus:"complete",warnings:[],instances:[instance],password:"forbidden"}).success,false);
+  const query={id:"q-1",instanceLocalId:"postgres-main",database:"app",fingerprint:"fp-1",sql:"SELECT * FROM t",durationMs:2000,calls:null,p95Ms:null,rowsExamined:null,risk:"low",state:"active",owner:"app",startedAt:collectedAt,lastSeenAt:collectedAt,sessionId:"12",waitEvent:null,historical:false};
+  assert.equal(AgentDatabaseQueryUploadSchema.safeParse({collectedAt,collectionStatus:"complete",warnings:[],sessions:[],queries:[query]}).success,true);
+  assert.equal(AgentDatabaseQueryUploadSchema.safeParse({collectedAt,collectionStatus:"complete",warnings:[],sessions:[],queries:[{...query,sql:"x".repeat(2001)}]}).success,false);
+  assert.equal(BusinessDatabaseBackupsPayloadSchema.safeParse({collectedAt,collectionStatus:"complete",warnings:[],plans:[],jobs:[],restorePoints:[]}).success,true);
+  assert.equal(CreateBusinessDatabaseBackupPlanRequestSchema.safeParse({instanceId:"database-"+"a".repeat(32),name:"bad",cron:"@daily",retentionCount:7,enabled:true}).success,false);
+  const nodeId=crypto.randomUUID();
+  assert.equal(CreateDatabaseOperationPlanRequestSchema.safeParse({kind:"install",nodeId,engine:"postgresql",name:"app",port:null,initialDatabase:"app",credentialPublicKey:"x".repeat(64)}).success,true);
+  assert.equal(CreateDatabaseOperationPlanRequestSchema.safeParse({kind:"create-index",instanceId:"database-"+"a".repeat(32),queryId:"q",table:"users;drop",columns:["email"]}).success,false);
+  const plan={id:crypto.randomUUID(),kind:"install",nodeId,instanceId:null,target:"postgresql / app",impact:["public listener"],version:1,expiresAt:new Date(Date.now()+60_000).toISOString(),createdAt:collectedAt,executedAt:null};
+  assert.equal(DatabaseOperationPlanSchema.safeParse(plan).success,true);
+  assert.equal(ExecuteDatabaseOperationPlanRequestSchema.safeParse({planId:plan.id,version:1,idempotencyKey:"execute-001"}).success,true);
+  assert.equal(AgentDatabaseOperationUpdateSchema.safeParse({operationId:crypto.randomUUID(),version:1,status:"failed",errorCode:null,errorMessage:"failed",credentialEnvelope:null,updatedAt:collectedAt}).success,false);
+  const backupPlan={id:crypto.randomUUID(),instanceLocalId:"orders",cron:"0 2 * * *",retentionCount:7,enabled:true,version:1,updatedAt:collectedAt};
+  assert.equal(AgentDatabaseBackupPlanPollResponseSchema.safeParse({plans:[backupPlan,{...backupPlan}],controllerTime:collectedAt}).success,false);
+  const report={reportId:crypto.randomUUID(),planId:backupPlan.id,planVersion:1,instanceLocalId:"orders",scheduledFor:collectedAt,status:"failed",result:null,errorCode:"BACKUP_FAILED",completedAt:collectedAt};
+  assert.equal(AgentDatabaseScheduledBackupResultsRequestSchema.safeParse({reports:[report,{...report}]}).success,false);
+});
+
 test("identity schemas reject privilege fields and invalid node scopes", () => {
   assert.equal(LoginRequestSchema.safeParse({ username: "admin", password: "password", role: "administrator" }).success, false);
   assert.equal(CreateApiTokenRequestSchema.safeParse({ name: "reader", permissions: ["overview:read"], nodeScope: "all", expiresAt: null }).success, true);
   assert.equal(CreateApiTokenRequestSchema.safeParse({ name: "bad", permissions: ["unknown:permission"], nodeScope: "all", expiresAt: null }).success, false);
   assert.equal(UpdateUserAccessRequestSchema.safeParse({ roleIds: ["operator"], nodeScope: ["not-a-uuid"], disabled: false }).success, false);
   assert.equal(PermissionSchema.safeParse("databases:read").success, true);
-  assert.equal(PermissionSchema.safeParse("files:manage").success, true);
+  assert.equal(PermissionSchema.safeParse("files:delete").success, true);
+  assert.equal(PermissionSchema.safeParse("terminal:read").success, true);
+  assert.equal(PermissionSchema.safeParse("terminal:execute").success, true);
 });
 
 test("file upload contracts reject paths and inconsistent progress", () => {
@@ -152,15 +201,24 @@ test("file upload contracts reject paths and inconsistent progress", () => {
   assert.equal(CreateFileUploadRequestSchema.safeParse({ ...request, fileName: "../secret" }).success, false);
   assert.equal(CreateFileUploadRequestSchema.safeParse({ ...request, sizeBytes: 0 }).success, true);
   const record = { id: crypto.randomUUID(), fileName: request.fileName, targetDirectory: request.targetDirectory, targetPath: "releases/2026/artifact.zip", sizeBytes: request.sizeBytes, contentType: request.contentType, receivedBytes: 10, status: "completed", owner: "Admin", sha256: "a".repeat(64), errorMessage: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), completedAt: new Date().toISOString() };
-  assert.equal(FileUploadRecordSchema.safeParse(record).success, true);
-  assert.equal(FileUploadRecordSchema.safeParse({ ...record, receivedBytes: 9 }).success, false);
+  assert.equal(ResumableFileUploadRecordSchema.safeParse(record).success, true);
+  assert.equal(ResumableFileUploadRecordSchema.safeParse({ ...record, receivedBytes: 9 }).success, false);
 });
 
 test("agent protocol schemas reject incompatible and generic command tasks", () => {
-  assert.equal(AGENT_PROTOCOL_VERSION, "1.0");
-  assert.equal(isAgentProtocolCompatible("1.9"), true);
+  assert.equal(AGENT_PROTOCOL_VERSION, "1.1");
+  assert.equal(isAgentProtocolCompatible("1.0"), true);
+  assert.equal(isAgentProtocolCompatible("1.1"), true);
+  assert.equal(isAgentProtocolCompatible("1.9"), false);
   assert.equal(isAgentProtocolCompatible("2.0"), false);
   assert.equal(CreateRemoteTaskRequestSchema.safeParse({ type: "run-shell", parameters: { command: "id" }, expiresInSeconds: 60, idempotencyKey: "generic-command" }).success, false);
+  const terminal = (parameters) => ({ type: "terminal.command.execute", parameters, expiresInSeconds: 30, idempotencyKey: "terminal-command-1" });
+  for (const parameters of [{ command: "disk-usage" }, { command: "uptime" }, { command: "top-summary" }, { command: "service-status", serviceName: "nginx.service" }]) {
+    assert.equal(CreateRemoteTaskRequestSchema.safeParse(terminal(parameters)).success, true);
+  }
+  for (const parameters of [{ command: "id" }, { command: "uptime", args: ["--version"] }, { command: "service-status", serviceName: "nginx;id" }, { command: "service-status", serviceName: "-H" }, { command: "service-status", serviceName: "nginx.service", shell: true }]) {
+    assert.equal(CreateRemoteTaskRequestSchema.safeParse(terminal(parameters)).success, false);
+  }
   assert.equal(AgentHeartbeatSchema.safeParse({ nodeId: crypto.randomUUID(), agentVersion: "0.1.0", protocolVersion: "1.0", timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read"], health: { status: "healthy", uptimeSeconds: 1 }, token: "forbidden" }).success, false);
 });
 
@@ -173,10 +231,17 @@ test("shared schemas validate external request and error contracts at runtime", 
   assert.equal(OverviewSummaryPayloadSchema.safeParse({}).success, false);
 });
 
-test("file contracts reject unsafe names and non-absolute paths",()=>{
-  assert.equal(FilePathSchema.safeParse("/var/www").success,true);
-  assert.equal(FilePathSchema.safeParse("../www").success,false);
-  for(const name of [".","..","nested/name","nested\\name","bad\0name"])assert.equal(FileNameSchema.safeParse(name).success,false,name);
-  assert.equal(CreateDirectoryRequestSchema.safeParse({path:"/var/www",name:"site"}).success,true);
-  assert.equal(CreateDirectoryRequestSchema.safeParse({path:"/var/www",name:"site",mode:"0777"}).success,false);
+test("terminal snippet contracts reject browser-supplied commands", () => {
+  const now = new Date().toISOString();
+  assert.equal(TerminalSnippetListResponseSchema.safeParse({ collectedAt: now, snippets: [{ id: "system-summary", version: 1, title: "Summary", command: "df -h", category: "resource", risk: "read", description: "Read resources", favorite: false, lastUsedAt: null, executable: true, requiredCapability: "system.summary.read" }] }).success, true);
+  const request = { nodeId: crypto.randomUUID(), snippetVersion: 1, idempotencyKey: "terminal-contract-1" };
+  assert.equal(ExecuteTerminalSnippetRequestSchema.safeParse(request).success, true);
+  assert.equal(ExecuteTerminalSnippetRequestSchema.safeParse({ ...request, command: "id" }).success, false);
+});
+
+test("file contracts reject unsafe names and non-virtual paths",()=>{
+  assert.equal(CreateDirectoryRequestSchema.safeParse({parentPath:"/var/www",name:"site"}).success,true);
+  assert.equal(CreateDirectoryRequestSchema.safeParse({parentPath:"../www",name:"site"}).success,false);
+  for(const name of [".","..","nested/name","nested\\name","bad\0name"])assert.equal(CreateDirectoryRequestSchema.safeParse({parentPath:"/",name}).success,false,name);
+  assert.equal(CreateDirectoryRequestSchema.safeParse({parentPath:"/var/www",name:"site",mode:"0777"}).success,false);
 });

@@ -16,9 +16,13 @@ test("CI pins third-party Actions and gates code, E2E, deployment and image secu
 
 test("release signs only after scans and uses OIDC without a stored signing key", async () => {
   const release = await read(".github/workflows/release.yml");
+  const packageJson = JSON.parse(await read("package.json"));
+  const notes = await read(`docs/upgrades/${packageJson.version}.md`);
   for (const line of release.split(/\r?\n/).filter((entry) => entry.trim().startsWith("uses:"))) {
     assert.match(line, /@[a-f0-9]{40}$/);
   }
+  assert.match(notes, new RegExp(`^# Upgrade to ${packageJson.version.replaceAll(".", "\\.")}$`, "m"));
+  assert.match(release, /--notes-file "docs\/upgrades\/\$\{VERSION\}\.md"/);
   assert.ok(release.indexOf("Scan published Agent image") < release.indexOf("Sign image digests"));
   assert.match(release, /id-token: write/);
   assert.match(release, /cosign sign --yes/);

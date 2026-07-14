@@ -1,0 +1,198 @@
+.module-page-deploy-rollbacks {
+  padding: 32px 32px 64px;
+}
+
+.module-page-deploy-rollbacks .module-view-context,
+.module-page-deploy-rollbacks .module-filter-line,
+.module-page-deploy-rollbacks .module-metrics article,
+.module-page-deploy-rollbacks .module-table-wrap,
+.module-page-deploy-rollbacks .module-card-sort,
+.module-page-deploy-rollbacks .module-card-row,
+.module-page-deploy-rollbacks .module-card-empty {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.module-page-deploy-rollbacks .module-view-context:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.module-page-deploy-rollbacks .module-filter-line:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.module-page-deploy-rollbacks .module-metrics article:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.module-page-deploy-rollbacks .module-table-wrap:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.module-page-deploy-rollbacks .module-card-sort:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.module-page-deploy-rollbacks .module-card-row:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.module-page-deploy-rollbacks .module-card-empty:is(:hover, :focus, :focus-visible, :focus-within, :active) {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.module-page-deploy-rollbacks .module-view-context {
+  background: var(--primary-soft);
+}
+
+.module-page-deploy-rollbacks .module-view-context em {
+  border: 0;
+  background: var(--surface);
+}
+
+.module-page-deploy-rollbacks .module-filter-line {
+  padding: 0;
+  background: transparent;
+}
+
+.module-page-deploy-rollbacks .deploy-tabs {
+  padding: 4px;
+  border: 0;
+  box-shadow: none;
+  background: var(--surface);
+}
+
+.module-page-deploy-rollbacks .module-metrics article {
+  background: var(--surface);
+}
+
+.module-page-deploy-rollbacks .module-metrics article:has(> svg.orange) {
+  box-shadow: var(--glow-primary);
+}
+
+.module-page-deploy-rollbacks .module-table {
+  min-width: 980px;
+}
+
+.module-page-deploy-rollbacks .module-table th,
+.module-page-deploy-rollbacks .module-table td {
+  border-bottom-color: transparent;
+}
+
+.module-page-deploy-rollbacks .module-table thead th {
+  background: transparent;
+}
+
+.module-page-deploy-rollbacks .module-table tbody tr {
+  background: var(--surface);
+}
+
+.module-page-deploy-rollbacks .module-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.module-page-deploy-rollbacks .module-table td[data-label="原因"] {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.module-page-deploy-rollbacks .module-table td[data-label="当前版本"],
+.module-page-deploy-rollbacks .module-table td[data-label="目标版本"] {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.module-page-deploy-rollbacks .table-actions {
+  flex-wrap: nowrap;
+}
+
+.module-page-deploy-rollbacks .table-actions button,
+.module-page-deploy-rollbacks .page-head .ghost,
+.module-page-deploy-rollbacks .deploy-tabs button {
+  border: 0;
+}
+
+.module-page-deploy-rollbacks .module-card-sort {
+  padding-inline: 0;
+  background: transparent;
+}
+
+.module-page-deploy-rollbacks .module-card-list {
+  padding: 0;
+  gap: 8px;
+}
+
+.module-page-deploy-rollbacks .module-card-row {
+  padding: 16px;
+  background: var(--surface);
+}
+
+.module-page-deploy-rollbacks .module-card-code {
+  min-width: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.module-page-deploy-rollbacks .module-card-footer {
+  padding-top: 4px;
+}
+
+.module-page-deploy-rollbacks .module-card-empty {
+  padding-inline: 0;
+  background: transparent;
+}
+
+.module-page-deploy-rollbacks .status-with-icon {
+  gap: 5px;
+}
+
+.module-page-deploy-rollbacks .status-with-icon svg {
+  flex: 0 0 auto;
+}
+
+.deploy-rollback-drawer {
+  width: min(520px, 100vw);
+  border: 0;
+  box-shadow: var(--shadow-overlay);
+}
+
+.deploy-rollback-drawer .drawer-head,
+.deploy-rollback-drawer .drawer-actions {
+  border-color: transparent;
+}
+
+.deploy-rollback-drawer .drawer-body {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+}
+
+.deploy-rollback-drawer .terminal-log {
+  min-width: 0;
+  min-height: 0;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  color: var(--text-soft);
+  background: var(--surface-soft);
+  overflow: auto;
+}
+
+.deploy-rollback-drawer .terminal-log p {
+  overflow-wrap: anywhere;
+}
+
+.deploy-rollback-drawer .detail-kv p {
+  border: 0;
+  background: var(--surface-soft);
+}
+
+.deploy-create-drawer .drawer-body {
+  gap: 24px;
+}
+
+@media (max-width: 773px) {
+  .module-page-deploy-rollbacks {
+    padding: 20px 16px 40px;
+  }
+
+  .module-page-deploy-rollbacks .module-card-row {
+    padding: 16px;
+  }
+
+  .deploy-rollback-drawer {
+    width: 100vw;
+  }
+}
+
+@media (max-width: 480px) {
+  .module-page-deploy-rollbacks {
+    padding-inline: 12px;
+  }
+}

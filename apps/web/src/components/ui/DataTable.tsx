@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, ChevronsUpDown } from "lucide-react";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { normalizeTableValue } from "../../utils/data";
 
 type TableColumn<T> = {
@@ -30,6 +30,9 @@ function DataTable<T>({
   const sortableColumns = columns.filter((column) => Boolean(column.sortValue));
   const [sortState, setSortState] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [page, setPage] = useState(1);
+  const [interactionRevision, setInteractionRevision] = useState(0);
+  const tableResultsRef = useRef<HTMLTableSectionElement>(null);
+  const cardResultsRef = useRef<HTMLDivElement>(null);
   const activeSortColumn = sortState ? sortableColumns.find((column) => column.key === sortState.key) : undefined;
   const sortedRows = activeSortColumn
     ? [...rows].sort((left, right) => {
@@ -44,8 +47,16 @@ function DataTable<T>({
   const pageCount = safePageSize ? Math.max(1, Math.ceil(sortedRows.length / safePageSize)) : 1;
   const currentPage = Math.min(page, pageCount);
   const visibleRows = safePageSize ? sortedRows.slice((currentPage - 1) * safePageSize, currentPage * safePageSize) : sortedRows;
+  useLayoutEffect(() => {
+    if (interactionRevision === 0) return;
+    const surfaces = [tableResultsRef.current, cardResultsRef.current].filter((surface) => surface !== null);
+    surfaces.forEach((surface) => surface.classList.remove("is-interaction-entering"));
+    void tableResultsRef.current?.offsetWidth;
+    surfaces.forEach((surface) => surface.classList.add("is-interaction-entering"));
+  }, [interactionRevision]);
   const toggleSort = (column: TableColumn<T>) => {
     if (!column.sortValue) return;
+    setInteractionRevision((current) => current + 1);
     setSortState((current) => (
       current?.key !== column.key
         ? { key: column.key, direction: "asc" }
@@ -55,7 +66,7 @@ function DataTable<T>({
     ));
   };
   return (
-    <div className="module-table-wrap">
+    <div className="module-table-wrap" data-motion-revision={interactionRevision}>
       <table className="mini-table module-table">
         <colgroup>
           {columns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
@@ -87,7 +98,7 @@ function DataTable<T>({
             })}
           </tr>
         </thead>
-        <tbody>
+        <tbody ref={tableResultsRef} className="module-table-results">
           {visibleRows.map((row) => (
             <tr key={getRowKey(row)}>{columns.map((column) => <td key={column.key} data-label={column.label}>{column.render(row)}</td>)}</tr>
           ))}
@@ -119,7 +130,7 @@ function DataTable<T>({
           })}
         </div>
       )}
-      <div className="module-card-list">
+      <div ref={cardResultsRef} className="module-card-list">
         {visibleRows.map((row) => (
           <article className="module-card-row" key={getRowKey(row)}>
             {mobileCard ? mobileCard(row) : columns.map((column) => (
@@ -136,8 +147,8 @@ function DataTable<T>({
         <nav className="module-table-pagination" aria-label="分页">
           <span>第 {currentPage} / {pageCount} 页 · 共 {sortedRows.length} 条</span>
           <div>
-            <button type="button" title="上一页" aria-label="上一页" disabled={currentPage === 1} onClick={() => setPage(Math.max(1, currentPage - 1))}><ChevronLeft size={16} /></button>
-            <button type="button" title="下一页" aria-label="下一页" disabled={currentPage === pageCount} onClick={() => setPage(Math.min(pageCount, currentPage + 1))}><ChevronRight size={16} /></button>
+            <button type="button" title="上一页" aria-label="上一页" disabled={currentPage === 1} onClick={() => { setInteractionRevision((current) => current + 1); setPage(Math.max(1, currentPage - 1)); }}><ChevronLeft size={16} /></button>
+            <button type="button" title="下一页" aria-label="下一页" disabled={currentPage === pageCount} onClick={() => { setInteractionRevision((current) => current + 1); setPage(Math.min(pageCount, currentPage + 1)); }}><ChevronRight size={16} /></button>
           </div>
         </nav>
       )}

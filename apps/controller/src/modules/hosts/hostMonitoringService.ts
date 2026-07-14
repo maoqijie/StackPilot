@@ -5,6 +5,7 @@ import type { PlatformAdapter, PlatformSnapshot } from "../../platform/types.js"
 import type { AgentControlRepository, AgentNodeState } from "../../repositories/agentControlRepository.js";
 import type { NodeScope } from "@stackpilot/contracts";
 import { hasResourceWarning } from "../../platform/resourceHealth.js";
+import { agentControlState, controllerMirrorAgents } from "../nodes/physicalHostIdentity.js";
 
 const LOCAL_ENVIRONMENT = "本机";
 const PRODUCTION_ENVIRONMENT = "生产";
@@ -130,11 +131,30 @@ export class HostMonitoringService {
 
   async getHosts(includeAgents: boolean, nodeScope: NodeScope): Promise<HostMonitoringPayload> {
     const snapshot = await this.platform.collectSnapshot();
-    const hosts = [localRecord(snapshot, this.production)];
+    const local = localRecord(snapshot, this.production);
+    const hosts = [local];
     if (includeAgents) {
       const state = await this.repository.read();
       const allowed = nodeScope === "all" ? state.nodes : state.nodes.filter((node) => nodeScope.includes(node.nodeId));
-      hosts.push(...allowed.filter((node) => !node.revokedAt && node.status !== "revoked").map((node) => remoteRecord(node, Date.now(), this.offlineAfterMs)));
+      const active = allowed.filter((node) => !node.revokedAt && node.status !== "revoked");
+      const activeIds = new Set(active.map((node) => node.nodeId));
+      const mirrorNodes = controllerMirrorAgents(snapshot, state.nodes.filter((node) => !node.revokedAt && node.status !== "revoked"))
+        .filter((node) => activeIds.has(node.nodeId));
+      const mirrors = new Set(mirrorNodes.map((node) => node.nodeId));
+      const mirror = mirrorNodes[0];
+      if (mirror) {
+        const control = agentControlState(mirror, Date.now(), this.offlineAfterMs);
+        hosts[0] = {
+          ...local,
+          healthStatus: control.healthy ? local.healthStatus : "degraded",
+          owner: `${local.owner} · Agent ${mirror.agentVersion}`,
+          services: [...local.services, { name: "StackPilot Agent 控制通道", status: control.healthy ? "running" : "stopped" }],
+        };
+      }
+      hosts.push(...allowed
+        .filter((node) => !node.revokedAt && node.status !== "revoked")
+        .filter((node) => !mirrors.has(node.nodeId))
+        .map((node) => remoteRecord(node, Date.now(), this.offlineAfterMs)));
     }
     const collectedAt = new Date().toISOString();
     return HostMonitoringPayloadSchema.parse({ collectedAt, hosts });

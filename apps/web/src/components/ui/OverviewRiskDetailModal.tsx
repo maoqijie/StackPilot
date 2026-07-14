@@ -13,6 +13,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { OverviewRiskRecord } from "../../api/overviewApi";
+import { useExitMotion } from "./useExitMotion";
 
 type Tone = "green" | "blue" | "orange" | "red" | "gray" | "purple";
 
@@ -44,6 +45,7 @@ export function OverviewRiskDetailModal({
 }) {
   const titleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
+  const { closing, requestClose } = useExitMotion(onClose);
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -52,7 +54,7 @@ export function OverviewRiskDetailModal({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        requestClose();
         return;
       }
       if (event.key !== "Tab" || !modalRef.current) return;
@@ -75,15 +77,15 @@ export function OverviewRiskDetailModal({
       document.removeEventListener("keydown", handleKeyDown);
       if (previousFocus && document.contains(previousFocus)) previousFocus.focus({ preventScroll: true });
     };
-  }, [onClose]);
+  }, [requestClose]);
 
   const steps = suggestionSteps(risk.suggestion);
   const evidence = risk.evidence ?? [];
 
   return createPortal(
     <>
-      <button className="risk-modal-scrim" type="button" aria-label="关闭风险详情" onClick={onClose} tabIndex={-1} />
-      <div ref={modalRef} className="risk-detail-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <button className="risk-modal-scrim" data-closing={closing || undefined} type="button" aria-label="关闭风险详情" onClick={requestClose} tabIndex={-1} disabled={closing} />
+      <div ref={modalRef} className="risk-detail-modal" data-closing={closing || undefined} role="dialog" aria-modal="true" aria-labelledby={titleId} inert={closing || undefined}>
         <header className="risk-modal-head">
           <div className="risk-modal-title">
             <span>{risk.traceId}</span>
@@ -93,7 +95,7 @@ export function OverviewRiskDetailModal({
               <b className="risk-status"><Clock3 size={14} />{risk.status}</b>
             </div>
           </div>
-          <button className="icon-action risk-modal-close" type="button" onClick={onClose} aria-label="关闭风险详情">
+          <button className="icon-action risk-modal-close" type="button" disabled={closing} onClick={requestClose} aria-label="关闭风险详情">
             <X size={16} />
           </button>
         </header>

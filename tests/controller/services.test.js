@@ -33,6 +33,7 @@ const nodeIds = {
   hidden: "22222222-2222-4222-8222-222222222222",
   revoked: "33333333-3333-4333-8333-333333333333",
 };
+const localPhysicalHostId = "ph_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 function telemetry(hostname, cpu, totalMemoryGb, availableMemoryGb, diskUsedGb, diskTotalGb, collectedAt = new Date().toISOString()) {
   return {
@@ -158,6 +159,59 @@ test("overview recomputes every projection from the authorized non-revoked Agent
   const localOnly = await overview.getOverview({ nodeScope: [], canReadTasks: true, canReadAudit: true });
   assert.deepEqual(localOnly.nodes.map((node) => node.id), ["node-local"]);
   assert.deepEqual(localOnly.resources.cluster.map((item) => item.value), ["12%", "38%", "80%", "0.10"]);
+});
+
+test("overview merges a Controller mirror without losing Agent tasks or audits", async () => {
+  const repository = new MemoryAgentControlRepository();
+  const taskId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const auditId = "aaaaaaaa-0000-4000-8000-000000000001";
+  await repository.update((state) => {
+    state.nodes.push(agentNode(
+      nodeIds.allowed,
+      "fake-host",
+      { ...telemetry("fake-host", 99, 100, 0, 100, 100), primaryIp: "127.0.0.1" },
+      { physicalHostId: localPhysicalHostId },
+    ));
+    state.tasks.push(remoteTask(taskId, nodeIds.allowed, "mirror-task-log"));
+    state.audits.push(auditEvent(auditId, nodeIds.allowed, "mirror-audit"));
+  });
+
+  const payload = await new OverviewService(
+    new FakePlatformAdapter(),
+    new MemoryTaskStateRepository(),
+    repository,
+  ).getOverview();
+
+  assert.deepEqual(payload.nodes.map((node) => node.id), ["node-local"]);
+  assert.deepEqual(Object.keys(payload.resources).sort(), ["cluster", "node-local"]);
+  assert.deepEqual(payload.resources.cluster.map((item) => item.value), ["12%", "38%", "80%", "0.10"]);
+  assert.equal(payload.metrics.find((item) => item.label === "异常节点").value, "0");
+  assert.equal(payload.risks.some((risk) => risk.id.startsWith(`risk-agent-${nodeIds.allowed}-`)), false);
+  assert.equal(payload.nodes[0].services.at(-1).name, "StackPilot Agent 控制通道");
+  assert.equal(payload.nodes[0].services.at(-1).status, "健康");
+  assert.equal(payload.tasks.some((task) => task.id === taskId && task.logs.includes("mirror-task-log")), true);
+  assert.equal(JSON.stringify(payload.audits).includes("mirror-audit"), true);
+});
+
+test("overview surfaces a mirrored Agent outage without counting host resources twice", async () => {
+  const repository = new MemoryAgentControlRepository();
+  const stale = new Date(Date.now() - 120_000).toISOString();
+  await repository.update((state) => state.nodes.push(agentNode(
+    nodeIds.allowed,
+    "fake-host",
+    { ...telemetry("fake-host", 99, 100, 0, 100, 100), primaryIp: "127.0.0.1", collectedAt: stale },
+    { physicalHostId: localPhysicalHostId, lastSeenAt: stale },
+  )));
+
+  const payload = await new OverviewService(new FakePlatformAdapter(), new MemoryTaskStateRepository(), repository).getOverview();
+
+  assert.deepEqual(payload.nodes.map((node) => node.id), ["node-local"]);
+  assert.equal(payload.nodes[0].status, "警告");
+  assert.equal(payload.nodes[0].services.at(-1).status, "离线");
+  assert.equal(payload.cluster.health, "警告");
+  assert.equal(payload.metrics.find((item) => item.label === "异常节点").value, "1");
+  assert.equal(payload.risks.some((risk) => risk.id === `risk-agent-${nodeIds.allowed}-offline`), true);
+  assert.deepEqual(payload.resources.cluster.map((item) => item.value), ["12%", "38%", "80%", "0.10"]);
 });
 
 test("overview distinguishes enrollment grace, offline heartbeat and stale telemetry with stable risk IDs", async () => {

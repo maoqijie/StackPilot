@@ -1,16 +1,19 @@
-import { CheckCircle2, Download, Plus, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { CheckCircle2, Plus, Trash2 } from "lucide-react";
+import type { Permission } from "@stackpilot/contracts";
+import { useRef, useState } from "react";
 import { settingsPagePreset } from "../app/pagePresets";
 import { settingsPageForTab } from "../features/settings/navigation";
 import { SettingsTabs } from "../features/settings/SettingsTabs";
 import { resolvePageMeta, viewContextForPage } from "../app/navigation";
 import { ModuleViewContext } from "../components/layout/ModulePageShell";
 import { PanelCard } from "../components/ui/Cards";
-import { DetailDrawer } from "../components/ui/DetailDrawer";
 import { FormLine, FormSelectLine, ToggleLine } from "../components/ui/FormControls";
 import { StatusLight } from "../components/ui/StatusVisuals";
 import { TokenSecretDrawer, TokenTable } from "../features/settings/TokenManagement";
-import type { BackupDraft, GeneratedTokenSecret, SettingsChangeRow, TokenRow, TokenStatus } from "../features/settings/types";
+import { SystemBackupsPanel } from "../features/settings/SystemBackupsPanel";
+import { useNotificationSettings } from "../features/settings/useNotificationSettings";
+import { useSecuritySettings } from "../features/settings/useSecuritySettings";
+import type { GeneratedTokenSecret, SettingsChangeRow, TokenRow, TokenStatus } from "../features/settings/types";
 import { initialSettingsChanges, initialTokenRows } from "../mocks/demoData";
 import type { Notify, PageKey, SetPage, SettingsReadOnlyState } from "../types/app";
 import { currentDateTime } from "../utils/time";
@@ -20,11 +23,13 @@ function SettingsPage({
   setPage,
   notify,
   readOnlyState,
+  permissions = [],
 }: {
   page: PageKey;
   setPage: SetPage;
   notify: Notify;
   readOnlyState: SettingsReadOnlyState;
+  permissions?: Permission[];
 }) {
   const activeTab = settingsPagePreset(page);
   const { readOnly, setReadOnly } = readOnlyState;
@@ -46,97 +51,17 @@ function SettingsPage({
   const [tokenRows, setTokenRows] = useState<TokenRow[]>(initialTokenRows);
   const [generatedToken, setGeneratedToken] = useState<GeneratedTokenSecret | null>(null);
   const [settingsAuditRows, setSettingsAuditRows] = useState<SettingsChangeRow[]>(initialSettingsChanges);
-  const [backupItems, setBackupItems] = useState(["面板数据", "审计日志"]);
-  const backupJobSequence = useRef(1);
-  const backupRunAtInputRef = useRef<HTMLInputElement>(null);
-  const backupLocationInputRef = useRef<HTMLInputElement>(null);
-  const [backupDraft, setBackupDraft] = useState<BackupDraft>({
-    frequency: "每日",
-    runAt: "02:30",
-    retention: "保留 14 份",
-    target: "S3 / MinIO",
-    location: "s3://stackpilot-backup/",
-    encryption: "启用（AES-256）",
-  });
-  const backupDraftRef = useRef<BackupDraft>(backupDraft);
-  const [backupConnection, setBackupConnection] = useState<{ status: "未检查" | "配置已检查" | "需要检查"; detail: string; signature?: string }>({
-    status: "未检查",
-    detail: "保存前建议检查备份目标配置。",
-  });
-  const [backupTimeError, setBackupTimeError] = useState("");
-  const [backupVerification, setBackupVerification] = useState({
-    latest: "2025-08-12 03:01",
-    delay: "上次备份延迟 18 分钟",
-    delayTone: "warn",
-    drill: "恢复演练未完成",
-    drillTone: "error",
-  });
-  const [backupDrawer, setBackupDrawer] = useState<"verification" | "jobs" | null>(null);
-  const [backupJobs, setBackupJobs] = useState([
-    { id: "backup-20250813", time: "2025-08-13 02:30", status: "成功", size: "1.24 GB", duration: "00:03:21" },
-    { id: "backup-20250812", time: "2025-08-12 02:30", status: "成功", size: "1.22 GB", duration: "00:03:05" },
-    { id: "backup-20250811", time: "2025-08-11 02:30", status: "成功", size: "1.18 GB", duration: "00:03:05" },
-    { id: "backup-20250810", time: "2025-08-10 02:30", status: "延迟", size: "1.18 GB", duration: "00:08:44" },
-    { id: "backup-20250809", time: "2025-08-09 02:30", status: "成功", size: "1.18 GB", duration: "00:03:05" },
-  ]);
-  const [twoFactor, setTwoFactor] = useState(true);
-  const [multiLogin, setMultiLogin] = useState(false);
-  const securityWhitelistInputRef = useRef<HTMLInputElement>(null);
-  const [securityDraft, setSecurityDraft] = useState({
-    sessionTimeout: "30 分钟",
-    ipWhitelist: "10.0.0.0/8, 172.16.0.0/12",
-    lockPolicy: "5 次 / 15 分钟",
-  });
-  const [securityError, setSecurityError] = useState("");
-  const [securitySavedAt, setSecuritySavedAt] = useState("2025-08-12 18:47");
-  const [securityReview, setSecurityReview] = useState("2 个 IP 白名单等待复核");
-  const [securityReviewTone, setSecurityReviewTone] = useState<"ok" | "warn">("warn");
-  const [mailNotice, setMailNotice] = useState(true);
-  const noticeWebhookInputRef = useRef<HTMLInputElement>(null);
-  const noticeRecipientsInputRef = useRef<HTMLInputElement>(null);
-  const [noticeDraft, setNoticeDraft] = useState({
-    webhook: "https://hooks.example.com/stackpilot",
-    recipients: "ops@example.com, dev@example.com",
-    severity: "关键与告警",
-    digest: "每小时摘要",
-  });
-  const [savedNotice, setSavedNotice] = useState({
-    webhook: "https://hooks.example.com/stackpilot",
-    recipients: "ops@example.com, dev@example.com",
-    severity: "关键与告警",
-    digest: "每小时摘要",
-    mailEnabled: true,
-    events: ["高危告警", "备份失败", "部署完成"],
-  });
-  const [noticeErrors, setNoticeErrors] = useState({ webhook: "", recipients: "" });
-  const [noticeConnection, setNoticeConnection] = useState({
-    status: "格式已检查",
-    detail: "通知格式已检查，预计响应 45ms",
-    tone: "ok" as "ok" | "warn" | "error",
-    signature: "https://hooks.example.com/stackpilot::mail::ops@example.com, dev@example.com",
-  });
-  const [noticeSavedAt, setNoticeSavedAt] = useState("2025-08-12 18:43");
-  const [noticeEvents, setNoticeEvents] = useState(["高危告警", "备份失败", "部署完成"]);
-  const [noticeDeliveries, setNoticeDeliveries] = useState([
-    { id: "notice-1", time: "18:42", channel: "Webhook", target: "ops-alerts", result: "成功", latency: "45ms" },
-    { id: "notice-2", time: "18:20", channel: "邮件", target: "ops@example.com", result: "成功", latency: "1.2s" },
-    { id: "notice-3", time: "17:58", channel: "Webhook", target: "deploy-room", result: "重试中", latency: "3.4s" },
-  ]);
   const activeSettingsPage = settingsPageForTab(activeTab);
-  const backupTargetSignature = `${backupDraft.target}::${backupDraft.location.trim()}`;
-  const backupConnectionValid = backupConnection.status === "配置已检查" && backupConnection.signature === backupTargetSignature;
-  const backupConnectionTone = backupConnection.status === "配置已检查" ? "ok-line" : backupConnection.status === "需要检查" ? "error-line" : "warn-line";
-  const immediateBackupRunning = backupJobs.some((job) => job.status === "运行中");
-  const backupStateClass = (tone: string) => tone === "ok" ? "ok-line" : tone === "error" ? "error-line" : "warn-line";
-  const settingsModalOpen = Boolean(generatedToken || backupDrawer);
+  const settingsModalOpen = Boolean(generatedToken);
   const guardSettingsWrite = (action: string) => {
     if (!readOnly) return true;
     notify(`只读模式已开启，无法${action}`, "warning");
     return false;
   };
-  useEffect(() => {
-    backupDraftRef.current = backupDraft;
-  }, [backupDraft]);
+  const security = useSecuritySettings(guardSettingsWrite, notify);
+  const notice = useNotificationSettings(guardSettingsWrite, notify);
+  const { twoFactor, setTwoFactor, multiLogin, setMultiLogin, securityWhitelistInputRef, securityDraft, securityError, securitySavedAt, securityReview, setSecurityReview, securityReviewTone, setSecurityReviewTone, updateSecurityDraft, saveSecurityPolicy, runSecurityReview } = security;
+  const { mailNotice, setMailNotice, noticeWebhookInputRef, noticeRecipientsInputRef, noticeDraft, setNoticeDraft, savedNotice, noticeErrors, setNoticeErrors, noticeConnection, setNoticeConnection, noticeSavedAt, noticeEvents, noticeDeliveries, noticeSignature, updateNoticeDraft, toggleNoticeEvent, testNoticeConnection, saveNoticeSettings, sendNoticePreview, readNoticeDraft } = notice;
   const identitySignature = (draft: typeof identityDraft) => `${draft.panelName.trim()}::${draft.publicUrl.trim()}::${draft.adminEmail.trim()}`;
   const normalizeIdentityDraft = (draft: typeof identityDraft) => ({
     ...draft,
@@ -267,287 +192,6 @@ function SettingsPage({
       .then(() => notify("完整访问令牌已复制", "info"))
       .catch(() => notify("复制令牌失败，请检查剪贴板权限", "danger"));
   };
-  const readBackupDraft = () => ({
-    ...backupDraftRef.current,
-    runAt: backupRunAtInputRef.current?.value ?? backupDraftRef.current.runAt,
-    location: backupLocationInputRef.current?.value ?? backupDraftRef.current.location,
-  });
-  const syncBackupDraft = (draft: BackupDraft) => {
-    backupDraftRef.current = draft;
-    setBackupDraft(draft);
-  };
-  const toggleBackupItem = (item: string) => {
-    if (!guardSettingsWrite("修改备份范围")) return;
-    setBackupItems((current) => current.includes(item) ? current.filter((value) => value !== item) : [...current, item]);
-  };
-  const updateBackupDraft = (key: keyof typeof backupDraft, value: string) => {
-    if (!guardSettingsWrite("修改备份策略")) return;
-    const next = { ...backupDraftRef.current, [key]: value };
-    backupDraftRef.current = next;
-    setBackupDraft(next);
-    if (key === "runAt") {
-      setBackupTimeError("");
-    }
-    if (key === "target" || key === "location") {
-      setBackupConnection({ status: "未检查", detail: "备份目标已变更，需要重新检查配置。" });
-    }
-  };
-  const testBackupConnection = () => {
-    if (!guardSettingsWrite("检查备份配置")) return;
-    const draft = readBackupDraft();
-    syncBackupDraft(draft);
-    const signature = `${draft.target}::${draft.location.trim()}`;
-    if (!draft.location.trim()) {
-      setBackupConnection({ status: "需要检查", detail: "请先填写存储位置。" });
-      notify("存储位置不能为空", "danger");
-      return;
-    }
-    setBackupConnection({ status: "配置已检查", detail: `${draft.target} 目标格式已检查，可保存到当前策略。`, signature });
-    setBackupVerification((current) => ({ ...current, latest: "刚刚" }));
-    notify(`${draft.target} 目标检查通过`);
-  };
-  const saveBackupPolicy = () => {
-    if (!guardSettingsWrite("保存备份策略")) return;
-    const draft = readBackupDraft();
-    syncBackupDraft(draft);
-    const signature = `${draft.target}::${draft.location.trim()}`;
-    const connectionValid = backupConnection.status === "配置已检查" && backupConnection.signature === signature;
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.runAt.trim())) {
-      setBackupTimeError("请输入 00:00-23:59 的执行时间");
-      notify("执行时间格式不正确", "danger");
-      return;
-    }
-    if (!draft.runAt.trim() || !draft.location.trim()) {
-      notify("执行时间和存储位置不能为空", "danger");
-      return;
-    }
-    if (backupItems.length === 0) {
-      notify("至少选择一个备份范围", "danger");
-      return;
-    }
-    if (!connectionValid) {
-      setBackupConnection({ status: "需要检查", detail: "请先检查当前备份目标配置。" });
-      notify("请先检查当前备份目标配置", "danger");
-      return;
-    }
-    setBackupVerification((current) => ({
-      ...current,
-      delay: "下一次备份计划已校准",
-      delayTone: "ok",
-    }));
-    notify(`备份策略已保存：${draft.frequency} ${draft.runAt}`);
-  };
-  const createImmediateBackup = () => {
-    if (!guardSettingsWrite("创建立即备份")) return;
-    if (immediateBackupRunning) {
-      notify("已有立即备份任务正在运行", "warning");
-      return;
-    }
-    if (backupItems.length === 0) {
-      notify("请先选择备份范围", "danger");
-      return;
-    }
-    if (!backupConnectionValid) {
-      notify("请先检查当前备份目标配置", "danger");
-      return;
-    }
-    const sequence = backupJobSequence.current;
-    backupJobSequence.current += 1;
-    setBackupJobs((current) => [
-      { id: `manual-${Date.now()}-${sequence}`, time: `刚刚 #${sequence}`, status: "运行中", size: "计算中", duration: "00:00:08" },
-      ...current.slice(0, 4),
-    ]);
-    setBackupVerification((current) => ({ ...current, delay: "立即备份任务运行中", delayTone: "warn" }));
-    notify("已创建立即备份任务");
-  };
-  const startRestoreDrill = () => {
-    if (!guardSettingsWrite("启动恢复演练")) return;
-    setBackupVerification((current) => ({ ...current, drill: "恢复演练已排队", drillTone: "warn" }));
-    notify("恢复演练已排队", "info");
-  };
-  const updateSecurityDraft = (key: keyof typeof securityDraft, value: string) => {
-    if (!guardSettingsWrite("修改安全策略")) return;
-    setSecurityDraft((current) => ({ ...current, [key]: value }));
-    setSecurityError("");
-    setSecurityReview("安全策略已变更，等待复核");
-    setSecurityReviewTone("warn");
-  };
-  const isValidIpv4Cidr = (value: string) => {
-    const [ip, prefix] = value.split("/");
-    const octets = ip.split(".");
-    if (octets.length !== 4 || octets.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255)) return false;
-    if (prefix === undefined) return true;
-    return /^\d{1,2}$/.test(prefix) && Number(prefix) <= 32;
-  };
-  const validateSecurityWhitelist = (ipWhitelist: string) => {
-    const whitelistParts = ipWhitelist.split(",").map((item) => item.trim()).filter(Boolean);
-    if (whitelistParts.length === 0) return "至少保留一个 IP 或 CIDR 白名单";
-    if (whitelistParts.some((item) => !isValidIpv4Cidr(item))) return "仅支持 IPv4 或 CIDR，例如 10.0.0.0/8";
-    return "";
-  };
-  const securityReviewResult = (ipWhitelist: string) => {
-    const whitelistError = validateSecurityWhitelist(ipWhitelist);
-    if (whitelistError) return { ok: false, message: whitelistError, tone: "warn" as const };
-    if (!twoFactor) return { ok: false, message: "MFA 未强制启用，建议复核", tone: "warn" as const };
-    if (multiLogin) return { ok: false, message: "多地登录已开启，等待安全复核", tone: "warn" as const };
-    return { ok: true, message: "MFA 覆盖率 100%，白名单校验通过", tone: "ok" as const };
-  };
-  const saveSecurityPolicy = () => {
-    if (!guardSettingsWrite("保存安全策略")) return;
-    const ipWhitelist = securityWhitelistInputRef.current?.value ?? securityDraft.ipWhitelist;
-    setSecurityDraft((current) => ({ ...current, ipWhitelist }));
-    const whitelistError = validateSecurityWhitelist(ipWhitelist);
-    if (whitelistError) {
-      setSecurityError(whitelistError);
-      notify(whitelistError.includes("至少") ? "IP 白名单不能为空" : "IP 白名单格式不正确", "danger");
-      return;
-    }
-    const review = securityReviewResult(ipWhitelist);
-    setSecuritySavedAt("刚刚");
-    setSecurityReview(review.ok ? "安全策略已校准" : review.message);
-    setSecurityReviewTone(review.tone);
-    notify("安全策略已保存");
-  };
-  const runSecurityReview = () => {
-    if (!guardSettingsWrite("执行安全复核")) return;
-    const ipWhitelist = securityWhitelistInputRef.current?.value ?? securityDraft.ipWhitelist;
-    setSecurityDraft((current) => ({ ...current, ipWhitelist }));
-    const review = securityReviewResult(ipWhitelist);
-    if (!review.ok && validateSecurityWhitelist(ipWhitelist)) {
-      setSecurityError(review.message);
-    }
-    setSecurityReview(review.message);
-    setSecurityReviewTone(review.tone);
-    notify(review.ok ? "安全策略复核已完成" : "安全策略复核未通过", review.ok ? "success" : "warning");
-  };
-  const readNoticeDraft = () => ({
-    ...noticeDraft,
-    webhook: noticeWebhookInputRef.current?.value ?? noticeDraft.webhook,
-    recipients: noticeRecipientsInputRef.current?.value ?? noticeDraft.recipients,
-  });
-  const noticeSignature = (draft: typeof noticeDraft, mailEnabled = mailNotice) => `${draft.webhook.trim()}::${mailEnabled ? `mail::${draft.recipients.trim()}` : "webhook-only"}`;
-  const validateNoticeDraft = (draft: typeof noticeDraft) => {
-    const webhook = draft.webhook.trim();
-    const recipients = draft.recipients.split(",").map((item) => item.trim()).filter(Boolean);
-    return {
-      webhook: /^https:\/\/[\w.-]+(?::\d+)?(?:\/[\w./?=&:%+-]*)?$/.test(webhook) ? "" : "请输入 https:// 开头的 Webhook 地址",
-      recipients: !mailNotice || recipients.length > 0 && recipients.every((item) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)) ? "" : "请输入有效邮箱，多个收件人用逗号分隔",
-    };
-  };
-  const updateNoticeDraft = (key: keyof typeof noticeDraft, value: string) => {
-    if (!guardSettingsWrite("修改通知设置")) return;
-    const next = { ...noticeDraft, [key]: value };
-    setNoticeDraft(next);
-    setNoticeErrors((current) => ({ ...current, [key]: "" }));
-    if (key === "webhook" || key === "recipients" && mailNotice) {
-      setNoticeConnection({
-        status: "待检查",
-        detail: "通知渠道已变更，需要重新检查配置。",
-        tone: "warn",
-        signature: "",
-      });
-      return;
-    }
-    setNoticeConnection((current) => ({
-      ...current,
-      status: "待保存",
-      detail: "通知策略已变更，保存后生效。",
-      tone: "warn",
-    }));
-  };
-  const toggleNoticeEvent = (eventName: string) => {
-    if (!guardSettingsWrite("修改通知事件")) return;
-    setNoticeEvents((current) => current.includes(eventName) ? current.filter((item) => item !== eventName) : [...current, eventName]);
-    setNoticeConnection((current) => ({
-      ...current,
-      status: "待保存",
-      detail: "事件范围已变更，保存后生效。",
-      tone: "warn",
-    }));
-  };
-  const testNoticeConnection = () => {
-    if (!guardSettingsWrite("检查通知渠道")) return false;
-    const draft = readNoticeDraft();
-    setNoticeDraft(draft);
-    const errors = validateNoticeDraft(draft);
-    setNoticeErrors(errors);
-    if (errors.webhook || errors.recipients) {
-      setNoticeConnection({ status: "需要检查", detail: errors.webhook || errors.recipients, tone: "error", signature: "" });
-      notify(errors.webhook ? "Webhook 地址格式不正确" : "通知收件人格式不正确", "danger");
-      return false;
-    }
-    const latency = `${38 + noticeDeliveries.length * 3}ms`;
-    setNoticeConnection({
-      status: "格式已检查",
-      detail: `通知格式已检查，预计响应 ${latency}`,
-      tone: "ok",
-      signature: noticeSignature(draft),
-    });
-    notify(`通知渠道检查通过：${latency}`);
-    return true;
-  };
-  const saveNoticeSettings = () => {
-    if (!guardSettingsWrite("保存通知设置")) return;
-    const draft = readNoticeDraft();
-    setNoticeDraft(draft);
-    const errors = validateNoticeDraft(draft);
-    setNoticeErrors(errors);
-    if (errors.webhook || errors.recipients) {
-      notify(errors.webhook ? "Webhook 地址格式不正确" : "通知收件人格式不正确", "danger");
-      return;
-    }
-    if (noticeEvents.length === 0) {
-      notify("至少选择一个通知事件", "danger");
-      return;
-    }
-    if (noticeConnection.signature !== noticeSignature(draft) || noticeConnection.tone !== "ok") {
-      setNoticeConnection({ status: "待检查", detail: "请先检查当前通知渠道配置。", tone: "warn", signature: "" });
-      notify("请先检查当前通知渠道配置", "warning");
-      return;
-    }
-    setNoticeSavedAt("刚刚");
-    setSavedNotice({ ...draft, mailEnabled: mailNotice, events: noticeEvents });
-    setNoticeConnection((current) => ({
-      ...current,
-      status: "格式已检查",
-      detail: "通知策略已保存，配置格式有效。",
-      tone: "ok",
-    }));
-    notify("通知设置已保存");
-  };
-  const sendNoticePreview = () => {
-    if (!guardSettingsWrite("发送通知预览")) return;
-    const draft = readNoticeDraft();
-    setNoticeDraft(draft);
-    const errors = validateNoticeDraft(draft);
-    setNoticeErrors(errors);
-    if (errors.webhook || errors.recipients) {
-      notify(errors.webhook ? "Webhook 地址格式不正确" : "通知收件人格式不正确", "danger");
-      return;
-    }
-    if (noticeEvents.length === 0) {
-      notify("至少选择一个通知事件", "danger");
-      return;
-    }
-    if (noticeConnection.signature !== noticeSignature(draft) || noticeConnection.tone !== "ok") {
-      setNoticeConnection({ status: "待检查", detail: "请先检查当前通知渠道配置。", tone: "warn", signature: "" });
-      notify("请先检查当前通知渠道配置", "warning");
-      return;
-    }
-    const recipients = draft.recipients.split(",").map((item) => item.trim()).filter(Boolean);
-    setNoticeDeliveries((current) => [
-      {
-        id: `notice-preview-${Date.now()}`,
-        time: "刚刚",
-        channel: mailNotice ? "邮件 + Webhook" : "Webhook",
-        target: mailNotice ? recipients[0] : "ops-alerts",
-        result: "成功",
-        latency: "52ms",
-      },
-      ...current.slice(0, 4),
-    ]);
-    notify("通知预览已发送");
-  };
   return (
     <div className="settings-mock-page">
       <div className="page-head settings-title" inert={settingsModalOpen} aria-hidden={settingsModalOpen ? "true" : undefined}>
@@ -588,42 +232,7 @@ function SettingsPage({
           </div>
           <TokenTable rows={tokenRows} readOnly={readOnly} onView={viewToken} onUpdateStatus={updateTokenStatus} onDelete={deleteToken} onBulkDisable={bulkDisableTokens} />
         </PanelCard>}
-        {activeTab === "备份" && <PanelCard title="备份策略">
-          <div className="backup-grid">
-            <FormSelectLine label="备份频率" value={backupDraft.frequency} options={["每日", "每周", "每 6 小时"]} disabled={readOnly} onChange={(value) => updateBackupDraft("frequency", value)} />
-            <FormLine label="执行时间" value={backupDraft.runAt} disabled={readOnly} onChange={(value) => updateBackupDraft("runAt", value)} hint="24 小时制，如 02:30" error={backupTimeError} inputRef={backupRunAtInputRef} />
-            <FormSelectLine label="保留策略" value={backupDraft.retention} options={["保留 7 份", "保留 14 份", "保留 30 份"]} disabled={readOnly} onChange={(value) => updateBackupDraft("retention", value)} />
-            <FormSelectLine label="备份目标" value={backupDraft.target} options={["S3 / MinIO", "本地磁盘", "远端 SFTP"]} disabled={readOnly} onChange={(value) => updateBackupDraft("target", value)} />
-            <FormLine label="存储位置" value={backupDraft.location} disabled={readOnly} onChange={(value) => updateBackupDraft("location", value)} inputRef={backupLocationInputRef} />
-            <button className="ghost backup-test-button" type="button" disabled={readOnly} onClick={testBackupConnection}>检查配置</button>
-            <FormSelectLine label="加密设置" value={backupDraft.encryption} options={["启用（AES-256）", "启用（KMS 托管）", "关闭"]} disabled={readOnly} onChange={(value) => updateBackupDraft("encryption", value)} />
-          </div>
-          <div className="backup-policy-summary">
-            <p><span>当前策略</span><b>{backupDraft.frequency} {backupDraft.runAt}</b><em>{backupDraft.retention} · {backupDraft.encryption}</em></p>
-            <p><span>备份目标</span><b>{backupDraft.target}</b><em>{backupDraft.location || "未填写存储位置"}</em></p>
-            <p className={backupConnectionTone}><span>{backupConnectionValid ? "配置已检查" : backupConnection.status}</span><b>{backupConnection.detail}</b></p>
-          </div>
-          <div className="check-row">
-            {["面板数据", "审计日志", "上传文件"].map((item) => (
-              <button key={item} className={backupItems.includes(item) ? "checked" : ""} type="button" disabled={readOnly} aria-pressed={backupItems.includes(item)} onClick={() => toggleBackupItem(item)}>{item}</button>
-            ))}
-          </div>
-          <div className="settings-buttons backup-actions"><button className="primary" type="button" disabled={readOnly} onClick={saveBackupPolicy}>保存策略</button><button className="primary" type="button" disabled={readOnly || immediateBackupRunning} onClick={createImmediateBackup}><Download size={14} /> 立即备份</button><button className="ghost" type="button" disabled={readOnly} onClick={startRestoreDrill}>恢复演练</button></div>
-        </PanelCard>}
-        {activeTab === "备份" && <PanelCard title="验证状态" className="settings-card-wide">
-          <div className="verify-box">
-            <p className="ok-line"><CheckCircle2 size={15} /> 最近验证成功：{backupVerification.latest}</p>
-            <p className={backupStateClass(backupVerification.delayTone)}>{backupVerification.delay} <button type="button" onClick={() => setBackupDrawer("verification")}>查看详情</button></p>
-            <p className={backupStateClass(backupVerification.drillTone)}>{backupVerification.drill} <button type="button" disabled={readOnly} onClick={startRestoreDrill}>前往演练</button></p>
-          </div>
-          <div className="backup-list">
-            <div><strong>最近备份任务</strong><button type="button" onClick={() => setBackupDrawer("jobs")}>查看全部</button></div>
-            {backupJobs.map((job) => (
-              <p key={job.id}><span>{job.time}</span><StatusLight tone={job.status === "延迟" || job.status === "运行中" ? "orange" : "green"} /> <em>{job.status}</em><b>{job.size}</b><small>{job.duration}</small></p>
-            ))}
-          </div>
-          <div className="storage-bar"><span style={{ width: "48%" }} /><em>可用空间：482.36 GB / 1.00 TB (48%)</em></div>
-        </PanelCard>}
+        {activeTab === "备份" && <div className="settings-card-wide"><SystemBackupsPanel notify={notify} permissions={permissions} readOnly={readOnly} /></div>}
         {activeTab === "安全" && <PanelCard title="安全设置">
           <div className="right-settings">
             <ToggleLine label="强制启用两步验证（2FA）" active={twoFactor} disabled={readOnly} onToggle={(active) => {
@@ -727,50 +336,6 @@ function SettingsPage({
             </div>
           </PanelCard>
         </div>
-      )}
-      {backupDrawer && (
-        <DetailDrawer
-          title={backupDrawer === "verification" ? "备份验证详情" : "全部备份任务"}
-          subtitle={backupDrawer === "verification" ? backupVerification.delay : `${backupJobs.length} 条本地任务记录`}
-          onClose={() => setBackupDrawer(null)}
-          className="settings-detail-drawer"
-          modal
-          actions={backupDrawer === "verification"
-            ? <><button className="ghost" type="button" disabled={readOnly} onClick={testBackupConnection}>重新检查</button><button className="primary" type="button" disabled={readOnly} onClick={startRestoreDrill}>启动演练</button></>
-            : <><button className="ghost" type="button" disabled={readOnly || immediateBackupRunning} onClick={createImmediateBackup}>立即备份</button><button className="primary" type="button" disabled={readOnly} onClick={startRestoreDrill}>恢复演练</button></>}
-        >
-          <div className="settings-backup-drawer">
-            {backupDrawer === "verification" ? (
-              <>
-                <div className="detail-kv">
-                  <p><span>最近验证</span><b>{backupVerification.latest}</b></p>
-                  <p><span>计划状态</span><b>{backupVerification.delay}</b></p>
-                  <p><span>恢复演练</span><b>{backupVerification.drill}</b></p>
-                  <p><span>备份目标</span><b>{backupDraft.target}</b></p>
-                  <p><span>存储位置</span><b>{backupDraft.location || "未填写"}</b></p>
-                  <p><span>备份范围</span><b>{backupItems.join(" / ") || "未选择"}</b></p>
-                </div>
-                <div className="drawer-list">
-                  <strong>验证检查项</strong>
-                  <p><StatusLight tone={backupConnectionValid ? "green" : "orange"} /> 目标配置<span>{backupConnection.status}</span></p>
-                  <p><StatusLight tone={backupVerification.delayTone === "ok" ? "green" : "orange"} /> 计划延迟<span>{backupVerification.delay}</span></p>
-                  <p><StatusLight tone={backupVerification.drillTone === "error" ? "red" : "green"} /> 恢复演练<span>{backupVerification.drill}</span></p>
-                </div>
-              </>
-            ) : (
-              <div className="drawer-list settings-backup-job-list">
-                <strong>备份任务记录</strong>
-                {backupJobs.map((job) => (
-                  <p key={job.id}>
-                    <StatusLight tone={job.status === "延迟" || job.status === "运行中" ? "orange" : "green"} />
-                    {job.time}
-                    <span>{job.status} · {job.size} · {job.duration}</span>
-                  </p>
-                ))}
-              </div>
-            )}
-          </div>
-        </DetailDrawer>
       )}
       {generatedToken && (
         <TokenSecretDrawer

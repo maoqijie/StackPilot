@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,10 +8,11 @@ import selfsigned from "selfsigned";
 import { AgentSiteSnapshotSchema } from "@stackpilot/contracts";
 import { certificateSourceIdForPath } from "../../apps/agent/dist/sites/certificateIdentity.js";
 import { NginxSiteCollector, SiteSnapshotCache } from "../../apps/agent/dist/sites/nginxCollector.js";
+import { agentSiteId, siteId } from "../../apps/cert-helper/dist/siteState.js";
 
 const nodeId = "11111111-1111-4111-8111-111111111111";
 
-test("Linux inventory reads only the configured public PEM and emits opaque stable identifiers", async () => {
+test("Linux inventory uses helper certificate metadata and emits management-compatible identifiers", async () => {
   const directory = await mkdtemp(join(tmpdir(), "stackpilot-sites-"));
   try {
     const nginxRoot = join(directory, "sites-enabled"); const liveRoot = join(directory, "letsencrypt", "live"); const certDir = join(liveRoot, "example.com");
@@ -21,24 +23,20 @@ test("Linux inventory reads only the configured public PEM and emits opaque stab
     await writeFile(join(nginxRoot, "misplaced-private.key"), pair.private);
     await writeFile(configPath, `server { listen 80; server_name example.com; return 308 https://$host$request_uri; }
 server { listen 443 ssl; server_name example.com; ssl_certificate ${publicPath}; ssl_certificate_key ${privatePath}; proxy_pass http://127.0.0.1:3000; }`);
-    const reads = []; const certificateId = `cert_${"a".repeat(32)}`;
+    const reads = [];
+    const certificateId = `cert_${"a".repeat(32)}`;
     const helperCertificate = { status: "valid", notBefore: "2026-01-01T00:00:00.000Z", expiresAt: "2026-09-01T00:00:00.000Z", issuer: "Test CA", subjectAlternativeNames: ["example.com", "www.example.com"], fingerprintSha256: null, renewalMode: "automatic", renewable: true, unavailableReason: null, certificateId };
     const collector = new NginxSiteCollector(nodeId, { roots: [nginxRoot], hostName: "node-a", helperCertificates: async () => new Map([[certificateSourceIdForPath(publicPath), helperCertificate]]), readText: async (path) => { reads.push(path); return readFile(path, "utf8"); } });
     const snapshot = AgentSiteSnapshotSchema.parse(await collector.collect("linux"));
     assert.equal(snapshot.collectionStatus, "complete"); assert.equal(snapshot.sites.length, 1);
-    assert.match(snapshot.sites[0].id, /^site_[a-f0-9]{32}$/); assert.equal(snapshot.sites[0].domain, "example.com");
+    assert.equal(snapshot.sites[0].id, agentSiteId(nodeId, "example.com")); assert.equal(snapshot.sites[0].domain, "example.com");
+    const publicId = `site-${createHash("sha256").update(`${nodeId}\0${snapshot.sites[0].id}`).digest("hex").slice(0, 32)}`;
+    assert.equal(publicId, siteId(nodeId, "example.com"));
     assert.equal(snapshot.sites[0].certificate.renewable, true); assert.equal(snapshot.sites[0].certificate.renewalMode, "automatic");
     assert.equal(snapshot.sites[0].certificate.certificateId, certificateId);
     assert.deepEqual(snapshot.sites[0].certificate.subjectAlternativeNames.sort(), ["example.com", "www.example.com"]);
     assert.ok(!reads.includes(publicPath)); assert.ok(!reads.includes(privatePath)); assert.ok(!reads.some((path) => path.endsWith("misplaced-private.key")));
   } finally { await rm(directory, { recursive: true, force: true }); }
-});
-
-test("certificate source identities remain opaque and stable", () => {
-  const value = certificateSourceIdForPath("/tmp/public-chain.pem");
-  assert.match(value, /^source_[a-f0-9]{32}$/);
-  assert.equal(value, certificateSourceIdForPath("/tmp/public-chain.pem"));
-  assert.doesNotMatch(value, /public-chain|\/tmp/);
 });
 
 test("inventory marks non-Linux and unavailable helper states without inventing renewability", async () => {

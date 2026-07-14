@@ -1,30 +1,32 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchDatabases } from "../api/databasesApi";
-import type { DatabaseInstanceRecord, DatabaseInstancesPayload } from "../api/databasesApi";
+import { fetchDatabaseDetail, fetchDatabases } from "../api/databasesApi";
+import type { DatabaseInstanceDetail, DatabaseInstanceRecord, DatabaseInstancesPayload } from "../api/databasesApi";
 import { DatabasesPage } from "../pages/DatabasesPage";
 import type { Notify, SetPage } from "../types/app";
 
-vi.mock("../api/databasesApi", () => ({ fetchDatabases: vi.fn() }));
+vi.mock("../api/databasesApi", () => ({ fetchDatabases: vi.fn(), fetchDatabaseDetail: vi.fn() }));
 
 const collectedAt = "2026-07-14T00:00:00.000Z";
 function database(overrides: Partial<DatabaseInstanceRecord> = {}): DatabaseInstanceRecord {
   return {
     id: `database-${"a".repeat(32)}`, nodeId: "11111111-1111-4111-8111-111111111111", nodeName: "db-node-01",
     name: "postgresql-16-main", engine: "postgresql", version: null, host: "db-node-01", address: "10.0.0.8", port: null,
-    status: "running", source: "systemd:postgresql@16-main.service", latencyMs: null, storageBytes: null,
+    status: "running", source: "systemd:postgresql@16-main.service", managed: false, historicalSlowQueriesAvailable: false,
+    latencyMs: null, storageBytes: null,
     activeConnections: null, maxConnections: null, slowQueryCount: null, backupStatus: "unavailable", lastBackupAt: null,
-    accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null,
+    accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null, volumes: [],
     collectedAt, freshness: "current", ...overrides,
   };
 }
 function payload(instances: DatabaseInstanceRecord[], overrides: Partial<DatabaseInstancesPayload> = {}): DatabaseInstancesPayload {
   return { collectedAt, collectionStatus: "complete", warnings: [], instances, ...overrides };
 }
+function detail(instance = database(), overrides: Partial<DatabaseInstanceDetail> = {}): DatabaseInstanceDetail { return { instance, sessions: [], recentQueries: [], ...overrides }; }
 
 describe("database instances live page", () => {
   const setPage = vi.fn() as unknown as SetPage; const notify = vi.fn() as unknown as Notify;
-  beforeEach(() => { vi.mocked(fetchDatabases).mockReset(); vi.mocked(fetchDatabases).mockResolvedValue(payload([database()])); Object.defineProperty(document, "hidden", { configurable: true, value: false }); });
+  beforeEach(() => { vi.mocked(fetchDatabases).mockReset(); vi.mocked(fetchDatabaseDetail).mockReset(); vi.mocked(fetchDatabases).mockResolvedValue(payload([database()])); vi.mocked(fetchDatabaseDetail).mockResolvedValue(detail()); Object.defineProperty(document, "hidden", { configurable: true, value: false }); });
   afterEach(() => { vi.useRealTimers(); Object.defineProperty(document, "hidden", { configurable: true, value: false }); });
 
   it("loads backend data without exposing mock write actions", async () => {
@@ -64,6 +66,7 @@ describe("database instances live page", () => {
       .mockResolvedValueOnce(payload([database(), database({ id: `database-${"b".repeat(32)}`, name: "mysql" })]))
       .mockResolvedValueOnce(payload([database({ source: "systemd:refreshed.service", port: 5432 }), database({ id: `database-${"b".repeat(32)}`, name: "mysql" })], { collectedAt: "2026-07-14T00:00:10.000Z" }))
       .mockRejectedValueOnce(new Error("瞬时失败"));
+    vi.mocked(fetchDatabaseDetail).mockResolvedValue(detail(database({ port: 5432, source: "systemd:refreshed.service" })));
     render(<DatabasesPage page="databases" setPage={setPage} notify={notify} />);
     await act(async () => undefined);
     const search = screen.getByPlaceholderText("搜索数据库、主机、节点或权限");

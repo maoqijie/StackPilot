@@ -38,5 +38,7 @@ export async function requestJson<T>(path: string, options: RequestJsonInit = {}
     throw await responseError(response, suppressSessionExpiredCodes);
   }
 
-  return response.json() as Promise<T>;
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }

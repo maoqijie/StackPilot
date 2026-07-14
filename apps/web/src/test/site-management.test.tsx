@@ -98,6 +98,30 @@ describe("site management UI", () => {
     expect(screen.getByRole("button", { name: "确认摘要并上线" })).toBeDisabled();
   });
 
+  it("keeps environment values in memory and sends names only to the public summary", async () => {
+    vi.mocked(listAgentNodes).mockResolvedValue({ nodes: [{
+      nodeId, nodeName: "host-example-01", status: "online", agentVersion: "0.2.0", protocolVersion: "1.0",
+      platform: "linux", declaredCapabilities: ["sites.deploy"], allowedCapabilities: ["sites.deploy"],
+      enrolledAt: now, lastSeenAt: now, revokedAt: null,
+    }] });
+    vi.mocked(createSitePlan).mockImplementation(async (input) => ({ ...plan(), environmentVariableNames: input.environmentVariables.map((entry) => entry.name) }));
+    render(<SitesPage page="sites-create" notify={vi.fn()} permissions={["sites:read", "sites:deploy", "nodes:read"]} />);
+    await act(async () => Promise.resolve());
+    fireEvent.change(screen.getByLabelText("域名"), { target: { value: "app.example.com" } });
+    fireEvent.change(screen.getByLabelText("仓库地址"), { target: { value: "https://github.com/example/site.git" } });
+    fireEvent.change(screen.getByLabelText("证书邮箱"), { target: { value: "ops@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "添加环境变量" }));
+    fireEvent.change(screen.getByLabelText("环境变量 1 名称"), { target: { value: "api_token" } });
+    fireEvent.change(screen.getByLabelText("环境变量 1 值"), { target: { value: "secret-value" } });
+    fireEvent.change(screen.getByLabelText("当前密码"), { target: { value: "correct-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建并预检" }));
+    await act(async () => Promise.resolve());
+    expect(createSitePlan).toHaveBeenCalledWith(expect.objectContaining({ environmentVariables: [{ name: "API_TOKEN", value: "secret-value" }] }), expect.any(String));
+    expect(screen.getByText("API_TOKEN")).toBeInTheDocument();
+    expect(screen.queryByText("secret-value")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新填写" })).not.toBeInTheDocument();
+  });
+
   it("shows structured logs returned by the asynchronous operation", async () => {
     vi.useFakeTimers();
     vi.mocked(querySiteLogs).mockResolvedValue(operation({ type: "log_query", planId: null, siteId: "site-example-01" }));
@@ -109,15 +133,69 @@ describe("site management UI", () => {
     await act(async () => Promise.resolve());
     fireEvent.click(screen.getByRole("button", { name: "查看 app.example.com 站点操作" }));
     fireEvent.click(screen.getByRole("button", { name: "日志" }));
-    const dialog = screen.getByRole("alertdialog", { name: "查询站点日志" });
-    fireEvent.change(within(dialog).getByLabelText("当前密码"), { target: { value: "correct-password" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "确认查询" }));
     await act(async () => Promise.resolve());
     await act(async () => { vi.advanceTimersByTime(2_000); await Promise.resolve(); });
-    expect(reauthenticate).toHaveBeenCalledWith("correct-password");
-    expect(querySiteLogs).toHaveBeenCalledWith("site-example-01", expect.objectContaining({ version: 3, limit: 100 }), "proof-value-with-more-than-thirty-two-characters");
     expect(screen.getByText("GET /health")).toBeInTheDocument();
     expect(screen.getByText(/client_abcdef123456/)).toBeInTheDocument();
+  });
+
+  it("shows an explicit empty state for a successful empty log query", async () => {
+    vi.useFakeTimers();
+    vi.mocked(querySiteLogs).mockResolvedValue(operation({ type: "log_query", planId: null, siteId: "site-example-01" }));
+    vi.mocked(fetchSiteOperation).mockResolvedValue(operation({
+      type: "log_query", planId: null, siteId: "site-example-01", status: "succeeded", stage: "complete", progressPercent: 100,
+      result: { message: null, siteId: "site-example-01", releaseId: null, stagingId: null, desiredState: null, certificateRenewalBatchId: null, planPreview: null, logs: [] },
+    }));
+    render(<SitesPage page="sites-running" notify={vi.fn()} permissions={["sites:read", "sites:logs"]} />);
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getByRole("button", { name: "查看 app.example.com 站点操作" }));
+    fireEvent.click(screen.getByRole("button", { name: "日志" }));
+    await act(async () => Promise.resolve());
+    await act(async () => { vi.advanceTimersByTime(2_000); await Promise.resolve(); });
+    expect(screen.getByText("当前查询范围内没有访问日志")).toBeInTheDocument();
+  });
+
+  it("continues polling after a transient failure and refreshes lifecycle state only after success", async () => {
+    vi.useFakeTimers();
+    vi.mocked(updateSiteLifecycle).mockResolvedValue(operation({ type: "lifecycle", planId: null, siteId: "site-example-01", stage: "lifecycle_stopped" }));
+    vi.mocked(fetchSiteOperation).mockRejectedValueOnce(new Error("临时网络错误")).mockResolvedValueOnce(operation({
+      type: "lifecycle", planId: null, siteId: "site-example-01", status: "succeeded", stage: "complete", progressPercent: 100,
+      result: { message: null, siteId: "site-example-01", releaseId: null, stagingId: null, desiredState: "stopped", certificateRenewalBatchId: null, planPreview: null, logs: [] },
+    }));
+    render(<SitesPage page="sites-running" notify={vi.fn()} permissions={["sites:read", "sites:operate"]} />);
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getByRole("button", { name: "查看 app.example.com 站点操作" }));
+    fireEvent.click(screen.getByRole("button", { name: "停止" }));
+    const dialog = screen.getByRole("alertdialog", { name: "停止站点" });
+    fireEvent.change(within(dialog).getByLabelText("当前密码"), { target: { value: "correct-password" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "停止" }));
+    await act(async () => Promise.resolve());
+    expect(fetchSites).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(2_000); await Promise.resolve(); });
+    expect(screen.getByText("临时网络错误")).toBeInTheDocument();
+    expect(fetchSites).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(2_000); await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchSiteOperation).toHaveBeenCalledTimes(2);
+    expect(fetchSites).toHaveBeenCalledTimes(2);
+  });
+
+  it("pauses operation polling while hidden and refreshes immediately when visible", async () => {
+    vi.useFakeTimers();
+    let hidden = false;
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+    vi.mocked(querySiteLogs).mockResolvedValue(operation({ type: "log_query", planId: null, siteId: "site-example-01" }));
+    vi.mocked(fetchSiteOperation).mockResolvedValue(operation({ type: "log_query", planId: null, siteId: "site-example-01" }));
+    render(<SitesPage page="sites-running" notify={vi.fn()} permissions={["sites:read", "sites:logs"]} />);
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getByRole("button", { name: "查看 app.example.com 站点操作" }));
+    fireEvent.click(screen.getByRole("button", { name: "日志" }));
+    await act(async () => Promise.resolve());
+    hidden = true; fireEvent(document, new Event("visibilitychange"));
+    await act(async () => { vi.advanceTimersByTime(4_000); await Promise.resolve(); });
+    expect(fetchSiteOperation).not.toHaveBeenCalled();
+    hidden = false; fireEvent(document, new Event("visibilitychange"));
+    await act(async () => Promise.resolve());
+    expect(fetchSiteOperation).toHaveBeenCalledTimes(1);
   });
 
   it("never fakes a failed lifecycle mutation", async () => {

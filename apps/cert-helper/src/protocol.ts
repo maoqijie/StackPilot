@@ -23,9 +23,12 @@ export type Dependencies = {
 
 async function execute(request: HelperRequest, dependencies: Dependencies): Promise<HelperResponse> {
   const config = dependencies.config ?? loadConfig();
-  if (request.operation === "status") return await (dependencies.ready ?? helperReady)() && config.protectedDomains.size > 0
-    ? { ok: true, operation: "status", data: { certificates: await (dependencies.inventory ?? buildCertificateInventory)() } }
-    : { ok: false, operation: "status", errorCode: "HELPER_NOT_READY", message: "Required executables or core-site protection configuration are unavailable" };
+  if (request.operation === "status") {
+    const ready = await (dependencies.ready ?? helperReady)();
+    return ready && config.protectedDomains.size > 0
+      ? { ok: true, operation: "status", data: { certificates: await (dependencies.inventory ?? buildCertificateInventory)() } }
+      : { ok: false, operation: "status", errorCode: "HELPER_NOT_READY", message: "Required executables or core-site protection configuration are unavailable" };
+  }
   if (request.operation === "renew") { await (dependencies.renew ?? renewOpaqueCertificate)(request.certificateId); return { ok: true, operation: "renew", data: { certificateId: request.certificateId } }; }
   const store = new SiteStateStore(config);
   if (request.operation === "prepare") {

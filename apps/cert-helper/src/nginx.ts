@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { HelperError, type ManagedSite, type PreparedPlan } from "./types.js";
 
 const quote = (value: string) => `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
@@ -64,10 +65,11 @@ function serverNames(configuration: string) {
 
 export function assertDomainsUnclaimed(configuration: string, domains: readonly string[], ownedConfigurationPath: string) {
   const requested = domains.map((domain) => domain.toLowerCase());
+  const ownedPath = resolve(ownedConfigurationPath);
   let currentPath = "";
   let currentConfiguration = "";
   const assertConfiguration = () => {
-    if (!currentConfiguration || currentPath === ownedConfigurationPath) return;
+    if (!currentConfiguration || currentPath && resolve(currentPath) === ownedPath) return;
     for (const claimed of serverNames(currentConfiguration)) {
       const conflict = requested.find((domain) => nameClaimsDomain(claimed, domain));
       if (conflict) throw new HelperError("DOMAIN_ALREADY_CLAIMED", `Domain ${conflict} is already present in the active Nginx configuration`);

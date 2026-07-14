@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import {
@@ -11,14 +11,20 @@ import { createHeartbeat } from "./heartbeat/heartbeat.js";
 import { IdentityStore, type AgentIdentity } from "./identity/identityStore.js";
 import { agentLogger } from "./logging/logger.js";
 import { collectAgentTelemetry } from "./telemetry/collector.js";
-import { DatabaseSnapshotCache, SystemdDatabaseCollector } from "@stackpilot/host-telemetry";
+import { collectPhysicalHostId, DatabaseSnapshotCache, SystemdDatabaseCollector } from "@stackpilot/host-telemetry";
 import { NginxSiteCollector, SiteSnapshotCache } from "./sites/nginxCollector.js";
 import { certHelperAvailable } from "./sites/helperClient.js";
 import { TaskExecutor } from "./tasks/executor.js";
+import { terminalCommandsAvailable } from "./tasks/handlers/terminalCommand.js";
 import { ControllerClient } from "./transport/controllerClient.js";
+import { DatabaseHelperClient } from "./databases/helperClient.js";
+import { DatabaseAgentRuntime } from "./databases/runtime.js";
+import { assertAgentPrivilegeBoundary } from "./security/privilege.js";
+import { FileDatabaseOperationOutbox } from "./databases/operationOutbox.js";
 
 const sleep = (ms: number) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 const backoff = (attempt: number) => Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5)) + Math.floor(Math.random() * 500);
+export const shouldUseSystemdDatabaseFallback = (controllerSupportsInventory: boolean, helperReady: boolean) => controllerSupportsInventory && !helperReady;
 
 async function ensureIdentity(store: IdentityStore, client: ControllerClient, config: ReturnType<typeof loadAgentConfig>, capabilities: AgentEnrollmentRequest["capabilities"]): Promise<AgentIdentity> {
   const existing = await store.read(); if (existing) return existing;
@@ -41,31 +47,58 @@ export async function rotateIdentity(store: IdentityStore, client: ControllerCli
 export async function runAgent(env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env, signal?: AbortSignal) {
   const config = loadAgentConfig(env);
   if (env === process.env) delete process.env.STACKPILOT_AGENT_ENROLLMENT_TOKEN;
-  if (typeof process.getuid === "function" && process.getuid() === 0 && !config.allowRoot) throw new Error("StackPilot Agent refuses to run as root; use a dedicated unprivileged user");
+  assertAgentPrivilegeBoundary(config.allowRoot);
+  const physicalHostId = await collectPhysicalHostId(config.platform);
   const store = new IdentityStore(config.stateDir); const client = new ControllerClient(config.controllerUrl, config.caPath);
-  let capabilities = activeAgentCapabilities(config.platform, config.platform === "linux" && await certHelperAvailable());
+  const databaseHelper = new DatabaseHelperClient(config.databaseHelperSocket);
+  let databaseHelperReady = config.platform === "linux" && await databaseHelper.available();
+  const terminalCommandsReady = config.platform === "linux" && terminalCommandsAvailable();
+  let capabilities = activeAgentCapabilities(
+    config.platform,
+    config.platform === "linux" && await certHelperAvailable(),
+    false,
+    terminalCommandsReady,
+    databaseHelperReady,
+  );
   let identity = await ensureIdentity(store, client, config, capabilities);
   if (config.rotateCredential) { identity = await rotateIdentity(store, client, identity); if (env === process.env) delete process.env.STACKPILOT_AGENT_ROTATE_CREDENTIAL; }
   const executor = new TaskExecutor(store.receiptPath, identity.nodeId, config.platform, capabilities); await executor.load();
+  const databaseRuntime = new DatabaseAgentRuntime(
+    databaseHelper, client, identity, config.databaseCollectionSeconds * 1000,
+    new FileDatabaseOperationOutbox(join(config.stateDir, "database-operation-outbox.json")),
+    () => client.supportsDatabaseInventory() && databaseHelperReady,
+  );
+  const databaseLoop = config.platform === "linux" ? databaseRuntime.run(signal) : Promise.resolve();
   const siteSnapshots = new SiteSnapshotCache(new NginxSiteCollector(identity.nodeId), config.platform);
   const databaseSnapshots = new DatabaseSnapshotCache(new SystemdDatabaseCollector({ target: config.platform }));
   let failures = 0;
   while (!signal?.aborted) {
     try {
       const databaseInventorySupported = client.supportsDatabaseInventory();
-      capabilities = activeAgentCapabilities(config.platform, config.platform === "linux" && await certHelperAvailable(), databaseInventorySupported);
+      databaseHelperReady = config.platform === "linux" && await databaseHelper.available();
+      capabilities = activeAgentCapabilities(
+        config.platform,
+        config.platform === "linux" && await certHelperAvailable(),
+        databaseInventorySupported,
+        terminalCommandsReady,
+        databaseHelperReady,
+      );
       executor.setCapabilities(capabilities);
       let telemetryCollectionFailed = false;
       const telemetry = await collectAgentTelemetry(config.platform).catch(() => { telemetryCollectionFailed = true; return undefined; });
       void siteSnapshots.refreshIfDue().catch((error) => agentLogger.log({ level: "warn", time: new Date().toISOString(), message: "Site inventory collection failed", errorName: error instanceof Error ? error.name : "UnknownError" }));
-      void databaseSnapshots.refreshIfDue().catch((error) => agentLogger.log({ level: "warn", time: new Date().toISOString(), message: "Database inventory collection failed", errorName: error instanceof Error ? error.name : "UnknownError" }));
-      AgentHeartbeatResponseSchema.parse(await client.json("/api/agent/heartbeat", createHeartbeat(config, identity.nodeId, capabilities, telemetry, telemetryCollectionFailed, siteSnapshots.current, databaseInventorySupported ? databaseSnapshots.current : undefined), identity));
+      const systemdDatabaseFallback = shouldUseSystemdDatabaseFallback(databaseInventorySupported, databaseHelperReady);
+      if (systemdDatabaseFallback) void databaseSnapshots.refreshIfDue().catch((error) => agentLogger.log({ level: "warn", time: new Date().toISOString(), message: "Database inventory collection failed", errorName: error instanceof Error ? error.name : "UnknownError" }));
+      const fallbackDatabaseSnapshot = systemdDatabaseFallback ? databaseSnapshots.current : undefined;
+      const advertisedPhysicalHostId = client.supportsPhysicalHostIdentity() ? physicalHostId ?? undefined : undefined;
+      AgentHeartbeatResponseSchema.parse(await client.json("/api/agent/heartbeat", createHeartbeat(config, identity.nodeId, capabilities, telemetry, telemetryCollectionFailed, siteSnapshots.current, fallbackDatabaseSnapshot, advertisedPhysicalHostId), identity));
       for (const pending of executor.pendingUpdates()) { await client.json("/api/agent/tasks/status", pending, identity); await executor.markReported(pending.taskId); }
       const poll = RemoteTaskPollResponseSchema.parse(await client.json("/api/agent/tasks/poll", {}, identity));
       for (const taskId of poll.cancelledTaskIds) executor.cancel(taskId);
       for (const task of poll.tasks) {
-        if (executor.activeCount >= 4) break;
-        void executor.execute(task, (running) => client.json("/api/agent/tasks/status", running, identity)).then(async (result) => {
+        const execution = executor.tryExecute(task, 4, (running) => client.json("/api/agent/tasks/status", running, identity));
+        if (!execution) continue;
+        void execution.then(async (result) => {
           if (result.status !== "running") { await client.json("/api/agent/tasks/status", result, identity); await executor.markReported(task.taskId); }
         }).catch((error) => agentLogger.log({ level: "warn", time: new Date().toISOString(), message: "Task execution or result delivery failed", taskId: task.taskId, errorName: error instanceof Error ? error.name : "UnknownError" }));
       }
@@ -76,6 +109,7 @@ export async function runAgent(env: NodeJS.ProcessEnv | Record<string, string | 
       await sleep(backoff(failures));
     }
   }
+  await databaseLoop;
 }
 
 const isMainModule = process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);

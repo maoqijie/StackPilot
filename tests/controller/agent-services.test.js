@@ -4,6 +4,7 @@ import test from "node:test";
 import { AGENT_PROTOCOL_VERSION, agentSignaturePayload } from "@stackpilot/contracts";
 import { EnrollmentService } from "../../apps/controller/dist/modules/enrollments/enrollmentService.js";
 import { routeControlPlaneRequest } from "../../apps/controller/dist/http/controlPlaneRouter.js";
+import { routeAgentRequest } from "../../apps/controller/dist/http/agentRouter.js";
 import { NodeService } from "../../apps/controller/dist/modules/nodes/nodeService.js";
 import { RemoteTaskService, transitionTask } from "../../apps/controller/dist/modules/remote-tasks/remoteTaskService.js";
 import { MemoryAgentControlRepository } from "../../apps/controller/dist/repositories/agentControlRepository.js";
@@ -55,6 +56,16 @@ test("heartbeat persists optional site snapshots and legacy heartbeats preserve 
   assert.deepEqual((await fixture.repository.read()).nodes[0].siteSnapshot, siteSnapshot);
 });
 
+test("legacy database heartbeat is ingested only with the declared inventory capability", async () => {
+  const fixture = await enrolledFixture(); const ingested = [];
+  const instance = { id: "postgresql.service", name: "postgresql", engine: "postgresql", version: null, host: "node-a", port: null, status: "running", source: "systemd:postgresql.service", latencyMs: null, storageBytes: null, activeConnections: null, maxConnections: null, slowQueryCount: null, backupStatus: "unavailable", lastBackupAt: null, accessMode: "unknown", owner: null, region: null, autoBackup: null, remoteAccess: null };
+  const response = () => ({ statusCode: 0, headers: {}, body: "", setHeader(name, value) { this.headers[name] = value; }, end(body = "") { this.body = body; } });
+  const heartbeat = (capabilities) => ({ nodeId: fixture.enrolled.nodeId, agentVersion: "0.2.0", protocolVersion: "1.0", timestamp: new Date().toISOString(), platform: "linux", capabilities, health: { status: "healthy", uptimeSeconds: 10 }, databaseSnapshot: { collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], instances: [instance] } });
+  const context = (body) => ({ request: { method: "POST" }, response: response(), requestId: crypto.randomUUID(), url: new URL("https://controller.test/api/agent/heartbeat"), body, agentIdentity: { nodeId: fixture.enrolled.nodeId, credentialId: fixture.enrolled.credentialId, protocolVersion: "1.0" }, services: { nodes: fixture.nodes, databaseInventory: { ingestSnapshot(nodeId, snapshot) { ingested.push({ nodeId, snapshot }); } } } });
+  await routeAgentRequest(context(heartbeat(["databases.inventory.read"]))); assert.equal(ingested.length, 1); assert.equal(ingested[0].snapshot.instances[0].managed, false);
+  await routeAgentRequest(context(heartbeat(["system.summary.read"]))); assert.equal(ingested.length, 1);
+});
+
 test("node capability authorization accepts only declared Controller-supported capabilities", async () => {
   const fixture = await enrolledFixture();
   await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read", "sites.certificates.renew"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID());
@@ -63,12 +74,29 @@ test("node capability authorization accepts only declared Controller-supported c
   await assert.rejects(() => fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["service.status.read"], "admin", crypto.randomUUID()), /已声明/);
 });
 
+test("terminal command requires explicit dual capability authorization and never retries", async () => {
+  const fixture = await enrolledFixture();
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.2.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read", "terminal.command.execute"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID());
+  const input = { type: "terminal.command.execute", parameters: { command: "uptime" }, expiresInSeconds: 30, idempotencyKey: "terminal-uptime-once" };
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID()), (error) => error.status === 403);
+  await fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["system.summary.read", "terminal.command.execute"], "admin", crypto.randomUUID());
+  const created = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID());
+  assert.equal(created.maxAttempts, 1); assert.equal(created.retryable, false); assert.equal(created.requiredCapability, "terminal.command.execute");
+  await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID());
+  const failed = await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: created.taskId, attempt: 1, status: "failed", timestamp: new Date().toISOString(), errorCode: "COMMAND_FAILED", result: { message: "failed", truncated: false } }, crypto.randomUUID());
+  assert.equal(failed.status, "failed"); assert.equal(failed.nextAttemptAt, null); assert.equal((await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID())).length, 0);
+  const state = await fixture.repository.read(); assert.equal(state.audits.findLast((event) => event.taskId === created.taskId)?.resultSummary, "Terminal command result recorded");
+});
+
 test("task state machine enforces capability, idempotency, expiry, cancellation and queue limit", async () => {
   const fixture = await enrolledFixture(); await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["system.summary.read", "service.status.read"], health: { status: "healthy", uptimeSeconds: 10 } }, crypto.randomUUID());
   const input = { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "idempotent-summary-a" };
   let authorizationCount = 0;
   const authorize = () => { authorizationCount += 1; };
   const first = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID(), authorize); const duplicate = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID(), authorize); assert.equal(duplicate.taskId, first.taskId); assert.equal(authorizationCount, 2);
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { ...input, parameters: { includeLoad: true } }, "admin", crypto.randomUUID(), authorize), (error) => error.status === 409);
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "service.status.read", parameters: { serviceName: "nginx" }, expiresInSeconds: 60, idempotencyKey: input.idempotencyKey }, "admin", crypto.randomUUID(), authorize), (error) => error.status === 409);
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, input, "other-user", crypto.randomUUID(), authorize), (error) => error.status === 409);
   const dispatched = await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID()); assert.equal(dispatched.length, 1);
   await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: first.taskId, attempt: 1, status: "running", timestamp: new Date().toISOString() }, crypto.randomUUID());
   assert.equal((await fixture.tasks.update(fixture.enrolled.nodeId, { taskId: first.taskId, attempt: 1, status: "running", timestamp: new Date().toISOString() }, crypto.randomUUID())).status, "running");
@@ -120,6 +148,7 @@ test("site prepare derives runtime installation authorization from current node 
   const created = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "sites.plan.prepare", parameters, expiresInSeconds: 1_800, idempotencyKey: "runtime-policy-prepare" }, "controller:site-management", crypto.randomUUID());
   assert.equal(created.parameters.runtimeInstallAuthorized, false);
   await fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["sites.deploy", "runtime.install"], "admin", crypto.randomUUID());
+  assert.equal((await fixture.tasks.create(fixture.enrolled.nodeId, { type: "sites.plan.prepare", parameters, expiresInSeconds: 1_800, idempotencyKey: "runtime-policy-prepare" }, "controller:site-management", crypto.randomUUID())).taskId, created.taskId);
   assert.equal((await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID()))[0].parameters.runtimeInstallAuthorized, true);
 });
 

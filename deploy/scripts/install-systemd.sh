@@ -31,6 +31,8 @@ stage_component() {
   copy_path "apps/$component/dist" "apps/$component/dist"
   case "$component" in
     controller)
+      copy_path apps/web/package.json apps/web/package.json
+      copy_path apps/web/dist apps/web/dist
       copy_path packages/config/package.json packages/config/package.json
       copy_path packages/config/src packages/config/src
       copy_path packages/contracts/package.json packages/contracts/package.json
@@ -65,6 +67,9 @@ install_units() {
 if [ -e "$release" ]; then
   [ -d "$release" ] && [ ! -L "$release" ] || { echo "Existing release is not a regular directory: $release" >&2; exit 1; }
   [ -f "$release/package.json" ] && [ -f "$release/$entry" ] || { echo "Existing release is incomplete: $release" >&2; exit 1; }
+  if [ "$component" = "controller" ]; then
+    [ -f "$release/apps/web/dist/index.html" ] || { echo "Existing controller release is missing Web assets: $release" >&2; exit 1; }
+  fi
   [ -L "$prefix/current" ] && [ "$(readlink -f "$prefix/current")" = "$(readlink -f "$release")" ] || { echo "Existing release is not the current release: $release" >&2; exit 1; }
   install_units
   echo "Release already installed: $release; systemd units synchronized without changing the release, current link or service state. Restart the installed component explicitly to apply unit changes."

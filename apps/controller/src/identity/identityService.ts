@@ -11,14 +11,17 @@ const argon = { algorithm: Algorithm.Argon2id, memoryCost: 19_456, timeCost: 2, 
 export const PERMISSIONS: ReadonlyArray<[Permission, "low" | "medium" | "high", string]> = [
   ["overview:read","low","读取本机总览"],["overview:operate","medium","执行本机操作"],["schedules:read","low","读取定时任务"],["schedules:write","high","修改定时任务"],
   ["nodes:read","low","读取授权节点"],["nodes:manage","high","注册、轮换、撤销节点或授权高风险能力"],["sites:read","low","读取站点与证书"],["sites:logs","medium","读取站点结构化日志"],["sites:deploy","high","创建与激活站点部署计划"],["sites:operate","high","操作站点生命周期"],["sites:renew","high","续期站点证书"],["tasks:read","low","读取远程任务"],["tasks:create","high","创建远程任务"],["tasks:cancel","medium","取消远程任务"],
+  ["terminal:read","low","读取受控命令片段"],["terminal:execute","high","执行受控命令片段"],
   ["databases:read","low","读取授权节点的数据库实例、运行状态与脱敏慢查询"],
-  ["files:read","low","读取文件目录与上传任务"],["files:write","high","创建和管理文件上传"],["files:manage","high","管理网站文件与目录"],
+  ["databases:sql:read","high","读取数据库完整 SQL 文本"],["databases:backup","high","管理和执行数据库备份计划"],
+  ["databases:operate","high","执行数据库会话和查询治理操作"],["databases:install","high","安装和创建数据库实例"],["databases:restore","high","执行数据库原地恢复"],
+  ["files:read","low","读取受管文件"],["files:write","high","修改和上传受管文件"],["files:delete","high","永久删除受管文件"],
   ["audit:read","low","读取审计日志"],["users:read","low","读取用户"],["users:manage","high","管理用户"],["roles:read","low","读取角色"],["roles:manage","high","管理角色"],["tokens:manage","high","管理 API Token"],["system:backup","high","备份与恢复数据库"],
 ];
 const roleDefinitions = [
   ["administrator","管理员",PERMISSIONS.map(([key]) => key)],
-  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","sites:read","sites:logs","sites:deploy","sites:operate","sites:renew","databases:read","files:read","files:write","tasks:read","tasks:create","tasks:cancel"]],
-  ["audit-reader","只读审计员",["overview:read","nodes:read","sites:read","databases:read","tasks:read","audit:read"]],
+  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","sites:read","sites:logs","sites:deploy","sites:operate","sites:renew","files:read","files:write","tasks:read","tasks:create","tasks:cancel","terminal:read","terminal:execute"]],
+  ["audit-reader","只读审计员",["overview:read","nodes:read","sites:read","files:read","tasks:read","audit:read"]],
 ] as const;
 
 type UserRow = { id: string; username: string; display_name: string; password_hash: string; disabled_at: string | null };
@@ -30,9 +33,18 @@ export class IdentityService {
     this.database.transaction(() => {
       const permission = this.database.prepare("INSERT OR IGNORE INTO permissions(key,risk,description) VALUES(?,?,?)");
       for (const entry of PERMISSIONS) permission.run(...entry);
-      const role = this.database.prepare("INSERT OR IGNORE INTO roles(id,name,description,builtin,created_at) VALUES(?,?,?,?,?)");
-      const mapping = this.database.prepare("INSERT OR IGNORE INTO role_permissions(role_id,permission_key) VALUES(?,?)");
-      for (const [id, name, permissions] of roleDefinitions) { role.run(id, name, `${name}内置角色`, 1, new Date().toISOString()); for (const key of permissions) mapping.run(id, key); }
+      this.database.prepare("INSERT OR IGNORE INTO role_permissions(role_id,permission_key) SELECT role_id,'files:write' FROM role_permissions WHERE permission_key='files:manage'").run();
+      this.database.prepare("INSERT OR IGNORE INTO api_token_permissions(token_id,permission_key) SELECT token_id,'files:write' FROM api_token_permissions WHERE permission_key='files:manage'").run();
+      this.database.prepare("DELETE FROM role_permissions WHERE permission_key='files:manage'").run();
+      this.database.prepare("DELETE FROM api_token_permissions WHERE permission_key='files:manage'").run();
+      this.database.prepare("DELETE FROM permissions WHERE key='files:manage'").run();
+      const role = this.database.prepare("INSERT INTO roles(id,name,description,builtin,created_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,builtin=1");
+      const clearMappings = this.database.prepare("DELETE FROM role_permissions WHERE role_id=?");
+      const mapping = this.database.prepare("INSERT INTO role_permissions(role_id,permission_key) VALUES(?,?)");
+      for (const [id, name, permissions] of roleDefinitions) {
+        role.run(id, name, `${name}内置角色`, 1, new Date().toISOString()); clearMappings.run(id);
+        for (const key of permissions) mapping.run(id, key);
+      }
     })();
   }
   hasAdministrator(): boolean { return Boolean(this.database.prepare("SELECT 1 FROM user_roles WHERE role_id='administrator' LIMIT 1").get()); }

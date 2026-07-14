@@ -11,8 +11,6 @@ import { loadControllerConfig } from "../../../apps/controller/dist/config/envir
 import { openDatabase } from "../../../apps/controller/dist/database/database.js";
 import { IdentityService } from "../../../apps/controller/dist/identity/identityService.js";
 import { SqliteAgentControlRepository } from "../../../apps/controller/dist/repositories/sqliteAgentControlRepository.js";
-import { SqliteSiteManagementRepository } from "../../../apps/controller/dist/modules/sites/siteManagementRepository.js";
-import { SecretStore } from "../../../apps/controller/dist/security/secretStore.js";
 import { FakePlatformAdapter } from "../../controller/support/fakePlatform.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -43,6 +41,8 @@ const config = loadControllerConfig({
   STACKPILOT_ALLOWED_ORIGINS: `https://127.0.0.1:${webPort}`, STACKPILOT_AGENT_HOST: "127.0.0.1", STACKPILOT_AGENT_PORT: String(agentPort),
   STACKPILOT_AGENT_TLS_CERT_PATH: certPath, STACKPILOT_AGENT_TLS_KEY_PATH: keyPath,
   STACKPILOT_AGENT_STATE_PATH: join(runtime, "legacy.json"), STACKPILOT_TRUSTED_PROXIES: "127.0.0.1/32",
+  STACKPILOT_FILE_ROOT: join(runtime, "files"), STACKPILOT_FILE_TRASH_DIR: join(runtime, "file-trash"),
+  STACKPILOT_FILE_UPLOAD_LIMIT_BYTES: String(128 * 1024 * 1024), STACKPILOT_UPLOAD_ROOT: join(runtime, "resumable-uploads"),
 });
 const database = openDatabase(config.databasePath);
 const identity = new IdentityService(database, Buffer.alloc(32, 8));
@@ -51,13 +51,11 @@ if (!identity.hasAdministrator()) {
   const administrator = await identity.login("e2e-admin", "e2e administrator password", "e2e-fixture", "stackpilot-e2e");
   await identity.createUser(administrator.principal, "e2e-reader", "E2E Reader", "e2e reader password", ["audit-reader"], []);
 }
-const secrets = new SecretStore(database, Buffer.alloc(32, 8));
-const repository = new SqliteAgentControlRepository(database, identity.audit, secrets);
-const siteRepository = new SqliteSiteManagementRepository(database, secrets);
+const repository = new SqliteAgentControlRepository(database, identity.audit);
 const platform = new FakePlatformAdapter();
 const collectFixtureSnapshot = platform.collectSnapshot.bind(platform);
 platform.collectSnapshot = async () => ({ ...await collectFixtureSnapshot(), platformLabel: "win32 10.0" });
-const services = createControllerServices(platform, root, config, repository, database, siteRepository);
+const services = createControllerServices(platform, root, config, repository, database, undefined, identity.audit);
 const options = { config, database, identity, agentRepository: repository, platform, services, repoRoot: root };
 const management = createStackPilotServer(options);
 const agent = createStackPilotAgentServer({ cert: certificate.cert, key: certificate.private }, options);

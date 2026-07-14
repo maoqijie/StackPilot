@@ -5,6 +5,7 @@ import { resolvePageMeta, topbarSearchResults } from "../../app/navigation";
 import { useTheme } from "../../theme/theme";
 import type { TopbarChrome, TopbarSearchResult } from "./types";
 import type { Notify, PageKey, SetPage } from "../../types/app";
+import type { Permission } from "@stackpilot/contracts";
 import { formatBackendDateTime, overviewCollectedAt } from "../../utils/time";
 
 function TopBar({
@@ -17,6 +18,7 @@ function TopBar({
   overview,
   interactionsDisabled,
   onLogout,
+  permissions,
 }: {
   page: PageKey;
   setPage: SetPage;
@@ -27,6 +29,7 @@ function TopBar({
   overview: OverviewSummaryPayload | null;
   interactionsDisabled: boolean;
   onLogout: () => void;
+  permissions?: Permission[];
 }) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -39,7 +42,7 @@ function TopBar({
   const userTriggerRef = useRef<HTMLButtonElement>(null);
   const { theme, toggleTheme } = useTheme();
   const meta = resolvePageMeta(page);
-  const results = topbarSearchResults(query);
+  const results = topbarSearchResults(query, permissions);
   const selectedIndex = results.length ? Math.min(activeIndex, results.length - 1) : 0;
   const visibleSearchOpen = searchOpen && !interactionsDisabled;
   const freshness = overview ? formatBackendDateTime(overviewCollectedAt(overview), "等待首次采集") : "等待首次采集";

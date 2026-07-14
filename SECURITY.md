@@ -2,12 +2,12 @@
 
 ## Supported Versions
 
-StackPilot `0.2.0-preview.1` is a preview release. It is not stable and does not receive a guaranteed security-support window.
+StackPilot `0.3.0-preview.1` is a preview release. It is not stable and does not receive a guaranteed security-support window.
 
 | Version | Security fixes |
 | --- | --- |
 | Current `main` branch | Best effort |
-| `0.2.0-preview.x` | Best effort until superseded by a newer preview |
+| `0.3.0-preview.x` | Best effort until superseded by a newer preview |
 | Released `0.1.x` versions | Unsupported except as the documented schema-1 upgrade source |
 | Older or modified versions | Not supported |
 

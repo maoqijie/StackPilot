@@ -71,7 +71,7 @@ function SitesMonitoringView({ page, canReadLogs, canOperate }: { page: PageKey;
     viewContext={initialError || mode === "runtime" ? false : context}
     filters={initialError ? undefined : <><ModuleSearch value={search} placeholder="搜索域名、上游、主机或数据源" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={mode === "running" ? ["活跃", "运行中", "告警", "待采集"] : ["全部", "运行中", "告警", "已停止", "待采集"]} onChange={setStatusFilter} /><FieldSelect label="服务" value={runtimeFilter} options={["全部", ...uniqueSorted(rows.map((row) => row.runtime))]} onChange={setRuntimeFilter} /></>}
     metrics={initialError ? undefined : metrics}
-    side={selectedGroup ? <RuntimeDetail group={selectedGroup} onClose={() => setSelectedRuntime(null)} /> : selectedSite ? <SiteOperationsDrawer site={selectedSite} onClose={() => setSelectedSiteId(null)} onChanged={() => void retry(undefined, true)} canReadLogs={canReadLogs} canOperate={canOperate} /> : null}
+    side={selectedGroup ? <RuntimeDetail group={selectedGroup} onClose={() => setSelectedRuntime(null)} /> : selectedSite ? <SiteOperationsDrawer site={selectedSite} onClose={() => setSelectedSiteId(null)} onChanged={() => retry(undefined, true)} canReadLogs={canReadLogs} canOperate={canOperate} /> : null}
   >
     <SitesLoadState loading={loading} error={error} payload={payload} retry={() => void retry()} showCollectionNote={mode !== "runtime"} />
     {!initialError && (mode === "runtime"

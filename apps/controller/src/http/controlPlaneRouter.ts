@@ -3,7 +3,6 @@ import {
   CreateRemoteTaskRequestSchema, EnrollmentCredentialSchema, PathIdSchema, RemoteTaskListResponseSchema, RemoteTaskRecordSchema, ApiNoticeSchema,
   AgentNodeRecordSchema, UpdateNodeCapabilitiesRequestSchema,
 } from "@stackpilot/contracts";
-import type { RemoteTaskRecord } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
 import { notFound } from "./errors/ApiError.js";
 import { sendJson } from "./response/json.js";
@@ -15,14 +14,6 @@ const publicNode = (value: Awaited<ReturnType<RequestContext["services"]["nodes"
   protocolVersion: value.protocolVersion, platform: value.platform, declaredCapabilities: value.declaredCapabilities,
   allowedCapabilities: value.allowedCapabilities, enrolledAt: value.enrolledAt, lastSeenAt: value.lastSeenAt, revokedAt: value.revokedAt,
 });
-const publicTask = (task: RemoteTaskRecord): RemoteTaskRecord => {
-  if (!task.type.startsWith("sites.")) return task;
-  const parameters = Object.fromEntries(Object.entries(task.parameters).filter(([key, value]) =>
-    ["operationId", "planId", "siteId", "batchId"].includes(key) && typeof value === "string",
-  ));
-  const result = task.result ? { message: task.result.message, truncated: task.result.truncated } : null;
-  return { ...task, parameters, result };
-};
 
 export async function routeControlPlaneRequest(context: RequestContext) {
   const method = context.request.method ?? "GET";
@@ -53,17 +44,17 @@ export async function routeControlPlaneRequest(context: RequestContext) {
   if (context.parts[1] === "nodes" && context.parts[3] === "tasks" && context.parts.length === 4 && method === "POST") {
     const nodeId=id(context,2);identity?.require(principal,"tasks:create",nodeId);
     const input = parseSchema(CreateRemoteTaskRequestSchema, context.body, "远程任务");
-    if (input.type.startsWith("sites.")) throw notFound("站点任务只能通过站点管理接口创建");
+    if (input.type === "sites.certificates.renew") throw notFound("证书续期任务只能通过证书续期接口创建");
     const authorize=()=>identity?.consumeReauth(principal!,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);
-    sendJson(context.response, 201, publicTask(await context.services.remoteTasks.create(nodeId, input, `user:${principal?.userId}`, context.requestId, authorize)), RemoteTaskRecordSchema); return;
+    sendJson(context.response, 201, await context.services.remoteTasks.create(nodeId, input, `user:${principal?.userId}`, context.requestId, authorize), RemoteTaskRecordSchema); return;
   }
   if (context.parts[1] === "remote-tasks" && context.parts.length === 2 && method === "GET") {
-    identity?.require(principal,"tasks:read");const tasks=await context.services.remoteTasks.listReadOnly();const scoped=principal?.nodeScope==="all"?tasks:tasks.filter(task=>principal?.nodeScope.includes(task.targetNodeId));sendJson(context.response, 200, { tasks: scoped.sort((left,right)=>Date.parse(right.updatedAt)-Date.parse(left.updatedAt)).slice(0,200).map(publicTask), collectedAt: new Date().toISOString() }, RemoteTaskListResponseSchema); return;
+    identity?.require(principal,"tasks:read");const tasks=await context.services.remoteTasks.listReadOnly();const scoped=principal?.nodeScope==="all"?tasks:tasks.filter(task=>principal?.nodeScope.includes(task.targetNodeId));sendJson(context.response, 200, { tasks: scoped.sort((left,right)=>Date.parse(right.updatedAt)-Date.parse(left.updatedAt)).slice(0,200), collectedAt: new Date().toISOString() }, RemoteTaskListResponseSchema); return;
   }
   if (context.parts[1] === "remote-tasks" && context.parts[3] === "cancel" && context.parts.length === 4 && method === "POST") {
     identity?.require(principal,"tasks:cancel");
     const input = parseSchema(CancelRemoteTaskRequestSchema, context.body, "取消任务");
-    const taskId=id(context,2);const task=(await context.services.remoteTasks.list()).find(item=>item.taskId===taskId);if(task)identity?.require(principal,"tasks:cancel",task.targetNodeId);sendJson(context.response, 200, publicTask(await context.services.remoteTasks.cancel(taskId, `user:${principal?.userId}`, input.reason, context.requestId)), RemoteTaskRecordSchema); return;
+    const taskId=id(context,2);const task=(await context.services.remoteTasks.list()).find(item=>item.taskId===taskId);if(task)identity?.require(principal,"tasks:cancel",task.targetNodeId);sendJson(context.response, 200, await context.services.remoteTasks.cancel(taskId, `user:${principal?.userId}`, input.reason, context.requestId), RemoteTaskRecordSchema); return;
   }
   throw notFound("节点控制接口不存在");
 }

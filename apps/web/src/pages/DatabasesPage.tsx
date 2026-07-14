@@ -1,5 +1,6 @@
-import { Activity, CircleAlert, CircleCheck, CircleHelp, CircleX, Copy, Database, Eye, Shield } from "lucide-react";
+import { Activity, CircleAlert, CircleCheck, CircleHelp, CircleX, Database, Eye, Plus, Shield } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Permission } from "@stackpilot/contracts";
 import { fetchDatabases } from "../api/databasesApi";
 import { databasePagePreset } from "../app/pagePresets";
 import { resolvePageMeta } from "../app/navigation";
@@ -7,16 +8,18 @@ import { consumePendingDatabaseFocus, readDatabaseFocusParam } from "../app/rout
 import { ModulePageShell } from "../components/layout/ModulePageShell";
 import { MetricTile, ModuleSearch, PanelCard } from "../components/ui/Cards";
 import { DataTable } from "../components/ui/DataTable";
-import { DetailDrawer } from "../components/ui/DetailDrawer";
 import { FieldSelect } from "../components/ui/FormControls";
 import type { DatabaseInstance } from "../features/databases/types";
 import { databaseBackupTone, databaseHealthLabel, databaseHealthTone, databaseInstanceFromApi, isDatabaseAlert, isDatabaseHealthy } from "../features/databases/model";
 import { AccessSummary, BackupSummary, HealthMini, SlowInstanceList } from "../features/databases/OverviewWidgets";
+import { DatabaseCreateDialog } from "../features/databases/DatabaseCreateDialog";
+import { DatabaseCredentialsDrawer } from "../features/databases/DatabaseCredentialsDrawer";
+import { DatabaseInstanceDrawer } from "../features/databases/DatabaseInstanceDrawer";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import type { Notify, PageKey, SetPage } from "../types/app";
 import { formatBackendDateTime } from "../utils/time";
 
-function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; notify: Notify }) {
+function DatabasesPage({ page, setPage, notify, permissions = [] }: { page: PageKey; setPage: SetPage; notify: Notify; permissions?: Permission[] }) {
   const preset = databasePagePreset(page);
   const initialFocusName = page === "databases" ? readDatabaseFocusParam() : null;
   const [search, setSearch] = useState(initialFocusName ?? preset.search);
@@ -25,6 +28,8 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
   const [hostFilter, setHostFilter] = useState(preset.host);
   const [rows, setRows] = useState<DatabaseInstance[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [credentials, setCredentials] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [collectedAt, setCollectedAt] = useState("等待后端采集");
@@ -123,16 +128,17 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
     } catch { notify("浏览器未允许复制端点", "warning"); }
   };
 
-  return (
+  return <>
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={loading ? "正在从后端采集数据库服务清单" : `${preset.subtitle} · 后端采集于 ${collectedAt}`}
       page={page}
       className="module-page-databases"
       viewContext={{ eyebrow: "数据库 / 实例列表", title: "数据库实例", chips: [`筛选 ${filteredRows.length}/${rows.length}`, `告警 ${alertCount}`, knownSlowRows.length ? `慢查询 ${slowQueryCount}` : "慢查询待采集"] }}
+      actions={permissions.includes("databases:install") ? <button className="primary" type="button" onClick={() => setCreating(true)}><Plus size={15} /> 创建数据库实例</button> : undefined}
       filters={<><ModuleSearch value={search} placeholder="搜索数据库、主机、节点或权限" onChange={setSearch} /><FieldSelect label="类型" value={typeFilter} options={["全部", "PostgreSQL", "MySQL", "MariaDB"]} onChange={setTypeFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "正常", "告警"]} onChange={setStatusFilter} /><FieldSelect label="主机" value={hostFilter} options={hostOptions} onChange={setHostFilter} /></>}
       metrics={<><MetricTile icon={Database} label="PostgreSQL" value={`${postgresCount}`} tone="blue" /><MetricTile icon={Database} label="MySQL / MariaDB" value={`${mysqlCount}`} tone="blue" /><MetricTile icon={Activity} label="运行中" value={`${healthyCount}`} tone="green" /><MetricTile icon={Shield} label="告警" value={`${alertCount}`} tone={alertCount ? "orange" : "green"} /><BackupRateMetric value={backupSuccessRate} /><MetricTile icon={CircleAlert} label="慢查询" value={knownSlowRows.length ? `${slowQueryCount}` : "待采集"} tone={slowQueryCount ? "orange" : knownSlowRows.length ? "green" : "gray"} /></>}
-      side={selected ? <DetailDrawer className="database-instance-drawer" title="数据库详情" subtitle={selected.name} modal onClose={() => setSelectedId(null)} actions={selected.port !== "待采集" ? <button className="ghost" type="button" onClick={() => void copyEndpoint(selected)}><Copy size={15} /> 复制端点</button> : undefined}><DatabaseInstanceDetail instance={selected} onCopy={() => void copyEndpoint(selected)} /></DetailDrawer> : null}
+      side={selected ? <DatabaseInstanceDrawer instance={selected} permissions={permissions} onClose={() => setSelectedId(null)} onCopy={() => void copyEndpoint(selected)} notify={notify} /> : null}
       sideModal={Boolean(selected)}
     >
       {loading && <span className="sr-only" role="status" aria-live="polite">正在从 /api/databases 采集数据库实例</span>}
@@ -159,8 +165,8 @@ function DatabasesPage({ page, setPage, notify }: { page: PageKey; setPage: SetP
         />
         {filteredRows.length > 0 && <section className="database-instance-lower"><PanelCard title="当前备份状态" action="查看备份计划" onAction={() => setPage("databases-backups", { message: "已打开数据库 / 备份计划", tone: "info" })}><BackupSummary rows={filteredRows} /></PanelCard><PanelCard title={`连接健康（${healthFocus?.name ?? "不可用"})`} action={healthFocus ? "查看监控详情" : undefined} onAction={healthFocus ? () => setSelectedId(healthFocus.id) : undefined}><HealthMini instance={healthFocus} collectedAt={collectedAt} /></PanelCard><PanelCard title="慢查询实例"><SlowInstanceList rows={filteredRows} onOpen={setSelectedId} /></PanelCard><PanelCard title="权限分布"><AccessSummary rows={filteredRows} /></PanelCard></section>}
       </div>
-    </ModulePageShell>
-  );
+    </ModulePageShell>{creating && <DatabaseCreateDialog onClose={() => setCreating(false)} onComplete={(value) => { setCreating(false); setCredentials(value); notify("数据库实例已创建", "success"); void loadDatabases(); }} />}{credentials && <DatabaseCredentialsDrawer credentials={credentials} onClose={() => setCredentials(null)} />}
+  </>;
 }
 
 function databaseLatency(instance: DatabaseInstance) { const value = Number.parseInt(instance.latency, 10); return Number.isFinite(value) ? value : -1; }
@@ -185,8 +191,4 @@ function DatabaseMobileCard({ instance, onOpen }: { instance: DatabaseInstance; 
   return <><div className="module-card-head database-mobile-head"><button className="module-row-link database-mobile-name" type="button" title={instance.name} aria-label={`查看数据库 ${instance.name}`} onClick={onOpen}><Database size={16} aria-hidden="true" /><b>{instance.name}</b></button><ConnectionStatus instance={instance} /></div><code className="module-card-code">{instance.host}:{instance.port}</code><div className="module-card-meta"><span><b>引擎</b><em>{instance.engine}</em></span><span><b>备份</b><em><BackupStatus status={instance.backupStatus} /></em></span><span><b>慢查询</b><em>{instance.slowQueries === null ? "暂不可用" : `${instance.slowQueries} 条`}</em></span><span><b>采集</b><em>{formatBackendDateTime(instance.collectedAt)}</em></span><span><b>节点</b><em>{instance.nodeName ?? instance.host}</em></span><span><b>存储 / 连接</b><em>{instance.storage} · {instance.connections}</em></span></div><div className="module-card-footer database-mobile-actions"><button className="ghost small" type="button" aria-label={`查看 ${instance.name} 详情`} onClick={onOpen}><Eye size={14} /> 详情</button></div></>;
 }
 
-function DatabaseInstanceDetail({ instance, onCopy }: { instance: DatabaseInstance; onCopy: () => void }) {
-  return <div className="database-detail"><div className="database-detail-grid"><p><span>引擎</span><b>{instance.engine}</b></p><p><span>节点</span><b>{instance.nodeName ?? instance.host}</b></p><p><span>主机 / 端口</span><b>{instance.host}:{instance.port}</b></p><p><span>运行状态</span><b><ConnectionStatus instance={instance} /></b></p><p><span>备份状态</span><b><BackupStatus status={instance.backupStatus} /></b></p><p><span>最近备份</span><b>{instance.lastBackup}</b></p><p><span>慢查询</span><b>{instance.slowQueries === null ? "暂不可用" : `${instance.slowQueries} 条`}</b></p><p><span>权限范围</span><b>{instance.access} · {instance.owner}</b></p><p><span>存储 / 连接</span><b>{instance.storage} · {instance.connections}</b></p><p><span>区域</span><b>{instance.region}</b></p><p><span>延迟</span><b>{instance.latency}</b></p><p><span>数据来源</span><b>{instance.source ?? "暂不可用"}</b></p><p><span>采集时间</span><b>{formatBackendDateTime(instance.collectedAt)}{instance.freshness === "stale" ? " · 已过期" : ""}</b></p></div>{instance.port !== "待采集" && <div className="database-detail-actions"><button type="button" onClick={onCopy}><Copy size={14} /> 复制端点</button></div>}<div className="drawer-tip">此页面只展示 Agent 实际发现的数据；未采集字段不会使用示例值补齐。</div></div>;
-}
-
-export { DatabasesPage, DatabaseInstanceDetail };
+export { DatabasesPage };

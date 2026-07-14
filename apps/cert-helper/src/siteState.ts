@@ -39,13 +39,7 @@ export class SiteStateStore {
   }
 
   private async existingPortOwner(port: number) {
-    const root = within(this.config.stateRoot, "sites"); const names = await readdir(root).catch((error) => {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [] as string[]; throw error;
-    });
-    for (const name of names) {
-      if (!/^site-[a-f0-9]{32}\.json$/.test(name)) continue;
-      const site = await readJson<ManagedSite>(within(root, name)); if (site?.port === port) return site.siteId;
-    }
+    for (const site of await this.sites()) if (site.port === port) return site.siteId;
     return null;
   }
 
@@ -76,13 +70,23 @@ export class SiteStateStore {
     return false;
   }
 
-  async allocatePort(id: string, preferred: number | null = null) {
-    const allocated = await this.allocatedPort(id); if (allocated !== null) return allocated;
-    if (preferred !== null && preferred >= 20_000 && preferred < 40_000 && await this.claimPort(preferred, id)) return preferred;
-    const start = Number.parseInt(createHash("sha256").update(`port:${id}`).digest("hex").slice(0, 8), 16) % 20_000;
+  async allocatePort(id: string, preferred: number | null = null, available: (port: number) => Promise<boolean> = async () => true) {
+    const allocated = await this.allocatedPort(id);
+    if (allocated !== null) {
+      const owner = await this.existingPortOwner(allocated);
+      if (!owner || owner === id) return allocated;
+      await this.releasePort(id, allocated);
+    }
+    if (preferred !== null && preferred >= 20_000 && preferred < 40_000 && await this.claimPort(preferred, id)) {
+      try { if (await available(preferred)) return preferred; } catch (error) { await this.releasePort(id, preferred); throw error; }
+      await this.releasePort(id, preferred);
+    }
+    const start = Number.parseInt(id.slice(-4), 16) % 20_000;
     for (let offset = 0; offset < 20_000; offset += 1) {
       const port = 20_000 + (start + offset) % 20_000; if (port === preferred) continue;
-      if (await this.claimPort(port, id)) return port;
+      if (!await this.claimPort(port, id)) continue;
+      try { if (await available(port)) return port; } catch (error) { await this.releasePort(id, port); throw error; }
+      await this.releasePort(id, port);
     }
     throw new HelperError("SITE_PORTS_EXHAUSTED", "No managed-site ports remain available");
   }
@@ -93,41 +97,79 @@ export class SiteStateStore {
   }
 
   async withSiteLock<T>(id: string, operation: () => Promise<T>) {
-    const root = within(this.config.stateRoot, "locks"); const path = within(root, `${id}.lock`); const recovery = within(root, `${id}.recovery`); const ownerPath = within(path, "owner.json"); const token = randomUUID();
+    const root = within(this.config.stateRoot, "locks"); const path = within(root, `${id}.lock`); const recovery = within(root, `${id}.recovery`); const owner = await currentLockOwner();
     await mkdir(root, { recursive: true, mode: 0o700 });
     while (true) {
-      try { await mkdir(path, { mode: 0o700 }); }
+      try { await symlink(owner.descriptor, path); break; }
       catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        if (await acquireRecovery(recovery)) {
+        const recoveryDescriptor = await acquireRecovery(recovery);
+        if (recoveryDescriptor) {
           try {
-            const owner = await readJson<{ pid?: unknown }>(ownerPath).catch(() => null); const info = await lstat(path).catch(() => null);
-            const stale = typeof owner?.pid === "number"
-              ? !processRunning(owner.pid)
-              : Boolean(info && Date.now() - info.mtimeMs > 5_000);
-            if (stale) await rm(path, { recursive: true, force: true });
-          } finally { await rm(recovery, { recursive: true, force: true }); }
+            const staleOwner = await lockOwner(path); if (staleOwner && !await sameProcess(staleOwner)) await removeOwnedLock(path, staleOwner);
+          } finally { await removeOwnedLock(recovery, await descriptorOwner(recoveryDescriptor)); }
         }
         await wait(25); continue;
       }
-      try { await atomicWrite(ownerPath, `${JSON.stringify({ token, pid: process.pid })}\n`); break; }
-      catch (error) { await rm(path, { recursive: true, force: true }); throw error; }
     }
     try { return await operation(); }
-    finally {
-      const owner = await readJson<{ token?: unknown }>(ownerPath).catch(() => null);
-      if (owner?.token === token) await rm(path, { recursive: true, force: true });
-    }
+    finally { await removeOwnedLock(path, owner); }
+  }
+  async sites() {
+    const root = within(this.config.stateRoot, "sites");
+    let names: string[];
+    try { names = await readdir(root); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
+    const sites = await Promise.all(names.filter((name) => name.endsWith(".json")).sort().map((name) => readJson<ManagedSite>(within(root, name))));
+    return sites.filter((site): site is ManagedSite => site !== null);
   }
 }
 
+type LockOwner = { descriptor: string; pid: number; processStart: string | null; symbolic: boolean };
+
+async function lockOwner(path: string): Promise<LockOwner | null> {
+  const info = await lstat(path).catch(() => null); if (!info) return null;
+  if (info.isSymbolicLink()) {
+    const descriptor = await readlink(path); return descriptorOwner(descriptor).catch(() => null);
+  }
+  if (!info.isDirectory()) return null;
+  const owner = await readJson<{ token?: unknown; pid?: unknown }>(within(path, "owner.json")).catch(() => null);
+  return typeof owner?.token === "string" && typeof owner.pid === "number" ? { descriptor: owner.token, pid: owner.pid, processStart: null, symbolic: false } : null;
+}
+
+async function removeOwnedLock(path: string, owner: LockOwner) {
+  const current = await lockOwner(path); if (!current || current.descriptor !== owner.descriptor || current.pid !== owner.pid || current.processStart !== owner.processStart || current.symbolic !== owner.symbolic) return;
+  await rm(path, { recursive: true, force: true });
+}
+
 async function acquireRecovery(path: string) {
-  try { await mkdir(path, { mode: 0o700 }); return true; }
+  const owner = await currentLockOwner();
+  try { await symlink(owner.descriptor, path); return owner.descriptor; }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    const info = await lstat(path).catch(() => null); if (info && Date.now() - info.mtimeMs > 5_000) await rm(path, { recursive: true, force: true });
-    return false;
+    const staleOwner = await lockOwner(path); if (staleOwner && !await sameProcess(staleOwner)) await removeOwnedLock(path, staleOwner);
+    return null;
   }
+}
+
+async function processStart(pid: number) {
+  const source = await readFile(`/proc/${pid}/stat`, "utf8").catch(() => null); if (!source) return null;
+  const end = source.lastIndexOf(")"); const value = end >= 0 ? source.slice(end + 2).trim().split(/\s+/)[19] : undefined;
+  return /^\d+$/.test(value ?? "") ? value! : null;
+}
+
+async function descriptorOwner(descriptor: string): Promise<LockOwner> {
+  const match = descriptor.match(/^([1-9]\d*):(\d+|unknown):([0-9a-f-]{36})$/i); if (!match) throw new Error("INVALID_LOCK_OWNER");
+  return { descriptor, pid: Number(match[1]), processStart: match[2] === "unknown" ? null : match[2]!, symbolic: true };
+}
+
+async function currentLockOwner() {
+  const start = await processStart(process.pid); return descriptorOwner(`${process.pid}:${start ?? "unknown"}:${randomUUID()}`);
+}
+
+async function sameProcess(owner: LockOwner) {
+  if (!processRunning(owner.pid)) return false;
+  return owner.processStart === null || await processStart(owner.pid) === owner.processStart;
 }
 
 function processRunning(pid: number) {

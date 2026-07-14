@@ -1,9 +1,7 @@
 import type { TopbarNotification } from "../components/layout/types";
 import type { AclPolicy, AclRole, AclUser } from "../features/access/types";
 import type { AuditExportRecord, AuditRecord } from "../features/audit/types";
-import type { DatabaseBackupPlan, DatabaseBackupTask, DatabaseInstance, DatabaseRestorePoint, DatabaseSlowQuery } from "../features/databases/types";
 import type { DeployJob, RollbackRecord } from "../features/deployments/types";
-import type { FileRecord, FileUploadRecord, TrashFileRecord } from "../features/files/types";
 import type { FirewallDenyRecord, FirewallRule } from "../features/firewall/types";
 import type { HostRecord } from "../features/hosts/types";
 import type { ServiceRecord } from "../features/services/types";
@@ -27,44 +25,6 @@ const auditRows = [
   ["05-22 10:15:19", "10.0.0.55", "系统", "上传文件", "/var/www/html", "成功", "e5f6g7h8i9j0"],
   ["05-22 10:12:08", "10.0.1.23", "赵磊", "修改配置", "php.ini", "成功", "f6g7h8i9j0k1"],
   ["05-22 10:08:33", "10.0.2.88", "陈晨", "删除文件", "/tmp/old.log", "失败", "h8i9j0k1l2m3"],
-];
-
-const dbRows: DatabaseInstance[] = [
-  { id: "db-prod-postgres-01", name: "prod-postgres-01", engine: "PostgreSQL 15.5", host: "10.0.12.24", port: "5432", connectionHealth: "正常", backupStatus: "成功", slowQueries: 2, lastBackup: "2025-03-08 02:14", access: "读写", owner: "DBA", storage: "18.6 GB", connections: "42 / 160", latency: "38ms", region: "新加坡", autoBackup: true, remoteAccess: false },
-  { id: "db-billing-mysql-02", name: "billing-mysql-02", engine: "MySQL 8.0.36", host: "10.0.12.31", port: "3306", connectionHealth: "延迟 180ms", backupStatus: "等待确认", slowQueries: 9, lastBackup: "2025-03-07 23:10", access: "读写", owner: "研发", storage: "7.8 GB", connections: "68 / 120", latency: "180ms", region: "北京", autoBackup: true, remoteAccess: false },
-  { id: "db-staging-pg-03", name: "staging-pg-03", engine: "PostgreSQL 16.2", host: "10.0.14.18", port: "5432", connectionHealth: "正常", backupStatus: "成功", slowQueries: 0, lastBackup: "2025-03-08 01:32", access: "读写", owner: "研发", storage: "3.2 GB", connections: "16 / 80", latency: "41ms", region: "预发", autoBackup: true, remoteAccess: false },
-  { id: "db-analytics-mysql-01", name: "analytics-mysql-01", engine: "MySQL 8.0.32", host: "10.0.13.15", port: "3306", connectionHealth: "延迟 560ms", backupStatus: "失败", slowQueries: 23, lastBackup: "2025-03-07 20:45", access: "读写", owner: "运维", storage: "34.5 GB", connections: "96 / 140", latency: "560ms", region: "香港", autoBackup: true, remoteAccess: false },
-  { id: "db-archive-pg-02", name: "archive-pg-02", engine: "PostgreSQL 14.9", host: "10.0.15.22", port: "5432", connectionHealth: "正常", backupStatus: "成功", slowQueries: 1, lastBackup: "2025-03-07 22:30", access: "只读", owner: "研发", storage: "46.2 GB", connections: "9 / 60", latency: "55ms", region: "归档", autoBackup: true, remoteAccess: false },
-  { id: "db-test-mysql-01", name: "test-mysql-01", engine: "MySQL 8.0.30", host: "10.0.16.11", port: "3306", connectionHealth: "正常", backupStatus: "成功", slowQueries: 0, lastBackup: "2025-03-08 00:22", access: "读写", owner: "仅团队", storage: "1.8 GB", connections: "11 / 40", latency: "29ms", region: "测试", autoBackup: true, remoteAccess: false },
-  { id: "db-metrics-pg-01", name: "metrics-pg-01", engine: "PostgreSQL 15.3", host: "10.0.13.21", port: "5432", connectionHealth: "延迟 220ms", backupStatus: "成功", slowQueries: 6, lastBackup: "2025-03-07 21:05", access: "读写", owner: "运维", storage: "12.4 GB", connections: "53 / 100", latency: "220ms", region: "监控", autoBackup: true, remoteAccess: false },
-  { id: "db-logs-mysql-02", name: "logs-mysql-02", engine: "MySQL 8.0.28", host: "10.0.17.19", port: "3306", connectionHealth: "正常", backupStatus: "成功", slowQueries: 0, lastBackup: "2025-03-08 02:00", access: "仅备份", owner: "运维", storage: "28.1 GB", connections: "21 / 90", latency: "33ms", region: "日志", autoBackup: true, remoteAccess: false },
-];
-
-const initialDatabaseBackupPlans: DatabaseBackupPlan[] = [
-  { id: "db-bkp-plan-1", name: "生产 PostgreSQL 每日全量", database: "prod-postgres-01", storage: "S3", schedule: "0 2 * * *", retention: "14 份", enabled: true, health: "正常", lastRun: "今天 02:14", successRate: 99.2 },
-  { id: "db-bkp-plan-2", name: "账务 MySQL 半小时增量", database: "billing-mysql-02", storage: "MinIO", schedule: "*/30 * * * *", retention: "48 份", enabled: true, health: "正常", lastRun: "今天 10:30", successRate: 96.4 },
-  { id: "db-bkp-plan-3", name: "分析库夜间归档", database: "analytics-mysql-01", storage: "S3", schedule: "20 2 * * *", retention: "7 份", enabled: true, health: "告警", lastRun: "昨天 20:45", successRate: 82.5 },
-  { id: "db-bkp-plan-4", name: "日志库本地快照", database: "logs-mysql-02", storage: "本地", schedule: "0 */6 * * *", retention: "12 份", enabled: false, health: "正常", lastRun: "昨天 18:00", successRate: 91.8 },
-];
-
-const initialDatabaseBackupTasks: DatabaseBackupTask[] = [
-  { id: "db-bkp-task-1", planId: "db-bkp-plan-1", database: "prod-postgres-01", storage: "S3", status: "成功", startedAt: "今天 02:14", size: "18.6 GB", duration: "3分12秒" },
-  { id: "db-bkp-task-2", planId: "db-bkp-plan-2", database: "billing-mysql-02", storage: "MinIO", status: "运行中", startedAt: "今天 10:30", size: "2.4 GB", duration: "1分08秒" },
-  { id: "db-bkp-task-3", planId: "db-bkp-plan-3", database: "analytics-mysql-01", storage: "S3", status: "失败", startedAt: "昨天 20:45", size: "-", duration: "18秒" },
-  { id: "db-bkp-task-4", planId: "db-bkp-plan-4", database: "logs-mysql-02", storage: "本地", status: "等待", startedAt: "等待窗口", size: "-", duration: "-" },
-];
-
-const initialDatabaseRestorePoints: DatabaseRestorePoint[] = [
-  { id: "db-restore-1", database: "prod-postgres-01", createdAt: "今天 02:14", storage: "s3://stackpilot/prod-postgres-01", size: "18.6 GB", checksum: "已校验", drillStatus: "未演练" },
-  { id: "db-restore-2", database: "billing-mysql-02", createdAt: "今天 10:30", storage: "minio://db-backup/billing-mysql-02", size: "2.4 GB", checksum: "待校验", drillStatus: "未演练" },
-  { id: "db-restore-3", database: "archive-pg-02", createdAt: "昨天 22:30", storage: "s3://stackpilot/archive-pg-02", size: "46.2 GB", checksum: "已校验", drillStatus: "已完成" },
-];
-
-const initialDatabaseSlowQueries: DatabaseSlowQuery[] = [
-  { id: "slow-1", database: "analytics-mysql-01", fingerprint: "orders_status_created_at", sql: "SELECT * FROM orders WHERE status = 'pending' ORDER BY created_at DESC LIMIT 200", avgTime: "2.48s", p95Time: "4.12s", calls: 428, rows: "18.4 万", level: "高", status: "待处理", owner: "运维", firstSeen: "今天 09:18", suggestion: "为 orders(status, created_at) 增加组合索引，并限制 SELECT 字段。", sessionId: "mysql-80231" },
-  { id: "slow-2", database: "billing-mysql-02", fingerprint: "invoice_bulk_update", sql: "UPDATE invoices SET status = 'paid' WHERE id IN (...)", avgTime: "2.41s", p95Time: "3.86s", calls: 92, rows: "12.1 万", level: "高", status: "分析中", owner: "研发", firstSeen: "今天 08:52", suggestion: "拆分批次并在低峰期执行，避免长事务锁住账务表。", sessionId: "mysql-79418", explain: "type=range, key=PRIMARY, rows=121000, Extra=Using where" },
-  { id: "slow-3", database: "metrics-pg-01", fingerprint: "metrics_group_by_day", sql: "SELECT date_trunc('day', created_at), avg(value) FROM metrics GROUP BY 1", avgTime: "1.95s", p95Time: "2.72s", calls: 316, rows: "42.8 万", level: "中", status: "待处理", owner: "运维", firstSeen: "昨天 22:17", suggestion: "增加按天聚合的物化视图，仪表盘读取聚合表。", sessionId: "pg-18842" },
-  { id: "slow-4", database: "prod-postgres-01", fingerprint: "users_role_count", sql: "SELECT role, COUNT(*) FROM users WHERE active = true GROUP BY role", avgTime: "1.28s", p95Time: "1.76s", calls: 74, rows: "7.2 万", level: "低", status: "已处理", owner: "DBA", firstSeen: "昨天 16:40", suggestion: "已改为读取只读副本，保留观察 24 小时。", sessionId: "pg-17310", explain: "Seq Scan on users, Filter active=true, HashAggregate role" },
 ];
 
 const initialProxyEndpoints: ProxyEndpoint[] = [
@@ -108,32 +68,6 @@ const initialSiteRecords: SiteRecord[] = [
   { id: "site-2", domain: "shop.example.com", status: "运行中", runtime: "PHP 8.3", host: "panel-bj-02", certDays: 12, traffic: "420 GB", owner: "电商", latency: "74ms", errorRate: "0.18%", upstream: "php-fpm:9000", lastDeploy: "昨天 22:18", certIssuer: "ZeroSSL", certMode: "DNS-01" },
   { id: "site-3", domain: "admin.example.com", status: "告警", runtime: "Nginx 静态", host: "panel-hk-03", certDays: 4, traffic: "86 GB", owner: "运营", latency: "211ms", errorRate: "1.26%", upstream: "static-root", lastDeploy: "今天 08:16", certIssuer: "Let's Encrypt", certMode: "手动确认" },
   { id: "site-4", domain: "docs.example.com", status: "已停止", runtime: "Static", host: "panel-dev-04", certDays: 90, traffic: "14 GB", owner: "文档", latency: "-", errorRate: "-", upstream: "docs-web", lastDeploy: "3 天前", certIssuer: "自签名", certMode: "人工导入" },
-];
-
-const initialFileRecords: FileRecord[] = [
-  { id: "file-1", name: "releases", type: "文件夹", path: "/var/www/html", size: "-", modified: "今天 10:12", owner: "deploy" },
-  { id: "file-2", name: "uploads", type: "文件夹", path: "/var/www/html", size: "-", modified: "昨天 18:44", owner: "www-data" },
-  { id: "file-3", name: "index.html", type: "文件", path: "/var/www/html", size: "18 KB", modified: "今天 09:31", owner: "deploy" },
-  { id: "file-4", name: "nginx.conf", type: "文件", path: "/var/www/html", size: "4 KB", modified: "昨天 22:10", owner: "root" },
-  { id: "file-5", name: "v2.8.1", type: "文件夹", path: "/var/www/html/releases", size: "-", modified: "今天 08:40", owner: "deploy" },
-  { id: "file-6", name: "bundle.js", type: "文件", path: "/var/www/html/releases/v2.8.1", size: "418 KB", modified: "今天 08:42", owner: "deploy" },
-  { id: "file-7", name: "upload-20260618.log", type: "文件", path: "/var/www/html", size: "12 KB", modified: "今天 10:21", owner: "admin" },
-  { id: "file-8", name: "upload-assets.zip", type: "文件", path: "/var/www/html", size: "84 MB", modified: "今天 10:19", owner: "admin" },
-  { id: "file-9", name: "old-error.log", type: "文件", path: "/tmp", size: "32 KB", modified: "昨天 23:40", owner: "root" },
-  { id: "file-10", name: "old-cache.tar", type: "文件", path: "/tmp", size: "128 MB", modified: "3 天前", owner: "www-data" },
-];
-
-const initialFileUploads: FileUploadRecord[] = [
-  { id: "upload-1", name: "release-v2.8.2.zip", targetPath: "/var/www/html/releases", size: "128 MB", progress: 72, status: "上传中", speed: "18 MB/s", owner: "deploy", startedAt: "今天 10:44" },
-  { id: "upload-2", name: "avatar-batch.tar", targetPath: "/var/www/html/uploads", size: "42 MB", progress: 0, status: "等待", speed: "-", owner: "admin", startedAt: "今天 10:46" },
-  { id: "upload-3", name: "hotfix-nginx.conf", targetPath: "/etc/nginx/conf.d", size: "4 KB", progress: 100, status: "已完成", speed: "完成", owner: "root", startedAt: "今天 10:31" },
-  { id: "upload-4", name: "media-assets.zip", targetPath: "/var/www/html/uploads", size: "284 MB", progress: 38, status: "失败", speed: "中断", owner: "运营", startedAt: "昨天 21:18" },
-];
-
-const initialTrashFiles: TrashFileRecord[] = [
-  { id: "trash-1", name: "old-error.log", originalPath: "/tmp/old-error.log", size: "32 KB", deletedAt: "今天 09:42", expiresIn: "6 天", owner: "root", reason: "日志轮转清理" },
-  { id: "trash-2", name: "old-cache.tar", originalPath: "/tmp/old-cache.tar", size: "128 MB", deletedAt: "昨天 23:40", expiresIn: "5 天", owner: "www-data", reason: "缓存包过期" },
-  { id: "trash-3", name: "index.backup.html", originalPath: "/var/www/html/index.backup.html", size: "21 KB", deletedAt: "昨天 18:12", expiresIn: "5 天", owner: "deploy", reason: "发布后清理" },
 ];
 
 const initialTerminalSessions: TerminalSessionRecord[] = [
@@ -203,13 +137,6 @@ const initialAuditRecords: AuditRecord[] = auditRows.map((row) => ({
   summary: `${row[2]} 对 ${row[4]} 执行 ${row[3]}，结果为 ${row[5]}`,
 }));
 
-const databaseAuditRecords: AuditRecord[] = [
-  { id: "db-audit-readonly", time: "05-22 10:42:08", ip: "10.0.12.24", user: "张工", action: "创建只读用户", object: "readonly_reporter", result: "成功", traceId: "DB-AUD-1001", summary: "张工为 readonly_reporter 创建数据库只读访问，限制到报表 schema。" },
-  { id: "db-audit-backup", time: "05-22 09:15:42", ip: "10.0.12.31", user: "李工", action: "触发手动备份", object: "billing-mysql-02", result: "成功", traceId: "DB-AUD-1002", summary: "李工为 billing-mysql-02 触发手动备份，任务已加入备份队列。" },
-  { id: "db-audit-pool", time: "05-22 08:51:30", ip: "127.0.0.1", user: "系统", action: "修改连接池配置", object: "analytics-mysql-01", result: "成功", traceId: "DB-AUD-1003", summary: "系统根据慢查询治理策略调整 analytics-mysql-01 连接池上限。" },
-  { id: "db-audit-policy", time: "昨天 23:30", ip: "127.0.0.1", user: "系统", action: "新增备份策略", object: "analytics-mysql-01", result: "成功", traceId: "DB-AUD-1004", summary: "系统为 analytics-mysql-01 新增夜间归档备份策略。" },
-];
-
 const initialAuditExports: AuditExportRecord[] = [
   { id: "exp-1", name: "今日操作审计 CSV", format: "CSV", range: "今天 00:00 - 现在", status: "可下载", rows: 482, size: "318 KB", creator: "管理员", createdAt: "今天 10:24", expiresAt: "7 天后", traceId: "EXP-20260619-001" },
   { id: "exp-2", name: "失败操作 JSON", format: "JSON", range: "近 24 小时", status: "可下载", rows: 17, size: "42 KB", creator: "王工", createdAt: "今天 09:16", expiresAt: "6 天后", traceId: "EXP-20260619-002" },
@@ -244,4 +171,4 @@ const initialAclPolicies: AclPolicy[] = [
   { id: "pol-8", name: "权限管理", module: "权限", risk: "高", desc: "允许变更用户、角色和权限项绑定。", roles: ["管理员"], lastUpdated: "今天 10:02" },
 ];
 
-export { topbarNotifications, topbarHelpLinks, auditRows, dbRows, initialDatabaseBackupPlans, initialDatabaseBackupTasks, initialDatabaseRestorePoints, initialDatabaseSlowQueries, initialProxyEndpoints, initialProxyRules, initialSettingsChanges, initialTokenRows, initialHostRecords, initialSiteRecords, initialFileRecords, initialFileUploads, initialTrashFiles, initialTerminalSessions, initialTerminalSnippets, initialTerminalHistory, initialServiceRecords, initialFirewallRules, initialFirewallDenyRecords, initialDeployJobs, initialRollbackRecords, initialAuditRecords, databaseAuditRecords, initialAuditExports, permissionOptions, initialAclUsers, initialAclRoles, initialAclPolicies };
+export { topbarNotifications, topbarHelpLinks, auditRows, initialProxyEndpoints, initialProxyRules, initialSettingsChanges, initialTokenRows, initialHostRecords, initialSiteRecords, initialTerminalSessions, initialTerminalSnippets, initialTerminalHistory, initialServiceRecords, initialFirewallRules, initialFirewallDenyRecords, initialDeployJobs, initialRollbackRecords, initialAuditRecords, initialAuditExports, permissionOptions, initialAclUsers, initialAclRoles, initialAclPolicies };

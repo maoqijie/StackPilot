@@ -5,6 +5,7 @@ import { firewallPagePreset } from "../features/firewall/validation";
 import { schedulePagePreset } from "../features/schedule/model";
 import { sitesPagePreset } from "../features/sites/model";
 import { aclPagePreset, auditPagePreset, databasePagePreset, deployPagePreset, settingsPagePreset, systemdPagePreset, terminalPagePreset } from "./pagePresets";
+import type { Permission } from "@stackpilot/contracts";
 import type { PageKey, PageMeta, ParentPageKey, ViewContext } from "../types/app";
 
 const parentPageKeys = [
@@ -97,7 +98,7 @@ const navItems: NavItem[] = [
     label: "文件",
     icon: Folder,
     children: [
-      { id: "files-www", label: "站点目录", meta: "/var/www" },
+      { id: "files-www", label: "受管目录", meta: "虚拟根 /" },
       { id: "files-upload", label: "上传队列", meta: "传输记录" },
       { id: "files-trash", label: "回收站", meta: "7 天保留" },
     ],
@@ -228,9 +229,25 @@ function desktopTopbarChrome(page: PageKey): TopbarChrome {
   };
 }
 
-function topbarSearchResults(query: string): TopbarSearchResult[] {
+function navItemsForPermissions(permissions: readonly Permission[]) {
+  return navItems.reduce<NavItem[]>((visible, item) => {
+    if (item.key === "files" && !permissions.includes("files:read")) return visible;
+    if (item.key === "databases" && !permissions.includes("databases:read")) return visible;
+    if (item.key === "sites") {
+      return [...visible, { ...item, children: item.children.filter((child) => child.id !== "sites-create" || permissions.includes("sites:deploy")) }];
+    }
+    if (item.key !== "databases") return [...visible, item];
+    const children = item.children.filter((child) => {
+      if (child.id === "databases-backups") return permissions.includes("databases:backup");
+      return true;
+    });
+    return [...visible, { ...item, children }];
+  }, []);
+}
+
+function topbarSearchResults(query: string, permissions: readonly Permission[] = []): TopbarSearchResult[] {
   const normalized = query.trim().toLowerCase();
-  const entries: TopbarSearchResult[] = navItems.flatMap((item) => [
+  const entries: TopbarSearchResult[] = navItemsForPermissions(permissions).flatMap((item) => [
     { id: item.key, label: item.label, detail: resolvePageMeta(item.key).breadcrumb, page: item.key, kind: "模块" },
     ...item.children.map((child) => ({
       id: child.page ?? child.id,
@@ -335,4 +352,4 @@ function resolvePageMeta(page: PageKey): PageMeta {
   return pageMeta.overview;
 }
 
-export { parentPageKeys, pageMeta, navItems, overviewChildPages, navPageFor, activeChildForPage, navChildMetaText, activeNavEntryForPage, desktopTopbarChrome, topbarSearchResults, viewContextForPage, resolvePageMeta };
+export { parentPageKeys, pageMeta, navItems, navItemsForPermissions, overviewChildPages, navPageFor, activeChildForPage, navChildMetaText, activeNavEntryForPage, desktopTopbarChrome, topbarSearchResults, viewContextForPage, resolvePageMeta };

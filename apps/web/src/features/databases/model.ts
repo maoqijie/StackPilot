@@ -3,27 +3,6 @@ import type { Tone } from "../../types/app";
 import type { DatabaseInstanceRecord } from "@stackpilot/contracts";
 import { formatBackendDateTime } from "../../utils/time";
 
-const slowRemediationStorageKey = "stackpilot.slow-remediation-ids";
-
-function readSlowRemediationIds() {
-  if (typeof window === "undefined") return [];
-  try {
-    const parsed = JSON.parse(window.sessionStorage.getItem(slowRemediationStorageKey) ?? "[]");
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeSlowRemediationIds(ids: string[]) {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(slowRemediationStorageKey, JSON.stringify(ids));
-  } catch {
-    // Local storage can be unavailable in restricted browser contexts.
-  }
-}
-
 function databaseHealthTone(instance: DatabaseInstance): Tone {
   if (instance.freshness === "stale") return "gray";
   return instance.connectionHealth === "运行中" ? "green" : instance.connectionHealth === "未知" ? "gray" : "orange";
@@ -74,4 +53,4 @@ function databaseBackupTone(status: DatabaseInstance["backupStatus"]): Tone {
   return "green";
 }
 
-export { databaseBackupTone, databaseHealthLabel, databaseHealthTone, databaseInstanceFromApi, isDatabaseAlert, isDatabaseHealthy, readSlowRemediationIds, slowRemediationStorageKey, writeSlowRemediationIds };
+export { databaseBackupTone, databaseHealthLabel, databaseHealthTone, databaseInstanceFromApi, isDatabaseAlert, isDatabaseHealthy };

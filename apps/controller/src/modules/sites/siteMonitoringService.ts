@@ -72,6 +72,15 @@ function remoteSite(node: AgentNodeState, site: AgentSiteSnapshotRecord, tasks: 
   };
 }
 
+function siteHostKey(site: Pick<SiteRuntimeRecord, "domain" | "host">) {
+  return `${site.host.trim().toLowerCase()}\0${site.domain.trim().toLowerCase()}`;
+}
+
+function mergeLocalProbe(site: SiteRuntimeRecord, localByHost: ReadonlyMap<string, SiteRuntimeRecord>) {
+  const local = localByHost.get(siteHostKey(site));
+  return local ? { ...site, status: local.status, latencyMs: local.latencyMs } : site;
+}
+
 export class SiteMonitoringService {
   private cached: SiteRuntimePayload | null = null;
   private inFlight: Promise<SiteRuntimePayload> | null = null;
@@ -116,11 +125,16 @@ export class SiteMonitoringService {
     const local = await this.getLocalSites();
     if (!this.repository) return local;
     const state = await this.repository.read();
-    const localSites = local.sites.map((site) => ({ ...site, renewal: renewalState(site.id, state.tasks) }));
     const permitted = state.nodes.filter((node) =>
       !node.revokedAt && node.siteSnapshot && (access.nodeScope === "all" || access.nodeScope.includes(node.nodeId)),
     );
-    const remoteSites = permitted.flatMap((node) => node.siteSnapshot!.sites.map((site) => remoteSite(node, site, state.tasks)));
+    const localByHost = new Map(local.sites.map((site) => [siteHostKey(site), site]));
+    const remoteSites = permitted.flatMap((node) => node.siteSnapshot!.sites
+      .map((site) => mergeLocalProbe(remoteSite(node, site, state.tasks), localByHost)));
+    const remoteHostKeys = new Set(remoteSites.map(siteHostKey));
+    const localSites = local.sites
+      .filter((site) => !remoteHostKeys.has(siteHostKey(site)))
+      .map((site) => ({ ...site, renewal: renewalState(site.id, state.tasks) }));
     const snapshots = permitted.map((node) => node.siteSnapshot!);
     const staleNodes = permitted.filter((node) => Date.now() - Date.parse(node.siteSnapshot!.collectedAt) > STALE_AFTER_MS);
     const statuses = [local.collectionStatus, ...snapshots.map((snapshot) => snapshot.collectionStatus)];

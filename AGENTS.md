@@ -242,3 +242,12 @@ Before completing UI work, verify all of the following:
 - Automatic polling uses read-only requests at `10` seconds or slower, preserves operator context, and produces no toast spam.
 - Desktop and mobile rendering have been inspected with a real browser; computed overflow, removed controls, drawers, hover states, and at least one complete polling cycle have been verified.
 - Every status remains understandable without relying on color alone.
+
+## Git 提交与推送
+
+- 用户要求推送时，使用中文且能准确说明改动范围的提交标题和正文。
+- 提交前必须更新项目版本号，并同步全部工作区包、内部依赖、锁文件及当前版本文档中的相关引用。
+- 提交前检查暂存清单，禁止提交 `target/`、`node_modules/`、`dist/`、`build/`、`output/`、`coverage/` 等无关构建或运行产物。
+- 提交目标为 `main` 主分支。推送前先获取远端 `main`；若远端内容更新，必须在远端最新版本基础上整合本地提交后再推送，不得覆盖远端历史。
+- 出现合并或拣选冲突时，自行分析并解决，保留远端有效改动与本次预期改动；完成后运行与改动范围相称的验证。
+- 推送失败时自动重试，最多三次；仅在三次均失败后向用户说明具体原因。

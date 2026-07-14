@@ -1,9 +1,10 @@
 import type { PublicUser } from "@stackpilot/contracts";
 import { Lock } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { desktopTopbarChrome, navPageFor } from "../../app/navigation";
 import { lockedRouteForPage } from "../../app/routing";
 import { DesktopFooter } from "./DesktopFooter";
+import { PageTransition } from "./PageTransition";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { SettingsProxyPage } from "../../features/settings/SettingsProxyPage";
@@ -95,11 +96,11 @@ function DesktopShellContent({
   page,
   setPage,
   notify,
+  user,
   topbarUnreadCount,
   setTopbarUnreadCount,
   sessionLocked,
   onLogout,
-  user,
 }: {
   page: PageKey;
   setPage: SetPage;
@@ -137,7 +138,7 @@ function DesktopShellContent({
     return () => mediaQuery.removeEventListener("change", syncSidebar);
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     desktopContentRef.current?.scrollTo({ top: 0 });
   }, [page]);
 
@@ -215,35 +216,37 @@ function DesktopShellContent({
         permissions={user.permissions}
       />
       <div className="desktop-main" inert={sidebarOverlayOpen} aria-hidden={sidebarOverlayOpen ? "true" : undefined}>
-        <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={overview} interactionsDisabled={sessionLocked} onLogout={onLogout} />
+        <TopBar page={page} setPage={setPage} chrome={topbarChrome} notify={notify} unreadCount={topbarUnreadCount} setUnreadCount={setTopbarUnreadCount} overview={overview} interactionsDisabled={sessionLocked} permissions={user.permissions} onLogout={onLogout} />
         <div className="desktop-content" ref={desktopContentRef}>
-          {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
-          {page === "overview-health" && <OverviewHealthPage notify={notify} />}
-          {page === "overview-tasks" && <OverviewTasksPage notify={notify} setPage={setPage} />}
-          {page === "overview-risks" && <OverviewRisksPage notify={notify} />}
-          {activeModule === "hosts" && <HostsPage page={page} notify={notify} />}
-          {activeModule === "sites" && <SitesPage page={page} notify={notify} permissions={user.permissions} />}
-          {activeModule === "databases" && (
-            page === "databases-backups"
-              ? <DatabaseBackupsPage page={page} notify={notify} canManage={user.permissions.includes("system:backup")} />
-              : page === "databases-slow"
-                ? <DatabaseSlowQueriesPage page={page} notify={notify} />
-              : <DatabasesPage page={page} setPage={setPage} notify={notify} />
-          )}
-          {activeModule === "files" && <FilesModule page={page} notify={notify} permissions={user.permissions} />}
-          {page === "terminal-history" && <TerminalHistoryPage notify={notify} />}
-          {activeModule === "terminal" && page !== "terminal-history" && <TerminalPage page={page} notify={notify} permissions={user.permissions} />}
-          {activeModule === "systemd" && <SystemdPage page={page} notify={notify} />}
-          {activeModule === "firewall" && <FirewallPage page={page} notify={notify} />}
-          {activeModule === "deploy" && <DeployPage page={page} notify={notify} />}
-          {activeModule === "schedule" && <SchedulePage page={page} notify={notify} />}
-          {activeModule === "audit" && <AuditPage page={page} notify={notify} />}
-          {activeModule === "acl" && <AclPage page={page} setPage={setPage} notify={notify} />}
-          {activeModule === "settings" && (
-            page === "settings-proxy"
-              ? <SettingsProxyPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} />
-              : <SettingsPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} />
-          )}
+          <PageTransition page={page}>
+            {page === "overview" && <OverviewPage setPage={setPage} notify={notify} />}
+            {page === "overview-health" && <OverviewHealthPage notify={notify} />}
+            {page === "overview-tasks" && <OverviewTasksPage notify={notify} setPage={setPage} />}
+            {page === "overview-risks" && <OverviewRisksPage notify={notify} />}
+            {activeModule === "hosts" && <HostsPage page={page} notify={notify} />}
+            {activeModule === "sites" && <SitesPage page={page} notify={notify} permissions={user.permissions} />}
+            {activeModule === "databases" && (
+              page === "databases-backups"
+                ? <DatabaseBackupsPage page={page} notify={notify} permissions={user.permissions} />
+                : page === "databases-slow"
+                  ? <DatabaseSlowQueriesPage page={page} notify={notify} permissions={user.permissions} />
+                  : <DatabasesPage page={page} setPage={setPage} notify={notify} permissions={user.permissions} />
+            )}
+            {activeModule === "files" && <FilesModule page={page} notify={notify} permissions={user.permissions} />}
+            {page === "terminal-history" && <TerminalHistoryPage notify={notify} />}
+            {activeModule === "terminal" && page !== "terminal-history" && <TerminalPage page={page} notify={notify} permissions={user.permissions} />}
+            {activeModule === "systemd" && <SystemdPage page={page} notify={notify} />}
+            {activeModule === "firewall" && <FirewallPage page={page} notify={notify} />}
+            {activeModule === "deploy" && <DeployPage page={page} notify={notify} />}
+            {activeModule === "schedule" && <SchedulePage page={page} notify={notify} />}
+            {activeModule === "audit" && <AuditPage page={page} notify={notify} />}
+            {activeModule === "acl" && <AclPage page={page} setPage={setPage} notify={notify} />}
+            {activeModule === "settings" && (
+              page === "settings-proxy"
+                ? <SettingsProxyPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} />
+                : <SettingsPage page={page} setPage={setPage} notify={notify} readOnlyState={settingsReadOnlyState} permissions={user.permissions} />
+            )}
+          </PageTransition>
         </div>
         <DesktopFooter />
       </div>

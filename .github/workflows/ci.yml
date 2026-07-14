@@ -137,6 +137,11 @@ jobs:
           docker build -f deploy/docker/Dockerfile.web -t stackpilot-web:ci .
           docker build -f deploy/docker/Dockerfile.controller -t stackpilot-controller:ci .
           docker build -f deploy/docker/Dockerfile.agent -t stackpilot-agent:ci .
+      - name: Resolve release version
+        id: release
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
       - name: Confirm container runtime identities
         run: |
           test "$(docker image inspect stackpilot-web:ci --format '{{.Config.User}}')" = "101:101"
@@ -152,8 +157,8 @@ jobs:
           STACKPILOT_PUBLIC_ORIGIN: https://localhost
           STACKPILOT_HTTPS_BIND: 127.0.0.1
         run: |
-          docker tag stackpilot-web:ci ghcr.io/maoqijie/stackpilot-web:0.2.0-preview.1
-          docker tag stackpilot-controller:ci ghcr.io/maoqijie/stackpilot-controller:0.2.0-preview.1
+          docker tag stackpilot-web:ci ghcr.io/maoqijie/stackpilot-web:${{ steps.release.outputs.version }}
+          docker tag stackpilot-controller:ci ghcr.io/maoqijie/stackpilot-controller:${{ steps.release.outputs.version }}
           docker compose -f deploy/docker/compose.yaml up -d --no-build web controller
           healthy=0
           for attempt in $(seq 1 30); do

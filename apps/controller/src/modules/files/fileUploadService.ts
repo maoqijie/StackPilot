@@ -2,12 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants, existsSync } from "node:fs";
 import { link, lstat, mkdir, open, realpath, rm } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import type { CreateFileUploadRequest, FileUploadListResponse, FileUploadRecord } from "@stackpilot/contracts";
+import type { CreateFileUploadRequest, FileUploadListResponse, ResumableFileUploadRecord } from "@stackpilot/contracts";
 import type { Principal } from "../../identity/types.js";
 import { ServiceError } from "../serviceError.js";
 import { FileUploadRepository, type StoredFileUpload } from "../../repositories/fileUploadRepository.js";
 
-function publicRecord(upload: StoredFileUpload): FileUploadRecord {
+function publicRecord(upload: StoredFileUpload): ResumableFileUploadRecord {
   return {
     id: upload.id, fileName: upload.fileName, targetDirectory: upload.targetDirectory, targetPath: upload.targetPath,
     sizeBytes: upload.sizeBytes, receivedBytes: upload.receivedBytes, status: upload.status, owner: upload.owner,
@@ -28,7 +28,7 @@ export class FileUploadService {
   }
   async list(): Promise<FileUploadListResponse> { const base = await this.rootPath(); this.assertStoredPaths(base); return { uploads: this.repository.list().map(publicRecord), collectedAt: new Date().toISOString(), maxFileBytes: this.maxFileBytes, chunkBytes: this.chunkBytes }; }
 
-  async create(principal: Principal, input: CreateFileUploadRequest): Promise<FileUploadRecord> {
+  async create(principal: Principal, input: CreateFileUploadRequest): Promise<ResumableFileUploadRecord> {
     if (input.sizeBytes > this.maxFileBytes) throw new ServiceError(413, "PAYLOAD_TOO_LARGE", `单个文件不能超过 ${this.maxFileBytes} 字节`);
     const base = await this.rootPath();
     const previous = this.repository.findIdempotent(principal.userId, input.idempotencyKey);
@@ -64,7 +64,7 @@ export class FileUploadService {
     return publicRecord(upload);
   }
 
-  async append(id: string, offset: number, contentLength: number, body: AsyncIterable<Buffer | Uint8Array>): Promise<FileUploadRecord> {
+  async append(id: string, offset: number, contentLength: number, body: AsyncIterable<Buffer | Uint8Array>): Promise<ResumableFileUploadRecord> {
     const base = await this.rootPath();
     const upload = this.required(id);
     this.assertStoredUpload(base, upload);
@@ -102,7 +102,7 @@ export class FileUploadService {
     } finally { await handle?.close().catch(() => undefined); this.active.delete(id); }
   }
 
-  async complete(id: string): Promise<FileUploadRecord> {
+  async complete(id: string): Promise<ResumableFileUploadRecord> {
     const base = await this.rootPath();
     const upload = this.required(id);
     this.assertStoredUpload(base, upload);
@@ -128,7 +128,7 @@ export class FileUploadService {
     } finally { this.active.delete(id); }
   }
 
-  async cancel(id: string): Promise<FileUploadRecord> {
+  async cancel(id: string): Promise<ResumableFileUploadRecord> {
     const base = await this.rootPath();
     const upload = this.required(id);
     this.assertStoredUpload(base, upload);

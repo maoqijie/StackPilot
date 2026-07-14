@@ -42,25 +42,30 @@ if (isMainModule) {
     const secrets=new SecretStore(database,parseMasterKey(config.masterKey));
     const agentRepository=new SqliteAgentControlRepository(database,identity.audit,secrets);
     const siteRepository=new SqliteSiteManagementRepository(database,secrets);
-    const services = createControllerServices(platform, repoRoot, config, agentRepository, database, siteRepository);
+    const services = createControllerServices(platform, repoRoot, config, agentRepository, database, siteRepository, identity.audit);
     await services.sites.startup();
     await services.certificateRenewals.startup();
     const appOptions={ config, services, platform, repoRoot,database,identity,agentRepository };
     const server = createStackPilotServer(appOptions);
-
-    server.listen(config.port, config.host, () => {
-      process.stdout.write(`StackPilot Controller listening on http://${config.host}:${config.port}\n`);
-    });
-
     const agentServer = config.agentTlsCertPath && config.agentTlsKeyPath
       ? createStackPilotAgentServer({ cert: readFileSync(config.agentTlsCertPath), key: readFileSync(config.agentTlsKeyPath) }, appOptions)
       : null;
+
+    server.listen(config.port, config.host, () => {
+      services.siteManagement.startBackgroundReconciliation(10_000, () => {
+        process.stderr.write("StackPilot site operation reconciliation failed; it will be retried.\n");
+      });
+      process.stdout.write(`StackPilot Controller listening on http://${config.host}:${config.port}\n`);
+    });
     if (agentServer) agentServer.listen(config.agentPort, config.agentHost, () => process.stdout.write(`StackPilot Agent API listening on https://${config.agentHost}:${config.agentPort}\n`));
     else process.stdout.write("StackPilot Agent API disabled: TLS certificate and key are not configured.\n");
 
     for (const signal of ["SIGINT", "SIGTERM"] as const) {
       process.once(signal, () => {
-        services.sites.shutdown();let remaining=agentServer?2:1;const closed=()=>{remaining-=1;if(remaining===0){database.close();process.exit(0);}};
+        services.sites.shutdown();
+        services.databaseRetention?.shutdown();
+        const reconciliationStopped = services.siteManagement.stopBackgroundReconciliation();
+        let remaining=agentServer?2:1;const closed=()=>{remaining-=1;if(remaining===0){void reconciliationStopped.finally(()=>{database.close();process.exit(0);});}};
         agentServer?.close(closed);
         server.close(closed);
       });

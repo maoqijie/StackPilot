@@ -1,0 +1,47 @@
+.desktop-page-transition {
+  min-width: 0;
+  min-height: 100%;
+  view-transition-name: page-content;
+}
+
+.desktop-page-transition.is-page-entering {
+  animation: page-content-enter var(--ease) both;
+}
+
+@keyframes page-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+html.supports-view-transitions .desktop-page-transition.is-page-entering {
+  animation: none;
+}
+
+html.supports-view-transitions::view-transition-old(root),
+html.supports-view-transitions::view-transition-new(root) {
+  animation: none;
+}
+
+html.supports-view-transitions::view-transition-group(page-content) {
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+html.supports-view-transitions::view-transition-old(page-content) {
+  animation: page-content-exit var(--ease) both;
+}
+
+html.supports-view-transitions::view-transition-new(page-content) {
+  animation: page-content-enter var(--ease) both;
+}
+
+@keyframes page-content-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}

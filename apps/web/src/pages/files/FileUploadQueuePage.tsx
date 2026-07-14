@@ -1,0 +1,30 @@
+import { CheckCircle2, CloudUpload, FileBox, Shield } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchUploads, uploadFile } from "../../api/filesApi";
+import { resolvePageMeta } from "../../app/navigation";
+import { ModulePageShell } from "../../components/layout/ModulePageShell";
+import { MetricTile, ModuleSearch } from "../../components/ui/Cards";
+import { DataTable } from "../../components/ui/DataTable";
+import { DetailDrawer } from "../../components/ui/DetailDrawer";
+import { formatBytes } from "../../features/files/format";
+import { usePollingResource } from "../../features/files/usePollingResource";
+import type { Notify, PageKey } from "../../types/app";
+import { formatBackendDateTime } from "../../utils/time";
+
+export function FileUploadQueuePage({ page, notify, canWrite }: { page: PageKey; notify: Notify; canWrite: boolean }) {
+  const [search, setSearch] = useState(""); const [createOpen, setCreateOpen] = useState(false); const [file, setFile] = useState<File | null>(null); const [target, setTarget] = useState("/"); const [busy, setBusy] = useState(false); const [formError, setFormError] = useState(""); const uploadAbort = useRef<AbortController | null>(null);
+  const fetcher = useCallback((signal: AbortSignal) => fetchUploads(signal), []); const { data, loading, error, reload } = usePollingResource("uploads", fetcher);
+  const uploads = data?.uploads ?? []; const collectedAt = data?.collectedAt ?? ""; const maxBytes = data?.maxUploadBytes ?? 0;
+  useEffect(() => () => uploadAbort.current?.abort(), []);
+  const submit = async () => { if (!file) { setFormError("请选择需要上传的文件"); return; } if (!target.startsWith("/")) { setFormError("目标路径必须以 / 开头"); return; } if (maxBytes && file.size > maxBytes) { setFormError(`文件不能超过 ${formatBytes(maxBytes)}`); return; } setBusy(true); setFormError(""); uploadAbort.current = new AbortController(); try { const result = await uploadFile(file, target, uploadAbort.current.signal); notify(result.message); setCreateOpen(false); setFile(null); await reload(); } catch (reason) { if (!(reason instanceof DOMException && reason.name === "AbortError")) setFormError(reason instanceof Error ? reason.message : "上传失败"); } finally { setBusy(false); uploadAbort.current = null; } };
+  const rows = uploads.filter((row) => !search.trim() || `${row.name} ${row.targetPath} ${row.owner}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const closeDialog = () => { uploadAbort.current?.abort(); setCreateOpen(false); setFile(null); setTarget("/"); setFormError(""); };
+  return <ModulePageShell title={resolvePageMeta(page).title} subtitle={loading ? "正在读取真实上传记录" : `后端采集于 ${collectedAt || "等待采集"} · 单文件上限 ${formatBytes(maxBytes || null)}`} page={page} actions={canWrite ? <button className="primary" type="button" onClick={() => { setFormError(""); setCreateOpen(true); }}><CloudUpload size={15} /> 添加上传</button> : null} filters={<ModuleSearch value={search} placeholder="搜索文件名、目标路径或上传人" onChange={setSearch} />} metrics={<><MetricTile icon={CloudUpload} label="上传记录" value={`${uploads.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="已完成" value={`${uploads.filter((row) => row.status === "completed").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${uploads.filter((row) => row.status === "failed").length}`} tone="red" /></>} side={createOpen ? <UploadDialog file={file} target={target} busy={busy} error={formError} maxBytes={maxBytes} onFile={setFile} onTarget={setTarget} onClose={closeDialog} onSubmit={() => void submit()} /> : null} sideModal={createOpen}>
+    {error && <div className="overview-error-state"><Shield size={18} /><span>{error}</span><button type="button" onClick={() => void reload()}>重试</button></div>}
+    <DataTable columns={[{ key: "name", label: "文件", width: "260px", render: (row) => <span className="module-row-link"><FileBox size={15} /><b>{row.name}</b></span> }, { key: "path", label: "目标路径", render: (row) => <code title={row.targetPath}>{row.targetPath}</code> }, { key: "size", label: "大小", width: "100px", sortValue: (row) => row.sizeBytes, render: (row) => formatBytes(row.sizeBytes) }, { key: "status", label: "状态", width: "110px", render: (row) => <span className={`pill ${row.status === "completed" ? "green" : "red"}`}>{row.status === "completed" ? "已完成" : "失败"}</span> }, { key: "owner", label: "上传人", width: "120px", render: (row) => row.owner }, { key: "time", label: "完成时间", width: "180px", render: (row) => formatBackendDateTime(row.completedAt) }]} rows={rows} emptyText={error ? "真实上传记录加载失败" : loading ? "正在读取上传记录" : "还没有真实上传记录"} getRowKey={(row) => row.id} />
+  </ModulePageShell>;
+}
+
+function UploadDialog({ file, target, busy, error, maxBytes, onFile, onTarget, onClose, onSubmit }: { file: File | null; target: string; busy: boolean; error: string; maxBytes: number; onFile: (file: File | null) => void; onTarget: (value: string) => void; onClose: () => void; onSubmit: () => void }) {
+  return <DetailDrawer title="添加上传" subtitle={`单文件上限 ${formatBytes(maxBytes || null)}`} className="upload-create-modal" modal onClose={onClose} actions={<><button className="ghost" type="button" disabled={busy} onClick={onClose}>取消</button><button className="primary" type="button" disabled={busy} onClick={onSubmit}>{busy ? "正在上传" : "开始上传"}</button></>}><div className="upload-create-form"><label htmlFor="upload-local-file"><span>本地文件</span><input id="upload-local-file" type="file" disabled={busy} onChange={(event) => onFile(event.target.files?.[0] ?? null)} /><small>{file ? `${file.name} · ${formatBytes(file.size)}` : "尚未选择文件"}</small></label><label htmlFor="upload-target-path"><span>目标路径</span><input id="upload-target-path" value={target} disabled={busy} onChange={(event) => onTarget(event.target.value)} /></label>{error && <p className="upload-create-error" role="alert">{error}</p>}</div></DetailDrawer>;
+}

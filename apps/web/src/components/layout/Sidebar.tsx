@@ -1,8 +1,8 @@
 import { ChevronDown, ChevronLeft, CloudCog, Menu } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { activeChildForPage, navChildMetaText, navItemsForPermissions, navPageFor } from "../../app/navigation";
 import type { Permission } from "@stackpilot/contracts";
-import { activeChildForPage, navChildMetaText, navItems, navPageFor } from "../../app/navigation";
 import type { NavChild, NavItem } from "./types";
 import type { PageKey, SetPage } from "../../types/app";
 
@@ -93,8 +93,8 @@ function Sidebar({
       </div>
 
       <nav className="cloud-sidebar-nav" aria-label="主导航">
-        {navItems.map((item) => {
-          const children = item.children.filter((child) => child.id !== "sites-create" || permissions.includes("sites:deploy"));
+        {navItemsForPermissions(permissions).map((item) => {
+          const children = item.children;
           const Icon = item.icon;
           const isActiveParent = item.key === activeParent;
           const isExactPage = item.key === page;

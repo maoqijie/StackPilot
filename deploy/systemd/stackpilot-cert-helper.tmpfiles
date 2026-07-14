@@ -1,4 +1,3 @@
-d /run/stackpilot-cert-helper 0750 root stackpilot-cert -
 d /var/lib/stackpilot-site-helper 0700 root root -
 d /var/lib/stackpilot-site-helper/workspaces 2770 root stackpilot-builder -
 d /srv/stackpilot/sites 0755 root root -
@@ -7,3 +6,4 @@ d /etc/stackpilot-site-helper 0750 root root -
 d /opt/stackpilot-runtimes 0755 root root -
 d /var/lib/letsencrypt/stackpilot-challenges 0755 root root -
 d /run/stackpilot-sites 0755 root root -
+d /run/stackpilot-cert-helper 0750 root stackpilot-cert -

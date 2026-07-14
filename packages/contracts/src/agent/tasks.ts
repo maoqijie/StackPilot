@@ -9,13 +9,21 @@ import {
 export const RemoteTaskStatusSchema = z.enum(["queued", "dispatched", "running", "succeeded", "failed", "cancelled", "expired"]);
 export const SystemSummaryTaskParametersSchema = z.object({ includeLoad: z.boolean().default(true) }).strict();
 export const ServiceStatusTaskParametersSchema = z.object({ serviceName: z.string().min(1).max(120).regex(/^[A-Za-z0-9_.@:-]+$/) }).strict();
+const TerminalServiceNameSchema = z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9_.@:-]*$/);
+export const TerminalCommandTaskParametersSchema = z.discriminatedUnion("command", [
+  z.object({ command: z.literal("disk-usage") }).strict(),
+  z.object({ command: z.literal("uptime") }).strict(),
+  z.object({ command: z.literal("top-summary") }).strict(),
+  z.object({ command: z.literal("service-status"), serviceName: TerminalServiceNameSchema }).strict(),
+]);
 export const RemoteTaskTypeSchema = z.enum([
-  "system.summary.read", "service.status.read", "sites.plan.prepare", "sites.plan.activate",
+  "system.summary.read", "service.status.read", "terminal.command.execute", "sites.plan.prepare", "sites.plan.activate",
   "sites.lifecycle.update", "sites.logs.read", "sites.certificates.renew",
 ]);
 export const CreateRemoteTaskRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("system.summary.read"), parameters: SystemSummaryTaskParametersSchema, expiresInSeconds: z.number().int().min(5).max(900).default(120), idempotencyKey: z.string().min(8).max(160) }).strict(),
   z.object({ type: z.literal("service.status.read"), parameters: ServiceStatusTaskParametersSchema, expiresInSeconds: z.number().int().min(5).max(900).default(120), idempotencyKey: z.string().min(8).max(160) }).strict(),
+  z.object({ type: z.literal("terminal.command.execute"), parameters: TerminalCommandTaskParametersSchema, expiresInSeconds: z.number().int().min(5).max(120).default(30), idempotencyKey: z.string().min(8).max(160) }).strict(),
   z.object({ type: z.literal("sites.plan.prepare"), parameters: SitePlanPrepareTaskParametersSchema, expiresInSeconds: z.number().int().min(60).max(1_800).default(1_800), idempotencyKey: z.string().min(8).max(160) }).strict(),
   z.object({ type: z.literal("sites.plan.activate"), parameters: SitePlanActivateTaskParametersSchema, expiresInSeconds: z.number().int().min(30).max(900).default(600), idempotencyKey: z.string().min(8).max(160) }).strict(),
   z.object({ type: z.literal("sites.lifecycle.update"), parameters: SiteLifecycleTaskParametersSchema, expiresInSeconds: z.number().int().min(30).max(300).default(120), idempotencyKey: z.string().min(8).max(160) }).strict(),

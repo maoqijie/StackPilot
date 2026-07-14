@@ -11,7 +11,16 @@
 .site-deployment-form > header small,
 .site-plan-summary > header small { color: var(--muted); font-size: 13px; }
 .site-deployment-form > footer { display: flex; justify-content: flex-end; }
+.site-deployment-form > footer small { color: var(--muted); }
 .site-deployment-form > .form-error { margin: 0; }
+.site-environment-editor { min-width: 0; display: grid; gap: 12px; margin: 0; padding: 16px; border: 0; border-radius: var(--radius-md); background: var(--surface-hover); }
+.site-environment-editor legend { width: 100%; display: flex; justify-content: space-between; gap: 8px; padding: 0; color: var(--text); font-size: 14px; font-weight: 500; }
+.site-environment-editor legend small { color: var(--muted); font-size: 12px; font-weight: 400; }
+.site-environment-row { min-width: 0; display: grid; grid-template-columns: minmax(128px, .7fr) minmax(160px, 1.3fr) 40px; gap: 8px; align-items: end; }
+.site-environment-row label { min-width: 0; display: grid; gap: 4px; color: var(--text-soft); font-size: 12px; }
+.site-environment-row input { width: 100%; min-width: 0; height: 40px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--text); background: var(--surface); font: 14px/1.5 var(--font-mono); }
+.site-environment-row input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(14, 165, 233, .12); outline: none; }
+.site-environment-row .icon-only { width: 40px; height: 40px; padding: 0; display: inline-grid; place-items: center; }
 .site-plan-summary { display: grid; gap: 16px; }
 .site-plan-empty { min-height: 240px; display: grid; place-content: center; justify-items: center; gap: 12px; color: var(--muted); }
 .site-plan-summary dl { display: grid; gap: 4px; margin: 0; }
@@ -33,6 +42,7 @@
 .site-log-list code em,
 .site-log-list code small { min-width: 0; overflow-wrap: anywhere; font-style: normal; }
 .site-log-list code small { grid-column: 3; color: var(--muted); }
+.site-log-empty { min-height: 96px; display: grid; place-content: center; justify-items: center; gap: 8px; border-radius: var(--radius-md); color: var(--muted); background: var(--surface-hover); }
 @keyframes site-operation-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 1024px) {
@@ -44,4 +54,7 @@
   .site-plan-summary dl div,
   .site-log-list code { grid-template-columns: minmax(0, 1fr); }
   .site-log-list code small { grid-column: auto; }
+  .site-environment-editor legend,
+  .site-environment-row { grid-template-columns: minmax(0, 1fr); }
+  .site-environment-editor legend { display: grid; }
 }

@@ -1,17 +1,16 @@
 import type { Permission } from "@stackpilot/contracts";
-import { useState } from "react";
-import { FileTrashPage } from "../features/files/FileTrashPage";
-import { FileUploadQueuePage } from "../features/files/FileUploadQueuePage";
-import { FilesBrowserPage } from "../features/files/FilesBrowserPage";
-import type { FileRecord } from "../features/files/types";
-import { initialFileRecords, initialTrashFiles } from "../mocks/demoData";
+import { Shield } from "lucide-react";
 import type { Notify, PageKey } from "../types/app";
+import { FilesPage } from "./files/FilesPage";
+import { FileTrashPage } from "./files/FileTrashPage";
+import { FileUploadQueuePage } from "./files/FileUploadQueuePage";
 
-function FilesModule({page,notify,permissions=[]}:{page:PageKey;notify:Notify;permissions?:readonly Permission[]}){
-  const[,setFiles]=useState(initialFileRecords),[trashRows,setTrashRows]=useState(initialTrashFiles),[restoredRows,setRestoredRows]=useState<FileRecord[]>([]);
-  if(page==="files-upload")return <FileUploadQueuePage page={page} notify={notify}/>;
-  if(page==="files-trash")return <FileTrashPage page={page} notify={notify} trashRows={trashRows} setTrashRows={setTrashRows} restoredRows={restoredRows} setRestoredRows={setRestoredRows} setFiles={setFiles}/>;
-  return <FilesBrowserPage page={page} notify={notify} permissions={permissions}/>;
+function FilesModule({ page, notify, permissions }: { page: PageKey; notify: Notify; permissions: Permission[] }) {
+  if (!permissions.includes("files:read")) return <section className="module-page module-page-files"><h1>文件</h1><div className="overview-error-state" role="alert"><Shield size={18} /><span>当前账号没有文件读取权限</span></div></section>;
+  const canWrite = permissions.includes("files:write"); const canDelete = permissions.includes("files:delete");
+  if (page === "files-upload") return <FileUploadQueuePage page={page} notify={notify} canWrite={canWrite} />;
+  if (page === "files-trash") return <FileTrashPage page={page} notify={notify} canWrite={canWrite} canDelete={canDelete} />;
+  return <FilesPage page={page} notify={notify} canWrite={canWrite} />;
 }
 
-export { FilesModule, FileTrashPage, FileUploadQueuePage };
+export { FilesModule, FilesPage, FileUploadQueuePage, FileTrashPage };

@@ -1,0 +1,251 @@
+.systemd-page :is(
+  .module-view-context,
+  .module-filter-line,
+  .module-metrics article,
+  .module-table-wrap,
+  .module-card-row
+),
+.systemd-page :is(
+  .module-view-context,
+  .module-filter-line,
+  .module-metrics article,
+  .module-table-wrap,
+  .module-card-row
+):is(:hover, :focus, :focus-visible, :focus-within, :active) {
+  border: 0;
+  outline: 0;
+}
+
+.systemd-page .module-view-context { box-shadow: none; }
+.systemd-page .module-filter-line { padding: 0; background: transparent; box-shadow: none; }
+.systemd-page .module-metrics article,
+.systemd-page .module-table-wrap { box-shadow: var(--shadow-subtle); }
+.systemd-page .module-table :is(th, td) { border: 0; }
+.systemd-page .module-table tbody tr:hover { background: var(--surface-hover); }
+.systemd-page .module-table { min-width: 620px; }
+
+.systemd-content {
+  min-width: 0;
+}
+.systemd-content.logs-mode { grid-template-columns: minmax(0, 1fr); }
+
+.systemd-service-identity,
+.systemd-status,
+.systemd-row-actions,
+.systemd-log-head > span,
+.systemd-drawer-journal > header > span {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.systemd-service-identity { max-width: 100%; gap: 8px; }
+.systemd-service-identity > svg { flex: 0 0 auto; color: var(--primary); }
+.systemd-service-name,
+.systemd-hostname {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.systemd-hostname { display: block; color: var(--text-soft); font-size: 12px; }
+
+.systemd-status {
+  min-height: 24px;
+  padding: 3px 8px;
+  gap: 5px;
+  border: 1px solid var(--primary-line);
+  border-radius: var(--radius-sm);
+  color: var(--primary-hover);
+  background: var(--primary-soft);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.systemd-status > svg { flex: 0 0 auto; }
+.systemd-status.green { color: #16a34a; border-color: var(--success-line); background: var(--success-soft); }
+.systemd-status.red { color: #dc2626; border-color: var(--danger-line); background: var(--danger-soft); }
+.systemd-status.gray { color: var(--muted); border-color: var(--line); background: var(--surface-soft); }
+
+.systemd-row-actions { gap: 4px; }
+.systemd-row-actions button {
+  width: var(--control-sm);
+  min-height: var(--control-sm);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--muted);
+  background: transparent;
+}
+.systemd-row-actions button:hover,
+.systemd-row-actions button:focus-visible {
+  border: 0;
+  color: var(--primary-hover);
+  background: var(--primary-soft);
+}
+.systemd-row-actions button > span { display: none; }
+
+.systemd-log-stream {
+  min-width: 0;
+  max-height: 640px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface-dark);
+  box-shadow: var(--shadow-medium);
+}
+.systemd-log-head {
+  min-height: 56px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #f8fafc;
+  background: var(--surface-dark-2);
+}
+.systemd-log-head > span { gap: 8px; font-family: var(--font-display); font-weight: 650; }
+.systemd-log-stream .systemd-log-head > span { margin-left: 0; }
+.systemd-log-head > span > svg { color: var(--tertiary); }
+.systemd-log-head > span > span { min-width: 0; display: grid; gap: 2px; }
+.systemd-log-head h2 { margin: 0; color: #f8fafc; font: 600 16px/1.5 var(--font-display); letter-spacing: 0; }
+.systemd-log-head em { color: #94a3b8; font-size: 12px; font-style: normal; }
+.systemd-log-head > time { display: inline-flex; align-items: center; gap: 6px; color: #94a3b8; font-size: 12px; white-space: nowrap; }
+.systemd-log-list { min-width: 0; padding: 12px; display: grid; gap: 8px; overflow: auto; }
+.systemd-log-list article {
+  min-width: 0;
+  padding: 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-dark-2);
+}
+.systemd-log-list article:hover,
+.systemd-log-list article:focus-within { border: 0; outline: 0; background: var(--surface-dark-2); }
+.systemd-log-list article > header { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(80px, auto); align-items: center; gap: 8px; }
+.systemd-log-list article > header strong,
+.systemd-log-list article > header code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.systemd-log-list article > header code { color: #94a3b8; font-size: 12px; text-align: right; }
+.systemd-log-list article > button {
+  min-height: var(--control-sm);
+  padding: 0 8px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #94a3b8;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+}
+.systemd-log-list article > button:hover,
+.systemd-log-list article > button:focus-visible { border: 0; color: #f8fafc; background: var(--primary-active); }
+.systemd-log-empty { margin: 0; padding: 40px 16px; color: #94a3b8; text-align: center; }
+
+.systemd-journal { min-width: 0; display: grid; gap: 4px; color: #cbd5e1; font: 400 12px/1.5 var(--font-mono); }
+.systemd-journal p { min-width: 0; margin: 0; display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 8px; }
+.systemd-journal time { overflow: hidden; color: #94a3b8; text-overflow: ellipsis; white-space: nowrap; }
+.systemd-journal span { min-width: 0; overflow-wrap: anywhere; }
+
+.detail-drawer.systemd-service-drawer {
+  width: min(560px, 100vw);
+  border: 0;
+}
+.detail-drawer.systemd-service-drawer:is(:hover, :focus, :focus-visible, :focus-within, :active) {
+  border: 0;
+  outline: 0;
+}
+.systemd-service-drawer-scrim { backdrop-filter: none; }
+.systemd-service-drawer .drawer-head {
+  min-height: 80px;
+  padding: 16px 24px;
+  border: 0;
+  box-shadow: none;
+}
+.systemd-service-drawer .drawer-head .icon-action,
+.systemd-service-drawer .drawer-head .icon-action:hover,
+.systemd-service-drawer .drawer-head .icon-action:focus-visible { border: 0; }
+.systemd-service-drawer .drawer-body { padding: 24px; }
+.systemd-service-drawer .drawer-actions {
+  padding: 16px 24px;
+  border: 0;
+  background: var(--surface-soft);
+}
+.systemd-service-drawer .drawer-actions .systemd-row-actions { width: 100%; justify-content: flex-end; }
+.systemd-service-drawer .drawer-actions .systemd-row-actions button { width: auto; min-height: var(--control-md); padding: 0 16px; }
+.systemd-service-drawer .drawer-actions .systemd-row-actions button > span { display: inline; }
+.systemd-drawer-content { min-width: 0; display: grid; gap: 24px; }
+.systemd-detail-summary {
+  min-width: 0;
+  padding: 16px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: 8px;
+  background: var(--primary-soft);
+}
+.systemd-detail-summary.green { background: var(--success-soft); }
+.systemd-detail-summary.red { background: var(--danger-soft); }
+.systemd-detail-summary p { margin: 0; color: var(--text-soft); font-size: 14px; line-height: 1.5; }
+.systemd-detail-grid { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.systemd-detail-grid > div { min-width: 0; padding: 12px; border: 0; border-radius: var(--radius-md); background: var(--surface-soft); }
+.systemd-detail-grid dt { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.systemd-detail-grid dt > svg { flex: 0 0 auto; }
+.systemd-detail-grid dd { min-width: 0; margin: 6px 0 0; color: var(--text); font-weight: 650; overflow-wrap: anywhere; }
+.systemd-drawer-journal { min-width: 0; display: grid; gap: 8px; }
+.systemd-drawer-journal > header { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.systemd-drawer-journal > header > span { gap: 8px; color: var(--text); font-family: var(--font-display); font-weight: 650; }
+.systemd-drawer-journal > header > span > svg { color: var(--primary); }
+.systemd-drawer-journal > header time { color: var(--muted); font-size: 12px; }
+.systemd-drawer-journal > .systemd-journal { padding: 16px; border: 0; border-radius: var(--radius-md); background: var(--surface-dark); }
+
+.systemd-action-confirm,
+.systemd-action-confirm:is(:hover, :focus, :focus-visible, :focus-within, :active) {
+  width: min(480px, calc(100vw - 32px));
+  border: 0;
+  outline: 0;
+  box-shadow: var(--shadow-overlay);
+}
+.systemd-action-confirm-scrim { backdrop-filter: none; }
+.systemd-action-confirm .confirm-dialog-icon.warning { color: #ca8a04; background: var(--warning-soft); }
+.systemd-action-confirm > header .icon-action,
+.systemd-action-confirm > header .icon-action:hover,
+.systemd-action-confirm > header .icon-action:focus-visible { border: 0; }
+.systemd-action-confirm > footer :is(.ghost, .primary),
+.systemd-action-confirm > footer :is(.ghost, .primary):is(:hover, :focus, :focus-visible, :active) { border: 0; }
+
+@media (max-width: 773px) {
+  .systemd-page .module-card-row { min-width: 0; }
+  .systemd-page .module-card-head { align-items: flex-start; flex-wrap: nowrap; }
+  .systemd-page .module-card-head .systemd-service-name { white-space: normal; overflow-wrap: anywhere; }
+  .systemd-page .module-card-code { min-width: 0; overflow-wrap: anywhere; }
+  .systemd-page .module-card-footer .systemd-row-actions { width: 100%; }
+  .systemd-page .module-card-footer .systemd-row-actions button { width: auto; min-height: var(--control-md); padding: 0 12px; flex: 1 1 0; }
+  .systemd-page .module-card-footer .systemd-row-actions button > span { display: inline; }
+  .systemd-log-stream { max-height: none; }
+  .systemd-log-head { align-items: flex-start; }
+  .systemd-log-head > time { padding-top: 4px; }
+  .systemd-log-list article > header { grid-template-columns: auto minmax(0, 1fr); }
+  .systemd-log-list article > header code { grid-column: 2; text-align: left; }
+  .detail-drawer.systemd-service-drawer { width: 100vw; }
+  .systemd-service-drawer .drawer-head { min-height: 72px; padding: 16px; }
+  .systemd-service-drawer .drawer-body { padding: 16px; }
+  .systemd-service-drawer .drawer-actions { padding: 16px; }
+  .systemd-detail-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .systemd-page .module-card-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .systemd-page .module-card-footer .systemd-row-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .systemd-page .module-card-footer .systemd-row-actions button { width: 100%; }
+  .systemd-service-drawer .drawer-actions .systemd-row-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .systemd-service-drawer .drawer-actions .systemd-row-actions button { width: 100%; }
+  .systemd-journal p { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .systemd-action-confirm { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+}

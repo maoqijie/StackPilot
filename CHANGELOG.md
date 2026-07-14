@@ -2,6 +2,61 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.4 - 2026-07-14
+
+### Fixed
+
+- Updated desktop and mobile browser motion coverage to assert the modal enter and exit contract used by the file creation dialog.
+- Restored clean `npm ci` installation in Linux, Windows and container release jobs by completing the CycloneDX optional dependency lock graph.
+
+### Documentation
+
+- Added complete rollout, compatibility and rollback guidance for physical-host identity and schema 7 releases.
+
+## 0.3.0-preview.3 - 2026-07-14
+
+### Added
+
+- Added feature-negotiated physical-host identity so a Controller and its uniquely matching co-located Agent share one monitoring row and one set of resource totals while preserving Agent UUID, RBAC, heartbeat, audit and task-routing identity.
+
+### Changed
+
+- Refined deployment and rollback workspaces with responsive layouts, semantic status icons, accessible logs and a body-level creation modal.
+- Improved firewall rule and deny-record surfaces with stable responsive actions, clearer detail and confirmation hierarchy, and semantic allow/deny indicators.
+- Hardened shared dialog and drawer focus restoration across animated exits, with focused deployment and firewall interaction coverage.
+- Preserved co-located Agent control-channel health on the merged Controller row, including degraded status and stable risks for offline or stale telemetry.
+
+### Repository
+
+- Added explicit Git submission and push requirements to the repository agent guidance.
+
+## 0.3.0-preview.2 - 2026-07-14
+
+### Changed
+
+- Refined firewall rule and deny-record workflows with accessible confirmation, semantic results, compact controls and complete detail surfaces.
+- Added focused systemd service, journal and log-stream views with responsive drawer behavior and operational status context.
+- Improved shared detail-drawer focus restoration and modal class handling, with expanded firewall and systemd page coverage.
+
+## 0.3.0-preview.1 - 2026-07-14
+
+### Added
+
+- Added real PostgreSQL, MySQL and MariaDB inventory, sessions, slow-query metadata, local backup plans, restore points and asynchronous database operations across registered Agent nodes.
+- Added strict database contracts, SQLite schema 6 persistence, seven-day encrypted full-SQL retention, node-scoped RBAC and short-lived two-stage confirmation plans.
+- Added the root-only `database-helper` boundary with a fixed operation vocabulary, local Unix socket transport, multi-instance port allocation and systemd/OpenRC deployment definitions.
+
+### Changed
+
+- Upgraded the Agent protocol to `1.1` while retaining Controller compatibility with `1.0` Agents; database capabilities require the new protocol and Controller-first rollout order.
+- Replaced database-page fixtures and simulated success states with typed APIs, visibility-aware 10-second polling, real empty/error states and actual CSV export.
+- Moved Controller SQLite backup management to Settings / System Backup so it remains separate from managed PostgreSQL/MySQL/MariaDB backups.
+
+### Security
+
+- Database SQL, credentials and connection strings are excluded from heartbeat, normal logs and audit payloads; complete SQL is encrypted at rest and automatically purged after seven days.
+- High-risk install, read-only, session termination, index and restore actions require a current user session, CSRF, explicit database permission, node scope, an expiring plan and an idempotency key.
+
 ## 0.2.0-preview.6 - 2026-07-13
 
 ### Changed

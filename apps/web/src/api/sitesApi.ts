@@ -48,8 +48,8 @@ export function updateSiteLifecycle(siteId: string, payload: UpdateSiteLifecycle
   return requestJson<SiteOperation>(`/sites/${encodeURIComponent(siteId)}`, { method: "PATCH", headers: { "X-Reauth-Proof": reauthProof }, body: JSON.stringify(UpdateSiteLifecycleRequestSchema.parse(payload)) }).then((result) => SiteOperationSchema.parse(result));
 }
 
-export function querySiteLogs(siteId: string, payload: CreateSiteLogQueryRequest, reauthProof: string) {
-  return requestJson<SiteOperation>(`/sites/${encodeURIComponent(siteId)}/log-queries`, { method: "POST", headers: { "X-Reauth-Proof": reauthProof }, body: JSON.stringify(CreateSiteLogQueryRequestSchema.parse(payload)) }).then((result) => SiteOperationSchema.parse(result));
+export function querySiteLogs(siteId: string, payload: CreateSiteLogQueryRequest) {
+  return requestJson<SiteOperation>(`/sites/${encodeURIComponent(siteId)}/log-queries`, { method: "POST", body: JSON.stringify(CreateSiteLogQueryRequestSchema.parse(payload)) }).then((result) => SiteOperationSchema.parse(result));
 }
 
 export function fetchSiteOperation(operationId: string, signal?: AbortSignal) {
