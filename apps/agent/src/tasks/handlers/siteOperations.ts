@@ -1,6 +1,6 @@
 import {
   SiteLifecycleTaskParametersSchema, SiteLogQueryTaskParametersSchema, SitePlanActivateTaskParametersSchema,
-  SitePlanPrepareTaskParametersSchema, type RemoteTaskResultSummary,
+  SitePlanPrepareTaskParametersSchema, SiteRollbackTaskParametersSchema, type RemoteTaskResultSummary,
 } from "@stackpilot/contracts";
 import { requestCertHelper } from "../../sites/helperClient.js";
 
@@ -18,6 +18,11 @@ export async function sitePlanPrepareHandler(parameters: unknown, signal: AbortS
 export async function sitePlanActivateHandler(parameters: unknown, signal: AbortSignal, _nodeId?: string, socketPath?: string) {
   const input = SitePlanActivateTaskParametersSchema.parse(parameters);
   return execute({ operation: "activate", requestId: input.operationId, planId: input.planId, stagingId: input.stagingId, expectedPlanDigest: input.expectedPlanDigest }, signal, "activate", socketPath);
+}
+
+export async function siteRollbackHandler(parameters: unknown, signal: AbortSignal, _nodeId?: string, socketPath?: string) {
+  const input = SiteRollbackTaskParametersSchema.parse(parameters);
+  return execute({ operation: "rollback", requestId: input.operationId, siteId: input.siteId, targetPlanId: input.targetPlanId, targetReleaseId: input.targetReleaseId, expectedVersion: input.expectedVersion }, signal, "rollback", socketPath);
 }
 
 export async function siteLifecycleHandler(parameters: unknown, signal: AbortSignal, _nodeId?: string, socketPath?: string) {

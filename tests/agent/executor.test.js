@@ -13,13 +13,14 @@ const nodeId = "11111111-1111-4111-8111-111111111111";
 const task = (overrides = {}) => ({ protocolVersion: AGENT_PROTOCOL_VERSION, taskId: "22222222-2222-4222-8222-222222222222", type: "system.summary.read", targetNodeId: nodeId, parameters: { includeLoad: false }, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), idempotencyKey: "summary-once-123", requester: "test", traceId: "33333333-3333-4333-8333-333333333333", requiredCapability: "system.summary.read", attempt: 1, maxAttempts: 3, ...overrides });
 
 test("task registry exposes only structured handlers and keeps side effects non-retryable", () => {
-  assert.deepEqual(Object.keys(taskRegistry).sort(), ["service.status.read", "sites.certificates.renew", "sites.lifecycle.update", "sites.logs.read", "sites.plan.activate", "sites.plan.prepare", "system.summary.read", "terminal.command.execute"]);
+  assert.deepEqual(Object.keys(taskRegistry).sort(), ["service.status.read", "sites.certificates.renew", "sites.lifecycle.update", "sites.logs.read", "sites.plan.activate", "sites.plan.prepare", "sites.rollback", "system.summary.read", "terminal.command.execute"]);
   assert.ok(Object.values(taskRegistry).every((definition) => definition.maxOutputBytes <= 16_384));
   assert.ok(Object.keys(taskRegistry).every((name) => !/shell/i.test(name)));
   assert.equal(taskRegistry["system.summary.read"].timeoutMs, 6_000);
   assert.equal(taskRegistry["terminal.command.execute"].timeoutMs, 10_000); assert.equal(taskRegistry["terminal.command.execute"].maxOutputBytes, 1_024); assert.equal(taskRegistry["terminal.command.execute"].retryable, false); assert.equal(taskRegistry["terminal.command.execute"].cancellable, true); assert.deepEqual(taskRegistry["terminal.command.execute"].platforms, ["linux"]);
   assert.equal(taskRegistry["sites.certificates.renew"].retryable, false); assert.equal(taskRegistry["sites.certificates.renew"].cancellable, false); assert.deepEqual(taskRegistry["sites.certificates.renew"].platforms, ["linux"]); assert.equal(taskRegistry["sites.certificates.renew"].timeoutMs, 600_000);
   assert.equal(taskRegistry["sites.plan.prepare"].capability, "sites.deploy"); assert.equal(taskRegistry["sites.plan.prepare"].retryable, false);
+  assert.equal(taskRegistry["sites.rollback"].capability, "sites.deploy"); assert.equal(taskRegistry["sites.rollback"].retryable, false); assert.equal(taskRegistry["sites.rollback"].cancellable, false);
   assert.equal(taskRegistry["sites.lifecycle.update"].capability, "sites.lifecycle.manage"); assert.equal(taskRegistry["sites.lifecycle.update"].retryable, false);
   assert.equal(taskRegistry["sites.logs.read"].capability, "sites.logs.read"); assert.equal(taskRegistry["sites.logs.read"].retryable, false);
 });

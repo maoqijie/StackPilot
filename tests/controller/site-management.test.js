@@ -14,7 +14,7 @@ import { MemoryAgentControlRepository } from "../../apps/controller/dist/reposit
 import { SqliteAgentControlRepository } from "../../apps/controller/dist/repositories/sqliteAgentControlRepository.js";
 import { FakePlatformAdapter } from "./support/fakePlatform.js";
 
-const emptyResult = (preview = null) => ({ message: null, siteId: null, releaseId: null, stagingId: null, desiredState: null, certificateRenewalBatchId: null, planPreview: preview, logs: [] });
+const emptyResult = (preview = null) => ({ message: null, siteId: null, releaseId: null, stagingId: null, desiredState: null, siteVersion: null, certificateRenewalBatchId: null, planPreview: preview, logs: [] });
 const planInput = { nodeId: "node-local", domains: ["app.example.com"], repositoryUrl: "https://github.com/example/project.git", repositoryRef: "main", certificateEmail: "operator@example.com", environmentVariables: [{ name: "API_MODE", value: "production" }], idempotencyKey: "create-site-001" };
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const managedSiteId = (nodeId, domain) => {
@@ -38,6 +38,53 @@ function managementFixture(database, executorOverride, sites = []) {
   const renewals = { create: async () => { throw new Error("unused"); }, get: async () => { throw new Error("unused"); } };
   return { repository, dispatched, service: new SiteManagementService(repository, monitoring, renewals, executor) };
 }
+
+async function createRelease(service, repository, input, releaseId, key) {
+  const plan = await service.createPlan({ ...input, idempotencyKey: `${key}-prepare` }, { nodeScope: "all" }, "user:test");
+  service.complete(plan.operationId, true, { ...emptyResult(), stagingId: `${key}-staging`, planPreview: { runtime: "static", healthCheckPath: "/", changes: ["repository"] } }, null);
+  const ready = repository.getPlan(plan.planId);
+  const activation = await service.activate(plan.planId, { planVersion: ready.version, planDigest: ready.digest, idempotencyKey: `${key}-activate` }, { nodeScope: "all" }, "user:test");
+  service.complete(activation.operationId, true, { ...emptyResult(), siteId: managedSiteId(input.nodeId, input.domains[0]), releaseId }, null);
+  return repository.getManagedSite(managedSiteId(input.nodeId, input.domains[0]));
+}
+
+test("site rollbacks validate ownership, versions, protection, conflicts and update the active release", async () => {
+  const database = openDatabase(":memory:");
+  try {
+    const { repository, service, dispatched } = managementFixture(database);
+    const siteId = managedSiteId(planInput.nodeId, planInput.domains[0]);
+    await createRelease(service, repository, planInput, "release_previous_001", "previous");
+    const current = await createRelease(service, repository, { ...planInput, repositoryRef: "stable" }, "release_current_001", "current");
+    const request = { targetReleaseId: "release_previous_001", expectedSiteVersion: current.version, reason: "Restore known good release", idempotencyKey: "rollback-site-001" };
+
+    await assert.rejects(() => service.rollback(siteId, { ...request, targetReleaseId: "release_current_001" }, { nodeScope: "all" }, "user:test", "Administrator"), /当前活动版本/);
+    await assert.rejects(() => service.rollback(siteId, { ...request, expectedSiteVersion: 1 }, { nodeScope: "all" }, "user:test", "Administrator"), /版本已变化/);
+    await assert.rejects(() => service.rollback(siteId, request, { nodeScope: ["node-other"] }, "user:test", "Administrator"), /超出授权范围/);
+    repository.saveManagedSite({ ...current, protected: true });
+    await assert.rejects(() => service.rollback(siteId, request, { nodeScope: "all" }, "user:test", "Administrator"), /受保护站点/);
+    repository.saveManagedSite(current);
+    repository.saveManagedSite({ ...current, siteId: "site-foreign-001", domainDigest: sha256("foreign.example.com"), activeReleaseId: "release_foreign_current" });
+    repository.saveRelease("release_foreign_001", "site-foreign-001", repository.getRelease("release_previous_001").planId, new Date().toISOString());
+    await assert.rejects(() => service.rollback(siteId, { ...request, targetReleaseId: "release_foreign_001" }, { nodeScope: "all" }, "user:test", "Administrator"), /不属于当前站点/);
+
+    const rollback = await service.rollback(siteId, request, { nodeScope: "all" }, "user:test", "Administrator");
+    const repeated = await service.rollback(siteId, request, { nodeScope: "all" }, "user:test", "Administrator");
+    assert.equal(repeated.operationId, rollback.operationId);
+    assert.deepEqual(dispatched.at(-1).instruction, { type: "rollback", siteId, targetPlanId: repository.getRelease("release_previous_001").planId, targetReleaseId: "release_previous_001", expectedVersion: current.version });
+    await assert.rejects(() => service.rollback(siteId, { ...request, idempotencyKey: "rollback-conflict-002" }, { nodeScope: "all" }, "user:test", "Administrator"), /未完成/);
+    const completed = service.complete(rollback.operationId, true, { ...emptyResult(), siteId, releaseId: "release_previous_001", siteVersion: current.version + 1 }, null);
+    assert.equal(completed.status, "succeeded");
+    assert.equal(repository.getManagedSite(siteId).activeReleaseId, "release_previous_001");
+    assert.equal(repository.getManagedSite(siteId).version, current.version + 1);
+    const payload = service.listRollbacks({ nodeScope: [planInput.nodeId] });
+    assert.equal(payload.rollbacks.find((item) => item.id === rollback.operationId).requestedBy, "Administrator");
+    const failed = await service.rollback(siteId, { ...request, targetReleaseId: "release_current_001", expectedSiteVersion: current.version + 1, idempotencyKey: "rollback-failed-003" }, { nodeScope: "all" }, "user:test", "Administrator");
+    service.complete(failed.operationId, false, null, "HEALTH_CHECK_FAILED");
+    const afterFailure = service.listRollbacks({ nodeScope: [planInput.nodeId] });
+    assert.equal(afterFailure.rollbacks.find((item) => item.id === "release_current_001")?.status, "available");
+    assert.equal(service.listRollbacks({ nodeScope: ["node-other"] }).rollbacks.length, 0);
+  } finally { database.close(); }
+});
 
 test("site plans reject domains already claimed by the target node", async () => {
   const database = openDatabase(":memory:");
@@ -316,5 +363,38 @@ test("site management HTTP endpoints enforce permission, CSRF, one-time reauthen
     assert.equal((await operation.json()).operationId, plan.operationId);
     const readOnly = identity.createApiToken((await identity.login("admin", "correct horse battery staple", "test", "ua")).principal, { name: "sites-reader", permissions: ["sites:read"], nodeScope: "all", expiresAt: null }).token;
     assert.equal((await fetch(`${base}/api/site-plans`, { method: "POST", headers: { Authorization: `Bearer ${readOnly}`, "Content-Type": "application/json" }, body: JSON.stringify(planInput) })).status, 403);
+  } finally { server.close(); await once(server, "close"); database.close(); }
+});
+
+test("site rollback HTTP endpoints enforce CSRF, reauthentication and reject API tokens", async () => {
+  const database = openDatabase(":memory:");
+  const identity = new IdentityService(database, Buffer.alloc(32, 9));
+  await identity.createInitialAdministrator("admin", "Administrator", "correct horse battery staple");
+  const config = loadControllerConfig({ STACKPILOT_COOKIE_SECURE: "0", STACKPILOT_ALLOWED_ORIGINS: "http://127.0.0.1:5173" });
+  const repository = new SqliteSiteManagementRepository(database, new SecretStore(database, Buffer.alloc(32, 9)));
+  const services = createControllerServices(new FakePlatformAdapter(), process.cwd(), config, new MemoryAgentControlRepository(), null, repository);
+  services.siteManagement = new SiteManagementService(repository, services.sites, services.certificateRenewals, { dispatch: async () => crypto.randomUUID(), reconcile: async () => null });
+  const siteId = managedSiteId(planInput.nodeId, planInput.domains[0]);
+  await createRelease(services.siteManagement, repository, planInput, "release_previous_http", "http-previous");
+  const current = await createRelease(services.siteManagement, repository, { ...planInput, repositoryRef: "stable" }, "release_current_http", "http-current");
+  const server = createStackPilotServer({ config, services, database, identity });
+  server.listen(0, "127.0.0.1"); await once(server, "listening");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const login = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { Origin: "http://127.0.0.1:5173", "Content-Type": "application/json" }, body: JSON.stringify({ username: "admin", password: "correct horse battery staple" }) });
+    const session = await login.json(); const cookie = login.headers.get("set-cookie").split(";")[0];
+    const body = { targetReleaseId: "release_previous_http", expectedSiteVersion: current.version, reason: "HTTP rollback", idempotencyKey: "rollback-http-001" };
+    assert.equal((await fetch(`${base}/api/sites/${siteId}/rollbacks`, { method: "POST", headers: { Origin: "http://127.0.0.1:5173", Cookie: cookie, "Content-Type": "application/json" }, body: JSON.stringify(body) })).status, 403);
+    const headers = { Origin: "http://127.0.0.1:5173", Cookie: cookie, "X-CSRF-Token": session.csrfToken, "Content-Type": "application/json" };
+    assert.equal((await fetch(`${base}/api/sites/${siteId}/rollbacks`, { method: "POST", headers, body: JSON.stringify(body) })).status, 403);
+    const reauth = await (await fetch(`${base}/api/auth/reauthenticate`, { method: "POST", headers, body: JSON.stringify({ password: "correct horse battery staple" }) })).json();
+    const created = await fetch(`${base}/api/sites/${siteId}/rollbacks`, { method: "POST", headers: { ...headers, "X-Reauth-Proof": reauth.proof }, body: JSON.stringify(body) });
+    assert.equal(created.status, 202); assert.equal((await created.json()).rollback.requestedBy, "Administrator");
+    assert.equal((await fetch(`${base}/api/sites/${siteId}/rollbacks`, { method: "POST", headers: { ...headers, "X-Reauth-Proof": reauth.proof }, body: JSON.stringify(body) })).status, 403);
+    const principal = (await identity.login("admin", "correct horse battery staple", "test", "ua")).principal;
+    const token = identity.createApiToken(principal, { name: "deployer", permissions: ["sites:read", "sites:deploy"], nodeScope: "all", expiresAt: null }).token;
+    assert.equal((await fetch(`${base}/api/sites/${siteId}/rollbacks`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) })).status, 403);
+    const listed = await fetch(`${base}/api/site-rollbacks`, { headers: { Authorization: `Bearer ${token}` } });
+    assert.equal(listed.status, 200); assert.ok(Array.isArray((await listed.json()).rollbacks));
   } finally { server.close(); await once(server, "close"); database.close(); }
 });

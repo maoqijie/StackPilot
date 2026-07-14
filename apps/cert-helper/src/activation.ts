@@ -18,7 +18,7 @@ const PORT_COUNT = 20_000;
 async function oldContent(path: string) { try { return await readFile(path, "utf8"); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; } }
 async function restoreFile(path: string, content: string | null) { if (content === null) await rm(path, { force: true }); else await atomicWrite(path, content, 0o644); }
 
-function environmentFile(plan: PreparedPlan) {
+export function environmentFile(plan: PreparedPlan) {
   return plan.environmentVariables.map(({ name, value }) => `${name}=${JSON.stringify(value)}`).join("\n") + "\n";
 }
 
@@ -37,12 +37,12 @@ async function canBind(port: number, host: string, ipv6Only = false) {
   });
 }
 
-async function isPortAvailable(port: number) {
+export async function isPortAvailable(port: number) {
   if (await canBind(port, "0.0.0.0") !== true) return false;
   return await canBind(port, "::", true) !== false;
 }
 
-async function selectPort(id: string, existing: ManagedSite | null, store: SiteStateStore, available: (port: number) => Promise<boolean>) {
+export async function selectPort(id: string, existing: ManagedSite | null, store: SiteStateStore, available: (port: number) => Promise<boolean>) {
   const used = new Set((await store.sites()).filter((site) => site.siteId !== id && site.port !== null).map((site) => site.port!));
   if (existing?.port !== null && existing?.port !== undefined && !used.has(existing.port)) return existing.port;
   const offset = Number.parseInt(id.slice(-4), 16) % PORT_COUNT;

@@ -15,6 +15,10 @@ export type ManagedSiteState = {
   updatedAt: string;
 };
 export type SitePlanExecutionSecrets = { certificateEmail: string; environmentVariables: Array<{ name: string; value: string }> };
+export type SiteReleaseRecord = {
+  releaseId: string; siteId: string; planId: string; nodeId: string; domain: string;
+  repositoryRef: string; createdAt: string; activatedAt: string | null;
+};
 
 export interface SiteManagementRepository {
   findPlanByIdempotency(digest: string): SitePlan | null;
@@ -28,11 +32,15 @@ export interface SiteManagementRepository {
   listNonTerminalOperations(): SiteOperation[];
   saveOperation(operation: SiteOperation, idempotencyDigest: string): void;
   updateOperation(operation: SiteOperation): void;
+  listRollbackOperations(): SiteOperation[];
   getManagedSite(siteId: string): ManagedSiteState | null;
   findManagedSite(nodeId: string, domainDigest: string): ManagedSiteState | null;
   listManagedSites(): ManagedSiteState[];
   saveManagedSite(site: ManagedSiteState): void;
   saveRelease(releaseId: string, siteId: string, planId: string, createdAt: string): void;
+  getRelease(releaseId: string): SiteReleaseRecord | null;
+  listReleases(): SiteReleaseRecord[];
+  completeRollback(operation: SiteOperation, site: ManagedSiteState): void;
 }
 
 export class MemorySiteManagementRepository implements SiteManagementRepository {
@@ -54,16 +62,25 @@ export class MemorySiteManagementRepository implements SiteManagementRepository 
   listNonTerminalOperations() { return structuredClone([...this.operations.values()].filter((item) => !["succeeded", "failed", "cancelled"].includes(item.status))); }
   saveOperation(operation: SiteOperation, digest: string) { this.operations.set(operation.operationId, structuredClone(operation)); this.operationKeys.set(digest, operation.operationId); }
   updateOperation(operation: SiteOperation) { this.operations.set(operation.operationId, structuredClone(operation)); }
+  listRollbackOperations() { return structuredClone([...this.operations.values()].filter((item) => item.type === "rollback")); }
   getManagedSite(siteId: string) { return structuredClone(this.sites.get(siteId) ?? null); }
   findManagedSite(nodeId: string, domainDigest: string) { return structuredClone([...this.sites.values()].find((site) => site.nodeId === nodeId && site.domainDigest === domainDigest) ?? null); }
   listManagedSites() { return structuredClone([...this.sites.values()]); }
   saveManagedSite(site: ManagedSiteState) { this.sites.set(site.siteId, structuredClone(site)); }
-  saveRelease() {}
+  private releases = new Map<string, SiteReleaseRecord>();
+  saveRelease(releaseId: string, siteId: string, planId: string, createdAt: string) {
+    const plan = this.plans.get(planId); const site = this.sites.get(siteId);
+    if (plan && site) this.releases.set(releaseId, { releaseId, siteId, planId, nodeId: site.nodeId, domain: plan.domains[0]!, repositoryRef: plan.repositoryRef, createdAt, activatedAt: createdAt });
+  }
+  getRelease(releaseId: string) { return structuredClone(this.releases.get(releaseId) ?? null); }
+  listReleases() { return structuredClone([...this.releases.values()]); }
+  completeRollback(operation: SiteOperation, site: ManagedSiteState) { this.updateOperation(operation); this.saveManagedSite(site); }
 }
 
 type PlanRow = { payload: string };
 type OperationRow = { payload: string; result: string | null };
 type SiteRow = Record<string, unknown>;
+type ReleaseRow = { release_id: string; site_id: string; plan_id: string; node_id: string; payload: string; created_at: string; activated_at: string | null };
 
 export class SqliteSiteManagementRepository implements SiteManagementRepository {
   constructor(private readonly database: Database.Database, private readonly secrets: SecretStore) {}
@@ -125,6 +142,10 @@ export class SqliteSiteManagementRepository implements SiteManagementRepository 
     this.database.prepare("UPDATE site_operations SET task_id=?,status=?,stage=?,progress_percent=?,result=?,error_code=?,updated_at=?,payload=? WHERE operation_id=?")
       .run(operation.taskId, operation.status, operation.stage, operation.progressPercent, operation.result ? JSON.stringify(operation.result) : null, operation.errorCode, operation.updatedAt, JSON.stringify(operation), operation.operationId);
   }
+  listRollbackOperations() {
+    return (this.database.prepare("SELECT payload,result FROM site_operations WHERE operation_type='rollback' ORDER BY created_at DESC").all() as OperationRow[])
+      .map((row) => this.operation(row)!);
+  }
   private site(row: SiteRow | undefined): ManagedSiteState | null {
     return row ? { siteId: row.site_id as string, nodeId: row.node_id as string, domainDigest: row.domain_digest as string, desiredState: row.desired_state as SiteDesiredState, protected: Boolean(row.protected), version: row.version as number, activeReleaseId: row.active_release_id as string | null, createdAt: row.created_at as string, updatedAt: row.updated_at as string } : null;
   }
@@ -138,5 +159,25 @@ export class SqliteSiteManagementRepository implements SiteManagementRepository 
   saveRelease(releaseId: string, siteId: string, planId: string, createdAt: string) {
     this.database.prepare("INSERT INTO site_releases(release_id,site_id,plan_id,status,created_at,activated_at) VALUES(?,?,?,?,?,?)")
       .run(releaseId, siteId, planId, "active", createdAt, createdAt);
+  }
+  private release(row: ReleaseRow | undefined): SiteReleaseRecord | null {
+    if (!row) return null;
+    const plan = SitePlanSchema.parse(JSON.parse(row.payload));
+    return { releaseId: row.release_id, siteId: row.site_id, planId: row.plan_id, nodeId: row.node_id, domain: plan.domains[0]!, repositoryRef: plan.repositoryRef, createdAt: row.created_at, activatedAt: row.activated_at };
+  }
+  getRelease(releaseId: string) {
+    return this.release(this.database.prepare("SELECT r.release_id,r.site_id,r.plan_id,s.node_id,p.payload,r.created_at,r.activated_at FROM site_releases r JOIN managed_sites s ON s.site_id=r.site_id JOIN site_plans p ON p.plan_id=r.plan_id WHERE r.release_id=?").get(releaseId) as ReleaseRow | undefined);
+  }
+  listReleases() {
+    return (this.database.prepare("SELECT r.release_id,r.site_id,r.plan_id,s.node_id,p.payload,r.created_at,r.activated_at FROM site_releases r JOIN managed_sites s ON s.site_id=r.site_id JOIN site_plans p ON p.plan_id=r.plan_id ORDER BY r.created_at DESC").all() as ReleaseRow[])
+      .map((row) => this.release(row)!);
+  }
+  completeRollback(operation: SiteOperation, site: ManagedSiteState) {
+    this.database.transaction(() => {
+      this.updateOperation(operation);
+      this.saveManagedSite(site);
+      this.database.prepare("UPDATE site_releases SET status='available' WHERE site_id=?").run(site.siteId);
+      this.database.prepare("UPDATE site_releases SET status='active',activated_at=? WHERE release_id=? AND site_id=?").run(operation.updatedAt, site.activeReleaseId, site.siteId);
+    })();
   }
 }

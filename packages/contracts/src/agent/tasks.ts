@@ -3,7 +3,7 @@ import { AgentCapabilitySchema } from "./capabilities.js";
 import { ProtocolVersionSchema } from "../versioning/index.js";
 import {
   CertificateRenewalTaskParametersSchema, SiteLifecycleTaskParametersSchema, SiteLogQueryTaskParametersSchema,
-  SitePlanActivateTaskParametersSchema, SitePlanPrepareTaskParametersSchema,
+  SitePlanActivateTaskParametersSchema, SitePlanPrepareTaskParametersSchema, SiteRollbackTaskParametersSchema,
 } from "../sites/index.js";
 
 export const RemoteTaskStatusSchema = z.enum(["queued", "dispatched", "running", "succeeded", "failed", "cancelled", "expired"]);
@@ -18,7 +18,7 @@ export const TerminalCommandTaskParametersSchema = z.discriminatedUnion("command
 ]);
 export const RemoteTaskTypeSchema = z.enum([
   "system.summary.read", "service.status.read", "terminal.command.execute", "sites.plan.prepare", "sites.plan.activate",
-  "sites.lifecycle.update", "sites.logs.read", "sites.certificates.renew",
+  "sites.rollback", "sites.lifecycle.update", "sites.logs.read", "sites.certificates.renew",
 ]);
 export const CreateRemoteTaskRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("system.summary.read"), parameters: SystemSummaryTaskParametersSchema, expiresInSeconds: z.number().int().min(5).max(900).default(120), idempotencyKey: z.string().min(8).max(160) }).strict(),
@@ -26,6 +26,7 @@ export const CreateRemoteTaskRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("terminal.command.execute"), parameters: TerminalCommandTaskParametersSchema, expiresInSeconds: z.number().int().min(5).max(120).default(30), idempotencyKey: z.string().min(8).max(160) }).strict(),
   z.object({ type: z.literal("sites.plan.prepare"), parameters: SitePlanPrepareTaskParametersSchema, expiresInSeconds: z.number().int().min(60).max(1_800).default(1_800), idempotencyKey: z.string().min(8).max(160) }).strict(),
   z.object({ type: z.literal("sites.plan.activate"), parameters: SitePlanActivateTaskParametersSchema, expiresInSeconds: z.number().int().min(30).max(900).default(600), idempotencyKey: z.string().min(8).max(160) }).strict(),
+  z.object({ type: z.literal("sites.rollback"), parameters: SiteRollbackTaskParametersSchema, expiresInSeconds: z.number().int().min(30).max(300).default(120), idempotencyKey: z.string().min(8).max(160) }).strict(),
   z.object({ type: z.literal("sites.lifecycle.update"), parameters: SiteLifecycleTaskParametersSchema, expiresInSeconds: z.number().int().min(30).max(300).default(120), idempotencyKey: z.string().min(8).max(160) }).strict(),
   z.object({ type: z.literal("sites.logs.read"), parameters: SiteLogQueryTaskParametersSchema, expiresInSeconds: z.number().int().min(10).max(120).default(60), idempotencyKey: z.string().min(8).max(160) }).strict(),
   z.object({ type: z.literal("sites.certificates.renew"), parameters: CertificateRenewalTaskParametersSchema, expiresInSeconds: z.number().int().min(30).max(900).default(600), idempotencyKey: z.string().min(8).max(160) }).strict(),

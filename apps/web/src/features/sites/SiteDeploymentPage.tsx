@@ -90,7 +90,7 @@ function SiteDeploymentPage({ notify, canListNodes }: { notify: Notify; canListN
         idempotencyKey: prepareKey.current,
       }, proof.proof);
       setPlan(created); setDraft((current) => ({ ...current, password: "" }));
-      watch({ operationId: created.operationId, taskId: null, type: "prepare", nodeId: created.nodeId, siteId: null, planId: created.planId, status: "queued", stage: "awaiting_executor", progressPercent: 0, result: null, errorCode: null, createdAt: created.createdAt, updatedAt: created.updatedAt });
+      watch({ operationId: created.operationId, taskId: null, type: "prepare", nodeId: created.nodeId, siteId: null, planId: created.planId, rollback: null, status: "queued", stage: "awaiting_executor", progressPercent: 0, result: null, errorCode: null, createdAt: created.createdAt, updatedAt: created.updatedAt });
     } catch (reason) {
       setFormError(reason instanceof Error ? reason.message : "部署计划创建失败");
     } finally { setSubmitting(false); }
