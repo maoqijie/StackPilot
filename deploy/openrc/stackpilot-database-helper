@@ -3,7 +3,7 @@
 name="StackPilot database-helper"
 description="Root-only local database operations helper"
 command="/usr/bin/node"
-command_args="/opt/stackpilot-database-helper/current/apps/database-helper/dist/main.js"
+command_args="--preserve-symlinks-main /opt/stackpilot-database-helper/current/apps/database-helper/dist/main.js"
 supervisor="supervise-daemon"
 output_log="/var/log/stackpilot-database-helper.log"
 error_log="/var/log/stackpilot-database-helper.err"

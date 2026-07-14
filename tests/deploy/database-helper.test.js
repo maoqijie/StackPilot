@@ -8,6 +8,7 @@ test("database-helper uses root-only Unix socket activation with Agent group acc
   const service = await read("deploy/systemd/stackpilot-database-helper.service");
   const socket = await read("deploy/systemd/stackpilot-database-helper.socket");
   assert.match(service, /User=root/); assert.match(service, /Requires=stackpilot-database-helper\.socket/);
+  assert.match(service, /ExecStart=\/usr\/bin\/node --preserve-symlinks-main \/opt\/stackpilot-database-helper\/current\/apps\/database-helper\/dist\/main\.js/);
   assert.match(service, /RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK/);
   assert.match(socket, /ListenStream=\/run\/stackpilot\/database-helper\.sock/);
   assert.match(socket, /SocketUser=root/); assert.match(socket, /SocketGroup=stackpilot-agent/); assert.match(socket, /SocketMode=0660/);
@@ -18,10 +19,11 @@ test("OpenRC helper is supervised and installer enables helper plus local schedu
   const openrc = await read("deploy/openrc/stackpilot-database-helper");
   const installer = await read("deploy/scripts/install-database-helper.sh");
   const mode = (await stat(new URL("../../deploy/scripts/install-database-helper.sh", import.meta.url))).mode;
-  assert.ok(mode & 0o100); assert.match(openrc, /supervisor="supervise-daemon"/); assert.match(openrc, /STACKPILOT_DATABASE_HELPER_SOCKET=/);
+  assert.ok(mode & 0o100); assert.match(openrc, /supervisor="supervise-daemon"/); assert.match(openrc, /command_args="--preserve-symlinks-main /); assert.match(openrc, /STACKPILOT_DATABASE_HELPER_SOCKET=/);
   assert.match(installer, /^\s*systemctl enable --now stackpilot-database-helper\.socket$/m);
   assert.match(installer, /^\s*rc-service stackpilot-database-helper start$/m);
   assert.match(installer, /backup-plan install-scheduler/);
+  assert.match(installer, /node --preserve-symlinks-main .*\/cli\.js/);
   assert.match(installer, /apps\/database-helper\/dist/); assert.match(installer, /packages\/contracts\/dist/);
   assert.doesNotMatch(installer, /cp -a "\$root\/\."|cp -R "\$root\/\."|copy_path .*\.git|copy_path .*\.env/);
 });

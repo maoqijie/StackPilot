@@ -10,7 +10,7 @@ Group=root
 WorkingDirectory=/opt/stackpilot-database-helper/current
 Environment=NODE_ENV=production
 Environment=STACKPILOT_DATABASE_HELPER_STATE_DIR=/var/lib/stackpilot-database-helper
-ExecStart=/usr/bin/node /opt/stackpilot-database-helper/current/apps/database-helper/dist/main.js
+ExecStart=/usr/bin/node --preserve-symlinks-main /opt/stackpilot-database-helper/current/apps/database-helper/dist/main.js
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s

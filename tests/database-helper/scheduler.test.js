@@ -45,8 +45,9 @@ test("scheduler installer writes only fixed systemd or OpenRC cron entrypoints",
   try {
     const installer = new BackupSchedulerInstaller(runner, root, "/opt/stackpilot-database-helper/current");
     const systemd = await installer.install("ubuntu24.04"), timer = await readFile(systemd.path, "utf8"); assert.match(timer, /OnCalendar=\*-\*-\* \*:\*:00/);
+    assert.match(await readFile(join(root, "etc/systemd/system/stackpilot-database-backups.service"), "utf8"), /node --preserve-symlinks-main \/opt\/stackpilot-database-helper\/current\/apps\/database-helper\/dist\/scheduledBackup\.js/);
     assert.deepEqual(calls.slice(0, 2), [["systemctl", ["daemon-reload"]], ["systemctl", ["enable", "--now", "stackpilot-database-backups.timer"]]]);
-    const alpine = await installer.install("alpine3.22"), cron = await readFile(alpine.path, "utf8"); assert.match(cron, /^\* \* \* \* \* \/usr\/bin\/node \/opt\/stackpilot-database-helper\/current\/apps\/database-helper\/dist\/scheduledBackup\.js # stackpilot-database-backups$/m);
+    const alpine = await installer.install("alpine3.22"), cron = await readFile(alpine.path, "utf8"); assert.match(cron, /^\* \* \* \* \* \/usr\/bin\/node --preserve-symlinks-main \/opt\/stackpilot-database-helper\/current\/apps\/database-helper\/dist\/scheduledBackup\.js # stackpilot-database-backups$/m);
     assert.deepEqual(calls.slice(2), [["rc-update", ["add", "crond", "default"]], ["rc-service", ["crond", "start"]]]);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

@@ -7,7 +7,7 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 ### Added
 
 - Added real PostgreSQL, MySQL and MariaDB inventory, sessions, slow-query metadata, local backup plans, restore points and asynchronous database operations across registered Agent nodes.
-- Added strict database contracts, SQLite schema 4 persistence, seven-day encrypted full-SQL retention, node-scoped RBAC and short-lived two-stage confirmation plans.
+- Added strict database contracts, SQLite schema 6 persistence, seven-day encrypted full-SQL retention, node-scoped RBAC and short-lived two-stage confirmation plans.
 - Added the root-only `database-helper` boundary with a fixed operation vocabulary, local Unix socket transport, multi-instance port allocation and systemd/OpenRC deployment definitions.
 
 ### Changed
