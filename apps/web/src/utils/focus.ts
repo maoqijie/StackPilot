@@ -16,7 +16,9 @@ const drawerFocusableSelector = [
 ].join(",");
 
 function isFocusableElement(element: HTMLElement) {
-  const style = window.getComputedStyle(element);
+  const view = element.ownerDocument.defaultView;
+  if (!view) return false;
+  const style = view.getComputedStyle(element);
   return style.display !== "none" && style.visibility !== "hidden" && element.offsetParent !== null;
 }
 
@@ -26,7 +28,7 @@ function drawerFocusableElements(container: HTMLElement) {
 
 function drawerRestoreFallback(drawer: HTMLElement) {
   const layout = drawer.closest(".module-layout");
-  const scopes: Array<ParentNode | null> = [layout, document];
+  const scopes: Array<ParentNode | null> = [layout, drawer.ownerDocument];
   const selectors = [
     ".module-main .module-row-link",
     ".module-main .table-actions button:not([disabled])",
@@ -44,4 +46,18 @@ function drawerRestoreFallback(drawer: HTMLElement) {
   return null;
 }
 
-export { activateOnKeyboard, drawerFocusableSelector, isFocusableElement, drawerFocusableElements, drawerRestoreFallback };
+function restoreFocusAfterUnmount(container: HTMLElement, preferredTarget: HTMLElement | null) {
+  const ownerDocument = container.ownerDocument;
+  const focus = (target: HTMLElement | null) => {
+    if (!target || !ownerDocument.contains(target) || target.hasAttribute("disabled")) return false;
+    target.focus({ preventScroll: true });
+    return ownerDocument.activeElement === target;
+  };
+
+  queueMicrotask(() => {
+    if (focus(preferredTarget)) return;
+    focus(drawerRestoreFallback(container));
+  });
+}
+
+export { activateOnKeyboard, drawerFocusableSelector, isFocusableElement, drawerFocusableElements, drawerRestoreFallback, restoreFocusAfterUnmount };

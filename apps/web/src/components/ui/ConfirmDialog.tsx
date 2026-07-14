@@ -1,7 +1,7 @@
 import { AlertTriangle, X } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
-import { drawerFocusableElements, drawerRestoreFallback } from "../../utils/focus";
+import { drawerFocusableElements, drawerRestoreFallback, restoreFocusAfterUnmount } from "../../utils/focus";
 import { useExitMotion } from "./useExitMotion";
 
 function ConfirmDialog({
@@ -83,23 +83,7 @@ function ConfirmDialog({
       const restoreTarget = previousFocus && document.contains(previousFocus) && !previousFocus.hasAttribute("disabled")
         ? previousFocus
         : drawerRestoreFallback(dialog);
-      const restoreFocus = () => {
-        if (restoreTarget && document.contains(restoreTarget)) {
-          restoreTarget.focus({ preventScroll: true });
-          if (document.activeElement === restoreTarget) return true;
-        }
-        const fallbackTarget = drawerRestoreFallback(dialog);
-        fallbackTarget?.focus({ preventScroll: true });
-        return Boolean(fallbackTarget && document.activeElement === fallbackTarget);
-      };
-      const retryRestoreFocus = () => {
-        if (restoreFocus()) return;
-        window.requestAnimationFrame(() => {
-          if (restoreFocus()) return;
-          window.setTimeout(restoreFocus, 0);
-        });
-      };
-      queueMicrotask(retryRestoreFocus);
+      restoreFocusAfterUnmount(dialog, restoreTarget);
     };
   }, [requestClose, restoreFocusTarget]);
 

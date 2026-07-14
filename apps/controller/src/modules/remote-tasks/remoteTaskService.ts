@@ -34,7 +34,8 @@ const taskResultSummary = (task: RemoteTaskRecord, message?: string) => task.typ
 
 function sameTaskOperation(task: RemoteTaskRecord, input: CreateRemoteTaskRequest, requester: string) {
   return task.requester === requester && task.type === input.type
-    && isDeepStrictEqual(parametersForIdentity(task.type, task.parameters), parametersForIdentity(input.type, input.parameters));
+    && isDeepStrictEqual(parametersForIdentity(task.type, task.parameters), parametersForIdentity(input.type, input.parameters))
+    && Math.round((Date.parse(task.expiresAt) - Date.parse(task.createdAt)) / 1_000) === input.expiresInSeconds;
 }
 
 function parametersForIdentity(type: CreateRemoteTaskRequest["type"], parameters: Record<string, unknown>) {

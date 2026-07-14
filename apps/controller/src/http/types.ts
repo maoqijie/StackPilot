@@ -22,6 +22,7 @@ import type { DatabaseInventoryService } from "../modules/databases/databaseInve
 import type { DatabaseBackupWorkspaceService } from "../modules/databases/databaseBackupWorkspaceService.js";
 import type { DatabaseOperationService } from "../modules/databases/databaseOperationService.js";
 import type { DatabaseRetentionService } from "../modules/databases/databaseRetentionService.js";
+import type { SystemdService } from "../modules/systemd/systemdService.js";
 import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
@@ -48,6 +49,7 @@ export type Services = {
   nodes: NodeService;
   remoteTasks: RemoteTaskService;
   terminalSnippets: TerminalSnippetService;
+  systemd: SystemdService;
 };
 export type RequestContext = {
   request: IncomingMessage;

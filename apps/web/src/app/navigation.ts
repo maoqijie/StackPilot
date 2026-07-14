@@ -232,6 +232,7 @@ function desktopTopbarChrome(page: PageKey): TopbarChrome {
 function navItemsForPermissions(permissions: readonly Permission[]) {
   return navItems.reduce<NavItem[]>((visible, item) => {
     if (item.key === "files" && !permissions.includes("files:read")) return visible;
+    if (item.key === "systemd" && !permissions.includes("systemd:read")) return visible;
     if (item.key === "databases" && !permissions.includes("databases:read")) return visible;
     if (item.key === "sites") {
       return [...visible, { ...item, children: item.children.filter((child) => child.id !== "sites-create" || permissions.includes("sites:deploy")) }];

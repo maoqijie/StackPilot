@@ -2,7 +2,7 @@ import { X } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useIsNarrowViewport } from "../../hooks/useIsNarrowViewport";
-import { drawerFocusableElements, drawerRestoreFallback, isFocusableElement } from "../../utils/focus";
+import { drawerFocusableElements, isFocusableElement, restoreFocusAfterUnmount } from "../../utils/focus";
 import { useExitMotion } from "./useExitMotion";
 
 const modalDrawerClasses = new Set(["schedule-job-modal", "file-delete-dialog", "upload-create-modal", "health-node-modal", "task-log-modal", "firewall-rule-modal"]);
@@ -111,24 +111,7 @@ function DetailDrawer({
       const activeElement = document.activeElement;
       const shouldRestoreFocus = !activeElement || activeElement === document.body || drawer.contains(activeElement);
       if (!shouldRestoreFocus) return;
-      const restoreTarget = restoreFocusRef.current;
-      const fallbackTarget = drawerRestoreFallback(drawer);
-      const restoreFocus = () => {
-        if (restoreTarget && document.contains(restoreTarget)) {
-          restoreTarget.focus({ preventScroll: true });
-          if (document.activeElement === restoreTarget) return true;
-        }
-        fallbackTarget?.focus({ preventScroll: true });
-        return Boolean(fallbackTarget && document.activeElement === fallbackTarget);
-      };
-      const retryRestoreFocus = () => {
-        if (restoreFocus()) return;
-        window.requestAnimationFrame(() => {
-          if (restoreFocus()) return;
-          window.setTimeout(restoreFocus, 0);
-        });
-      };
-      queueMicrotask(retryRestoreFocus);
+      restoreFocusAfterUnmount(drawer, restoreFocusRef.current);
     };
   }, [autoFocus, isModalDrawer, requestClose, restoreFocusTarget]);
 

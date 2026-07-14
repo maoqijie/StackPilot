@@ -36,7 +36,7 @@ function settingsPagePreset(page: PageKey) {
 function systemdPagePreset(page: PageKey) {
   if (page === "systemd-failed") return { status: "failed", search: "", mode: "list", subtitle: "Failed 服务视图，聚焦需要处理的异常服务。" };
   if (page === "systemd-logs") return { status: "全部", search: "", mode: "logs", subtitle: "服务日志视图，默认展开 journal 输出。" };
-  return { status: page === "systemd-active" ? "active" : "全部", search: "", mode: "list", subtitle: "查看服务 active/failed/inactive 状态，并处理启停、重启和失败告警。" };
+  return { status: page === "systemd-active" ? "active" : "全部", search: "", mode: "list", subtitle: "查看 Agent 只读采集的服务 active/failed/inactive 状态与近期日志。" };
 }
 
 function terminalPagePreset(page: PageKey) {
