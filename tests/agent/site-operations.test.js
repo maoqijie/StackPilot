@@ -16,10 +16,11 @@ test("site prepare handler sends only the fixed helper request over Unix socket"
   });
   await new Promise((resolve) => server.listen(socketPath, resolve));
   try {
-    const input = { operationId: "11111111-1111-4111-8111-111111111111", planId: "22222222-2222-4222-8222-222222222222", domains: ["app.example.com"], repositoryUrl: "https://github.com/example/site.git", repositoryRef: "main", certificateContact: "ops@example.com", certificateEnvironment: "staging", environmentVariables: [{ name: "PUBLIC_NAME", value: "example" }], expectedPlanDigest: "b".repeat(64) };
-    const result = await sitePlanPrepareHandler(input, new AbortController().signal, "33333333-3333-4333-8333-333333333333", socketPath);
+    const input = { operationId: "11111111-1111-4111-8111-111111111111", planId: "22222222-2222-4222-8222-222222222222", domains: ["app.example.com"], repositoryUrl: "https://github.com/example/site.git", repositoryRef: "main", certificateContact: "ops@example.com", certificateEnvironment: "staging", environmentVariables: [{ name: "PUBLIC_NAME", value: "example" }], expectedPlanDigest: "b".repeat(64), runtimeInstallAuthorized: true };
+    const result = await sitePlanPrepareHandler(input, new AbortController().signal, "33333333-3333-4333-8333-333333333333", false, socketPath);
     assert.equal(result.data.operationId, input.operationId); assert.equal(received.operation, "prepare"); assert.equal(received.nodeId, "33333333-3333-4333-8333-333333333333");
-    assert.deepEqual(Object.keys(received).sort(), ["certificateEmail", "certificateEnvironment", "domains", "environmentVariables", "expectedPlanDigest", "nodeId", "operation", "planId", "repositoryRef", "repositoryUrl", "requestId"]);
+    assert.deepEqual(Object.keys(received).sort(), ["certificateEmail", "certificateEnvironment", "domains", "environmentVariables", "expectedPlanDigest", "nodeId", "operation", "planId", "repositoryRef", "repositoryUrl", "requestId", "runtimeInstallAuthorized"]);
+    assert.equal(received.runtimeInstallAuthorized, false);
     assert.equal(JSON.stringify(received).includes("taskId"), false); assert.equal(JSON.stringify(received).includes("requiredCapability"), false);
   } finally { await new Promise((resolve) => server.close(resolve)); await rm(directory, { recursive: true, force: true }); }
 });

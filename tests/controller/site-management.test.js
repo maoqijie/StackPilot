@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import test from "node:test";
 import { openDatabase } from "../../apps/controller/dist/database/database.js";
 import { IdentityService } from "../../apps/controller/dist/identity/identityService.js";
 import { RemoteSiteExecutor, SiteManagementService } from "../../apps/controller/dist/modules/sites/siteManagementService.js";
-import { SqliteSiteManagementRepository } from "../../apps/controller/dist/modules/sites/siteManagementRepository.js";
+import { MemorySiteManagementRepository, SqliteSiteManagementRepository } from "../../apps/controller/dist/modules/sites/siteManagementRepository.js";
 import { SecretStore } from "../../apps/controller/dist/security/secretStore.js";
 import { createControllerServices } from "../../apps/controller/dist/app.js";
 import { createStackPilotServer } from "../../apps/controller/dist/server.js";
@@ -108,6 +108,7 @@ test("site plans persist idempotently while environment values remain encrypted 
     assert.equal(repeated.planId, first.planId);
     assert.equal(dispatched.length, 1);
     assert.deepEqual(first.environmentVariableNames, ["API_MODE"]);
+    assert.equal(first.deploymentEnvironment, "production");
     assert.equal(Object.hasOwn(first, "certificateEmail"), false);
     assert.doesNotMatch(JSON.stringify(first), /API_MODE.*production|"value":"production"/);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM site_plans").get().count, 1);
@@ -120,6 +121,67 @@ test("site plans persist idempotently while environment values remain encrypted 
     assert.equal(activation.status, "queued");
     assert.equal(dispatched[1].instruction.type, "activate");
   } finally { database.close(); }
+});
+
+test("deployment environment changes the plan digest and staging activation performs no writes or dispatch", async () => {
+  const database = openDatabase(":memory:");
+  try {
+    const { repository, service, dispatched } = managementFixture(database);
+    const production = await service.createPlan({ ...planInput, idempotencyKey: "environment-production-001" }, { nodeScope: "all" }, "user:test");
+    const staging = await service.createPlan({ ...planInput, deploymentEnvironment: "staging", domains: ["staging.example.com"], idempotencyKey: "environment-staging-001" }, { nodeScope: "all" }, "user:test");
+    assert.equal(staging.deploymentEnvironment, "staging");
+    assert.notEqual(staging.digest, production.digest);
+    service.complete(staging.operationId, true, { ...emptyResult(), stagingId: "staging-environment-001" }, null);
+    const ready = repository.getPlan(staging.planId);
+    const before = database.prepare("SELECT COUNT(*) AS count FROM site_operations").get().count;
+    await assert.rejects(
+      () => service.activate(staging.planId, { planVersion: ready.version, planDigest: ready.digest, idempotencyKey: "activate-staging-001" }, { nodeScope: "all" }, "user:test"),
+      (error) => error.status === 409 && /预发环境/.test(error.message),
+    );
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM site_operations").get().count, before);
+    assert.equal(repository.getPlan(staging.planId).status, "ready");
+    assert.equal(dispatched.length, 2);
+  } finally { database.close(); }
+});
+
+test("operation reads are side-effect free", async () => {
+  const database = openDatabase(":memory:"); let reconciliations = 0;
+  try {
+    const { repository, service } = managementFixture(database, {
+      dispatch: async () => crypto.randomUUID(),
+      reconcile: async () => { reconciliations += 1; return { status: "running", result: null, errorCode: null }; },
+    });
+    const plan = await service.createPlan({ ...planInput, idempotencyKey: "operation-read-only-001" }, { nodeScope: "all" }, "user:test");
+    const before = repository.getOperation(plan.operationId);
+    assert.deepEqual(await service.getOperation(plan.operationId, { nodeScope: "all" }), before);
+    assert.deepEqual(repository.getOperation(plan.operationId), before);
+    assert.equal(reconciliations, 0);
+  } finally { database.close(); }
+});
+
+test("site operation idempotency hits enforce the requester's current node scope", async () => {
+  const repository = new MemorySiteManagementRepository(); let dispatches = 0; let collections = 0; let renewals = 0;
+  const service = new SiteManagementService(
+    repository,
+    { getSites: async () => { collections += 1; throw new Error("idempotency hit must not collect sites"); } },
+    { create: async () => { renewals += 1; throw new Error("idempotency hit must not renew"); }, get: async () => { throw new Error("unused"); } },
+    { dispatch: async () => { dispatches += 1; throw new Error("idempotency hit must not dispatch"); }, reconcile: async () => null },
+  );
+  const requester = "user:scope-regression"; const scopedNodeId = "node-idempotency-scope"; const scopedSiteId = "site-idempotency-scope"; const now = new Date().toISOString();
+  const cases = [
+    { name: "activate", type: "activate", keyType: "activate:11111111-1111-4111-8111-111111111111", invoke: (key, access) => service.activate("11111111-1111-4111-8111-111111111111", { planVersion: 1, planDigest: "a".repeat(64), idempotencyKey: key }, access, requester) },
+    { name: "lifecycle", type: "lifecycle", keyType: `lifecycle:${scopedSiteId}`, invoke: (key, access) => service.updateLifecycle(scopedSiteId, { action: "stopped", version: 1, idempotencyKey: key }, access, requester) },
+    { name: "renew", type: "certificate_renewal", keyType: `renew:${scopedSiteId}`, invoke: (key, access) => service.renewCertificate(scopedSiteId, { version: 1, idempotencyKey: key }, access, requester, randomUUID()) },
+    { name: "logs", type: "log_query", keyType: `logs:${scopedSiteId}`, invoke: (key, access) => service.queryLogs(scopedSiteId, { version: 1, since: null, limit: 100, idempotencyKey: key }, access, requester) },
+  ];
+  for (const scenario of cases) {
+    const key = `scope-${scenario.name}`; const operationId = randomUUID();
+    const saved = { operationId, taskId: randomUUID(), type: scenario.type, nodeId: scopedNodeId, siteId: scenario.name === "activate" ? null : scopedSiteId, planId: scenario.name === "activate" ? "11111111-1111-4111-8111-111111111111" : null, status: "succeeded", stage: "complete", progressPercent: 100, result: null, errorCode: null, createdAt: now, updatedAt: now };
+    repository.saveOperation(saved, sha256(`${requester}\0${scenario.keyType}\0${key}`));
+    await assert.rejects(() => scenario.invoke(key, { nodeScope: [] }), (error) => error.status === 403 && error.code === "FORBIDDEN");
+    assert.equal((await scenario.invoke(key, { nodeScope: [scopedNodeId] })).operationId, operationId);
+  }
+  assert.equal(dispatches, 0); assert.equal(collections, 0); assert.equal(renewals, 0);
 });
 
 test("site plan creation rolls back the plan, operation and encrypted references atomically", async () => {
@@ -360,6 +422,7 @@ test("site management HTTP endpoints enforce permission, CSRF, one-time reauthen
     assert.equal((await fetch(`${base}/api/site-plans`, { method: "POST", headers: { ...headers, "X-Reauth-Proof": reauth.proof }, body: JSON.stringify(planInput) })).status, 403);
     const operation = await fetch(`${base}/api/site-operations/${plan.operationId}`, { headers: { Cookie: cookie } });
     assert.equal(operation.status, 200);
+    assert.equal(operation.headers.get("cache-control"), "no-store");
     assert.equal((await operation.json()).operationId, plan.operationId);
     const readOnly = identity.createApiToken((await identity.login("admin", "correct horse battery staple", "test", "ua")).principal, { name: "sites-reader", permissions: ["sites:read"], nodeScope: "all", expiresAt: null }).token;
     assert.equal((await fetch(`${base}/api/site-plans`, { method: "POST", headers: { Authorization: `Bearer ${readOnly}`, "Content-Type": "application/json" }, body: JSON.stringify(planInput) })).status, 403);

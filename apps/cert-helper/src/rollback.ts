@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 import type { HelperConfig } from "./config.js";
 import { atomicWrite, within } from "./io.js";
 import { activeConfiguration, serviceUnit } from "./nginx.js";
-import { environmentFile, isPortAvailable, selectPort } from "./activation.js";
+import { environmentFile, isPortAvailable } from "./activation.js";
 import { runFixedCommand, type FixedCommandRunner } from "./runner.js";
-import { currentTarget, siteId as expectedSiteId, SiteStateStore, swapLink } from "./siteState.js";
+import { assertPortAvailable, currentTarget, siteId as expectedSiteId, SiteStateStore, swapLink, waitForManagedPortOwner } from "./siteState.js";
 import { HelperError, type ManagedSite } from "./types.js";
 
 const unitName = (siteId: string) => `stackpilot-site-${siteId}.service`;
@@ -53,8 +53,12 @@ async function applyRuntime(previous: ManagedSite, target: ManagedSite, run: Fix
     }
     return;
   }
+  if (previous.manifest.runtime !== "static") await run("/usr/bin/systemctl", ["stop", unitName(target.siteId)], 30_000);
+  await assertPortAvailable(target.port);
   await run("/usr/bin/systemctl", ["enable", unitName(target.siteId)], 30_000);
   await run("/usr/bin/systemctl", ["restart", unitName(target.siteId)], 30_000);
+  const state = await run("/usr/bin/systemctl", ["show", "--property=ActiveState", "--property=SubState", "--property=MainPID", "--property=ControlGroup", unitName(target.siteId)], 20_000);
+  await waitForManagedPortOwner(target.port, state.stdout);
 }
 
 async function recoverRuntime(previous: ManagedSite, target: ManagedSite, run: FixedCommandRunner) {
@@ -75,7 +79,9 @@ async function unitEnabled(siteId: string, run: FixedCommandRunner) {
 }
 
 export async function rollbackRelease(siteId: string, targetPlanId: string, targetReleaseId: string, expectedVersion: number, config: HelperConfig, run: FixedCommandRunner = runFixedCommand) {
-  const store = new SiteStateStore(config); const currentSite = await store.site(siteId); const targetPlan = await store.plan(targetPlanId);
+  const store = new SiteStateStore(config);
+  return store.withSiteLock(siteId, async () => {
+  const currentSite = await store.site(siteId); const targetPlan = await store.plan(targetPlanId);
   if (!currentSite) throw new HelperError("SITE_NOT_FOUND", "Managed site is not registered on this host");
   if (!targetPlan || targetPlan.releaseId !== targetReleaseId || expectedSiteId(targetPlan.nodeId, targetPlan.domains[0]!) !== siteId) {
     throw new HelperError("RELEASE_IDENTITY_MISMATCH", "Rollback release does not belong to this managed site");
@@ -93,7 +99,9 @@ export async function rollbackRelease(siteId: string, targetPlanId: string, targ
   if (previousTarget !== `releases/${currentSite.releaseId}`) throw new HelperError("CURRENT_RELEASE_MISMATCH", "Current release pointer does not match managed state");
   const previous = { nginx: await oldContent(nginxPath), env: await oldContent(envPath), unit: await oldContent(unitPath) };
   const previousUnitEnabled = currentSite.manifest.runtime === "static" ? false : await unitEnabled(siteId, run);
-  const port = targetPlan.manifest.runtime === "static" ? null : await selectPort(siteId, currentSite, store, isPortAvailable);
+  const port = targetPlan.manifest.runtime === "static"
+    ? null
+    : await store.allocatePort(siteId, currentSite.port, currentSite.port ? async () => true : isPortAvailable);
   const targetSite: ManagedSite = {
     ...currentSite, planId: targetPlanId, domains: targetPlan.domains, manifest: targetPlan.manifest,
     releaseId: targetReleaseId, port, runtimePath: targetPlan.runtimePath,
@@ -110,6 +118,7 @@ export async function rollbackRelease(siteId: string, targetPlanId: string, targ
     await run("/usr/bin/systemctl", ["reload", "nginx.service"], 20_000);
     await healthCheck(siteId, targetPlan.manifest.healthCheckPath ?? "/", run);
     await store.saveSite(targetSite);
+    if (port === null && currentSite.port !== null) await store.releasePort(siteId, currentSite.port);
     return { siteId, releaseId: targetReleaseId, version: targetSite.version };
   } catch (error) {
     try {
@@ -118,7 +127,12 @@ export async function rollbackRelease(siteId: string, targetPlanId: string, targ
       if (currentSite.manifest.runtime !== "static" && !previousUnitEnabled) await run("/usr/bin/systemctl", ["disable", unitName(siteId)], 30_000);
       await run("/usr/sbin/nginx", ["-t"], 30_000); await run("/usr/bin/systemctl", ["reload", "nginx.service"], 20_000);
       await healthCheck(siteId, currentSite.manifest.healthCheckPath ?? "/", run);
-    } catch { throw new HelperError("ROLLBACK_RECOVERY_FAILED", "Rollback failed and the previous release could not be verified"); }
+    } catch {
+      if (port !== null && currentSite.port !== port) await store.releasePort(siteId, port);
+      throw new HelperError("ROLLBACK_RECOVERY_FAILED", "Rollback failed and the previous release could not be verified");
+    }
+    if (port !== null && currentSite.port !== port) await store.releasePort(siteId, port);
     throw error;
   }
+  });
 }

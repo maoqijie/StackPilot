@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   CreateSitePlanRequestSchema, SiteLifecycleTaskResultSchema, SiteLogQueryTaskResultSchema, SiteOperationSchema,
-  SitePlanActivateTaskResultSchema, SitePlanPrepareTaskResultSchema, SitePlanSchema, SiteRollbackPayloadSchema,
+  SitePlanActivateTaskResultSchema, SitePlanPrepareTaskResultSchema, SitePlanSchema,
   SiteRollbackTaskResultSchema,
   type ActivateSitePlanRequest, type CreateSiteCertificateRenewalRequest,
   type CreateSiteLogQueryRequest, type CreateSitePlanRequest, type CreateSiteRollbackRequest,
@@ -13,6 +13,7 @@ import type { SiteAccess, SiteMonitoringService } from "./siteMonitoringService.
 import { publicSiteId } from "./siteMonitoringService.js";
 import type { SiteManagementRepository } from "./siteManagementRepository.js";
 import type { RemoteTaskService } from "../remote-tasks/remoteTaskService.js";
+import { projectSiteRollbacks } from "./siteRollbackProjection.js";
 export type SiteExecutionInstruction =
   | { type: "prepare"; planId: string }
   | { type: "activate"; planId: string; stagingId: string }
@@ -43,7 +44,8 @@ function operation(input: Pick<SiteOperation, "type" | "nodeId" | "siteId" | "pl
 }
 function planDigest(input: CreateSitePlanRequest) {
   return sha256(JSON.stringify({
-    nodeId: input.nodeId, domains: input.domains, repositoryUrl: input.repositoryUrl,
+    nodeId: input.nodeId, deploymentEnvironment: input.deploymentEnvironment,
+    domains: input.domains, repositoryUrl: input.repositoryUrl,
     repositoryRef: input.repositoryRef, certificateEnvironment: input.certificateEnvironment,
     certificateEmailDigest: sha256(input.certificateEmail),
     environment: input.environmentVariables.map((entry) => ({ name: entry.name, valueDigest: sha256(entry.value) })),
@@ -70,31 +72,7 @@ export class SiteManagementService {
       return state ? { ...site, protected: protectedSite, version: state.version, desiredState: state.desiredState, manageability: "managed" as const, managementReason: null } : { ...site, protected: protectedSite };
     }) };
   }
-  listRollbacks(access: SiteAccess) {
-    const allowed = (nodeId: string) => access.nodeScope === "all" || access.nodeScope.includes(nodeId);
-    const sites = new Map(this.repository.listManagedSites().filter((site) => allowed(site.nodeId)).map((site) => [site.siteId, site]));
-    const releases = this.repository.listReleases().filter((release) => sites.has(release.siteId));
-    const releaseById = new Map(releases.map((release) => [release.releaseId, release]));
-    const operations = this.repository.listRollbackOperations().filter((item) => allowed(item.nodeId) && item.siteId && item.rollback);
-    const operationTargets = new Set(operations.filter((item) => !terminal.has(item.status)).map((item) => item.rollback!.targetReleaseId));
-    const available = releases.flatMap((release) => {
-      const site = sites.get(release.siteId);
-      if (!site?.activeReleaseId || release.releaseId === site.activeReleaseId || operationTargets.has(release.releaseId)) return [];
-      return [{ id: release.releaseId, siteId: release.siteId, nodeId: release.nodeId, domain: release.domain, targetPlanId: release.planId,
-        currentReleaseId: site.activeReleaseId, targetReleaseId: release.releaseId, repositoryRef: release.repositoryRef,
-        status: "available" as const, requestedBy: null, reason: null, createdAt: release.createdAt,
-        updatedAt: release.activatedAt ?? release.createdAt, progressPercent: 0, errorCode: null, siteVersion: site.version }];
-    });
-    const history = operations.flatMap((item) => {
-      const metadata = item.rollback!; const release = releaseById.get(metadata.targetReleaseId); const site = sites.get(item.siteId!);
-      if (!release || !site) return [];
-      return [{ id: item.operationId, siteId: item.siteId!, nodeId: item.nodeId, domain: release.domain, targetPlanId: release.planId,
-        currentReleaseId: metadata.fromReleaseId, targetReleaseId: metadata.targetReleaseId, repositoryRef: release.repositoryRef,
-        status: item.status, requestedBy: metadata.requestedBy, reason: metadata.reason, createdAt: item.createdAt,
-        updatedAt: item.updatedAt, progressPercent: item.progressPercent, errorCode: item.errorCode, siteVersion: item.result?.siteVersion ?? site.version }];
-    });
-    return SiteRollbackPayloadSchema.parse({ collectedAt: new Date().toISOString(), rollbacks: [...history, ...available] });
-  }
+  listRollbacks(access: SiteAccess) { return projectSiteRollbacks(this.repository, access); }
   private assertNodeAccess(nodeId: string, access: SiteAccess) {
     if (access.nodeScope !== "all" && !access.nodeScope.includes(nodeId)) throw new ServiceError(403, "FORBIDDEN", "节点超出授权范围");
   }
@@ -123,7 +101,7 @@ export class SiteManagementService {
       return failed;
     }
   }
-  async createPlan(input: CreateSitePlanRequest, access: SiteAccess, requester: string) {
+  async createPlan(input: CreateSitePlanRequest, access: SiteAccess, requester: string, operator: string | null = null) {
     input = CreateSitePlanRequestSchema.parse(input);
     this.assertNodeAccess(input.nodeId, access);
     const key = this.idempotency(requester, "prepare", input.idempotencyKey);
@@ -135,9 +113,10 @@ export class SiteManagementService {
     const now = new Date().toISOString();
     const preparing = operation({ type: "prepare", nodeId: input.nodeId, siteId: null, planId: null });
     const plan = SitePlanSchema.parse({
-      planId: randomUUID(), nodeId: input.nodeId, domains: input.domains, repositoryUrl: input.repositoryUrl,
+      planId: randomUUID(), nodeId: input.nodeId, deploymentEnvironment: input.deploymentEnvironment,
+      domains: input.domains, repositoryUrl: input.repositoryUrl,
       repositoryRef: input.repositoryRef, certificateEnvironment: input.certificateEnvironment,
-      environmentVariableNames: input.environmentVariables.map((entry) => entry.name), status: "queued",
+      environmentVariableNames: input.environmentVariables.map((entry) => entry.name), operator, status: "queued",
       digest: planDigest(input), version: 1, preview: null, operationId: preparing.operationId,
       createdAt: now, updatedAt: now, expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
     });
@@ -152,10 +131,16 @@ export class SiteManagementService {
   async activate(planId: string, input: ActivateSitePlanRequest, access: SiteAccess, requester: string) {
     const key = this.idempotency(requester, `activate:${planId}`, input.idempotencyKey);
     const existing = this.repository.findOperationByIdempotency(key);
-    if (existing) return existing;
+    if (existing) {
+      this.assertNodeAccess(existing.nodeId, access);
+      const existingPlan = existing.planId ? this.repository.getPlan(existing.planId) : null;
+      if (existingPlan?.deploymentEnvironment === "staging") throw new ServiceError(409, "BAD_REQUEST", "预发环境计划不能切换生产流量");
+      return existing;
+    }
     const plan = this.repository.getPlan(planId);
     if (!plan) throw new ServiceError(404, "NOT_FOUND", "站点计划不存在");
     this.assertNodeAccess(plan.nodeId, access);
+    if (plan.deploymentEnvironment === "staging") throw new ServiceError(409, "BAD_REQUEST", "预发环境计划不能切换生产流量");
     if (plan.status !== "ready" || Date.parse(plan.expiresAt) <= Date.now()) throw new ServiceError(409, "BAD_REQUEST", "站点计划尚未就绪或已过期");
     if (plan.version !== input.planVersion || plan.digest !== input.planDigest) throw new ServiceError(409, "BAD_REQUEST", "站点计划版本或摘要已变化");
     const stagingId = this.repository.getOperation(plan.operationId)?.result?.stagingId;
@@ -168,7 +153,7 @@ export class SiteManagementService {
   async updateLifecycle(siteId: string, input: UpdateSiteLifecycleRequest, access: SiteAccess, requester: string) {
     const key = this.idempotency(requester, `lifecycle:${siteId}`, input.idempotencyKey);
     const existing = this.repository.findOperationByIdempotency(key);
-    if (existing) return existing;
+    if (existing) { this.assertNodeAccess(existing.nodeId, access); return existing; }
     const site = await this.runtimeSite(siteId, access);
     if (site.protected) throw new ServiceError(409, "BAD_REQUEST", "受保护站点不能执行生命周期操作");
     if (site.manageability !== "managed") throw new ServiceError(409, "BAD_REQUEST", "站点当前不可纳管");
@@ -181,7 +166,7 @@ export class SiteManagementService {
   async rollback(siteId: string, input: CreateSiteRollbackRequest, access: SiteAccess, requester: string, requestedBy: string) {
     const key = this.idempotency(requester, `rollback:${siteId}`, input.idempotencyKey);
     const existing = this.repository.findOperationByIdempotency(key);
-    if (existing) return existing;
+    if (existing) { this.assertNodeAccess(existing.nodeId, access); return existing; }
     const site = this.repository.getManagedSite(siteId);
     if (!site) throw new ServiceError(409, "BAD_REQUEST", "站点当前不可纳管");
     this.assertNodeAccess(site.nodeId, access);
@@ -206,7 +191,7 @@ export class SiteManagementService {
   async renewCertificate(siteId: string, input: CreateSiteCertificateRenewalRequest, access: SiteAccess, requester: string, traceId: string) {
     const key = this.idempotency(requester, `renew:${siteId}`, input.idempotencyKey);
     const existing = this.repository.findOperationByIdempotency(key);
-    if (existing) return existing;
+    if (existing) { this.assertNodeAccess(existing.nodeId, access); return existing; }
     const site = await this.runtimeSite(siteId, access);
     if (site.version !== input.version) throw new ServiceError(409, "BAD_REQUEST", "站点版本已变化");
     const batch = await this.renewals.create({ siteIds: [siteId], idempotencyKey: input.idempotencyKey }, access, requester, traceId);
@@ -219,7 +204,7 @@ export class SiteManagementService {
   async queryLogs(siteId: string, input: CreateSiteLogQueryRequest, access: SiteAccess, requester: string) {
     const key = this.idempotency(requester, `logs:${siteId}`, input.idempotencyKey);
     const existing = this.repository.findOperationByIdempotency(key);
-    if (existing) return existing;
+    if (existing) { this.assertNodeAccess(existing.nodeId, access); return existing; }
     const site = await this.runtimeSite(siteId, access);
     if (site.version !== input.version) throw new ServiceError(409, "BAD_REQUEST", "站点版本已变化");
     const query = operation({ type: "log_query", nodeId: site.nodeId, siteId, planId: null });
@@ -230,7 +215,7 @@ export class SiteManagementService {
     const found = this.repository.getOperation(operationId);
     if (!found) throw new ServiceError(404, "NOT_FOUND", "站点操作不存在");
     this.assertNodeAccess(found.nodeId, access);
-    return this.reconcileOperation(found, access);
+    return found;
   }
   startBackgroundReconciliation(intervalMs = 10_000, onError: (error: unknown) => void = () => undefined) {
     if (this.reconciliationActive) return; this.reconciliationActive = true;
@@ -369,7 +354,7 @@ export class RemoteSiteExecutor implements SiteExecutor {
         operationId, planId: plan.planId, domains: plan.domains, repositoryUrl: plan.repositoryUrl,
         repositoryRef: plan.repositoryRef, certificateContact: secrets.certificateEmail,
         certificateEnvironment: plan.certificateEnvironment, environmentVariables: secrets.environmentVariables,
-        expectedPlanDigest: plan.digest,
+        expectedPlanDigest: plan.digest, runtimeInstallAuthorized: false,
       } };
     }
     if (instruction.type === "activate") {

@@ -10,3 +10,5 @@ export * from "./sites/index.js";
 export * from "./terminal/index.js";
 export * from "./databases/index.js";
 export * from "./files/index.js";
+export * from "./systemd/index.js";
+export * from "./deployments/index.js";

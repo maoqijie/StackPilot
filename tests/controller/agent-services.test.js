@@ -95,6 +95,7 @@ test("task state machine enforces capability, idempotency, expiry, cancellation 
   const authorize = () => { authorizationCount += 1; };
   const first = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID(), authorize); const duplicate = await fixture.tasks.create(fixture.enrolled.nodeId, input, "admin", crypto.randomUUID(), authorize); assert.equal(duplicate.taskId, first.taskId); assert.equal(authorizationCount, 2);
   await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { ...input, parameters: { includeLoad: true } }, "admin", crypto.randomUUID(), authorize), (error) => error.status === 409);
+  await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { ...input, expiresInSeconds: 120 }, "admin", crypto.randomUUID(), authorize), (error) => error.status === 409);
   await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "service.status.read", parameters: { serviceName: "nginx" }, expiresInSeconds: 60, idempotencyKey: input.idempotencyKey }, "admin", crypto.randomUUID(), authorize), (error) => error.status === 409);
   await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, input, "other-user", crypto.randomUUID(), authorize), (error) => error.status === 409);
   const dispatched = await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID()); assert.equal(dispatched.length, 1);
@@ -138,6 +139,18 @@ test("Controller policy and Agent declaration are both required for a task", asy
   await fixture.repository.update((state) => { state.nodes[0].allowedCapabilities = []; });
   await assert.rejects(() => fixture.tasks.create(fixture.enrolled.nodeId, { type: "system.summary.read", parameters: { includeLoad: false }, expiresInSeconds: 60, idempotencyKey: "missing-controller-policy" }, "admin", crypto.randomUUID(), () => { authorizationCount += 1; }), (error) => error.status === 403);
   assert.equal(authorizationCount, 0);
+});
+
+test("site prepare derives runtime installation authorization from current node policy", async () => {
+  const fixture = await enrolledFixture();
+  await fixture.nodes.heartbeat(fixture.enrolled.nodeId, { nodeId: fixture.enrolled.nodeId, agentVersion: "0.1.0", protocolVersion: AGENT_PROTOCOL_VERSION, timestamp: new Date().toISOString(), platform: "linux", capabilities: ["sites.deploy", "runtime.install"], health: { status: "healthy", uptimeSeconds: 1 } }, crypto.randomUUID());
+  await fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["sites.deploy"], "admin", crypto.randomUUID());
+  const parameters = { operationId: crypto.randomUUID(), planId: crypto.randomUUID(), domains: ["app.example.com"], repositoryUrl: "https://github.com/example/site.git", repositoryRef: "main", certificateContact: "ops@example.com", certificateEnvironment: "staging", environmentVariables: [], expectedPlanDigest: "a".repeat(64), runtimeInstallAuthorized: true };
+  const created = await fixture.tasks.create(fixture.enrolled.nodeId, { type: "sites.plan.prepare", parameters, expiresInSeconds: 1_800, idempotencyKey: "runtime-policy-prepare" }, "controller:site-management", crypto.randomUUID());
+  assert.equal(created.parameters.runtimeInstallAuthorized, false);
+  await fixture.nodes.updateCapabilities(fixture.enrolled.nodeId, ["sites.deploy", "runtime.install"], "admin", crypto.randomUUID());
+  assert.equal((await fixture.tasks.create(fixture.enrolled.nodeId, { type: "sites.plan.prepare", parameters, expiresInSeconds: 1_800, idempotencyKey: "runtime-policy-prepare" }, "controller:site-management", crypto.randomUUID())).taskId, created.taskId);
+  assert.equal((await fixture.tasks.poll(fixture.enrolled.nodeId, crypto.randomUUID()))[0].parameters.runtimeInstallAuthorized, true);
 });
 
 test("task expiry, queue limits and audit redaction are persisted", async () => {

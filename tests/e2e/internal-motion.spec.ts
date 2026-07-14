@@ -27,15 +27,16 @@ test("internal controls animate without replaying on silent polling", async ({ p
   await expect(listbox).toHaveCount(0);
 
   await page.getByRole("button", { name: "创建文件夹" }).click();
-  const drawer = page.getByRole("dialog", { name: "创建文件夹" });
-  await expect(drawer).toBeVisible();
-  expect((await animation(drawer)).name).toContain("internal-drawer-enter");
+  const dialog = page.getByRole("dialog", { name: "创建文件夹" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("data-motion-surface", "modal");
+  expect((await animation(dialog)).name).toContain("internal-modal-enter");
   const scrim = page.locator(".drawer-scrim");
   expect((await animation(scrim)).name).toContain("internal-scrim-enter");
-  await drawer.getByRole("button", { name: "关闭详情" }).click();
-  await expect(drawer).toHaveAttribute("data-closing", "true");
-  expect((await animation(drawer)).name).toContain("internal-drawer-exit");
-  await expect(drawer).toHaveCount(0);
+  await dialog.getByRole("button", { name: "关闭详情" }).click();
+  await expect(dialog).toHaveAttribute("data-closing", "true");
+  expect((await animation(dialog)).name).toContain("internal-modal-exit");
+  await expect(dialog).toHaveCount(0);
 
   const table = page.locator(".module-table-wrap");
   await expect(table).toHaveAttribute("data-motion-revision", "0");
@@ -57,9 +58,10 @@ test("reduced motion disables internal animations and closes overlays immediatel
   await page.emulateMedia({ reducedMotion: "reduce" });
   await login(page);
   await page.getByRole("button", { name: "创建文件夹" }).click();
-  const drawer = page.getByRole("dialog", { name: "创建文件夹" });
-  await expect(drawer).toBeVisible();
-  expect((await animation(drawer)).name).toBe("none");
-  await drawer.getByRole("button", { name: "关闭详情" }).click();
-  await expect(drawer).toHaveCount(0);
+  const dialog = page.getByRole("dialog", { name: "创建文件夹" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("data-motion-surface", "modal");
+  expect((await animation(dialog)).name).toBe("none");
+  await dialog.getByRole("button", { name: "关闭详情" }).click();
+  await expect(dialog).toHaveCount(0);
 });

@@ -7,7 +7,7 @@ const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 export type SiteHelperRequest =
   | { operation: "status" }
   | { operation: "renew"; certificateId: string }
-  | { operation: "prepare"; requestId: string; planId: string; nodeId: string; domains: string[]; repositoryUrl: string; repositoryRef: string; certificateEmail: string; certificateEnvironment: "staging" | "production"; environmentVariables: Array<{ name: string; value: string }>; expectedPlanDigest: string }
+  | { operation: "prepare"; requestId: string; planId: string; nodeId: string; domains: string[]; repositoryUrl: string; repositoryRef: string; certificateEmail: string; certificateEnvironment: "staging" | "production"; environmentVariables: Array<{ name: string; value: string }>; expectedPlanDigest: string; runtimeInstallAuthorized: boolean }
   | { operation: "activate"; requestId: string; planId: string; stagingId: string; expectedPlanDigest: string }
   | { operation: "rollback"; requestId: string; siteId: string; targetPlanId: string; targetReleaseId: string; expectedVersion: number }
   | { operation: "lifecycle"; requestId: string; siteId: string; action: "running" | "stopped" | "deleted" | "restored"; expectedVersion: number }

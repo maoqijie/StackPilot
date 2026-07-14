@@ -1,10 +1,8 @@
 import type { TopbarNotification } from "../components/layout/types";
 import type { AclPolicy, AclRole, AclUser } from "../features/access/types";
 import type { AuditExportRecord, AuditRecord } from "../features/audit/types";
-import type { DeployJob, RollbackRecord } from "../features/deployments/types";
 import type { FirewallDenyRecord, FirewallRule } from "../features/firewall/types";
 import type { HostRecord } from "../features/hosts/types";
-import type { ServiceRecord } from "../features/services/types";
 import type { ProxyEndpoint, ProxyRouteRule, SettingsChangeRow, TokenRow } from "../features/settings/types";
 import type { SiteRecord } from "../features/sites/types";
 import type { TerminalHistoryRecord, TerminalSessionRecord, TerminalSnippetRecord } from "../features/terminal/types";
@@ -91,12 +89,6 @@ const initialTerminalHistory: TerminalHistoryRecord[] = [
   { id: "term-history-4", command: "tail -n 100 /var/log/nginx/error.log", host: "panel-bj-02", user: "deploy", status: "成功", duration: "0.7s", time: "昨天 21:12", output: "no critical errors" },
 ];
 
-const initialServiceRecords: ServiceRecord[] = [
-  { id: "svc-1", name: "nginx.service", host: "panel-se-01", status: "active", restarts: 0, memory: "84 MB", updated: "3 分钟前" },
-  { id: "svc-2", name: "mysql.service", host: "panel-hk-03", status: "failed", restarts: 6, memory: "1.2 GB", updated: "8 分钟前" },
-  { id: "svc-3", name: "worker.service", host: "panel-bj-02", status: "active", restarts: 1, memory: "256 MB", updated: "21 分钟前" },
-  { id: "svc-4", name: "backup.timer", host: "panel-dev-04", status: "inactive", restarts: 0, memory: "0 MB", updated: "2 小时前" },
-];
 
 const initialFirewallRules: FirewallRule[] = [
   { id: "fw-1", name: "HTTPS 公网访问", port: "443", protocol: "TCP", source: "0.0.0.0/0", target: "全部主机", enabled: true },
@@ -111,19 +103,6 @@ const initialFirewallDenyRecords: FirewallDenyRecord[] = [
   { id: "deny-3", time: "24 分钟前", source: "10.0.12.0/24", target: "数据库", port: "3306", protocol: "TCP", rule: "MySQL 内网", result: "放行", status: "已生效", reason: "已加入内网放行规则" },
 ];
 
-const initialDeployJobs: DeployJob[] = [
-  { id: "dep-1", app: "stackpilot-api", env: "生产", version: "v2.8.1", status: "成功", operator: "张工", duration: "1分24秒" },
-  { id: "dep-2", app: "shop-web", env: "生产", version: "2026.06.18", status: "待发布", operator: "李敏", duration: "-" },
-  { id: "dep-3", app: "admin-console", env: "预发", version: "rc-18", status: "成功", operator: "王工", duration: "46秒" },
-  { id: "dep-4", app: "worker", env: "开发", version: "dev-42", status: "失败", operator: "系统", duration: "18秒" },
-];
-
-const initialRollbackRecords: RollbackRecord[] = [
-  { id: "rb-1", app: "stackpilot-api", env: "生产", fromVersion: "v2.8.1", targetVersion: "v2.8.0", status: "可回滚", operator: "张工", reason: "v2.8.0 为最近健康基线", createdAt: "今天 10:18" },
-  { id: "rb-2", app: "shop-web", env: "生产", fromVersion: "2026.06.18", targetVersion: "2026.06.15", status: "回滚中", operator: "李敏", reason: "支付页异常率升高", createdAt: "今天 09:42" },
-  { id: "rb-3", app: "admin-console", env: "预发", fromVersion: "rc-18", targetVersion: "rc-17", status: "已回滚", operator: "王工", reason: "菜单权限回归验证", createdAt: "昨天 18:30" },
-  { id: "rb-4", app: "worker", env: "开发", fromVersion: "dev-42", targetVersion: "dev-40", status: "可回滚", operator: "系统", reason: "构建失败保留上一版本", createdAt: "昨天 16:12" },
-];
 
 const initialAuditRecords: AuditRecord[] = auditRows.map((row) => ({
   id: row[6],
@@ -171,4 +150,4 @@ const initialAclPolicies: AclPolicy[] = [
   { id: "pol-8", name: "权限管理", module: "权限", risk: "高", desc: "允许变更用户、角色和权限项绑定。", roles: ["管理员"], lastUpdated: "今天 10:02" },
 ];
 
-export { topbarNotifications, topbarHelpLinks, auditRows, initialProxyEndpoints, initialProxyRules, initialSettingsChanges, initialTokenRows, initialHostRecords, initialSiteRecords, initialTerminalSessions, initialTerminalSnippets, initialTerminalHistory, initialServiceRecords, initialFirewallRules, initialFirewallDenyRecords, initialDeployJobs, initialRollbackRecords, initialAuditRecords, initialAuditExports, permissionOptions, initialAclUsers, initialAclRoles, initialAclPolicies };
+export { topbarNotifications, topbarHelpLinks, auditRows, initialProxyEndpoints, initialProxyRules, initialSettingsChanges, initialTokenRows, initialHostRecords, initialSiteRecords, initialTerminalSessions, initialTerminalSnippets, initialTerminalHistory, initialFirewallRules, initialFirewallDenyRecords, initialAuditRecords, initialAuditExports, permissionOptions, initialAclUsers, initialAclRoles, initialAclPolicies };

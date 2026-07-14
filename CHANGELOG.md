@@ -2,6 +2,95 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.11 - 2026-07-15
+
+### Added
+
+- Added authenticated, node-scoped site rollback history and execution APIs backed by the existing Controller, RemoteTask, Agent and root-only site-helper boundary.
+- Added strict rollback contracts, release/plan ownership checks, optimistic site versions, idempotency, protected-site guards and atomic success reconciliation.
+- Added a real rollback workbench with backend freshness, visibility-aware 10-second polling, stable detail selection, permission-aware actions and reauthentication.
+
+### Security
+
+- Rollback execution requires a current user session, CSRF, `sites:deploy`, node scope and a one-time reauthentication proof; API tokens cannot execute rollbacks.
+- The site helper accepts only opaque plan and release identities, validates immutable commit markers, serializes site changes and restores the previous release after a failed health check.
+
+## 0.3.0-preview.10 - 2026-07-15
+
+### Fixed
+
+- Added explicit production/staging environments to site deployment plans and schema 8, preserving legacy staging refs during migration while preventing staging plans from switching production traffic.
+- Made operation polling read-only, aligned it to the 10-second monitoring interval, and marked scoped deployment responses as `no-store`.
+- Added an indexed, integrity-checked deployment projection and stabilized filters and detail selection across route and operation changes.
+
+## 0.3.0-preview.9 - 2026-07-15
+
+### Fixed
+
+- Updated the disposable systemd installer verification fixture to include the Web entry required by a complete Controller release, preserving the production installer's fail-closed integrity check while restoring the Linux hardening gate.
+
+### Changed
+
+- Promoted the deployment workbench real-backend release to a new preview version after `0.3.0-preview.8` had already been published to `main`, keeping package, Agent runtime, lockfile and release-document versions traceable to the corrected CI revision.
+
+## 0.3.0-preview.8 - 2026-07-15
+
+### Added
+
+- Added an authenticated, node-scoped deployment query API that projects real site plans, operations, managed releases and backend collection time.
+- Added typed deployment contracts and a visibility-aware 10-second Web polling path with stable operation and release identities.
+
+### Changed
+
+- Replaced the deployment workbench's fixture queue, generated logs and simulated completion, redeploy and rollback mutations with real Controller state, explicit empty/error handling and release history.
+- Reused the existing reauthenticated Git deployment plan for creation, and contained long node and release identifiers across desktop tables, mobile cards and detail drawers.
+
+### Security
+
+- Deployment reads require `sites:read` and honor the principal node scope; unsupported rollback and arbitrary command execution remain unavailable.
+
+## 0.3.0-preview.7 - 2026-07-15
+
+### Fixed
+
+- Extended Agent-side journal redaction to cover JSON secrets, URL query credentials and database connection strings before snapshots leave a node.
+- Rejected option-like service names in legacy `service.status.read` tasks and marked systemd activating/reloading states as warnings instead of healthy services.
+- Added bounded pagination for aggregated systemd rows and logs, mobile-safe long-text wrapping and `no-store` API responses.
+
+## 0.3.0-preview.6 - 2026-07-15
+
+### Fixed
+
+- Removed uncancelled animation-frame and timer retries from shared dialog and drawer focus restoration, preventing callbacks from escaping the owning document lifecycle.
+- Made animated modal focus restoration deterministic after React unmount and covered both restored and removed trigger paths in the Web test suite.
+
+## 0.3.0-preview.5 - 2026-07-15
+
+### Added
+
+- Added bounded Agent-side systemd service and journal snapshot collection with credential redaction, strict shared contracts and node-scoped `systemd:read` access.
+- Added authenticated `GET /api/systemd/services` and a visibility-aware 10-second Web polling path backed by saved Agent snapshots.
+
+### Changed
+
+- Replaced the systemd workbench's fixture services, generated journal lines and simulated lifecycle mutations with real read-only status, memory, restart, freshness and log data.
+- Added the Agent service account to `systemd-journal` so native Linux deployments can read system journal entries without running the Agent as root.
+
+### Security
+
+- systemd collection uses only fixed `systemctl` and `journalctl` argument forms, enforces response bounds, redacts common credential forms before upload and preserves RBAC node scope.
+
+## 0.3.0-preview.4 - 2026-07-14
+
+### Fixed
+
+- Updated desktop and mobile browser motion coverage to assert the modal enter and exit contract used by the file creation dialog.
+- Restored clean `npm ci` installation in Linux, Windows and container release jobs by completing the CycloneDX optional dependency lock graph.
+
+### Documentation
+
+- Added complete rollout, compatibility and rollback guidance for physical-host identity and schema 7 releases.
+
 ## 0.3.0-preview.3 - 2026-07-14
 
 ### Added

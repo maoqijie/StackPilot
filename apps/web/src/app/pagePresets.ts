@@ -19,9 +19,9 @@ function databasePagePreset(page: PageKey) {
 }
 
 function deployPagePreset(page: PageKey) {
-  if (page === "deploy-staging") return { env: "预发", mode: "list", subtitle: "预发环境视图，默认展示 rc 与验证发布任务。" };
-  if (page === "deploy-rollbacks") return { env: "全部", mode: "rollbacks", subtitle: "回滚记录视图，聚焦可回滚基线、回滚进度和恢复原因。" };
-  return { env: "生产", mode: "list", subtitle: "按环境查看发布任务，支持创建、完成、回滚、查看日志和重新部署。" };
+  if (page === "deploy-staging") return { env: "预发", mode: "list", subtitle: "预发环境视图，展示 Controller 保存的预检与发布任务。" };
+  if (page === "deploy-rollbacks") return { env: "全部", mode: "rollbacks", subtitle: "发布版本视图，展示当前版本和历史版本记录。" };
+  return { env: "生产", mode: "list", subtitle: "生产发布视图，展示真实预检、上线进度和执行结果。" };
 }
 
 function settingsPagePreset(page: PageKey) {
@@ -36,7 +36,7 @@ function settingsPagePreset(page: PageKey) {
 function systemdPagePreset(page: PageKey) {
   if (page === "systemd-failed") return { status: "failed", search: "", mode: "list", subtitle: "Failed 服务视图，聚焦需要处理的异常服务。" };
   if (page === "systemd-logs") return { status: "全部", search: "", mode: "logs", subtitle: "服务日志视图，默认展开 journal 输出。" };
-  return { status: page === "systemd-active" ? "active" : "全部", search: "", mode: "list", subtitle: "查看服务 active/failed/inactive 状态，并处理启停、重启和失败告警。" };
+  return { status: page === "systemd-active" ? "active" : "全部", search: "", mode: "list", subtitle: "查看 Agent 只读采集的服务 active/failed/inactive 状态与近期日志。" };
 }
 
 function terminalPagePreset(page: PageKey) {

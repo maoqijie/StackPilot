@@ -36,7 +36,21 @@ const taskResultSummary = (task: RemoteTaskRecord, message?: string) => task.typ
 
 function sameTaskOperation(task: RemoteTaskRecord, input: CreateRemoteTaskRequest, requester: string) {
   return task.requester === requester && task.type === input.type
-    && isDeepStrictEqual(task.parameters, input.parameters);
+    && isDeepStrictEqual(parametersForIdentity(task.type, task.parameters), parametersForIdentity(input.type, input.parameters))
+    && Math.round((Date.parse(task.expiresAt) - Date.parse(task.createdAt)) / 1_000) === input.expiresInSeconds;
+}
+
+function parametersForIdentity(type: CreateRemoteTaskRequest["type"], parameters: Record<string, unknown>) {
+  if (type !== "sites.plan.prepare") return parameters;
+  const identity = { ...parameters };
+  delete identity.runtimeInstallAuthorized;
+  return identity;
+}
+
+function parametersForNode(type: CreateRemoteTaskRequest["type"], parameters: Record<string, unknown>, node: { allowedCapabilities: AgentCapability[]; declaredCapabilities: AgentCapability[] }) {
+  if (type !== "sites.plan.prepare") return parameters;
+  const runtimeInstallAuthorized = node.allowedCapabilities.includes("runtime.install") && node.declaredCapabilities.includes("runtime.install");
+  return { ...parameters, runtimeInstallAuthorized };
 }
 
 function expireTask(task: RemoteTaskRecord, now: string): RemoteTaskStatus | null {
@@ -80,9 +94,10 @@ export class RemoteTaskService {
       if (!node || node.revokedAt) throw new ServiceError(404, "NOT_FOUND", "目标节点不存在或已撤销");
       const capability = requiredCapability[input.type];
       if (!node.allowedCapabilities.includes(capability) || !node.declaredCapabilities.includes(capability)) throw new ServiceError(403, "FORBIDDEN", "Controller 未授权节点执行该能力或 Agent 未声明该能力");
+      const effectiveInput = { ...input, parameters: parametersForNode(input.type, input.parameters, node) } as CreateRemoteTaskRequest;
       const duplicate = state.tasks.find((item) => item.targetNodeId === nodeId && item.idempotencyKey === input.idempotencyKey);
       if (duplicate) {
-        if (!sameTaskOperation(duplicate, input, requester)) throw new ServiceError(409, "BAD_REQUEST", "幂等键已用于其他远程任务");
+        if (!sameTaskOperation(duplicate, effectiveInput, requester)) throw new ServiceError(409, "BAD_REQUEST", "幂等键已用于其他远程任务");
       }
       if (!duplicate && state.tasks.filter((item) => item.targetNodeId === nodeId && !terminal.includes(item.status)).length >= this.queueLimit) throw new ServiceError(409, "BAD_REQUEST", "节点任务队列已满");
       authorize();
@@ -90,7 +105,7 @@ export class RemoteTaskService {
       const now = new Date().toISOString();
       created = RemoteTaskRecordSchema.parse({
         protocolVersion: AGENT_PROTOCOL_VERSION, taskId: randomUUID(), type: input.type, targetNodeId: nodeId,
-        parameters: input.parameters, createdAt: now, expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
+        parameters: effectiveInput.parameters, createdAt: now, expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
         idempotencyKey: input.idempotencyKey, requester, traceId, requiredCapability: capability, attempt: 0,
         maxAttempts: singleAttemptTypes.has(input.type) ? 1 : 3,
         status: "queued", updatedAt: now, result: null, errorCode: null,
@@ -127,6 +142,7 @@ export class RemoteTaskService {
         if (dispatched.length >= 10) break;
         if (task.type === "sites.certificates.renew" && renewalActive) continue;
         if (!node.allowedCapabilities.includes(task.requiredCapability) || !node.declaredCapabilities.includes(task.requiredCapability)) { task.status = "cancelled"; task.errorCode = "CAPABILITY_REVOKED"; continue; }
+        task.parameters = parametersForNode(task.type, task.parameters, node);
         transitionTask(task, "dispatched"); task.attempt += 1; dispatched.push(structuredClone(task));
         if (task.type === "sites.certificates.renew") renewalActive = true;
         state.audits.push(audit({ requester: `agent:${nodeId}`, nodeId, taskId: task.taskId, event: "task.dispatched", taskType: task.type, parameters: null, fromStatus: "queued", toStatus: "dispatched", resultSummary: null, traceId }));

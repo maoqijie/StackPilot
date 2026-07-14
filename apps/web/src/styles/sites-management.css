@@ -27,6 +27,7 @@
 .site-plan-summary dl div { min-width: 0; display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; padding: 8px 0; }
 .site-plan-summary dt { color: var(--muted); }
 .site-plan-summary dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--text); font-weight: 600; }
+.site-plan-staging-note { margin: 0; padding: 12px 16px; border-radius: var(--radius-md); color: var(--text-soft); background: var(--canvas); font-size: 14px; }
 .site-plan-changes { display: flex; flex-wrap: wrap; gap: 8px; }
 .site-plan-changes span { display: inline-flex; gap: 4px; align-items: center; min-height: 32px; padding: 4px 8px; border-radius: var(--radius-md); color: var(--success); background: var(--success-soft); font-size: 13px; }
 .site-operation-status { min-height: 64px; display: flex; gap: 12px; align-items: center; padding: 16px; border-radius: var(--radius-md); color: var(--primary); background: var(--primary-soft); }

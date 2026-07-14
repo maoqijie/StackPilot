@@ -44,7 +44,7 @@ export async function routeSiteRequest(context: RequestContext): Promise<void> {
   if (parts[1] === "site-plans" && parts.length === 2 && method === "POST") {
     requirePermission(context, "sites:deploy", true);
     const input = parseSchema(CreateSitePlanRequestSchema, context.body, "站点部署计划");
-    sendJson(response, 202, await services.siteManagement.createPlan(input, access(context), requester(context)), SitePlanSchema); return;
+    sendJson(response, 202, await services.siteManagement.createPlan(input, access(context), requester(context), context.principal?.user.displayName ?? null), SitePlanSchema); return;
   }
   if (parts[1] === "site-plans" && parts[3] === "activate" && parts.length === 4 && method === "POST") {
     requirePermission(context, "sites:deploy", true);
@@ -73,6 +73,7 @@ export async function routeSiteRequest(context: RequestContext): Promise<void> {
   }
   if (parts[1] === "site-operations" && parts.length === 3 && method === "GET") {
     requirePermission(context, "sites:read");
+    response.setHeader("Cache-Control", "no-store");
     sendJson(response, 200, await services.siteManagement.getOperation(idAt(context, 2), access(context)), SiteOperationSchema); return;
   }
   throw notFound("站点管理接口不存在");

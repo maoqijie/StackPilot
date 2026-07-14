@@ -1,27 +1,93 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import type { DeploymentPayload } from "@stackpilot/contracts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchDeployments } from "../api/deploymentsApi";
 import { DeployPage } from "../pages/DeployPage";
 
-describe("deploy staging page", () => {
-  afterEach(() => {
-    vi.useRealTimers();
+vi.mock("../api/deploymentsApi", () => ({ fetchDeployments: vi.fn() }));
+
+const now = "2026-07-15T00:00:00.000Z";
+const payload: DeploymentPayload = {
+  collectedAt: now,
+  deployments: [{
+    id: "11111111-1111-4111-8111-111111111111", planId: "22222222-2222-4222-8222-222222222222",
+    operationId: "11111111-1111-4111-8111-111111111111", nodeId: "node-production-long-name-01", siteId: "site-production-01",
+    domains: ["stackpilot.example.com"], repositoryUrl: "https://github.com/example/stackpilot.git", repositoryRef: "main",
+    environment: "production", certificateEnvironment: "production", runtime: "node22", healthCheckPath: "/healthz",
+    status: "succeeded", stage: "complete", progressPercent: 100, errorCode: null, releaseId: "release_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    operator: "管理员", createdAt: now, updatedAt: now,
+  }],
+  releases: [{ releaseId: "release_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", siteId: "site-production-01", planId: "22222222-2222-4222-8222-222222222222", nodeId: "node-production-long-name-01", domains: ["stackpilot.example.com"], repositoryRef: "main", environment: "production", status: "active", createdAt: now, activatedAt: now }],
+};
+
+describe("real deployment page", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    vi.mocked(fetchDeployments).mockResolvedValue(payload);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("renders backend deployments and opens stable-id details without mock actions", async () => {
+    render(<DeployPage page="deploy-prod" permissions={["sites:read", "sites:deploy"]} />);
+    expect((await screen.findAllByText("stackpilot.example.com")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("release_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "完成" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "回滚" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "查看 stackpilot.example.com 发布详情" }));
+    const dialog = screen.getByRole("dialog", { name: "发布详情" });
+    expect(within(dialog).getByText("node-production-long-name-01")).toBeInTheDocument();
+    expect(within(dialog).getByText("https://github.com/example/stackpilot.git")).toBeInTheDocument();
   });
 
-  it("opens the create task modal through the body portal and inert the page", () => {
+  it("treats the default deploy route as the production view", async () => {
+    render(<DeployPage page="deploy" permissions={["sites:read"]} />);
+    expect(await screen.findByRole("button", { name: "生产" })).toHaveClass("active");
+  });
+
+  it("synchronizes the environment filter when the route changes", async () => {
+    const view = render(<DeployPage page="deploy-prod" permissions={["sites:read"]} />);
+    expect(await screen.findByRole("button", { name: "生产" })).toHaveClass("active");
+    view.rerender(<DeployPage page="deploy-staging" permissions={["sites:read"]} />);
+    await act(async () => Promise.resolve());
+    expect(screen.getByRole("button", { name: "预发" })).toHaveClass("active");
+  });
+
+  it("polls every ten seconds and preserves the selected record", async () => {
     vi.useFakeTimers();
-    render(<DeployPage page="deploy-staging" notify={vi.fn()} />);
+    render(<DeployPage page="deploy-prod" permissions={["sites:read"]} />);
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getByRole("button", { name: "查看 stackpilot.example.com 发布详情" }));
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(fetchDeployments).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("dialog", { name: "发布详情" })).toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "创建部署任务" }));
+  it("preserves deployment details by plan id when the current operation changes", async () => {
+    const refreshed = structuredClone(payload);
+    refreshed.deployments[0].id = "33333333-3333-4333-8333-333333333333";
+    refreshed.deployments[0].operationId = refreshed.deployments[0].id;
+    vi.mocked(fetchDeployments).mockResolvedValueOnce(payload).mockResolvedValue(refreshed);
+    vi.useFakeTimers();
+    render(<DeployPage page="deploy-prod" permissions={["sites:read"]} />);
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getByRole("button", { name: "查看 stackpilot.example.com 发布详情" }));
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+    expect(screen.getByRole("dialog", { name: "发布详情" })).toBeInTheDocument();
+  });
 
-    const dialog = screen.getByRole("dialog", { name: "创建部署任务" });
-    expect(dialog.parentElement).toBe(document.body);
-    expect(dialog).toHaveClass("deploy-create-drawer");
-    expect(document.querySelector(".module-main")).toHaveAttribute("inert");
-    expect(screen.getByRole("button", { name: "创建并运行" })).toBeInTheDocument();
+  it("shows a retryable initial error and no fixtures", async () => {
+    vi.mocked(fetchDeployments).mockRejectedValueOnce(new Error("deployment api offline")).mockResolvedValue(payload);
+    render(<DeployPage page="deploy-prod" permissions={["sites:read"]} />);
+    expect(await screen.findByText("deployment api offline")).toBeInTheDocument();
+    expect(screen.queryByText("shop-web")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect((await screen.findAllByText("stackpilot.example.com")).length).toBeGreaterThan(0);
+  });
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "关闭详情" }));
-    act(() => vi.advanceTimersByTime(180));
-    expect(screen.queryByRole("dialog", { name: "创建部署任务" })).not.toBeInTheDocument();
+  it("blocks accounts without sites read permission", () => {
+    render(<DeployPage page="deploy-prod" permissions={[]} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("没有站点读取权限");
+    expect(fetchDeployments).not.toHaveBeenCalled();
   });
 });

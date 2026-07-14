@@ -65,7 +65,7 @@ export class TaskExecutor {
       }
       const timer = setTimeout(() => controller.abort(), definition.timeoutMs);
       let update: RemoteTaskStatusUpdate;
-      try { const result = await definition.run(parameters, controller.signal, this.nodeId); controller.signal.throwIfAborted(); update = { taskId: task.taskId, attempt: task.attempt, status: "succeeded", timestamp: new Date().toISOString(), result }; }
+      try { const result = await definition.run(parameters, controller.signal, this.nodeId, this.capabilities); controller.signal.throwIfAborted(); update = { taskId: task.taskId, attempt: task.attempt, status: "succeeded", timestamp: new Date().toISOString(), result }; }
       catch (error) { const aborted = controller.signal.aborted; const unknown = aborted && !definition.cancellable; const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" && /^[A-Z0-9_]{1,80}$/.test(error.code) ? error.code : error instanceof Error && /^[A-Z0-9_]{1,80}$/.test(error.name) ? error.name : "TASK_FAILED"; update = { taskId: task.taskId, attempt: task.attempt, status: aborted && definition.cancellable ? "cancelled" : "failed", timestamp: new Date().toISOString(), errorCode: unknown ? "RESULT_UNKNOWN" : aborted ? "TASK_CANCELLED_OR_TIMEOUT" : code, result: { message: unknown ? "Task result is unknown after timeout; it will not be replayed" : aborted ? "Task cancelled or timed out" : "Task failed", truncated: false } }; }
       finally { clearTimeout(timer); }
       this.receipts.set(task.taskId, { taskId: task.taskId, taskType: task.type, idempotencyKey: task.idempotencyKey, attempt: task.attempt, status: update.status, updatedAt: update.timestamp, reported: false, update }); await this.persist(); return update;

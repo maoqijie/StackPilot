@@ -1,55 +1,33 @@
+import type { SystemdServicesPayload } from "@stackpilot/contracts";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchSystemdServices } from "../api/systemdApi";
 import { SystemdPage } from "../pages/SystemdPage";
 
+vi.mock("../api/systemdApi", () => ({ fetchSystemdServices: vi.fn() }));
+const time = "2026-07-15T01:02:03.000Z";
+const services: SystemdServicesPayload["services"] = [{ id: "11111111-1111-4111-8111-111111111111:nginx.service", nodeId: "11111111-1111-4111-8111-111111111111", host: "prod-real-01", platform: "linux", sourceCollectedAt: time, freshness: "current", unit: "nginx.service", description: "A real web server", loadState: "loaded", activeState: "active", subState: "running", memoryCurrentBytes: 1048576, restartCount: 2, stateChangedAt: time, journal: [] }, { id: "22222222-2222-4222-8222-222222222222:failed.service", nodeId: "22222222-2222-4222-8222-222222222222", host: "prod-real-02", platform: "linux", sourceCollectedAt: time, freshness: "current", unit: "failed.service", description: "Failed worker", loadState: "loaded", activeState: "failed", subState: "failed", memoryCurrentBytes: null, restartCount: 4, stateChangedAt: time, journal: [] }];
+const payload: SystemdServicesPayload = { collectedAt: time, collectionStatus: "complete", warnings: [], services };
+
 describe("systemd service page", () => {
-  it("opens a complete portaled service drawer", async () => {
-    const user = userEvent.setup();
-    render(<SystemdPage page="systemd" notify={vi.fn()} />);
-    const table = screen.getByRole("table");
-
+  beforeEach(() => vi.mocked(fetchSystemdServices).mockResolvedValue(payload));
+  it("renders real read-only rows and opens a complete portaled drawer", async () => {
+    const user = userEvent.setup(); render(<SystemdPage page="systemd" notify={vi.fn()} />); const table = await screen.findByRole("table");
+    expect(within(table).getByText("A real web server")).toBeInTheDocument(); expect(screen.queryByRole("button", { name: /启动服务|停止服务|重启服务|标记服务/ })).not.toBeInTheDocument();
     await user.click(within(table).getByRole("button", { name: "查看服务 nginx.service 日志" }));
-
-    const drawer = screen.getByRole("dialog", { name: "nginx.service" });
-    expect(drawer.parentElement).toBe(document.body);
-    expect(drawer).toHaveClass("systemd-service-drawer");
-    expect(within(drawer).getByText("panel-se-01", { selector: "dd" })).toBeInTheDocument();
-    expect(within(drawer).getByText("内存")).toBeInTheDocument();
-    expect(within(drawer).getByText("重启次数")).toBeInTheDocument();
-    expect(within(drawer).getByRole("log", { name: "nginx.service journal 摘要" })).toBeInTheDocument();
+    const drawer = screen.getByRole("dialog", { name: "nginx.service" }); expect(drawer.parentElement).toBe(document.body); expect(within(drawer).getByText("prod-real-01", { selector: "dd" })).toBeInTheDocument();
   });
-
-  it("confirms service mutations before updating the selected service", async () => {
-    const user = userEvent.setup();
-    const notify = vi.fn();
-    render(<SystemdPage page="systemd" notify={notify} />);
-    const table = screen.getByRole("table");
-
-    await user.click(within(table).getByRole("button", { name: "停止服务 nginx.service" }));
-
-    const dialog = screen.getByRole("alertdialog", { name: "确认停止服务" });
-    expect(dialog.parentElement).toBe(document.body);
-    expect(dialog).toHaveClass("systemd-action-confirm");
-    expect(screen.getAllByText("运行中").length).toBeGreaterThan(0);
-
-    await user.click(within(dialog).getByRole("button", { name: "确认停止" }));
-
-    expect(screen.queryByRole("alertdialog", { name: "确认停止服务" })).not.toBeInTheDocument();
-    expect(screen.getAllByText("未运行").length).toBeGreaterThan(0);
-    expect(notify).toHaveBeenCalledWith("nginx.service 已停止", "warning");
+  it("keeps failed page filtering on backend records", async () => {
+    render(<SystemdPage page="systemd-failed" notify={vi.fn()} />); const table = await screen.findByRole("table");
+    expect(within(table).getByText("failed.service")).toBeInTheDocument(); expect(within(table).queryByText("nginx.service")).not.toBeInTheDocument();
   });
-
-  it("marks a failed alert handled without hiding the failed service", async () => {
-    const user = userEvent.setup();
-    render(<SystemdPage page="systemd-failed" notify={vi.fn()} />);
-    const table = screen.getByRole("table");
-
-    expect(screen.queryByRole("button", { name: /刷新|重新采集|重新扫描/ })).not.toBeInTheDocument();
-    await user.click(within(table).getByRole("button", { name: "标记服务 mysql.service 已处理" }));
-    await user.click(within(screen.getByRole("alertdialog", { name: "确认标记已处理" })).getByRole("button", { name: "确认标记" }));
-
-    expect(screen.getAllByText("故障 · 已处理").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("mysql.service").length).toBeGreaterThan(0);
+  it("paginates large inventories and marks transitional states as warnings", async () => {
+    const many = Array.from({ length: 101 }, (_, index) => ({ ...services[0]!, id: `11111111-1111-4111-8111-111111111111:unit-${index}.service`, unit: `unit-${index}.service`, activeState: index === 0 ? "activating" as const : "active" as const }));
+    vi.mocked(fetchSystemdServices).mockResolvedValueOnce({ ...payload, services: many });
+    render(<SystemdPage page="systemd" notify={vi.fn()} />);
+    expect(await screen.findByText("第 1 / 2 页 · 共 101 条")).toBeInTheDocument();
+    expect(screen.getAllByText("启动中").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("启动中")[0]?.closest(".systemd-status")).toHaveClass("orange");
   });
 });

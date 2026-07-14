@@ -46,6 +46,7 @@ import { requestSource } from "./http/trustedProxy.js";
 import { SecretStore } from "./security/secretStore.js";
 import { MemorySiteManagementRepository, SqliteSiteManagementRepository, type SiteManagementRepository } from "./modules/sites/siteManagementRepository.js";
 import { RemoteSiteExecutor, SiteManagementService } from "./modules/sites/siteManagementService.js";
+import { DeploymentQueryService } from "./modules/deployments/deploymentQueryService.js";
 import { FileService } from "./modules/files/fileService.js";
 import { FileUploadRepository } from "./repositories/fileUploadRepository.js";
 import { FileUploadService } from "./modules/files/fileUploadService.js";
@@ -58,6 +59,7 @@ import { DatabaseOperationService } from "./modules/databases/databaseOperationS
 import { DatabaseRetentionService } from "./modules/databases/databaseRetentionService.js";
 import type { AuditRepository } from "./audit/auditRepository.js";
 import { SystemdDatabaseCollector } from "@stackpilot/host-telemetry";
+import { SystemdService } from "./modules/systemd/systemdService.js";
 
 export type AppOptions = {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -107,6 +109,7 @@ export function createControllerServices(
     databaseInstances: new DatabaseMonitoringService(repository, new SystemdDatabaseCollector()),
     sites,
     siteManagement: new SiteManagementService(managementRepository, sites, certificateRenewals, new RemoteSiteExecutor(remoteTasks, managementRepository), config.protectedSiteIds),
+    deployments: new DeploymentQueryService(managementRepository),
     certificateRenewals,
     files: new FileService(config.fileRoot, config.fileTrashDir, config.fileUploadLimitBytes, repoRoot),
     databaseBackups: new DatabaseBackupService(database, isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath), config, repoRoot),
@@ -117,6 +120,7 @@ export function createControllerServices(
     nodes,
     remoteTasks,
     terminalSnippets: new TerminalSnippetService(terminalRepository, remoteTasks),
+    systemd: new SystemdService(repository),
     ...(databaseRepository ? {
       databaseInventory: new DatabaseInventoryService(databaseRepository),
       databaseWorkspace: new DatabaseBackupWorkspaceService(databaseRepository, audit),
