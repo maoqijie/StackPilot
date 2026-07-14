@@ -22,3 +22,6 @@
 @import "./terminal-core.css";
 @import "./terminal-history.css";
 @import "./terminal-snippets.css";
+@import "./systemd.css";
+@import "./firewall-deny.css";
+@import "./firewall-rules.css";

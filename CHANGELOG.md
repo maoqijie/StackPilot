@@ -2,6 +2,14 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.2 - 2026-07-14
+
+### Changed
+
+- Refined firewall rule and deny-record workflows with accessible confirmation, semantic results, compact controls and complete detail surfaces.
+- Added focused systemd service, journal and log-stream views with responsive drawer behavior and operational status context.
+- Improved shared detail-drawer focus restoration and modal class handling, with expanded firewall and systemd page coverage.
+
 ## 0.3.0-preview.1 - 2026-07-14
 
 ### Added

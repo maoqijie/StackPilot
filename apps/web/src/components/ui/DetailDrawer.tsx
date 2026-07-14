@@ -5,7 +5,7 @@ import { useIsNarrowViewport } from "../../hooks/useIsNarrowViewport";
 import { drawerFocusableElements, drawerRestoreFallback, isFocusableElement } from "../../utils/focus";
 import { useExitMotion } from "./useExitMotion";
 
-const modalDrawerClasses = new Set(["schedule-job-modal", "file-delete-dialog", "upload-create-modal", "health-node-modal", "task-log-modal"]);
+const modalDrawerClasses = new Set(["schedule-job-modal", "file-delete-dialog", "upload-create-modal", "health-node-modal", "task-log-modal", "firewall-rule-modal"]);
 
 function DetailDrawer({
   title,
@@ -16,6 +16,8 @@ function DetailDrawer({
   className,
   modal,
   autoFocus = true,
+  closeLabel = "关闭详情",
+  restoreFocusTarget,
 }: {
   title: string;
   subtitle?: string;
@@ -25,28 +27,46 @@ function DetailDrawer({
   className?: string;
   modal?: boolean;
   autoFocus?: boolean;
+  closeLabel?: string;
+  restoreFocusTarget?: HTMLElement | null;
 }) {
   const drawerRef = useRef<HTMLElement>(null);
-  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(
+    restoreFocusTarget ?? (typeof document !== "undefined" && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null),
+  );
   const titleId = useId();
   const { closing, requestClose } = useExitMotion(onClose);
   const isNarrowViewport = useIsNarrowViewport();
   const isModalDrawer = modal ?? isNarrowViewport;
-  const drawerClassName = ["detail-drawer", className].filter(Boolean).join(" ");
-  const scrimClassName = ["drawer-scrim", className ? `${className}-scrim` : ""].filter(Boolean).join(" ");
+  const customClassNames = className?.split(/\s+/).filter(Boolean) ?? [];
+  const drawerClassName = ["detail-drawer", ...customClassNames].join(" ");
+  const scrimClassName = ["drawer-scrim", ...customClassNames.map((name) => `${name}-scrim`)].join(" ");
   const motionSurface = drawerClassName.split(" ").some((name) => modalDrawerClasses.has(name)) ? "modal" : "drawer";
 
   useEffect(() => {
     const drawer = drawerRef.current;
     if (!drawer) return;
     let focusFrame = 0;
+    if (restoreFocusTarget && document.contains(restoreFocusTarget)) {
+      restoreFocusRef.current = restoreFocusTarget;
+    }
     if (autoFocus) {
-      restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      if (
+        document.activeElement instanceof HTMLElement
+        && document.activeElement !== document.body
+        && !drawer.contains(document.activeElement)
+      ) {
+        restoreFocusRef.current = document.activeElement;
+      }
       const focusable = drawerFocusableElements(drawer);
       const firstBodyFocusTarget = focusable.find((element) => !element.classList.contains("drawer-close-button"));
+      const initialFocusTarget = firstBodyFocusTarget ?? focusable[0] ?? drawer;
+      initialFocusTarget.focus({ preventScroll: true });
       focusFrame = window.requestAnimationFrame(() => {
-        if (document.contains(drawer)) {
-          (firstBodyFocusTarget ?? focusable[0] ?? drawer).focus({ preventScroll: true });
+        if (document.contains(drawer) && !drawer.contains(document.activeElement)) {
+          initialFocusTarget.focus({ preventScroll: true });
         }
       });
     }
@@ -92,14 +112,23 @@ function DetailDrawer({
       const shouldRestoreFocus = !activeElement || activeElement === document.body || drawer.contains(activeElement);
       if (!shouldRestoreFocus) return;
       const restoreTarget = restoreFocusRef.current;
-      const fallbackTarget = restoreTarget && document.contains(restoreTarget) && isFocusableElement(restoreTarget)
-        ? restoreTarget
-        : drawerRestoreFallback(drawer);
-      if (fallbackTarget) {
-        fallbackTarget.focus({ preventScroll: true });
-      }
+      const fallbackTarget = drawerRestoreFallback(drawer);
+      const restoreFocus = () => {
+        if (restoreTarget && document.contains(restoreTarget)) {
+          restoreTarget.focus({ preventScroll: true });
+          if (document.activeElement === restoreTarget) return true;
+        }
+        fallbackTarget?.focus({ preventScroll: true });
+        return Boolean(fallbackTarget && document.activeElement === fallbackTarget);
+      };
+      queueMicrotask(() => {
+        if (restoreFocus()) return;
+        window.requestAnimationFrame(() => {
+          if (!restoreFocus()) window.requestAnimationFrame(restoreFocus);
+        });
+      });
     };
-  }, [autoFocus, isModalDrawer, requestClose]);
+  }, [autoFocus, isModalDrawer, requestClose, restoreFocusTarget]);
 
   const handleFocusCapture = (event: React.FocusEvent<HTMLElement>) => {
     const previousFocus = event.relatedTarget;
@@ -110,7 +139,7 @@ function DetailDrawer({
 
   return createPortal(
     <>
-      <button className={scrimClassName} data-closing={closing || undefined} type="button" aria-label="关闭详情" onClick={requestClose} tabIndex={-1} disabled={closing} />
+      <button className={scrimClassName} data-closing={closing || undefined} type="button" aria-label={closeLabel} onClick={requestClose} tabIndex={-1} disabled={closing} />
       <aside
         ref={drawerRef}
         className={drawerClassName}
@@ -128,7 +157,7 @@ function DetailDrawer({
             <strong id={titleId}>{title}</strong>
             {subtitle && <span>{subtitle}</span>}
           </div>
-          <button type="button" className="icon-action drawer-close-button" disabled={closing} onClick={requestClose} aria-label="关闭详情"><X size={16} /></button>
+          <button type="button" className="icon-action drawer-close-button" disabled={closing} onClick={requestClose} aria-label={closeLabel}><X size={16} /></button>
         </div>
         <div className="drawer-body">{children}</div>
         {actions && <div className="drawer-actions inline">{actions}</div>}

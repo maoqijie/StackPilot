@@ -1,0 +1,235 @@
+:is(.module-page-firewall, .module-page-firewall-open) .module-main { gap: 24px; }
+
+:is(.module-page-firewall, .module-page-firewall-open) .page-head .ghost {
+  border: 0;
+  background: transparent;
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .page-head .ghost:is(:hover, :focus-visible, :active) {
+  border: 0;
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .module-view-context,
+:is(.module-page-firewall, .module-page-firewall-open) .module-filter-line,
+:is(.module-page-firewall, .module-page-firewall-open) .module-metrics article,
+:is(.module-page-firewall, .module-page-firewall-open) .module-table-wrap {
+  border: 0;
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .module-view-context {
+  box-shadow: none;
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .module-view-context em {
+  border: 0;
+  background: var(--surface);
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .module-filter-line {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .module-metrics article,
+:is(.module-page-firewall, .module-page-firewall-open) .module-table-wrap {
+  box-shadow: var(--shadow-subtle);
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .module-table :is(th, td) {
+  border-bottom: 0;
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .module-table tbody tr {
+  background: var(--surface);
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .module-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .module-row-link {
+  min-width: 0;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .module-row-link b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions button,
+:is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions button:is(:hover, :focus, :focus-visible, :active) { border: 0; }
+
+:is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions button {
+  color: var(--muted);
+  background: transparent;
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions button:is(:hover, :focus-visible) {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions button:active {
+  color: var(--primary-active);
+  background: var(--primary-soft);
+  transform: scale(0.98);
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions .firewall-rule-delete:is(:hover, :focus-visible) {
+  color: #dc2626;
+  background: var(--danger-soft);
+}
+
+.firewall-rule-drawer,
+.firewall-rule-modal,
+.firewall-rule-delete-confirm,
+.firewall-rule-drawer:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.firewall-rule-modal:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.firewall-rule-delete-confirm:is(:hover, :focus, :focus-visible, :focus-within, :active) { border: 0; }
+
+.firewall-rule-drawer-scrim,
+.firewall-rule-modal-scrim,
+.firewall-rule-delete-confirm-scrim { backdrop-filter: none; }
+
+.firewall-rule-drawer {
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: min(520px, calc(100vw - 24px));
+  height: auto;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.firewall-rule-drawer :is(.drawer-head, .drawer-actions),
+.firewall-rule-modal :is(.drawer-head, .drawer-actions) {
+  padding: 16px 24px;
+  border: 0;
+  box-shadow: none;
+}
+
+.firewall-rule-drawer .drawer-head .icon-action,
+.firewall-rule-modal .drawer-head .icon-action,
+.firewall-rule-delete-confirm > header .icon-action,
+.firewall-rule-drawer .drawer-actions button,
+.firewall-rule-modal .drawer-actions button,
+.firewall-rule-delete-confirm > footer button,
+.firewall-rule-drawer .drawer-head .icon-action:is(:hover, :focus-visible, :active),
+.firewall-rule-modal .drawer-head .icon-action:is(:hover, :focus-visible, :active),
+.firewall-rule-delete-confirm > header .icon-action:is(:hover, :focus-visible, :active),
+.firewall-rule-drawer .drawer-actions button:is(:hover, :focus-visible, :active),
+.firewall-rule-modal .drawer-actions button:is(:hover, :focus-visible, :active),
+.firewall-rule-delete-confirm > footer button:is(:hover, :focus-visible, :active) { border: 0; }
+
+.firewall-rule-drawer .drawer-body,
+.firewall-rule-modal .drawer-body { padding: 24px; }
+
+.firewall-rule-drawer .detail-kv p {
+  padding: 12px;
+  border: 0;
+  background: var(--surface-soft);
+}
+
+.firewall-rule-drawer .detail-kv b {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.firewall-rule-modal {
+  inset: 50% auto auto 50%;
+  width: min(560px, calc(100vw - 32px));
+  height: auto;
+  max-height: calc(100dvh - 32px);
+  border-radius: var(--radius-lg);
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+}
+
+.firewall-rule-modal .drawer-body {
+  display: grid;
+  gap: 24px;
+  overflow-y: auto;
+}
+
+.firewall-rule-modal .drawer-actions :is(.ghost, .primary),
+.firewall-rule-delete-confirm > footer :is(.ghost, .trash-destructive) {
+  min-height: var(--control-md);
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.firewall-rule-modal .drawer-actions .ghost,
+.firewall-rule-delete-confirm > footer .ghost {
+  color: var(--muted);
+  background: transparent;
+}
+
+.firewall-rule-modal .drawer-actions .ghost:hover,
+.firewall-rule-delete-confirm > footer .ghost:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.firewall-rule-delete-confirm {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-overlay);
+}
+
+.firewall-rule-delete-confirm > footer .trash-destructive { color: #fff; background: var(--danger); }
+.firewall-rule-delete-confirm > footer .trash-destructive:hover,
+.firewall-rule-delete-confirm > footer .trash-destructive:active { color: #fff; background: #dc2626; }
+
+@media (max-width: 773px) {
+  :is(.module-page-firewall, .module-page-firewall-open) .module-main { gap: 16px; }
+
+  :is(.module-page-firewall, .module-page-firewall-open) .module-card-list { padding: 0; gap: 8px; }
+  :is(.module-page-firewall, .module-page-firewall-open) .module-card-row {
+    padding: 16px;
+    border: 0;
+    box-shadow: var(--shadow-subtle);
+  }
+  :is(.module-page-firewall, .module-page-firewall-open) .module-card-head { align-items: flex-start; flex-wrap: nowrap; }
+
+  :is(.module-page-firewall, .module-page-firewall-open) .module-row-link b {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  :is(.module-page-firewall, .module-page-firewall-open) .module-card-footer .firewall-rule-actions { width: 100%; }
+  :is(.module-page-firewall, .module-page-firewall-open) .module-card-footer .firewall-rule-actions button { flex: 1 1 0; }
+
+  .firewall-rule-drawer {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+  }
+
+  .firewall-rule-drawer :is(.drawer-head, .drawer-body, .drawer-actions),
+  .firewall-rule-modal :is(.drawer-head, .drawer-body, .drawer-actions) { padding: 16px; }
+}
+
+@media (max-width: 480px) {
+  .firewall-rule-modal {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+
+  .firewall-rule-modal .drawer-actions > button,
+  .firewall-rule-delete-confirm > footer > button { flex: 1 1 0; }
+
+  .firewall-rule-drawer .detail-kv p {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
