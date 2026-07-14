@@ -8,6 +8,7 @@ import { hasResourceWarning, RESOURCE_THRESHOLDS } from "../../platform/resource
 import type { AgentControlRepository, AgentNodeState, AuditEvent } from "../../repositories/agentControlRepository.js";
 import { MemoryAgentControlRepository } from "../../repositories/agentControlRepository.js";
 import type { TaskStateRepository } from "../../repositories/taskStateRepository.js";
+import { agentControlState, controllerMirrorAgents } from "../nodes/physicalHostIdentity.js";
 
 export type OverviewAccess = { nodeScope: "all" | readonly string[]; canReadTasks: boolean; canReadAudit: boolean };
 type LocalSample = { sequence: number; collectedAt: string; displayTime: string; snapshot: PlatformSnapshot; tasks: OverviewTaskRecord[]; risks: OverviewRiskRecord[] };
@@ -43,17 +44,21 @@ export class OverviewService {
     const [local, state] = await Promise.all([this.localSample(Boolean(options.bypassCache)), this.agents.read()]);
     const allowed = (nodeId: string) => access.nodeScope === "all" || access.nodeScope.includes(nodeId);
     const remoteNodes = state.nodes.filter((node) => !node.revokedAt && allowed(node.nodeId));
+    const mirrorNodes = controllerMirrorAgents(local.snapshot, state.nodes.filter((node) => !node.revokedAt)).filter((node) => allowed(node.nodeId));
+    const mirrorNodeIds = new Set(mirrorNodes.map((node) => node.nodeId));
+    const visibleRemoteNodes = remoteNodes.filter((node) => !mirrorNodeIds.has(node.nodeId));
     const remoteNodeIds = new Set(remoteNodes.map((node) => node.nodeId));
-    const nodes = [local.snapshot.node, ...remoteNodes.map((node) => this.remoteNode(node))];
+    const localNode = this.mergeControllerAgent(local.snapshot.node, mirrorNodes[0]);
+    const nodes = [localNode, ...visibleRemoteNodes.map((node) => this.remoteNode(node))];
     const remoteTasks = access.canReadTasks ? state.tasks.filter((task) => remoteNodeIds.has(task.targetNodeId)).map((task) => this.remoteTask(task, remoteNodes)) : [];
     const tasks = [...local.tasks, ...remoteTasks];
-    const risks = [...local.risks, ...remoteNodes.flatMap((node) => this.remoteRisks(node))];
+    const risks = [...local.risks, ...mirrorNodes.flatMap((node) => this.remoteControlRisks(node)), ...visibleRemoteNodes.flatMap((node) => this.remoteRisks(node))];
     const audits = [...local.snapshot.auditRows, ...(access.canReadAudit ? this.agentAudits(state.audits.filter((event) => event.nodeId !== null && remoteNodeIds.has(event.nodeId)), remoteNodes) : [])];
-    const onlineNodes = remoteNodes.filter((node) => this.freshness(node) === "current" && node.telemetry);
+    const onlineNodes = visibleRemoteNodes.filter((node) => this.freshness(node) === "current" && node.telemetry);
     const onlineTelemetry = onlineNodes.map((node) => node.telemetry!);
     const aggregate = this.aggregateResources(local.snapshot, onlineNodes);
     const taskPage = this.taskPage(tasks, local.displayTime, local.collectedAt);
-    const resources = this.resources(local.snapshot, remoteNodes, aggregate, local.collectedAt);
+    const resources = this.resources(local.snapshot, visibleRemoteNodes, aggregate, local.collectedAt);
     const unavailable = nodes.filter((node) => node.status !== "健康").length;
     const openRisks = risks.filter((risk) => risk.status === "待处理");
     return OverviewSummaryPayloadSchema.parse({
@@ -113,13 +118,23 @@ export class OverviewService {
     const disk = percent(diskUsed, diskTotal);
     return {
       id: node.nodeId, name: telemetry?.hostname ?? node.nodeName, ip: telemetry?.primaryIp ?? "暂不可用", env: node.platform,
-      status: heartbeatStale ? "离线" : freshness === "awaiting" ? "维护" : freshness === "stale" || hasResourceWarning({ cpu: telemetry?.cpu?.usagePercent ?? null, memory, disk }) ? "警告" : "健康", source: "agent", collectedAt: telemetry?.collectedAt ?? null, freshness,
+      status: heartbeatStale ? "离线" : freshness === "awaiting" ? "维护" : freshness === "stale" || node.heartbeatHealthStatus === "degraded" || hasResourceWarning({ cpu: telemetry?.cpu?.usagePercent ?? null, memory, disk }) ? "警告" : "健康", source: "agent", collectedAt: telemetry?.collectedAt ?? null, freshness,
       availability: { cpu: Boolean(telemetry?.cpu), memory: Boolean(telemetry?.memory), disk: Boolean(telemetry?.disks.length), latency: false, backup: false, update: false, services: false },
       latency: "暂不可用", latencyStatus: "警告", cpu: telemetry?.cpu ? `${Math.round(telemetry.cpu.usagePercent)}%` : "暂不可用",
       memory: memory === null ? "暂不可用" : `${memory}%`, disk: disk === null ? "暂不可用" : `${disk}%`, version: `v${node.agentVersion}`,
       uptime: telemetry ? uptime(telemetry.uptimeSeconds) : "暂不可用", backup: "暂不可用", backupStatus: "警告", update: "暂不可用", owner: "StackPilot Agent", services: [],
       diskVolumes: telemetry?.disks.map((item) => ({ ...item, percent: percent(item.usedBytes, item.totalBytes) ?? 0 })) ?? [],
     };
+  }
+
+  private mergeControllerAgent(node: OverviewNode, mirror?: AgentNodeState): OverviewNode {
+    if (!mirror) return node;
+    const control = agentControlState(mirror);
+    const controlService = {
+      id: `stackpilot-agent-${mirror.nodeId}`, name: "StackPilot Agent 控制通道", target: mirror.nodeId,
+      status: control.status, detail: control.detail,
+    };
+    return { ...node, status: control.healthy ? node.status : "警告", owner: `${node.owner} · Agent ${mirror.agentVersion}`, services: [...node.services, controlService] };
   }
 
   private remoteTask(task: RemoteTaskRecord, nodes: AgentNodeState[]): OverviewTaskRecord {
@@ -135,6 +150,7 @@ export class OverviewService {
     if (freshness === "awaiting") add("awaiting", "Agent 等待遥测", "中危", "节点已注册但尚无资源快照");
     if (this.isHeartbeatStale(node)) add("offline", "Agent 节点离线", "高危", `最后心跳 ${node.lastSeenAt ?? "未知"}`);
     if (this.isTelemetryStale(node)) add("telemetry-stale", "Agent 遥测已过期", "高危", `最后采集 ${node.telemetry?.collectedAt ?? "未知"}`);
+    if (node.heartbeatHealthStatus === "degraded") add("heartbeat-degraded", "Agent 控制通道降级", "中危", "Agent 最近一次心跳报告降级");
     if (freshness !== "current" || !node.telemetry) return risks;
     const telemetry = node.telemetry; const memory = telemetry.memory ? percent(telemetry.memory.totalBytes - telemetry.memory.availableBytes, telemetry.memory.totalBytes) : null;
     const disk = percent(telemetry.disks.reduce((sum, item) => sum + item.usedBytes, 0), telemetry.disks.reduce((sum, item) => sum + item.totalBytes, 0));
@@ -142,6 +158,10 @@ export class OverviewService {
     if (memory !== null && memory >= RESOURCE_THRESHOLDS.memory.warning) add("memory", "Agent 内存压力偏高", memory >= RESOURCE_THRESHOLDS.memory.critical ? "高危" : "中危", `${memory}%`);
     if (disk !== null && disk >= RESOURCE_THRESHOLDS.disk.warning) add("disk", "Agent 磁盘使用率偏高", disk >= RESOURCE_THRESHOLDS.disk.critical ? "高危" : "中危", `${disk}%`);
     return risks;
+  }
+
+  private remoteControlRisks(node: AgentNodeState) {
+    return this.remoteRisks(node).filter((risk) => ["awaiting", "offline", "telemetry-stale", "heartbeat-degraded"].some((suffix) => risk.id.endsWith(`-${suffix}`)));
   }
 
   private localRisks(snapshot: PlatformSnapshot): OverviewRiskRecord[] {

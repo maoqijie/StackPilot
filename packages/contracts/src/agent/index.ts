@@ -5,3 +5,4 @@ export * from "./tasks.js";
 export * from "./protocol.js";
 export * from "./monitoring.js";
 export * from "./databases.js";
+export * from "./physicalIdentity.js";

@@ -23,6 +23,7 @@ export class FakePlatformAdapter {
     this.calls.collectSnapshot += 1;
     if (this.failSnapshot) throw new Error("sensitive fake platform failure");
     return {
+      physicalHostId: "ph_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       node: fakeNode(), cpuPercent: 12, memoryPercent: 34, diskPercent: 80, loadPercent: 10,
       changedFiles: [], branch: "main", commit: "abc1234", behind: 0, version: "0.1.0",
       cpuCorePercents: [10, 14], loadAverages: [0.1, 0.2, 0.3],

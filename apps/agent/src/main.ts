@@ -11,7 +11,7 @@ import { createHeartbeat } from "./heartbeat/heartbeat.js";
 import { IdentityStore, type AgentIdentity } from "./identity/identityStore.js";
 import { agentLogger } from "./logging/logger.js";
 import { collectAgentTelemetry } from "./telemetry/collector.js";
-import { DatabaseSnapshotCache, SystemdDatabaseCollector } from "@stackpilot/host-telemetry";
+import { collectPhysicalHostId, DatabaseSnapshotCache, SystemdDatabaseCollector } from "@stackpilot/host-telemetry";
 import { NginxSiteCollector, SiteSnapshotCache } from "./sites/nginxCollector.js";
 import { certHelperAvailable } from "./sites/helperClient.js";
 import { TaskExecutor } from "./tasks/executor.js";
@@ -48,6 +48,7 @@ export async function runAgent(env: NodeJS.ProcessEnv | Record<string, string | 
   const config = loadAgentConfig(env);
   if (env === process.env) delete process.env.STACKPILOT_AGENT_ENROLLMENT_TOKEN;
   assertAgentPrivilegeBoundary(config.allowRoot);
+  const physicalHostId = await collectPhysicalHostId(config.platform);
   const store = new IdentityStore(config.stateDir); const client = new ControllerClient(config.controllerUrl, config.caPath);
   const databaseHelper = new DatabaseHelperClient(config.databaseHelperSocket);
   let databaseHelperReady = config.platform === "linux" && await databaseHelper.available();
@@ -89,7 +90,8 @@ export async function runAgent(env: NodeJS.ProcessEnv | Record<string, string | 
       const systemdDatabaseFallback = shouldUseSystemdDatabaseFallback(databaseInventorySupported, databaseHelperReady);
       if (systemdDatabaseFallback) void databaseSnapshots.refreshIfDue().catch((error) => agentLogger.log({ level: "warn", time: new Date().toISOString(), message: "Database inventory collection failed", errorName: error instanceof Error ? error.name : "UnknownError" }));
       const fallbackDatabaseSnapshot = systemdDatabaseFallback ? databaseSnapshots.current : undefined;
-      AgentHeartbeatResponseSchema.parse(await client.json("/api/agent/heartbeat", createHeartbeat(config, identity.nodeId, capabilities, telemetry, telemetryCollectionFailed, siteSnapshots.current, fallbackDatabaseSnapshot), identity));
+      const advertisedPhysicalHostId = client.supportsPhysicalHostIdentity() ? physicalHostId ?? undefined : undefined;
+      AgentHeartbeatResponseSchema.parse(await client.json("/api/agent/heartbeat", createHeartbeat(config, identity.nodeId, capabilities, telemetry, telemetryCollectionFailed, siteSnapshots.current, fallbackDatabaseSnapshot, advertisedPhysicalHostId), identity));
       for (const pending of executor.pendingUpdates()) { await client.json("/api/agent/tasks/status", pending, identity); await executor.markReported(pending.taskId); }
       const poll = RemoteTaskPollResponseSchema.parse(await client.json("/api/agent/tasks/poll", {}, identity));
       for (const taskId of poll.cancelledTaskIds) executor.cancel(taskId);

@@ -26,6 +26,8 @@ import {
 } from "./windowsLoad.js";
 export { DatabaseSnapshotCache, DATABASE_UNIT_PATTERNS, SystemdDatabaseCollector, parseSystemdDatabaseUnits } from "./databases.js";
 export type { DatabaseCollectorOptions, DatabaseUnitRunner } from "./databases.js";
+export { collectPhysicalHostId, derivePhysicalHostId, parsePhysicalMachineIdentifier } from "./physicalIdentity.js";
+export type { PhysicalIdentityCommandRunner, PhysicalIdentitySources } from "./physicalIdentity.js";
 
 export {
   collectProcessorQueueLength,
