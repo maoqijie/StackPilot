@@ -2,6 +2,13 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.6 - 2026-07-15
+
+### Fixed
+
+- Removed uncancelled animation-frame and timer retries from shared dialog and drawer focus restoration, preventing callbacks from escaping the owning document lifecycle.
+- Made animated modal focus restoration deterministic after React unmount and covered both restored and removed trigger paths in the Web test suite.
+
 ## 0.3.0-preview.5 - 2026-07-15
 
 ### Added

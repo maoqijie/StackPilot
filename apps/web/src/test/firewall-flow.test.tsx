@@ -58,7 +58,7 @@ describe("firewall rule flow", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "关闭新增规则" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "新增规则" })).not.toBeInTheDocument());
-    expect(createButton).toHaveFocus();
+    await waitFor(() => expect(createButton).toHaveFocus());
   });
 
   it("opens rule details in a body-level modal drawer and restores focus", async () => {
