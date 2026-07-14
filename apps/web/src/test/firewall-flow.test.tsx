@@ -96,6 +96,20 @@ describe("firewall rule flow", () => {
     expect(screen.queryByRole("alertdialog", { name: "删除规则" })).not.toBeInTheDocument();
   });
 
+  it("restores focus to the delete action after cancelling", async () => {
+    const user = userEvent.setup();
+    render(<FirewallPage page="firewall-open" notify={vi.fn()} />);
+    const table = screen.getByRole("table");
+    const deleteButton = within(table).getByRole("button", { name: "删除防火墙规则 HTTPS 公网访问" });
+
+    await user.click(deleteButton);
+    const dialog = screen.getByRole("alertdialog", { name: "删除规则" });
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog", { name: "删除规则" })).not.toBeInTheDocument());
+    await waitFor(() => expect(deleteButton).toHaveFocus());
+  });
+
   it("opens deny details as a body-level modal drawer", async () => {
     const user = userEvent.setup();
     render(<FirewallPage page="firewall-deny" notify={vi.fn()} />);
@@ -122,6 +136,7 @@ describe("firewall rule flow", () => {
     const confirm = screen.getByRole("alertdialog", { name: "确认放行来源" });
     expect(confirm.parentElement).toBe(document.body);
     expect(confirm).toHaveTextContent("198.51.100.24 -> panel-hk-03 · 22/TCP");
+    expect(document.querySelector(".module-main")).toHaveAttribute("inert");
     expect(notify).not.toHaveBeenCalled();
 
     await user.click(within(confirm).getByRole("button", { name: "确认放行" }));

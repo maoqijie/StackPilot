@@ -2,6 +2,23 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.3 - 2026-07-14
+
+### Added
+
+- Added feature-negotiated physical-host identity so a Controller and its uniquely matching co-located Agent share one monitoring row and one set of resource totals while preserving Agent UUID, RBAC, heartbeat, audit and task-routing identity.
+
+### Changed
+
+- Refined deployment and rollback workspaces with responsive layouts, semantic status icons, accessible logs and a body-level creation modal.
+- Improved firewall rule and deny-record surfaces with stable responsive actions, clearer detail and confirmation hierarchy, and semantic allow/deny indicators.
+- Hardened shared dialog and drawer focus restoration across animated exits, with focused deployment and firewall interaction coverage.
+- Preserved co-located Agent control-channel health on the merged Controller row, including degraded status and stable risks for offline or stale telemetry.
+
+### Repository
+
+- Added explicit Git submission and push requirements to the repository agent guidance.
+
 ## 0.3.0-preview.2 - 2026-07-14
 
 ### Changed

@@ -1,7 +1,7 @@
 import { AlertTriangle, X } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
-import { drawerFocusableElements, drawerRestoreFallback, isFocusableElement } from "../../utils/focus";
+import { drawerFocusableElements, drawerRestoreFallback } from "../../utils/focus";
 import { useExitMotion } from "./useExitMotion";
 
 function ConfirmDialog({
@@ -15,6 +15,7 @@ function ConfirmDialog({
   className,
   busy = false,
   confirmDisabled = false,
+  restoreFocusTarget,
   children,
 }: {
   title: string;
@@ -27,6 +28,7 @@ function ConfirmDialog({
   className?: string;
   busy?: boolean;
   confirmDisabled?: boolean;
+  restoreFocusTarget?: HTMLElement | null;
   children?: React.ReactNode;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -37,7 +39,7 @@ function ConfirmDialog({
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousFocus = restoreFocusTarget ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     const focusFrame = window.requestAnimationFrame(() => {
       if (!dialog.contains(document.activeElement)) {
         dialog.querySelector<HTMLElement>("[data-confirm-initial], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [data-confirm-cancel]")
@@ -78,12 +80,28 @@ function ConfirmDialog({
     return () => {
       window.cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", handleKeyDown);
-      const restoreTarget = previousFocus && document.contains(previousFocus) && isFocusableElement(previousFocus)
+      const restoreTarget = previousFocus && document.contains(previousFocus) && !previousFocus.hasAttribute("disabled")
         ? previousFocus
         : drawerRestoreFallback(dialog);
-      restoreTarget?.focus({ preventScroll: true });
+      const restoreFocus = () => {
+        if (restoreTarget && document.contains(restoreTarget)) {
+          restoreTarget.focus({ preventScroll: true });
+          if (document.activeElement === restoreTarget) return true;
+        }
+        const fallbackTarget = drawerRestoreFallback(dialog);
+        fallbackTarget?.focus({ preventScroll: true });
+        return Boolean(fallbackTarget && document.activeElement === fallbackTarget);
+      };
+      const retryRestoreFocus = () => {
+        if (restoreFocus()) return;
+        window.requestAnimationFrame(() => {
+          if (restoreFocus()) return;
+          window.setTimeout(restoreFocus, 0);
+        });
+      };
+      queueMicrotask(retryRestoreFocus);
     };
-  }, [requestClose]);
+  }, [requestClose, restoreFocusTarget]);
 
   return createPortal(
     <>

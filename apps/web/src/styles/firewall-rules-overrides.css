@@ -1,0 +1,148 @@
+/* Firewall surfaces use the default CloudPulse card recipe. */
+:is(.module-page-firewall, .module-page-firewall-open, .module-page-firewall-deny) .module-view-context,
+:is(.module-page-firewall, .module-page-firewall-open, .module-page-firewall-deny) .module-filter-line,
+:is(.module-page-firewall, .module-page-firewall-open, .module-page-firewall-deny) .module-metrics article,
+:is(.module-page-firewall, .module-page-firewall-open, .module-page-firewall-deny) .module-table-wrap {
+  border: 1px solid var(--line);
+}
+
+:is(.module-page-firewall, .module-page-firewall-open, .module-page-firewall-deny) .module-view-context {
+  border-color: var(--primary-line);
+  box-shadow: var(--shadow-subtle);
+}
+
+:is(.module-page-firewall, .module-page-firewall-open, .module-page-firewall-deny) .module-filter-line {
+  padding: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-subtle);
+}
+
+:is(.module-page-firewall, .module-page-firewall-open, .module-page-firewall-deny) .module-metrics article,
+:is(.module-page-firewall, .module-page-firewall-open, .module-page-firewall-deny) .module-table-wrap {
+  box-shadow: var(--shadow-subtle);
+}
+
+:is(.module-page-firewall, .module-page-firewall-open, .module-page-firewall-deny) .module-table {
+  min-width: 0;
+}
+
+:is(.module-page-firewall, .module-page-firewall-open, .module-page-firewall-deny) .module-table :is(th, td) {
+  border-bottom: 1px solid var(--line);
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions button {
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: transparent;
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions button:is(:hover, :focus-visible) {
+  border-color: var(--primary-line);
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+:is(.module-page-firewall, .module-page-firewall-open) .firewall-rule-actions .firewall-rule-delete:is(:hover, :focus-visible) {
+  border-color: var(--danger-line);
+  color: #dc2626;
+  background: var(--danger-soft);
+}
+
+.detail-drawer.firewall-rule-drawer,
+.detail-drawer.firewall-rule-modal,
+.confirm-dialog.firewall-rule-delete-confirm,
+.detail-drawer.firewall-rule-drawer:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.detail-drawer.firewall-rule-modal:is(:hover, :focus, :focus-visible, :focus-within, :active),
+.confirm-dialog.firewall-rule-delete-confirm:is(:hover, :focus, :focus-visible, :focus-within, :active) {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.detail-drawer.firewall-rule-drawer {
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: min(520px, calc(100vw - 24px));
+  height: auto;
+}
+
+.detail-drawer.firewall-rule-modal {
+  inset: 50% auto auto 50%;
+  width: min(560px, calc(100vw - 32px));
+  height: auto;
+  max-height: calc(100dvh - 32px);
+  transform: translate(-50%, -50%);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.detail-drawer.firewall-rule-drawer :is(.drawer-head, .drawer-actions),
+.detail-drawer.firewall-rule-modal :is(.drawer-head, .drawer-actions) {
+  border: 0;
+  box-shadow: none;
+}
+
+.detail-drawer.firewall-rule-drawer .drawer-body,
+.detail-drawer.firewall-rule-modal .drawer-body {
+  min-width: 0;
+}
+
+.detail-drawer.firewall-rule-drawer .detail-kv p {
+  border: 1px solid var(--line);
+}
+
+.confirm-dialog.firewall-rule-delete-confirm {
+  z-index: 230;
+  box-shadow: var(--shadow-overlay);
+}
+
+.firewall-deny-drawer .drawer-head,
+.firewall-deny-drawer .drawer-actions {
+  border: 0;
+  box-shadow: none;
+}
+
+.firewall-deny-detail-list > div {
+  border: 1px solid var(--line);
+}
+
+.confirm-dialog.firewall-deny-confirm {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-overlay);
+}
+
+@media (max-width: 773px) {
+  :is(.module-page-firewall, .module-page-firewall-open, .module-page-firewall-deny) .module-card-row {
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-subtle);
+  }
+
+  :is(.module-page-firewall, .module-page-firewall-open, .module-page-firewall-deny) .module-card-row:hover {
+    border-color: var(--line-strong);
+    box-shadow: var(--shadow-subtle);
+    transform: none;
+  }
+
+  .detail-drawer.firewall-rule-drawer,
+  .firewall-deny-drawer {
+    inset: 8px;
+    width: auto;
+    height: calc(100dvh - 16px);
+    border-radius: var(--radius-lg);
+  }
+
+  .detail-drawer.firewall-rule-drawer :is(.drawer-head, .drawer-body, .drawer-actions),
+  .detail-drawer.firewall-rule-modal :is(.drawer-head, .drawer-body, .drawer-actions),
+  .firewall-deny-drawer :is(.drawer-head, .drawer-body, .drawer-actions) {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .detail-drawer.firewall-rule-modal {
+    width: calc(100vw - 32px);
+    max-height: calc(100dvh - 32px);
+  }
+}

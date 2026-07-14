@@ -43,7 +43,7 @@ function DetailDrawer({
   const customClassNames = className?.split(/\s+/).filter(Boolean) ?? [];
   const drawerClassName = ["detail-drawer", ...customClassNames].join(" ");
   const scrimClassName = ["drawer-scrim", ...customClassNames.map((name) => `${name}-scrim`)].join(" ");
-  const motionSurface = drawerClassName.split(" ").some((name) => modalDrawerClasses.has(name)) ? "modal" : "drawer";
+  const motionSurface = isModalDrawer || drawerClassName.split(" ").some((name) => modalDrawerClasses.has(name)) ? "modal" : "drawer";
 
   useEffect(() => {
     const drawer = drawerRef.current;
@@ -121,12 +121,14 @@ function DetailDrawer({
         fallbackTarget?.focus({ preventScroll: true });
         return Boolean(fallbackTarget && document.activeElement === fallbackTarget);
       };
-      queueMicrotask(() => {
+      const retryRestoreFocus = () => {
         if (restoreFocus()) return;
         window.requestAnimationFrame(() => {
-          if (!restoreFocus()) window.requestAnimationFrame(restoreFocus);
+          if (restoreFocus()) return;
+          window.setTimeout(restoreFocus, 0);
         });
-      });
+      };
+      queueMicrotask(retryRestoreFocus);
     };
   }, [autoFocus, isModalDrawer, requestClose, restoreFocusTarget]);
 

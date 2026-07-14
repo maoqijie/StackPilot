@@ -30,6 +30,7 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [drawer, setDrawer] = useState<FirewallDrawer>(null);
   const [pendingAllowId, setPendingAllowId] = useState<string | null>(null);
   const [drawerTrigger, setDrawerTrigger] = useState<HTMLElement | null>(null);
+  const [confirmTrigger, setConfirmTrigger] = useState<HTMLElement | null>(null);
   const [draft, setDraft] = useState({ name: "临时调试端口", port: "", protocol: "TCP", source: "10.0.0.0/8" });
   const [draftErrors, setDraftErrors] = useState<{ port?: string; source?: string }>({});
   const portInputRef = useRef<HTMLInputElement>(null);
@@ -102,6 +103,13 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
     setDrawer(null);
     setPendingAllowId(row.id);
   };
+  const requestDeleteRule = (row: FirewallRule, trigger: HTMLElement) => {
+    setConfirmTrigger(trigger);
+    setDrawer({ type: "delete", ruleId: row.id });
+  };
+  const closeDeleteConfirmation = () => {
+    setDrawer(null);
+  };
   const promoteDenyRecord = (row: FirewallDenyRecord) => {
     const nextRule: FirewallRule = {
       id: `fw-${Date.now()}`,
@@ -150,6 +158,17 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
               <div><dt>原因</dt><dd>{selectedDenyRecord.reason}</dd></div>
             </dl>
           </DetailDrawer>
+        ) : pendingAllowRecord ? (
+          <ConfirmDialog
+            className="firewall-deny-confirm"
+            title="确认放行来源"
+            message={`放行后，来自 ${pendingAllowRecord.source} 的匹配访问将不再被当前拦截策略阻止。`}
+            detail={`${pendingAllowRecord.source} -> ${pendingAllowRecord.target} · ${pendingAllowRecord.port}/${pendingAllowRecord.protocol}`}
+            confirmLabel="确认放行"
+            tone="warning"
+            onClose={() => setPendingAllowId(null)}
+            onConfirm={() => allowDenyRecord(pendingAllowRecord)}
+          />
         ) : null}
       >
         <DataTable
@@ -168,7 +187,7 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
           mobileCard={(row) => (
             <>
               <div className="module-card-head">
-                <span className="module-card-title firewall-deny-mobile-source">{row.result === "拒绝" ? <ShieldAlert size={18} /> : <CircleCheck size={18} />}<b>{row.source}</b></span>
+                <span className={`module-card-title firewall-deny-mobile-source is-${row.result === "拒绝" ? "denied" : "allowed"}`}>{row.result === "拒绝" ? <ShieldAlert size={18} /> : <CircleCheck size={18} />}<b>{row.source}</b></span>
                 <span className={`pill ${row.status === "待处理" ? "orange" : "green"}`}>{row.status}</span>
               </div>
               <code className="module-card-code">{`${row.source} -> ${row.target} · ${row.port}/${row.protocol}`}</code>
@@ -188,18 +207,6 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
             </>
           )}
         />
-        {pendingAllowRecord && (
-          <ConfirmDialog
-            className="firewall-deny-confirm"
-            title="确认放行来源"
-            message={`放行后，来自 ${pendingAllowRecord.source} 的匹配访问将不再被当前拦截策略阻止。`}
-            detail={`${pendingAllowRecord.source} -> ${pendingAllowRecord.target} · ${pendingAllowRecord.port}/${pendingAllowRecord.protocol}`}
-            confirmLabel="确认放行"
-            tone="warning"
-            onClose={() => setPendingAllowId(null)}
-            onConfirm={() => allowDenyRecord(pendingAllowRecord)}
-          />
-        )}
       </ModulePageShell>
     );
   }
@@ -237,7 +244,8 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
           detail={`${selectedRule.source} -> ${selectedRule.target} · ${selectedRule.port}/${selectedRule.protocol}`}
           confirmLabel="确认删除"
           onConfirm={() => deleteRule(selectedRule)}
-          onClose={() => setDrawer(null)}
+          onClose={closeDeleteConfirmation}
+          restoreFocusTarget={confirmTrigger}
         />
       ) : null}
     >
@@ -249,7 +257,7 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
           { key: "source", label: "来源", render: (row) => row.source },
           { key: "target", label: "目标", render: (row) => row.target },
           { key: "enabled", label: "状态", render: (row) => <span className={`pill ${row.enabled ? "green" : "blue"}`}>{row.enabled ? "启用" : "停用"}</span> },
-          { key: "ops", label: "操作", width: "230px", render: (row) => <span className="table-actions firewall-rule-actions"><button type="button" aria-label={`${row.enabled ? "禁用" : "启用"}防火墙规则 ${row.name}`} onClick={() => toggleRule(row)}>{row.enabled ? "禁用" : "启用"}</button><button type="button" aria-label={`查看防火墙规则 ${row.name} 详情`} onClick={(event) => openDrawer({ type: "detail", ruleId: row.id }, event.currentTarget)}>详情</button><button className="firewall-rule-delete" type="button" aria-label={`删除防火墙规则 ${row.name}`} onClick={() => setDrawer({ type: "delete", ruleId: row.id })}>删除</button></span> },
+          { key: "ops", label: "操作", width: "150px", render: (row) => <span className="table-actions firewall-rule-actions"><button type="button" aria-label={`${row.enabled ? "禁用" : "启用"}防火墙规则 ${row.name}`} onClick={() => toggleRule(row)}>{row.enabled ? "禁用" : "启用"}</button><button type="button" aria-label={`查看防火墙规则 ${row.name} 详情`} onClick={(event) => openDrawer({ type: "detail", ruleId: row.id }, event.currentTarget)}>详情</button><button className="firewall-rule-delete" type="button" aria-label={`删除防火墙规则 ${row.name}`} onClick={(event) => requestDeleteRule(row, event.currentTarget)}>删除</button></span> },
         ]}
         rows={filteredRows}
         emptyText="没有匹配的防火墙规则"
@@ -271,7 +279,7 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
               <div className="table-actions actions-3 firewall-rule-actions">
                 <button type="button" aria-label={`${row.enabled ? "禁用" : "启用"}防火墙规则 ${row.name}`} onClick={() => toggleRule(row)}>{row.enabled ? "禁用" : "启用"}</button>
                 <button type="button" aria-label={`查看防火墙规则 ${row.name} 详情`} onClick={(event) => openDrawer({ type: "detail", ruleId: row.id }, event.currentTarget)}>详情</button>
-                <button className="firewall-rule-delete" type="button" aria-label={`删除防火墙规则 ${row.name}`} onClick={() => setDrawer({ type: "delete", ruleId: row.id })}>删除</button>
+                <button className="firewall-rule-delete" type="button" aria-label={`删除防火墙规则 ${row.name}`} onClick={(event) => requestDeleteRule(row, event.currentTarget)}>删除</button>
               </div>
             </div>
           </>
