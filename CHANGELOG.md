@@ -2,6 +2,22 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.8 - 2026-07-15
+
+### Added
+
+- Added an authenticated, node-scoped deployment query API that projects real site plans, operations, managed releases and backend collection time.
+- Added typed deployment contracts and a visibility-aware 10-second Web polling path with stable operation and release identities.
+
+### Changed
+
+- Replaced the deployment workbench's fixture queue, generated logs and simulated completion, redeploy and rollback mutations with real Controller state, explicit empty/error handling and release history.
+- Reused the existing reauthenticated Git deployment plan for creation, and contained long node and release identifiers across desktop tables, mobile cards and detail drawers.
+
+### Security
+
+- Deployment reads require `sites:read` and honor the principal node scope; unsupported rollback and arbitrary command execution remain unavailable.
+
 ## 0.3.0-preview.7 - 2026-07-15
 
 ### Fixed
