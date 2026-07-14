@@ -2,6 +2,17 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.14 - 2026-07-15
+
+### Fixed
+
+- Extended Agent-side journal redaction to cover Basic authorization, cookies, OAuth client secrets, AWS secret keys, private keys and generic URI userinfo before systemd snapshots leave a node.
+- Added systemd-specific regression coverage for 10-second polling, hidden-tab pause, non-overlapping requests, background failure retention, stable detail selection and strict read-only API validation.
+
+### Changed
+
+- Removed obsolete systemd lifecycle-action styles so the Web surface consistently represents the node-scoped read-only monitoring boundary.
+
 ## 0.3.0-preview.10 - 2026-07-15
 
 ### Fixed

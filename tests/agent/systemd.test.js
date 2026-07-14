@@ -27,6 +27,13 @@ test("journal parser groups entries by unit and redacts credentials", () => {
   assert.equal(redact("password=hunter2 token=abc123"), "password=[REDACTED] token=[REDACTED]");
   const variants = redact('{"secret":"json-secret"} https://example.test/?api_key=query-secret postgresql://user:dbpass@localhost/db');
   assert.doesNotMatch(variants, /json-secret|query-secret|dbpass/);
+  const extended = redact([
+    "Authorization: Basic dXNlcjpwYXNzd29yZA==", "Cookie: session=live-cookie; csrf=live-csrf", "Set-Cookie: refresh=live-refresh; HttpOnly",
+    "client_secret=oauth-secret AWS_SECRET_ACCESS_KEY=aws-secret PRIVATE_KEY=inline-secret", "mongodb+srv://dbuser:db-password@cluster.example/db https://opaque-token@example.test/path",
+    "-----BEGIN PRIVATE KEY-----\nprivate-key-body\n-----END PRIVATE KEY-----",
+  ].join("\n"));
+  assert.doesNotMatch(extended, /dXNlcj|live-cookie|live-csrf|live-refresh|oauth-secret|aws-secret|inline-secret|db-password|opaque-token|private-key-body/);
+  assert.match(extended, /Authorization: \[REDACTED\]/); assert.match(extended, /mongodb\+srv:\/\/\[REDACTED\]@cluster\.example/);
 });
 
 test("collector uses fixed read-only programs and reports partial journal access", async () => {

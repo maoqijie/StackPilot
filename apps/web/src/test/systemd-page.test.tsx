@@ -1,7 +1,7 @@
 import type { SystemdServicesPayload } from "@stackpilot/contracts";
-import { render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchSystemdServices } from "../api/systemdApi";
 import { SystemdPage } from "../pages/SystemdPage";
 
@@ -11,7 +11,8 @@ const services: SystemdServicesPayload["services"] = [{ id: "11111111-1111-4111-
 const payload: SystemdServicesPayload = { collectedAt: time, collectionStatus: "complete", warnings: [], services };
 
 describe("systemd service page", () => {
-  beforeEach(() => vi.mocked(fetchSystemdServices).mockResolvedValue(payload));
+  beforeEach(() => { vi.mocked(fetchSystemdServices).mockReset(); vi.mocked(fetchSystemdServices).mockResolvedValue(payload); });
+  afterEach(() => vi.useRealTimers());
   it("renders real read-only rows and opens a complete portaled drawer", async () => {
     const user = userEvent.setup(); render(<SystemdPage page="systemd" notify={vi.fn()} />); const table = await screen.findByRole("table");
     expect(within(table).getByText("A real web server")).toBeInTheDocument(); expect(screen.queryByRole("button", { name: /启动服务|停止服务|重启服务|标记服务/ })).not.toBeInTheDocument();
@@ -29,5 +30,41 @@ describe("systemd service page", () => {
     expect(await screen.findByText("第 1 / 2 页 · 共 101 条")).toBeInTheDocument();
     expect(screen.getAllByText("启动中").length).toBeGreaterThan(0);
     expect(screen.getAllByText("启动中")[0]?.closest(".systemd-status")).toHaveClass("orange");
+  });
+  it("polls after 10 seconds while preserving filters, selected identity and last successful data", async () => {
+    vi.useFakeTimers();
+    const updated = { ...services[0]!, description: "Updated real service", activeState: "failed" as const, subState: "failed", journal: [{ cursor: "updated-cursor", timestamp: time, priority: 3, identifier: "nginx", pid: "52", message: "updated journal" }] };
+    vi.mocked(fetchSystemdServices).mockResolvedValueOnce({ ...payload, collectedAt: "2026-07-15T01:02:13.000Z", services: [updated] }).mockRejectedValueOnce(new Error("background unavailable")).mockResolvedValueOnce({ ...payload, collectedAt: "2026-07-15T01:02:33.000Z", services: [] });
+    render(<SystemdPage page="systemd" notify={vi.fn()} initialPayload={payload} />);
+    const search = screen.getByPlaceholderText("搜索服务、说明或主机"); fireEvent.change(search, { target: { value: "nginx" } });
+    fireEvent.click(screen.getByRole("button", { name: "查看服务 nginx.service 日志" })); expect(screen.getByRole("dialog", { name: "nginx.service" })).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchSystemdServices).toHaveBeenCalledTimes(1); expect(search).toHaveValue("nginx");
+    expect(within(screen.getByRole("dialog", { name: "nginx.service" })).getByRole("log")).toHaveTextContent("updated journal");
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchSystemdServices).toHaveBeenCalledTimes(2); expect(screen.getByText(/后台刷新失败，保留上次数据：background unavailable/)).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "nginx.service" })).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(screen.queryByRole("dialog", { name: "nginx.service" })).not.toBeInTheDocument();
+  });
+  it("pauses polling while hidden and refreshes immediately when visible", async () => {
+    vi.useFakeTimers(); let hidden = true; const descriptor = Object.getOwnPropertyDescriptor(document, "hidden");
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+    try {
+      render(<SystemdPage page="systemd" notify={vi.fn()} initialPayload={payload} />);
+      await act(async () => { vi.advanceTimersByTime(30_000); await Promise.resolve(); }); expect(fetchSystemdServices).not.toHaveBeenCalled();
+      hidden = false; await act(async () => { fireEvent(document, new Event("visibilitychange")); await Promise.resolve(); await Promise.resolve(); });
+      expect(fetchSystemdServices).toHaveBeenCalledTimes(1);
+    } finally { if (descriptor) Object.defineProperty(document, "hidden", descriptor); }
+  });
+  it("never overlaps a slow systemd poll", async () => {
+    vi.useFakeTimers(); let resolveSlow: ((value: SystemdServicesPayload) => void) | undefined;
+    vi.mocked(fetchSystemdServices).mockImplementationOnce(() => new Promise((resolve) => { resolveSlow = resolve; })).mockResolvedValue(payload);
+    render(<SystemdPage page="systemd" notify={vi.fn()} initialPayload={payload} />);
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); }); expect(fetchSystemdServices).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(30_000); await Promise.resolve(); }); expect(fetchSystemdServices).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveSlow?.(payload); await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchSystemdServices).toHaveBeenCalledTimes(2);
   });
 });

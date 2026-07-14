@@ -11,18 +11,20 @@ import { runPlatformProbe } from "../platform/commandRunner.js";
 type Probe = (executable: string, args: readonly string[], signal: AbortSignal, timeoutMs: number, maxOutputBytes: number) => Promise<{ ok: boolean; output: string; code?: string }>;
 const unitPattern = /^[A-Za-z0-9_.@:-]+\.service$/;
 const secretPatterns = [
-  /(authorization\s*[:=]\s*(?:bearer\s+)?)[^\s,;]+/gi,
-  /((?:password|passwd|token|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+/gi,
-  /(["']?(?:password|passwd|token|secret|api[_-]?key|authorization)["']?\s*:\s*)["'][^"'\r\n]*["']/gi,
-  /([?&](?:password|passwd|token|secret|api[_-]?key|authorization)=)[^\s&#]+/gi,
-  /\b(?:postgres(?:ql)?|mysql|mariadb):\/\/[^\s/@:]+:[^\s/@]+@/gi,
+  /(-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)[\s\S]*/g,
+  /((?:authorization|proxy-authorization|cookie|set-cookie|private[_-]?key)\s*[:=]\s*)[^\r\n]*/gi,
+  /((?:password|passwd|token|secret|api[_-]?key|client[_-]?secret|aws[_-]?secret[_-]?access[_-]?key)\s*[:=]\s*)[^\s,;]+/gi,
+  /(["']?(?:password|passwd|token|secret|api[_-]?key|client[_-]?secret|aws[_-]?secret[_-]?access[_-]?key|private[_-]?key|authorization|proxy-authorization|cookie|set-cookie)["']?\s*:\s*)["'][^"'\r\n]*["']/gi,
+  /([?&](?:password|passwd|token|secret|api[_-]?key|client[_-]?secret|aws[_-]?secret[_-]?access[_-]?key|private[_-]?key|authorization)=)[^\s&#]+/gi,
+  /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@]+(?::[^\s/@]*)?@/gi,
   /\b(?:sk|sp)_[A-Za-z0-9_-]{16,}\b/g,
 ] as const;
 
 function bounded(value: unknown, limit: number) { return [...String(value ?? "")].map((char) => { const code = char.charCodeAt(0); return code < 32 && char !== "\t" && char !== "\n" && char !== "\r" || code === 127 ? " " : char; }).join("").slice(0, limit); }
 function redact(message: unknown) {
   return secretPatterns.reduce((value, pattern) => value.replace(pattern, (match, prefix = "") => {
-    if (/^(?:postgres(?:ql)?|mysql|mariadb):\/\//i.test(match)) return `${match.slice(0, match.indexOf("://") + 3)}[REDACTED]@`;
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(match)) return `${match.slice(0, match.indexOf("://") + 3)}[REDACTED]@`;
+    if (/^-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/.test(match)) return "[REDACTED PRIVATE KEY]";
     return `${prefix}[REDACTED]`;
   }), bounded(message, 512));
 }
