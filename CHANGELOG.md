@@ -2,6 +2,17 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.4 - 2026-07-14
+
+### Fixed
+
+- Updated desktop and mobile browser motion coverage to assert the modal enter and exit contract used by the file creation dialog.
+- Restored clean `npm ci` installation in Linux, Windows and container release jobs by completing the CycloneDX optional dependency lock graph.
+
+### Documentation
+
+- Added complete rollout, compatibility and rollback guidance for physical-host identity and schema 7 releases.
+
 ## 0.3.0-preview.3 - 2026-07-14
 
 ### Added
