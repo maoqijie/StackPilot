@@ -7,6 +7,8 @@ import Database from "better-sqlite3";
 import { migrateDatabase } from "../../apps/controller/dist/database/migrator.js";
 import { openDatabase } from "../../apps/controller/dist/database/database.js";
 
+const applicationVersion = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8")).version;
+
 const migrations = new URL("../../apps/controller/src/database/migrations/", import.meta.url);
 const migrationFiles = [
   [1, "identity", "001_identity.sql"],
@@ -40,7 +42,7 @@ test("schema 1 upgrades to schema 7 without losing identity data", async () => {
     assert.equal(upgraded.prepare("SELECT username FROM users").get().username, "upgrade-user");
     assert.equal(upgraded.prepare("SELECT max(version) AS version FROM schema_migrations").get().version, 7);
     assert.deepEqual(upgraded.prepare("SELECT application_version, schema_version FROM release_metadata").get(), {
-      application_version: "0.3.0-preview.1",
+      application_version: applicationVersion,
       schema_version: 7,
     });
     for (const table of ["file_uploads", "terminal_snippet_preferences", "file_trash_entries", "database_instances", "database_operations", "site_plans", "site_operations"]) {
@@ -119,7 +121,7 @@ test("legacy site-management schema 6 is normalized without losing site data", a
       { version: 7, name: "site-management" },
     ]);
     assert.deepEqual(upgraded.prepare("SELECT application_version, schema_version FROM release_metadata").get(), {
-      application_version: "0.3.0-preview.1",
+      application_version: applicationVersion,
       schema_version: 7,
     });
     upgraded.close();

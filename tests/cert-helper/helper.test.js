@@ -19,7 +19,7 @@ const planId = "11111111-1111-4111-8111-111111111111";
 const requestId = "22222222-2222-4222-8222-222222222222";
 const nodeId = "33333333-3333-4333-8333-333333333333";
 const digest = "a".repeat(64);
-const prepareRequest = { operation: "prepare", requestId, planId, nodeId, domains: ["app.example.com"], repositoryUrl: "https://github.com/example/site.git", repositoryRef: "main", certificateEmail: "ops@example.com", certificateEnvironment: "staging", environmentVariables: [{ name: "PUBLIC_NAME", value: "example" }], expectedPlanDigest: digest };
+const prepareRequest = { operation: "prepare", requestId, planId, nodeId, domains: ["app.example.com"], repositoryUrl: "https://github.com/example/site.git", repositoryRef: "main", certificateEmail: "ops@example.com", certificateEnvironment: "staging", environmentVariables: [{ name: "PUBLIC_NAME", value: "example" }], expectedPlanDigest: digest, runtimeInstallAuthorized: false };
 
 function config(root, protectedDomains = new Set(["panel.example.com"])) {
   return { stateRoot: join(root, "state"), sitesRoot: join(root, "sites"), nginxRoot: join(root, "nginx"), environmentRoot: join(root, "env"), unitRoot: join(root, "units"), challengeRoot: join(root, "challenges"), runtimeRoot: join(root, "runtimes"), runtimeCatalogPath: join(root, "runtimes.json"), protectedDomains };
@@ -62,6 +62,27 @@ test("prepare runs a fixed non-root Git clone and enforces strict prebuilt manif
     assert.equal(result.manifest.runtime, "static"); assert.equal(result.runtimePath, null);
     assert.equal(await readFile(join(cfg.stateRoot, "workspaces", planId, "bundle", "public", "index.html"), "utf8"), "ok");
     const clone = calls[0].args.join(" "); assert.match(clone, /--uid=stackpilot-builder/); assert.match(clone, /http.followRedirects=false/); assert.match(clone, /GIT_TERMINAL_PROMPT=0/); assert.doesNotMatch(clone, /submodule|lfs/);
+  } finally { await writableTree(root); await rm(root, { recursive: true, force: true }); }
+});
+
+test("prepare cannot install a missing Node runtime without explicit authorization", async () => {
+  const root = await mkdtemp(join(tmpdir(), "stackpilot-helper-")); const cfg = config(root); const calls = [];
+  const run = async (executable, args) => {
+    calls.push({ executable, args });
+    if (args.includes("clone")) {
+      const repo = join(cfg.stateRoot, "workspaces", planId, "repository"); await mkdir(join(repo, ".stackpilot"), { recursive: true }); await mkdir(join(repo, "dist")); await mkdir(join(repo, ".git"));
+      await writeFile(join(repo, ".stackpilot", "site.json"), JSON.stringify({ schemaVersion: 1, runtime: "node22", workingDirectory: ".", buildScript: null, outputDirectory: "dist", startScript: "start", healthCheckPath: "/healthz" }));
+    }
+    return { stdout: args.includes("rev-parse") ? "b".repeat(40) : "", stderr: "" };
+  };
+  await mkdir(cfg.runtimeRoot, { recursive: true });
+  await writeFile(cfg.runtimeCatalogPath, JSON.stringify([
+    { runtime: "node20", version: "v20.19.0", url: "https://nodejs.org/dist/v20.19.0/node-v20.19.0-linux-x64.tar.xz", sha256: "1".repeat(64) },
+    { runtime: "node22", version: "v22.22.0", url: "https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-x64.tar.xz", sha256: "2".repeat(64) },
+  ]));
+  try {
+    await assert.rejects(() => prepareRepository(prepareRequest, cfg, { run }), (error) => error.code === "RUNTIME_INSTALL_FORBIDDEN");
+    assert.equal(calls.some((call) => call.executable === "/usr/bin/curl" || call.executable === "/usr/bin/tar"), false);
   } finally { await writableTree(root); await rm(root, { recursive: true, force: true }); }
 });
 

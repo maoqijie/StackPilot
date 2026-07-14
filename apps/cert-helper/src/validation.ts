@@ -63,13 +63,13 @@ export function parseRequest(raw: string): HelperRequest {
     return { operation: "renew", certificateId: value.certificateId };
   }
   if (value.operation === "prepare") {
-    exactKeys(value, ["operation", "requestId", "planId", "nodeId", "domains", "repositoryUrl", "repositoryRef", "certificateEmail", "certificateEnvironment", "environmentVariables", "expectedPlanDigest"]);
+    exactKeys(value, ["operation", "requestId", "planId", "nodeId", "domains", "repositoryUrl", "repositoryRef", "certificateEmail", "certificateEnvironment", "environmentVariables", "expectedPlanDigest", "runtimeInstallAuthorized"]);
     if (!Array.isArray(value.domains) || !value.domains.length || value.domains.length > 20) throw new HelperError("INVALID_DOMAIN", "Domain list is invalid");
     const domains = value.domains.map(validDomain); if (new Set(domains).size !== domains.length) throw new HelperError("INVALID_DOMAIN", "Domains must be unique");
     if (typeof value.repositoryRef !== "string" || !REF.test(value.repositoryRef) || value.repositoryRef.includes("..") || value.repositoryRef.includes("//") || value.repositoryRef.endsWith("/")) throw new HelperError("INVALID_REPOSITORY_REF", "Repository ref is unsafe");
     if (typeof value.certificateEmail !== "string" || value.certificateEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.certificateEmail)) throw new HelperError("INVALID_EMAIL", "Certificate email is invalid");
-    if (typeof value.nodeId !== "string" || !UUID.test(value.nodeId) || !["staging", "production"].includes(String(value.certificateEnvironment)) || typeof value.expectedPlanDigest !== "string" || !/^[a-f0-9]{64}$/.test(value.expectedPlanDigest)) throw new HelperError("INVALID_REQUEST", "Plan identity fields are invalid");
-    return { operation: "prepare", requestId: requestId(value.requestId), planId: planId(value.planId), nodeId: value.nodeId, domains, repositoryUrl: publicGithubUrl(value.repositoryUrl), repositoryRef: value.repositoryRef, certificateEmail: value.certificateEmail, certificateEnvironment: value.certificateEnvironment as "staging" | "production", environmentVariables: environment(value.environmentVariables), expectedPlanDigest: value.expectedPlanDigest };
+    if (typeof value.nodeId !== "string" || !UUID.test(value.nodeId) || !["staging", "production"].includes(String(value.certificateEnvironment)) || typeof value.expectedPlanDigest !== "string" || !/^[a-f0-9]{64}$/.test(value.expectedPlanDigest) || typeof value.runtimeInstallAuthorized !== "boolean") throw new HelperError("INVALID_REQUEST", "Plan identity fields are invalid");
+    return { operation: "prepare", requestId: requestId(value.requestId), planId: planId(value.planId), nodeId: value.nodeId, domains, repositoryUrl: publicGithubUrl(value.repositoryUrl), repositoryRef: value.repositoryRef, certificateEmail: value.certificateEmail, certificateEnvironment: value.certificateEnvironment as "staging" | "production", environmentVariables: environment(value.environmentVariables), expectedPlanDigest: value.expectedPlanDigest, runtimeInstallAuthorized: value.runtimeInstallAuthorized };
   }
   if (value.operation === "activate") {
     exactKeys(value, ["operation", "requestId", "planId", "stagingId", "expectedPlanDigest"]);

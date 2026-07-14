@@ -10,9 +10,9 @@ async function execute(request: Parameters<typeof requestCertHelper>[0], signal:
   return { message: `Site ${expectedOperation} operation completed`, data: response.data, truncated: false };
 }
 
-export async function sitePlanPrepareHandler(parameters: unknown, signal: AbortSignal, nodeId: string, socketPath?: string) {
+export async function sitePlanPrepareHandler(parameters: unknown, signal: AbortSignal, nodeId: string, runtimeInstallAvailable: boolean, socketPath?: string) {
   const input = SitePlanPrepareTaskParametersSchema.parse(parameters);
-  return execute({ operation: "prepare", requestId: input.operationId, planId: input.planId, nodeId, domains: input.domains, repositoryUrl: input.repositoryUrl, repositoryRef: input.repositoryRef, certificateEmail: input.certificateContact, certificateEnvironment: input.certificateEnvironment, environmentVariables: input.environmentVariables, expectedPlanDigest: input.expectedPlanDigest }, signal, "prepare", socketPath);
+  return execute({ operation: "prepare", requestId: input.operationId, planId: input.planId, nodeId, domains: input.domains, repositoryUrl: input.repositoryUrl, repositoryRef: input.repositoryRef, certificateEmail: input.certificateContact, certificateEnvironment: input.certificateEnvironment, environmentVariables: input.environmentVariables, expectedPlanDigest: input.expectedPlanDigest, runtimeInstallAuthorized: input.runtimeInstallAuthorized && runtimeInstallAvailable }, signal, "prepare", socketPath);
 }
 
 export async function sitePlanActivateHandler(parameters: unknown, signal: AbortSignal, _nodeId?: string, socketPath?: string) {

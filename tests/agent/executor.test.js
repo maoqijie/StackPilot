@@ -73,6 +73,22 @@ test("executor validates target, expiry, capability and unknown types", async ()
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
+test("site prepare passes the Agent's current runtime capability to its handler", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "stackpilot-agent-test-")); const observed = [];
+  const registry = { ...taskRegistry, "sites.plan.prepare": { ...taskRegistry["sites.plan.prepare"], run: async (parameters, _signal, _nodeId, capabilities) => {
+    observed.push({ parameters, capabilities }); return { message: "prepared", truncated: false };
+  } } };
+  const parameters = { operationId: "77777777-7777-4777-8777-777777777777", planId: "88888888-8888-4888-8888-888888888888", domains: ["app.example.com"], repositoryUrl: "https://github.com/example/site.git", repositoryRef: "main", certificateContact: "ops@example.com", certificateEnvironment: "staging", environmentVariables: [], expectedPlanDigest: "a".repeat(64), runtimeInstallAuthorized: true };
+  const prepare = task({ taskId: "99999999-9999-4999-8999-999999999999", type: "sites.plan.prepare", parameters, requiredCapability: "sites.deploy", idempotencyKey: "prepare-runtime-denied" });
+  try {
+    const denied = new TaskExecutor(join(directory, "denied.json"), nodeId, "linux", ["sites.deploy"], registry); await denied.load(); await denied.execute(prepare);
+    assert.equal(observed[0].parameters.runtimeInstallAuthorized, true); assert.deepEqual(observed[0].capabilities, ["sites.deploy"]);
+    const allowed = new TaskExecutor(join(directory, "allowed.json"), nodeId, "linux", ["sites.deploy", "runtime.install"], registry); await allowed.load();
+    await allowed.execute({ ...prepare, taskId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", idempotencyKey: "prepare-runtime-allowed" });
+    assert.deepEqual(observed[1].capabilities, ["sites.deploy", "runtime.install"]);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
 test("executor persists receipts before execution and prevents duplicate delivery", async () => {
   const directory = await mkdtemp(join(tmpdir(), "stackpilot-agent-test-")); const receiptPath = join(directory, "receipts.json");
   try {

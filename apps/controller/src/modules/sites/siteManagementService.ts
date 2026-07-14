@@ -145,7 +145,7 @@ export class SiteManagementService {
   async activate(planId: string, input: ActivateSitePlanRequest, access: SiteAccess, requester: string) {
     const key = this.idempotency(requester, `activate:${planId}`, input.idempotencyKey);
     const existing = this.repository.findOperationByIdempotency(key);
-    if (existing) return existing;
+    if (existing) { this.assertNodeAccess(existing.nodeId, access); return existing; }
     const plan = this.repository.getPlan(planId);
     if (!plan) throw new ServiceError(404, "NOT_FOUND", "站点计划不存在");
     this.assertNodeAccess(plan.nodeId, access);
@@ -162,7 +162,7 @@ export class SiteManagementService {
   async updateLifecycle(siteId: string, input: UpdateSiteLifecycleRequest, access: SiteAccess, requester: string) {
     const key = this.idempotency(requester, `lifecycle:${siteId}`, input.idempotencyKey);
     const existing = this.repository.findOperationByIdempotency(key);
-    if (existing) return existing;
+    if (existing) { this.assertNodeAccess(existing.nodeId, access); return existing; }
     const site = await this.runtimeSite(siteId, access);
     if (site.protected) throw new ServiceError(409, "BAD_REQUEST", "受保护站点不能执行生命周期操作");
     if (site.manageability !== "managed") throw new ServiceError(409, "BAD_REQUEST", "站点当前不可纳管");
@@ -176,7 +176,7 @@ export class SiteManagementService {
   async renewCertificate(siteId: string, input: CreateSiteCertificateRenewalRequest, access: SiteAccess, requester: string, traceId: string) {
     const key = this.idempotency(requester, `renew:${siteId}`, input.idempotencyKey);
     const existing = this.repository.findOperationByIdempotency(key);
-    if (existing) return existing;
+    if (existing) { this.assertNodeAccess(existing.nodeId, access); return existing; }
     const site = await this.runtimeSite(siteId, access);
     if (site.version !== input.version) throw new ServiceError(409, "BAD_REQUEST", "站点版本已变化");
     const batch = await this.renewals.create({ siteIds: [siteId], idempotencyKey: input.idempotencyKey }, access, requester, traceId);
@@ -190,7 +190,7 @@ export class SiteManagementService {
   async queryLogs(siteId: string, input: CreateSiteLogQueryRequest, access: SiteAccess, requester: string) {
     const key = this.idempotency(requester, `logs:${siteId}`, input.idempotencyKey);
     const existing = this.repository.findOperationByIdempotency(key);
-    if (existing) return existing;
+    if (existing) { this.assertNodeAccess(existing.nodeId, access); return existing; }
     const site = await this.runtimeSite(siteId, access);
     if (site.version !== input.version) throw new ServiceError(409, "BAD_REQUEST", "站点版本已变化");
     const query = operation({ type: "log_query", nodeId: site.nodeId, siteId, planId: null });
@@ -353,7 +353,7 @@ export class RemoteSiteExecutor implements SiteExecutor {
         operationId, planId: plan.planId, domains: plan.domains, repositoryUrl: plan.repositoryUrl,
         repositoryRef: plan.repositoryRef, certificateContact: secrets.certificateEmail,
         certificateEnvironment: plan.certificateEnvironment, environmentVariables: secrets.environmentVariables,
-        expectedPlanDigest: plan.digest,
+        expectedPlanDigest: plan.digest, runtimeInstallAuthorized: false,
       } };
     }
     if (instruction.type === "activate") {

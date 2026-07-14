@@ -271,6 +271,7 @@ export const SitePlanPrepareTaskParametersSchema = z.object({
   certificateContact: z.email().max(254), certificateEnvironment: CertificateEnvironmentSchema,
   environmentVariables: z.array(SiteEnvironmentVariableInputSchema).max(100),
   expectedPlanDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  runtimeInstallAuthorized: z.boolean().default(false),
 }).strict();
 
 export const SitePlanActivateTaskParametersSchema = z.object({

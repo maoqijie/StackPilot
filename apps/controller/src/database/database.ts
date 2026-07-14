@@ -4,7 +4,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrateDatabase } from "./migrator.js";
 
-const migrationDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "migrations");
+const moduleDirectory = dirname(fileURLToPath(import.meta.url));
+const migrationDirectory = resolve(moduleDirectory, "migrations");
+const applicationVersion = (JSON.parse(readFileSync(resolve(moduleDirectory, "../../package.json"), "utf8")) as { version: string }).version;
 
 export function openDatabase(path: string): Database.Database {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -22,6 +24,11 @@ export function openDatabase(path: string): Database.Database {
       { version: 6, name: "database-operations", sql: readFileSync(resolve(migrationDirectory,"006_databases.sql"), "utf8"), replaces: ["site-management"] },
       { version: 7, name: "site-management", sql: readFileSync(resolve(migrationDirectory,"007_site_management.sql"), "utf8") },
     ]);
+    const schemaVersion = (database.prepare("SELECT max(version) AS version FROM schema_migrations").get() as { version: number }).version;
+    database.prepare(`UPDATE release_metadata
+      SET application_version = ?, schema_version = ?, upgraded_at = CURRENT_TIMESTAMP
+      WHERE singleton = 1 AND (application_version <> ? OR schema_version <> ?)`)
+      .run(applicationVersion, schemaVersion, applicationVersion, schemaVersion);
   } catch (error) {
     database.close();
     throw error;
