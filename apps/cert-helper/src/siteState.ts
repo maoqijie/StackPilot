@@ -9,6 +9,7 @@ export const stagingId = (planId: string) => `staging_${createHash("sha256").upd
 export const agentSiteId = (nodeId: string, domain: string) => `site_${createHash("sha256").update(`${nodeId}\x00${domain.toLowerCase()}`).digest("hex").slice(0, 32)}`;
 export const siteId = (nodeId: string, domain: string) => `site-${createHash("sha256").update(`${nodeId}\x00${agentSiteId(nodeId, domain)}`).digest("hex").slice(0, 32)}`;
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const localLocks = new Map<string, Promise<void>>();
 
 export class SiteStateStore {
   constructor(private readonly config: HelperConfig) {}
@@ -98,22 +99,28 @@ export class SiteStateStore {
 
   async withSiteLock<T>(id: string, operation: () => Promise<T>) {
     const root = within(this.config.stateRoot, "locks"); const path = within(root, `${id}.lock`); const recovery = within(root, `${id}.recovery`); const owner = await currentLockOwner();
-    await mkdir(root, { recursive: true, mode: 0o700 });
-    while (true) {
-      try { await symlink(owner.descriptor, path); break; }
-      catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        const recoveryDescriptor = await acquireRecovery(recovery);
-        if (recoveryDescriptor) {
-          try {
-            const staleOwner = await lockOwner(path); if (staleOwner && !await sameProcess(staleOwner)) await removeOwnedLock(path, staleOwner);
-          } finally { await removeOwnedLock(recovery, await descriptorOwner(recoveryDescriptor)); }
+    const predecessor = localLocks.get(path) ?? Promise.resolve(); let releaseLocal!: () => void;
+    const local = new Promise<void>((resolve) => { releaseLocal = resolve; }); localLocks.set(path, local); await predecessor;
+    try {
+      await mkdir(root, { recursive: true, mode: 0o700 });
+      while (true) {
+        try { await symlink(owner.descriptor, path); break; }
+        catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+          const recoveryDescriptor = await acquireRecovery(recovery);
+          if (recoveryDescriptor) {
+            try {
+              const staleOwner = await lockOwner(path); if (staleOwner && !await sameProcess(staleOwner)) await removeOwnedLock(path, staleOwner);
+            } finally { await removeOwnedLock(recovery, await descriptorOwner(recoveryDescriptor)); }
+          }
+          await wait(25); continue;
         }
-        await wait(25); continue;
       }
+      try { return await operation(); }
+      finally { await removeOwnedLock(path, owner); }
+    } finally {
+      releaseLocal(); if (localLocks.get(path) === local) localLocks.delete(path);
     }
-    try { return await operation(); }
-    finally { await removeOwnedLock(path, owner); }
   }
   async sites() {
     const root = within(this.config.stateRoot, "sites");
@@ -128,11 +135,14 @@ export class SiteStateStore {
 type LockOwner = { descriptor: string; pid: number; processStart: string | null; symbolic: boolean };
 
 async function lockOwner(path: string): Promise<LockOwner | null> {
-  const info = await lstat(path).catch(() => null); if (!info) return null;
-  if (info.isSymbolicLink()) {
-    const descriptor = await readlink(path); return descriptorOwner(descriptor).catch(() => null);
+  try { return await descriptorOwner(await readlink(path)); }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return null;
+    if (error instanceof Error && error.message === "INVALID_LOCK_OWNER") return null;
+    if (code !== "EINVAL") throw error;
   }
-  if (!info.isDirectory()) return null;
+  const info = await lstat(path).catch(() => null); if (!info || !info.isDirectory()) return null;
   const owner = await readJson<{ token?: unknown; pid?: unknown }>(within(path, "owner.json")).catch(() => null);
   return typeof owner?.token === "string" && typeof owner.pid === "number" ? { descriptor: owner.token, pid: owner.pid, processStart: null, symbolic: false } : null;
 }

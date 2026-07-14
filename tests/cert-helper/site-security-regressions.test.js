@@ -89,6 +89,11 @@ test("site lock serializes concurrent holders and recovers a dead process owner"
     while (order.length === 0) await new Promise((resolve) => setTimeout(resolve, 5));
     const waiting = second.withSiteLock(id, async () => { order.push("second"); }); await new Promise((resolve) => setTimeout(resolve, 30)); assert.deepEqual(order, ["first-start"]);
     release(); await Promise.all([holding, waiting]); assert.deepEqual(order, ["first-start", "first-end", "second"]);
+    let active = 0; let maximum = 0;
+    await Promise.all(Array.from({ length: 20 }, (_, index) => second.withSiteLock(id, async () => {
+      active += 1; maximum = Math.max(maximum, active); await new Promise((resolve) => setTimeout(resolve, index % 3)); active -= 1;
+    })));
+    assert.equal(maximum, 1);
     const lock = join(cfg.stateRoot, "locks", `${id}.lock`); await mkdir(lock); await writeFile(join(lock, "owner.json"), JSON.stringify({ token: "dead", pid: 2_147_483_647 }));
     await second.withSiteLock(id, async () => { order.push("recovered"); }); assert.equal(order.at(-1), "recovered");
   } finally { await rm(root, { recursive: true, force: true }); }

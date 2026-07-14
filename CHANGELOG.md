@@ -2,6 +2,12 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.13 - 2026-07-15
+
+### Fixed
+
+- Serialized same-process site-helper lock contenders and tolerated lock handoff races while reading owner metadata, preventing concurrent activations from failing when the previous lock disappears between inspection and `readlink`.
+
 ## 0.3.0-preview.12 - 2026-07-15
 
 ### Security
