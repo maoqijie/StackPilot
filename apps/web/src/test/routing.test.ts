@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { cleanCurrentRouteForPage, collectUrlParams, readPageFromHash } from "../app/routing";
-import { navItemsForPermissions } from "../app/navigation";
+import { navItemsForPermissions, topbarSearchResults } from "../app/navigation";
 
 describe("application routing", () => {
   beforeEach(() => {
@@ -36,5 +36,11 @@ describe("application routing", () => {
   it("hides schedule navigation without read permission", () => {
     expect(navItemsForPermissions([]).some((item) => item.key === "schedule")).toBe(false);
     expect(navItemsForPermissions(["schedules:read"]).some((item) => item.key === "schedule")).toBe(true);
+  });
+
+  it("shows the firewall mutation shortcut only with read and operate permissions", () => {
+    expect(topbarSearchResults("新增防火墙规则", ["firewall:operate"])).toHaveLength(0);
+    expect(topbarSearchResults("新增防火墙规则", ["firewall:read"])).toHaveLength(0);
+    expect(topbarSearchResults("新增防火墙规则", ["firewall:read", "firewall:operate"])).toHaveLength(1);
   });
 });

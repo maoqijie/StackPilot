@@ -18,7 +18,7 @@ export const PERMISSIONS: ReadonlyArray<[Permission, "low" | "medium" | "high", 
   ["databases:sql:read","high","读取数据库完整 SQL 文本"],["databases:backup","high","管理和执行数据库备份计划"],
   ["databases:operate","high","执行数据库会话和查询治理操作"],["databases:install","high","安装和创建数据库实例"],["databases:restore","high","执行数据库原地恢复"],
   ["files:read","low","读取受管文件"],["files:write","high","修改和上传受管文件"],["files:delete","high","永久删除受管文件"],
-  ["firewall:read","medium","读取本机监听端口、UFW 规则与授权节点的防火墙拒绝事件"],["firewall:operate","high","创建或删除 StackPilot 受管 UFW 规则"],
+  ["firewall:read","medium","读取本机监听端口、UFW 规则与授权节点的防火墙拒绝事件"],["firewall:operate","high","创建或删除本机 StackPilot 受管 UFW 规则"],
   ["audit:read","low","读取全局审计日志"],["audit:export","high","创建和下载完整审计快照"],["users:read","low","读取用户"],["users:manage","high","管理用户"],["roles:read","low","读取角色"],["roles:manage","high","管理角色"],["tokens:manage","high","管理 API Token"],["system:backup","high","备份与恢复数据库"],
 ];
 const roleDefinitions = [

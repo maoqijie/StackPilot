@@ -13,12 +13,12 @@ const denyResponse = { collectedAt, collectionStatus: "complete", warnings: [], 
 describe("firewall real backend", () => {
   beforeEach(() => { vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }))); vi.mocked(reauthenticate).mockResolvedValue({ proof: "proof-value-with-more-than-thirty-two-characters", expiresAt: collectedAt }); });
   it("loads UFW rules and shows backend freshness", async () => {
-    render(<FirewallPage page="firewall-rules" notify={vi.fn()} permissions={["firewall:read"]} />);
+    render(<FirewallPage page="firewall" notify={vi.fn()} permissions={["firewall:read"]} />);
     expect(await screen.findAllByText("HTTPS 公网访问")).toHaveLength(2); expect(screen.getByText(/host-a · 采集时间/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "新增规则" })).not.toBeInTheDocument();
   });
   it("requires password reauthentication before creating a real rule", async () => {
-    const user = userEvent.setup(); render(<FirewallPage page="firewall-rules" notify={vi.fn()} permissions={["firewall:read", "firewall:operate"]} />); await screen.findAllByText("HTTPS 公网访问");
+    const user = userEvent.setup(); render(<FirewallPage page="firewall" notify={vi.fn()} permissions={["firewall:read", "firewall:operate"]} />); await screen.findAllByText("HTTPS 公网访问");
     await user.click(screen.getByRole("button", { name: "新增规则" })); const dialog = screen.getByRole("dialog", { name: "新增放行规则" });
     await user.type(within(dialog).getByLabelText("端口"), "8443"); await user.clear(within(dialog).getByLabelText("来源")); await user.type(within(dialog).getByLabelText("来源"), "10.0.0.0/8");
     await user.type(within(dialog).getByLabelText("当前密码"), "current-password"); await user.click(within(dialog).getByRole("button", { name: "保存规则" }));

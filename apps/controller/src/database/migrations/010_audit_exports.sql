@@ -1,4 +1,4 @@
-CREATE TABLE audit_exports (
+CREATE TABLE IF NOT EXISTS audit_exports (
   export_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   format TEXT NOT NULL CHECK(format IN ('csv','json')),
@@ -16,6 +16,6 @@ CREATE TABLE audit_exports (
   error_code TEXT,
   source_max_sequence INTEGER NOT NULL CHECK(source_max_sequence >= 0)
 );
-CREATE INDEX audit_exports_created_idx ON audit_exports(created_at DESC);
-CREATE INDEX audit_exports_expires_idx ON audit_exports(expires_at);
-UPDATE release_metadata SET schema_version = 9, upgraded_at = CURRENT_TIMESTAMP WHERE singleton = 1;
+CREATE INDEX IF NOT EXISTS audit_exports_created_idx ON audit_exports(created_at DESC);
+CREATE INDEX IF NOT EXISTS audit_exports_expires_idx ON audit_exports(expires_at);
+UPDATE release_metadata SET schema_version = 10, upgraded_at = CURRENT_TIMESTAMP WHERE singleton = 1;

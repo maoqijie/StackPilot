@@ -207,6 +207,12 @@
   overflow-wrap: anywhere;
 }
 
+.audit-load-more {
+  display: flex;
+  justify-content: center;
+  padding-top: 16px;
+}
+
 @media (max-width: 773px) {
   :is(.module-page-audit, .module-page-audit-all, .module-page-audit-failed, .module-page-audit-export) .module-card-list {
     padding: 0;

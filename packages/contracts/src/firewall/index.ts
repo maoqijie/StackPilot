@@ -51,6 +51,12 @@ export type FirewallDenyRecordsPayload = z.infer<typeof FirewallDenyRecordsPaylo
 export const FirewallProtocolSchema = z.enum(["tcp", "udp"]);
 export const FirewallActionSchema = z.enum(["allow", "deny", "reject", "limit"]);
 export const FirewallDirectionSchema = z.enum(["in", "out"]);
+const FirewallSourceSchema = z.string().trim().min(1).max(128).refine((value) => {
+  const [address, prefix, extra] = value.split("/");
+  if (!address || extra !== undefined) return false;
+  const maxPrefix = z.ipv4().safeParse(address).success ? 32 : z.ipv6().safeParse(address).success ? 128 : null;
+  return maxPrefix !== null && (prefix === undefined || /^\d+$/.test(prefix) && Number(prefix) <= maxPrefix);
+}, "source must be an IP address or CIDR");
 
 export const FirewallRuleSchema = z.object({
   id: z.string().min(1).max(100).regex(/^[A-Za-z0-9._:-]+$/),
@@ -80,7 +86,7 @@ export const CreateFirewallRuleRequestSchema = z.object({
   name: z.string().trim().min(1).max(80),
   port: z.number().int().min(1).max(65_535),
   protocol: FirewallProtocolSchema,
-  source: z.string().trim().min(1).max(128),
+  source: FirewallSourceSchema,
   idempotencyKey: z.string().uuid(),
 }).strict();
 

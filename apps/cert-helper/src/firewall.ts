@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
-import { hostname } from "node:os";
-import { isIP } from "node:net";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { isIP } from "node:net";
+import { hostname } from "node:os";
 import { join } from "node:path";
-import type { FixedCommandRunner } from "./runner.js";
-import { runFixedCommand } from "./runner.js";
+import { runFirewallCommand, type FixedCommandRunner } from "./runner.js";
 import { HelperError } from "./types.js";
 
 type FirewallProtocol = "tcp" | "udp";
@@ -17,6 +16,8 @@ type CreateInput = { requestId: string; name: string; port: number; protocol: Fi
 type DeleteInput = { requestId: string; ruleId: string; version: string };
 type Receipt = { operation: "create" | "delete"; identity: string; status: "started" | "completed"; result?: unknown };
 
+const UFW = "/usr/sbin/ufw";
+const COMMAND_ENV: NodeJS.ProcessEnv = { PATH: "/usr/sbin:/usr/bin:/sbin:/bin", LC_ALL: "C", LANG: "C" };
 const MANAGED_COMMENT = /^StackPilot:([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\s+(.+))?$/i;
 const RULE_LINE = /^\[\s*(\d+)\]\s+(.+?)\s+(ALLOW|DENY|REJECT|LIMIT)\s+(IN|OUT)\s+(.+?)(?:\s+#\s+(.+))?$/i;
 
@@ -28,7 +29,8 @@ function normalizeTarget(value: string) {
 }
 
 export function parseUfwStatus(output: string, host = hostname()) {
-  const active = /^Status:\s+active\s*$/im.test(output); const rules: FirewallRule[] = [];
+  const active = /^Status:\s+active\s*$/im.test(output); const inactive = /^Status:\s+inactive\s*$/im.test(output); const rules: FirewallRule[] = [];
+  if (!active && !inactive) return { engine: "ufw" as const, host, active: false, collectedAt: new Date().toISOString(), collectionStatus: "unavailable" as const, warnings: ["UFW 状态输出无法解析"], rules };
   for (const line of output.split(/\r?\n/)) {
     const match = line.trim().match(RULE_LINE); if (!match) continue;
     const target = normalizeTarget(match[2]!); const comment = (match[6] ?? "").trim(); const managed = comment.match(MANAGED_COMMENT);
@@ -44,58 +46,63 @@ export function parseUfwStatus(output: string, host = hostname()) {
 }
 
 async function status(run: FixedCommandRunner) {
-  const result = await run("/usr/sbin/ufw", ["status", "numbered"], 10_000, { env: { PATH: "/usr/sbin:/usr/bin", LC_ALL: "C", LANG: "C" } });
-  return parseUfwStatus(result.stdout);
+  return parseUfwStatus((await run(UFW, ["status", "numbered"], 10_000, { env: COMMAND_ENV })).stdout);
+}
+
+function requireActive(payload: Awaited<ReturnType<typeof status>>) {
+  if (payload.collectionStatus === "unavailable") throw new HelperError("FIREWALL_BACKEND_UNAVAILABLE", "UFW status output is unavailable");
+  if (!payload.active) throw new HelperError("FIREWALL_INACTIVE", "UFW is inactive");
 }
 
 function safeSource(value: string) {
-  const [address, prefix, extra] = value.split("/");
-  const family = isIP(address ?? "");
+  const [address, prefix, extra] = value.split("/"); const family = isIP(address ?? "");
   if (!family || extra !== undefined || (prefix !== undefined && (!/^\d+$/.test(prefix) || Number(prefix) > (family === 4 ? 32 : 128)))) throw new HelperError("INVALID_FIREWALL_SOURCE", "Firewall source must be an IP address or CIDR");
   return value;
 }
 
 async function writeReceipt(path: string, receipt: Receipt) { const temporary = `${path}.${process.pid}.tmp`; await writeFile(temporary, JSON.stringify(receipt), { mode: 0o600 }); await rename(temporary, path); }
-async function actionReceipt(stateRoot: string, requestId: string, operation: Receipt["operation"], identity: string, perform: () => Promise<unknown>) {
+async function actionReceipt(stateRoot: string, requestId: string, operation: Receipt["operation"], identity: string, validate: () => Promise<void>, perform: () => Promise<unknown>) {
   const directory = join(stateRoot, "firewall-actions"); const path = join(directory, `${requestId}.json`); await mkdir(directory, { recursive: true, mode: 0o700 });
-  let receipt: Receipt | null = null; try { receipt = JSON.parse(await readFile(path, "utf8")) as Receipt; } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new HelperError("FIREWALL_RECEIPT_INVALID", "Firewall action receipt is invalid"); }
+  let receipt: Receipt | null = null;
+  try { receipt = JSON.parse(await readFile(path, "utf8")) as Receipt; } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new HelperError("FIREWALL_RECEIPT_INVALID", "Firewall action receipt is invalid"); }
   if (receipt) {
     if (receipt.operation !== operation || receipt.identity !== identity) throw new HelperError("FIREWALL_IDEMPOTENCY_CONFLICT", "Firewall idempotency key changed");
     if (receipt.status === "completed") return receipt.result;
     throw new HelperError("FIREWALL_RESULT_UNKNOWN", "Firewall action result is unknown and will not be replayed");
   }
+  await validate();
   await writeReceipt(path, { operation, identity, status: "started" }); const result = await perform();
   await writeReceipt(path, { operation, identity, status: "completed", result }); return result;
 }
 
-export async function listFirewallRules(run: FixedCommandRunner = runFixedCommand) { return status(run); }
+export async function listFirewallRules(run: FixedCommandRunner = runFirewallCommand) { return status(run); }
 
-export async function createFirewallRule(input: CreateInput, stateRoot: string, run: FixedCommandRunner = runFixedCommand) {
+export async function createFirewallRule(input: CreateInput, stateRoot: string, run: FixedCommandRunner = runFirewallCommand) {
   const source = safeSource(input.source); const identity = `${input.name}\0${input.port}\0${input.protocol}\0${source}`;
-  return actionReceipt(stateRoot, input.requestId, "create", identity, async () => {
-    const before = await status(run); if (!before.active) throw new HelperError("FIREWALL_INACTIVE", "UFW is inactive");
-    const name = [...input.name].map((character) => {
-      const code = character.charCodeAt(0); return code < 32 || code === 127 ? " " : character;
-    }).join("").trim().slice(0, 80);
-    await run("/usr/sbin/ufw", ["allow", "proto", input.protocol, "from", source, "to", "any", "port", String(input.port), "comment", `StackPilot:${input.requestId} ${name}`], 20_000, { env: { PATH: "/usr/sbin:/usr/bin", LC_ALL: "C", LANG: "C" } });
+  return actionReceipt(stateRoot, input.requestId, "create", identity,
+    async () => { requireActive(await status(run)); },
+    async () => {
+    const name = [...input.name].map((character) => { const code = character.charCodeAt(0); return code < 32 || code === 127 ? " " : character; }).join("").trim().slice(0, 80);
+    await run(UFW, ["allow", "proto", input.protocol, "from", source, "to", "any", "port", String(input.port), "comment", `StackPilot:${input.requestId} ${name}`], 20_000, { env: COMMAND_ENV });
     return status(run);
-  });
+    });
 }
 
-export async function deleteFirewallRule(input: DeleteInput, stateRoot: string, run: FixedCommandRunner = runFixedCommand) {
+export async function deleteFirewallRule(input: DeleteInput, stateRoot: string, run: FixedCommandRunner = runFirewallCommand) {
   const identity = `${input.ruleId}\0${input.version}`;
-  return actionReceipt(stateRoot, input.requestId, "delete", identity, async () => {
-    const before = await status(run); if (!before.active) throw new HelperError("FIREWALL_INACTIVE", "UFW is inactive");
-    const rule = before.rules.find((item) => item.id === input.ruleId);
-    if (!rule) throw new HelperError("FIREWALL_RULE_NOT_FOUND", "Firewall rule was not found");
-    if (!rule.managed) throw new HelperError("FIREWALL_RULE_FORBIDDEN", "Only StackPilot-managed firewall rules can be deleted");
-    if (rule.version !== input.version) throw new HelperError("FIREWALL_RULE_CHANGED", "Firewall rule changed since it was collected");
-    const result = await run("/usr/sbin/ufw", ["status", "numbered"], 10_000, { env: { PATH: "/usr/sbin:/usr/bin", LC_ALL: "C", LANG: "C" } });
-    const current = parseUfwStatus(result.stdout).rules.find((item) => item.id === input.ruleId);
-    if (!current?.managed || current.version !== input.version) throw new HelperError("FIREWALL_RULE_CHANGED", "Firewall rule changed before deletion");
-    const numbered = result.stdout.split(/\r?\n/).find((line) => line.includes(`# StackPilot:${input.ruleId.split(":")[1]}`) && (input.ruleId.endsWith(":ipv6") ? /\(v6\)/i.test(line) : !/\(v6\)/i.test(line)));
-    const number = numbered?.match(/^\[\s*(\d+)\]/)?.[1]; if (!number) throw new HelperError("FIREWALL_RULE_CHANGED", "Firewall rule number changed before deletion");
-    await run("/usr/sbin/ufw", ["--force", "delete", number], 20_000, { env: { PATH: "/usr/sbin:/usr/bin", LC_ALL: "C", LANG: "C" } });
+  let validatedRule: FirewallRule | undefined;
+  const validate = async () => {
+    const before = await status(run); requireActive(before);
+    validatedRule = before.rules.find((item) => item.id === input.ruleId);
+    if (!validatedRule) throw new HelperError("FIREWALL_RULE_NOT_FOUND", "Firewall rule was not found");
+    if (!validatedRule.managed || validatedRule.action !== "allow" || validatedRule.direction !== "in" || !validatedRule.protocol || !/^\d+$/.test(validatedRule.port)) throw new HelperError("FIREWALL_RULE_FORBIDDEN", "Only fixed StackPilot-managed allow rules can be deleted");
+    if (validatedRule.version !== input.version) throw new HelperError("FIREWALL_RULE_CHANGED", "Firewall rule changed since it was collected");
+  };
+  return actionReceipt(stateRoot, input.requestId, "delete", identity, validate, async () => {
+    const rule = validatedRule!;
+    const marker = input.ruleId.split(":")[1]; const comment = `StackPilot:${marker} ${rule.name}`;
+    const source = rule.source.replace(/\s+\(v6\)$/i, "") === "Anywhere" ? rule.ipVersion === "ipv6" ? "::/0" : "0.0.0.0/0" : rule.source.replace(/\s+\(v6\)$/i, "");
+    await run(UFW, ["--force", "delete", "allow", "proto", rule.protocol!, "from", source, "to", "any", "port", rule.port, "comment", comment], 20_000, { env: COMMAND_ENV });
     return status(run);
   });
 }

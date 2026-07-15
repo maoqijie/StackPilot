@@ -2,12 +2,12 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.31 - 2026-07-16
+## 0.3.0-preview.33 - 2026-07-16
 
 ### Added
 
 - Connected the audit-export workbench to persistent Controller APIs for real CSV and JSON snapshots, 10-second list polling, stable details, reauthentication and authenticated streaming downloads.
-- Added schema 9 audit-export metadata, fixed high-water audit snapshots, SHA-256 evidence, seven-day expiry and bounded storage under the Controller state directory.
+- Added schema 10 audit-export metadata, fixed high-water audit snapshots, SHA-256 evidence, seven-day expiry and bounded storage under the Controller state directory.
 
 ### Fixed
 
@@ -18,6 +18,36 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Added the separate high-risk `audit:export` permission and required it together with `audit:read`, a full-node user session, CSRF and one-time reauthentication.
 - Verified the append-only audit chain before export, retained parameter redaction, exported the complete hash payload, prevented spreadsheet formula injection, bounded active exports and rejected API-token or scoped-session access.
+
+## 0.3.0-preview.32 - 2026-07-16
+
+### Added
+
+- Added strict server-side audit filters for result, actor, source, action prefix and search, plus stable sequence-cursor pagination and complete filtered JSON export.
+- Added SQLite schema 9 with indexed audit node ownership, historical ownership backfill and query-plan coverage for node-scoped polling.
+
+### Changed
+
+- Extended the real global, failed, database and export audit views with backend pagination while preserving 10-second visibility-aware polling, selected details and loaded history.
+- Updated database backup, restore, preflight, release provenance and upgrade-drill gates to accept and verify schema 9.
+
+### Security
+
+- Applied node scope and every audit filter before result limits, rejected unknown, duplicate or malformed query parameters, and retained append-only hash verification across ownership backfill.
+
+## 0.3.0-preview.31 - 2026-07-16
+
+### Fixed
+
+- Merged the parallel firewall backends onto the stable `/api/firewall/rules` contract and retained real listening-port and deny-record reads without fixture fallbacks.
+- Made managed-rule deletion validate once before its persistent operation receipt is created, then delete the captured marker-bearing UFW rule instead of re-reading a mutable numbered position.
+- Preserved the browser's current rules after background failures, kept mutation payloads and idempotency keys stable for safe retries, and replaced the visible data immediately after successful writes.
+
+### Security
+
+- Required `firewall:read`, `firewall:operate`, Controller node scope, a user session, CSRF and one-time reauthentication for every rule mutation.
+- Kept UFW outside the general privileged command allowlist, denied native-rule deletion, persisted unknown operation results to prevent side-effect replay, and limited the helper to a Controller-only Unix socket and fixed UFW arguments.
+- Left UFW activation, deactivation and default-policy management outside StackPilot.
 
 ## 0.3.0-preview.30 - 2026-07-16
 

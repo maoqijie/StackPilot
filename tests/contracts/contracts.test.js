@@ -14,13 +14,13 @@ import {
   AgentDatabaseBackupPlanPollResponseSchema, AgentDatabaseOperationUpdateSchema, AgentDatabaseQueryUploadSchema, AgentDatabaseScheduledBackupResultsRequestSchema,
   BusinessDatabaseBackupsPayloadSchema, CreateBusinessDatabaseBackupPlanRequestSchema, CreateDatabaseOperationPlanRequestSchema, DatabaseOperationPlanSchema,
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, ExecuteDatabaseOperationPlanRequestSchema,
-  AuditEventsResponseSchema, AuditQuerySchema, CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
+  CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
   AuditExportListResponseSchema, CreateAuditExportRequestSchema,
   CreateFirewallRuleRequestSchema, FirewallRulesPayloadSchema,
   FirewallOpenPortsPayloadSchema,
   CreateDirectoryRequestSchema,
-  UpdateNodeCapabilitiesRequestSchema,
+  UpdateNodeCapabilitiesRequestSchema, AuditEventsQuerySchema, AuditEventsResponseSchema,
   AgentFirewallDenySnapshotSchema, FirewallDenyRecordsPayloadSchema,
 } from "@stackpilot/contracts";
 
@@ -38,17 +38,6 @@ test("firewall contracts accept bounded UFW rules and reject shell-shaped input"
   assert.equal(CreateFirewallRuleRequestSchema.safeParse({ name: "bad", port: "443; reboot", protocol: "tcp", source: "any", idempotencyKey: crypto.randomUUID(), command: "ufw allow" }).success, false);
   assert.equal(PermissionSchema.safeParse("firewall:read").success, true); assert.equal(PermissionSchema.safeParse("firewall:operate").success, true);
 });
-
-test("audit contracts bound queries and expose backend collection time", () => {
-  const collectedAt = new Date().toISOString();
-  const event = { sequence: 1, eventId: crypto.randomUUID(), occurredAt: collectedAt, actorType: "user", actorId: "operator", source: "controller", targetType: "file", targetId: "/tmp/a", action: "file.trash", parameters: '{"token":"[REDACTED]"}', outcome: "success", authorization: "allowed", requestId: crypto.randomUUID(), traceId: crypto.randomUUID(), eventHash: "a".repeat(64) };
-  assert.equal(AuditEventsResponseSchema.safeParse({ events: [event], collectedAt }).success, true);
-  assert.equal(AuditEventsResponseSchema.safeParse({ events: [event], collectedAt, clientTime: collectedAt }).success, false);
-  assert.deepEqual(AuditQuerySchema.parse({}), { limit: 200, result: "all" });
-  assert.deepEqual(AuditQuerySchema.parse({ limit: "50", result: "failed", actionPrefix: "database." }), { limit: 50, result: "failed", actionPrefix: "database." });
-  for (const query of [{ limit: 0 }, { limit: 1001 }, { actionPrefix: "database%" }, { unknown: "value" }]) assert.equal(AuditQuerySchema.safeParse(query).success, false);
-});
-
 test("firewall deny snapshots and records are bounded, unique and typed", () => {
   const collectedAt = new Date().toISOString();
   const event = { id: `fw_${"a".repeat(64)}`, occurredAt: collectedAt, sourceAddress: "198.51.100.24", destinationAddress: "192.0.2.10", destinationPort: 22, protocol: "TCP", interfaceName: "eth0", rule: "UFW BLOCK", reason: "Host firewall rejected this packet" };
@@ -59,7 +48,6 @@ test("firewall deny snapshots and records are bounded, unique and typed", () => 
   assert.equal(FirewallDenyRecordsPayloadSchema.safeParse({ collectedAt, collectionStatus: "complete", warnings: [], records: [record] }).success, true);
   assert.equal(PermissionSchema.safeParse("firewall:read").success, true);
 });
-
 test("schedule side effects require bounded idempotency keys", () => {
   const request = { name: "backup", cron: "0 4 * * *", command: "true", idempotencyKey: "schedule-create-1" };
   assert.equal(CreateScheduleJobRequestSchema.safeParse(request).success, true);
@@ -88,6 +76,21 @@ test("audit export contracts are strict, bounded and limited to implemented form
   assert.equal(CreateAuditExportRequestSchema.safeParse({ name: "审计快照", format: "json", extra: true }).success, false);
   assert.equal(PermissionSchema.safeParse("audit:export").success, true);
   assert.equal(AuditExportListResponseSchema.safeParse({ exports: [], collectedAt: new Date().toISOString() }).success, true);
+});
+
+test("audit payload exposes bounded real events and backend freshness", () => {
+  const collectedAt = new Date().toISOString();
+  const event = {
+    sequence: 1, eventId: crypto.randomUUID(), occurredAt: collectedAt, actorType: "user", actorId: "operator",
+    source: "controller", targetType: "file", targetId: "/var/www/index.html", action: "file.upload",
+    parameters: "{}", outcome: "success", authorization: "allowed:files:write", requestId: crypto.randomUUID(),
+    traceId: crypto.randomUUID(), eventHash: "a".repeat(64),
+  };
+  assert.equal(AuditEventsResponseSchema.safeParse({ events: [event], collectedAt, total: 1, limit: 200, nextCursor: null }).success, true);
+  assert.equal(AuditEventsResponseSchema.safeParse({ events: [event], collectedAt, total: 1 }).success, false);
+  assert.equal(AuditEventsResponseSchema.safeParse({ events: [{ ...event, eventHash: "invalid" }], collectedAt, total: 1, limit: 200, nextCursor: null }).success, false);
+  assert.deepEqual(AuditEventsQuerySchema.parse({ limit: "1000", beforeSequence: "42", result: "failure", actor: " operator ", source: "database", search: " trace " }), { limit: 1_000, beforeSequence: 42, result: "failure", actor: "operator", source: "database", search: "trace" });
+  for (const query of [{ unknown: "value" }, { limit: "0" }, { limit: "1001" }, { beforeSequence: "1.5" }, { result: "failed" }, { actor: " " }]) assert.equal(AuditEventsQuerySchema.safeParse(query).success, false);
 });
 
 test("node capability updates accept the complete shared Agent capability set", () => {

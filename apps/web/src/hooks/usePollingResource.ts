@@ -48,5 +48,12 @@ export function usePollingResource<T>(loader: (signal: AbortSignal) => Promise<T
     return () => { disposed = true; controllerRef.current?.abort(); };
   }, [enabled, initialData, load, resourceKey]);
   useAutoRefresh((signal) => load(signal, true), 10_000, enabled && !state.loading);
-  return { ...state, retry: () => load(undefined, false), refresh: () => load(undefined, true) };
+  const replaceData = useCallback((data: T) => {
+    controllerRef.current?.abort();
+    controllerRef.current = null;
+    requestRef.current = null;
+    dataRef.current = data;
+    setState({ data, loading: false, error: null, backgroundError: null });
+  }, []);
+  return { ...state, retry: () => load(undefined, false), refresh: () => load(undefined, true), replaceData };
 }

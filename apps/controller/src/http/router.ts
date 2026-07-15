@@ -26,7 +26,7 @@ import { routeDatabaseRequest } from "./databaseRouter.js";
 import { routeFileRequest, routeFileUploadRequest } from "./fileRouter.js";
 import { routeSystemdRequest } from "./systemdRouter.js";
 import { routeAuditExportRequest } from "./auditExportRouter.js";
-import { routeFirewallRequest } from "./firewallRouter.js";
+import { CONTROLLER_FIREWALL_NODE_ID, routeFirewallRequest } from "./firewallRouter.js";
 
 function idAt(context: RequestContext, index: number) {
   try {
@@ -67,7 +67,7 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     return;
   }
   if (context.url.pathname === "/api/firewall/open-ports" && method === "GET") {
-    context.identity?.require(context.principal, "firewall:read", context.platform.nodeId);
+    context.identity?.require(context.principal, "firewall:read", CONTROLLER_FIREWALL_NODE_ID);
     response.setHeader("Cache-Control", "no-store");
     sendJson(response, 200, await services.firewallOpenPorts.list(), FirewallOpenPortsPayloadSchema);
     return;

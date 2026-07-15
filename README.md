@@ -2,14 +2,14 @@
 
 StackPilot 是开源自托管多服务器总控台。当前仓库采用 npm workspaces，包含前端控制台、Node.js Controller API、非 root Agent、root-only 数据库 helper 和共享运行时契约。
 
-> **项目成熟度：预览版。** 当前版本为 `0.3.0-preview.31`，提供可重复的部署、迁移、回滚和发布验证流程，但尚未达到稳定生产发布条件，也不提供 SLA。正式支持范围和已验证边界见[兼容性矩阵](docs/compatibility.md)。
+> **项目成熟度：预览版。** 当前版本为 `0.3.0-preview.33`，提供可重复的部署、迁移、回滚和发布验证流程，但尚未达到稳定生产发布条件，也不提供 SLA。正式支持范围和已验证边界见[兼容性矩阵](docs/compatibility.md)。
 
 ## 当前前端范围
 
 - 总览：服务器健康摘要、服务器列表、待处理事项、最近审计。
 - 服务器：Agent 安装命令、节点状态、资源占用、常用操作入口。
 - 服务：Agent 只读采集的 systemd 服务状态、资源指标和脱敏 journal 摘要。
-- 防火墙：Controller 主机真实监听端口、绑定范围和采集时间；规则管理与拦截记录保留为独立工作台。
+- 防火墙：Controller 主机真实 UFW 状态、规则和监听端口；Agent 上报的真实拦截记录；规则变更仅允许操作 StackPilot 受管规则。
 - 发布：GitHub/GitLab 项目发布列表、阶段进度、失败原因、日志、重试和回滚入口。
 - 审计日志：关键操作筛选、来源信息和详情追踪。
 - 设置：中心地址、token 策略、主题偏好、通知偏好、安全配置和保存反馈。
@@ -21,6 +21,7 @@ apps/
   web/          React、Vite 和 TypeScript 前端
   controller/   严格 TypeScript Controller API（HTTP、业务、存储与平台适配分层）
   agent/        独立非 root Agent，负责节点采集和签名任务投递
+  cert-helper/  root-only 证书与防火墙操作边界，仅接受固定协议
   database-helper/ root-only 本机数据库操作边界，仅接受严格枚举参数
 packages/
   contracts/    前后端共享 API、错误和领域契约
@@ -206,7 +207,7 @@ npm run build
 npm run test:e2e
 npm audit --audit-level=high
 npm run release:build
-npm run release:verify -- output/release/0.3.0-preview.31/SHA256SUMS
+npm run release:verify -- output/release/0.3.0-preview.33/SHA256SUMS
 npm run release:scan
 ```
 
@@ -238,13 +239,13 @@ npm run test --workspace @stackpilot/agent
 
 ## 生产部署与发布
 
-正式支持的 Controller/Web 运行时为 Debian 12 或 Ubuntu 24.04 x86_64、Node.js 22.x 和 SQLite schema 9。Docker Compose 默认仅公开 HTTPS 443；Controller 8787 位于内部网络，Agent 9443 默认只绑定回环地址。原生 systemd 方案为 Controller、Agent、站点 helper 和 database-helper 建立独立权限边界，并通过 systemd credential 注入主密钥和 TLS 私钥。Agent/helper 的其他发行版能力只有通过固定镜像集成测试后才列入兼容性矩阵。
+正式支持的 Controller/Web 运行时为 Debian 12 或 Ubuntu 24.04 x86_64、Node.js 22.x 和 SQLite schema 10。Docker Compose 默认仅公开 HTTPS 443；Controller 8787 位于内部网络，Agent 9443 默认只绑定回环地址。原生 systemd 方案为 Controller、Agent、站点 helper 和 database-helper 建立独立权限边界，并通过 systemd credential 注入主密钥和 TLS 私钥。Agent/helper 的其他发行版能力只有通过固定镜像集成测试后才列入兼容性矩阵。
 
 - [Docker Compose 安装](docs/installation/docker-compose.md)
 - [systemd 安装](docs/installation/systemd.md)
 - [反向代理与安全加固](docs/security-hardening.md)
 - [Agent 证书生命周期](docs/operations/agent-certificates.md)
-- [升级说明](docs/upgrades/0.3.0-preview.31.md)
+- [升级说明](docs/upgrades/0.3.0-preview.33.md)
 - [备份与恢复](docs/backup-restore/README.md)
 - [生产排障](docs/troubleshooting/production.md)
 

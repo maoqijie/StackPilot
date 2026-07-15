@@ -1,5 +1,5 @@
 [Unit]
-Description=StackPilot firewall helper socket
+Description=StackPilot Controller-only firewall helper socket
 
 [Socket]
 ListenStream=/run/stackpilot-firewall-helper/helper.sock
@@ -8,6 +8,7 @@ SocketGroup=stackpilot-firewall
 SocketMode=0660
 DirectoryMode=0750
 Accept=yes
+MaxConnections=32
 RemoveOnStop=yes
 
 [Install]
