@@ -190,7 +190,7 @@ async function routeRisks(context: RequestContext) {
 async function routeSchedules(context: RequestContext) {
   const { request, response, parts, services, config } = context; const method = request.method;
   context.identity?.require(context.principal,method === "GET" ? "schedules:read" : "schedules:write");
-  if (parts.length === 3 && method === "GET") { sendJson(response, 200, await services.schedules.list(), SchedulePayloadSchema); return; }
+  if (parts.length === 3 && method === "GET") { response.setHeader("Cache-Control", "no-store"); sendJson(response, 200, await services.schedules.list(), SchedulePayloadSchema); return; }
   const authorizeMutation = () => {
     if (!config.crontabWriteEnabled) throw forbidden("crontab 写入与立即执行能力未开启");
     context.identity?.consumeReauth(context.principal!, typeof request.headers["x-reauth-proof"] === "string" ? request.headers["x-reauth-proof"] : undefined);

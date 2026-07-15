@@ -9,7 +9,7 @@ import { MetricTile, ModuleSearch } from "../components/ui/Cards";
 import { DataTable } from "../components/ui/DataTable";
 import { DetailDrawer } from "../components/ui/DetailDrawer";
 import { FieldSelect, FormLine, ToggleLine } from "../components/ui/FormControls";
-import { createScheduleDraft, describeCronExpression, isLikelyCronExpression, scheduleCronPresets, scheduleCrontabPreview, schedulePagePreset } from "../features/schedule/model";
+import { createScheduleDraft, describeCronExpression, isLikelyCronExpression, scheduleCronPresets, scheduleCrontabPreview, scheduleNextRunLabel, schedulePagePreset, sortScheduleCalendarRows } from "../features/schedule/model";
 import type { ScheduleDraft } from "../features/schedule/model";
 import { ScheduleMutationDialog, type ScheduleMutationConfirmation } from "../features/schedule/ScheduleMutationDialog";
 import { reportApiError } from "../features/overview/model";
@@ -100,6 +100,7 @@ function SchedulePage({ page, notify, permissions = defaultPermissions }: { page
     const matchFailed = page === "schedule-failed" ? row.lastExecution?.status === "失败" : true;
     return matchSearch && matchState && matchFailed;
   });
+  const calendarRows = sortScheduleCalendarRows(filteredRows);
   const selectedVisibleJob = selectedJob;
   const applySchedulePayload = (jobs: ScheduleJob[], selectedId?: string) => {
     setRows(jobs);
@@ -290,7 +291,7 @@ function SchedulePage({ page, notify, permissions = defaultPermissions }: { page
         <p><span>cron</span><b>{selectedVisibleJob.cron}</b></p>
         <p><span>命令</span><b>{selectedVisibleJob.command}</b></p>
         <p><span>状态</span><b>{selectedVisibleJob.enabled ? "启用" : "停用"}</b></p>
-        <p><span>下次执行</span><b>{selectedVisibleJob.nextRun}</b></p>
+        <p><span>下次执行</span><b>{scheduleNextRunLabel(selectedVisibleJob)}</b></p>
         <p><span>最近执行</span><b>{selectedVisibleJob.lastRun}</b></p>
         <p><span>结果</span><b>{selectedVisibleJob.result}</b></p>
         <p><span>执行来源</span><b>{selectedVisibleJob.lastExecution?.source === "cron" ? "cron 自动调度" : selectedVisibleJob.lastExecution?.source === "manual" ? "StackPilot 手动执行" : "尚无执行记录"}</b></p>
@@ -340,8 +341,8 @@ function SchedulePage({ page, notify, permissions = defaultPermissions }: { page
         </section>
       )}
       {schedulePreset.mode === "calendar" && (
-        <div className={`schedule-calendar ${filteredRows.length === 0 ? "is-empty" : ""}`}>
-          {filteredRows.map((row) => <article key={row.id} role="button" tabIndex={0} onClick={() => setDrawer({ type: "detail", id: row.id })} onKeyDown={(event) => activateOnKeyboard(event, () => setDrawer({ type: "detail", id: row.id }))}><span>{row.nextRun}</span><strong>{row.name}</strong><em>{row.cron}</em><b className={row.result === "失败" ? "red-text" : row.result === "成功" ? "green-text" : "orange-text"}>{row.enabled ? row.result : "已停用"}</b></article>)}
+        <div className={`schedule-calendar ${calendarRows.length === 0 ? "is-empty" : ""}`}>
+          {calendarRows.map((row) => <article key={row.id} role="button" tabIndex={0} onClick={() => setDrawer({ type: "detail", id: row.id })} onKeyDown={(event) => activateOnKeyboard(event, () => setDrawer({ type: "detail", id: row.id }))}><span>{scheduleNextRunLabel(row)}</span><strong>{row.name}</strong><em>{row.cron}</em><b className={row.result === "失败" ? "red-text" : row.result === "成功" ? "green-text" : "orange-text"}>{row.enabled ? row.result : "已停用"}</b></article>)}
           {filteredRows.length === 0 && <p className="module-empty-card">当前筛选没有日历任务</p>}
         </div>
       )}
@@ -368,7 +369,7 @@ function SchedulePage({ page, notify, permissions = defaultPermissions }: { page
             <div className="module-card-meta">
               <span><b>状态</b><em>{row.enabled ? "启用" : "停用"}</em></span>
               <span><b>最近</b><em>{row.lastRun}</em></span>
-              <span><b>下次</b><em>{row.nextRun}</em></span>
+              <span><b>下次</b><em>{scheduleNextRunLabel(row)}</em></span>
               <span><b>结果</b><em>{row.result}</em></span>
             </div>
             <div className="module-card-footer">

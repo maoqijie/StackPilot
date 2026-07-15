@@ -2,6 +2,19 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.29 - 2026-07-16
+
+### Fixed
+
+- Replaced the schedule calendar's placeholder next-run text with a Controller-calculated ISO `nextRunAt` while preserving real cron and manual execution records.
+- Sorted calendar entries by their real next execution time and kept disabled or unresolvable jobs explicitly labeled at the end of the timeline.
+- Marked the automatically polled schedule read endpoint as `no-store` and validated schedule responses at the browser API boundary.
+
+### Changed
+
+- Added `cron-parser` as the bounded schedule-expression engine and tightened schedule collection timestamps to ISO datetime values in the shared contract.
+- Preserved the fixed runner, command-versioned execution history, permission, reauthentication, mutation serialization and idempotency boundaries from `0.3.0-preview.28`.
+
 ## 0.3.0-preview.27 - 2026-07-16
 
 ### Fixed

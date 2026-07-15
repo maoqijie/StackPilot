@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchScheduleJobs, createScheduleJob, deleteScheduleJob, runScheduleJob, updateScheduleJob } from "../api/scheduleApi";
-import type { SchedulePayload } from "../api/scheduleApi";
+import type { ScheduleJob, SchedulePayload } from "../api/scheduleApi";
 import { SchedulePage } from "../pages/SchedulePage";
 import { reauthenticate } from "../api/identityApi";
 
@@ -14,13 +14,14 @@ vi.mock("../api/scheduleApi", () => ({
 }));
 vi.mock("../api/identityApi", () => ({ reauthenticate: vi.fn() }));
 
-const failedJob = {
+const failedJob: ScheduleJob = {
   id: "job-failed",
   name: "nightly-backup",
   cron: "0 2 * * *",
   command: "/usr/local/bin/backup --all",
   enabled: true,
   nextRun: "明天 02:00",
+  nextRunAt: "2026-07-16T02:00:00.000Z",
   lastRun: "今天 02:00",
   result: "失败" as const,
   lastExecution: {
@@ -37,12 +38,12 @@ const failedJob = {
   },
 };
 
-const successfulJob = {
+const successfulJob: ScheduleJob = {
   ...failedJob,
   id: "job-success",
   name: "health-check",
   result: "成功" as const,
-  lastExecution: { ...failedJob.lastExecution, id: "22222222-2222-4222-8222-222222222222", status: "成功" as const, exitCode: 0, error: "" },
+  lastExecution: { ...failedJob.lastExecution!, id: "22222222-2222-4222-8222-222222222222", status: "成功" as const, exitCode: 0, error: "" },
 };
 
 function payload(jobs = [failedJob, successfulJob]): SchedulePayload {
@@ -103,6 +104,30 @@ describe("schedule failed page", () => {
     await act(async () => undefined);
     expect(screen.getAllByText("nightly-backup")).toHaveLength(2);
     expect(notify).toHaveBeenCalledWith("crontab 暂不可用", "danger");
+  });
+
+  it("sorts the calendar by real next-run timestamps and retains execution details", async () => {
+    vi.mocked(fetchScheduleJobs).mockResolvedValue(payload([
+      { ...failedJob, id: "disabled", name: "disabled-job", enabled: false, nextRun: "停用", nextRunAt: "2026-07-16T00:30:00.000Z" },
+      { ...failedJob, id: "later", name: "later-job", nextRunAt: "2026-07-16T04:00:00.000Z" },
+      { ...failedJob, id: "earlier", name: "earlier-job", nextRunAt: "2026-07-16T01:00:00.000Z" },
+      { ...failedJob, id: "invalid", name: "invalid-job", nextRun: "时间暂不可用", nextRunAt: "invalid-date" },
+    ]));
+
+    const { container } = render(<SchedulePage page="schedule-calendar" notify={notify} />);
+    await act(async () => undefined);
+    const calendar = container.querySelector(".schedule-calendar");
+    expect(calendar).not.toBeNull();
+    expect(within(calendar as HTMLElement).getAllByRole("button").map((item) => item.textContent)).toEqual([
+      expect.stringContaining("earlier-job"),
+      expect.stringContaining("later-job"),
+      expect.stringContaining("disabled-job"),
+      expect.stringContaining("invalid-job"),
+    ]);
+    expect(within(calendar as HTMLElement).getAllByText("已停用")).toHaveLength(2);
+    expect(within(calendar as HTMLElement).getByText("时间暂不可用")).toBeInTheDocument();
+    fireEvent.click(within(calendar as HTMLElement).getAllByRole("button")[0]);
+    expect(within(screen.getByRole("region", { name: "任务详情" })).getByText("partial output")).toBeInTheDocument();
   });
 
   it("keeps details in a body-level drawer and separates modal and delete surfaces", async () => {
