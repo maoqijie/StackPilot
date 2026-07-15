@@ -19,6 +19,7 @@ import {
   CreateDirectoryRequestSchema,
   UpdateNodeCapabilitiesRequestSchema,
   AgentFirewallDenySnapshotSchema, FirewallDenyRecordsPayloadSchema,
+  FirewallOpenPortsPayloadSchema,
 } from "@stackpilot/contracts";
 
 test("shared API constants preserve the existing HTTP contract", () => {
@@ -36,6 +37,14 @@ test("firewall deny snapshots and records are bounded, unique and typed", () => 
   const record = { ...event, id: `${crypto.randomUUID()}:${event.id}`, nodeId: crypto.randomUUID(), nodeName: "firewall-node", sourceCollectedAt: collectedAt };
   assert.equal(FirewallDenyRecordsPayloadSchema.safeParse({ collectedAt, collectionStatus: "complete", warnings: [], records: [record] }).success, true);
   assert.equal(PermissionSchema.safeParse("firewall:read").success, true);
+});
+
+test("firewall open-port payload stays strict and backend-owned", () => {
+  const payload = { collectedAt: new Date().toISOString(), collectionStatus: "complete", backend: "ss", warnings: [], ports: [{ id: `port_${"a".repeat(24)}`, protocol: "TCP", port: 443, address: "0.0.0.0", source: "0.0.0.0/0", exposure: "public", host: "controller-1" }] };
+  assert.equal(FirewallOpenPortsPayloadSchema.safeParse(payload).success, true);
+  assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, ports: [{ ...payload.ports[0], port: 0 }] }).success, false);
+  assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, ports: [{ ...payload.ports[0], protocol: "SCTP" }] }).success, false);
+  assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, clientCollectedAt: payload.collectedAt }).success, false);
 });
 
 test("node capability updates accept the complete shared Agent capability set", () => {

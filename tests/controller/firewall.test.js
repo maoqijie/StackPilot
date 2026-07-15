@@ -6,6 +6,7 @@ import { loadControllerConfig } from "../../apps/controller/dist/config/environm
 import { openDatabase } from "../../apps/controller/dist/database/database.js";
 import { IdentityService } from "../../apps/controller/dist/identity/identityService.js";
 import { FirewallDenyService } from "../../apps/controller/dist/modules/firewall/firewallDenyService.js";
+import { FirewallOpenPortService, parseListeningSockets } from "../../apps/controller/dist/modules/firewall/firewallOpenPortService.js";
 import { NodeService } from "../../apps/controller/dist/modules/nodes/nodeService.js";
 import { MemoryAgentControlRepository } from "../../apps/controller/dist/repositories/agentControlRepository.js";
 import { SqliteAgentControlRepository } from "../../apps/controller/dist/repositories/sqliteAgentControlRepository.js";
@@ -14,9 +15,10 @@ import { FakePlatformAdapter } from "./support/fakePlatform.js";
 
 const allowedId = "11111111-1111-4111-8111-111111111111";
 const hiddenId = "22222222-2222-4222-8222-222222222222";
-const collectedAt = "2026-07-15T00:00:00.000Z";
-const event = (marker) => ({ id: `fw_${marker.repeat(64)}`, occurredAt: collectedAt, sourceAddress: marker === "a" ? "198.51.100.24" : "203.0.113.18", destinationAddress: "192.0.2.10", destinationPort: 22, protocol: "TCP", interfaceName: "eth0", rule: "UFW BLOCK", reason: `${marker}-deny` });
-const node = (nodeId, name, marker) => ({ nodeId, nodeName: name, status: "online", agentVersion: "0.3.0", protocolVersion: "1.1", platform: "linux", declaredCapabilities: [], allowedCapabilities: [], enrolledAt: collectedAt, lastSeenAt: collectedAt, revokedAt: null, firewallDenySnapshot: { collectedAt, collectionStatus: "complete", warnings: [], events: [event(marker)] } });
+const denyCollectedAt = "2026-07-15T00:00:00.000Z";
+const openPortsCollectedAt = "2026-07-15T06:00:00.000Z";
+const event = (marker) => ({ id: `fw_${marker.repeat(64)}`, occurredAt: denyCollectedAt, sourceAddress: marker === "a" ? "198.51.100.24" : "203.0.113.18", destinationAddress: "192.0.2.10", destinationPort: 22, protocol: "TCP", interfaceName: "eth0", rule: "UFW BLOCK", reason: `${marker}-deny` });
+const node = (nodeId, name, marker) => ({ nodeId, nodeName: name, status: "online", agentVersion: "0.3.0", protocolVersion: "1.1", platform: "linux", declaredCapabilities: [], allowedCapabilities: [], enrolledAt: denyCollectedAt, lastSeenAt: denyCollectedAt, revokedAt: null, firewallDenySnapshot: { collectedAt: denyCollectedAt, collectionStatus: "complete", warnings: [], events: [event(marker)] } });
 
 test("firewall deny service aggregates persisted snapshots within stable node scope", async () => {
   const database = openDatabase(":memory:"); const repository = new SqliteAgentControlRepository(database);
@@ -41,14 +43,8 @@ test("firewall deny service reports source freshness, drops expired events, and 
   const stale = node(allowedId, "n".repeat(120), "a");
   stale.status = "offline";
   stale.lastSeenAt = "2026-07-15T11:00:00.000Z";
-  stale.firewallDenySnapshot = {
-    collectedAt: "2026-07-15T11:00:00.000Z",
-    collectionStatus: "complete",
-    warnings: ["w".repeat(256)],
-    events: [{ ...event("a"), occurredAt: "2026-07-14T11:59:59.000Z" }],
-  };
+  stale.firewallDenySnapshot = { collectedAt: "2026-07-15T11:00:00.000Z", collectionStatus: "complete", warnings: ["w".repeat(256)], events: [{ ...event("a"), occurredAt: "2026-07-14T11:59:59.000Z" }] };
   await repository.update((state) => state.nodes.push(stale));
-
   const payload = await new FirewallDenyService(repository, 90_000, () => now).list("all");
   assert.equal(payload.collectedAt, stale.firewallDenySnapshot.collectedAt);
   assert.equal(payload.collectionStatus, "partial");
@@ -58,13 +54,10 @@ test("firewall deny service reports source freshness, drops expired events, and 
 });
 
 test("firewall deny service uses no synthetic collection timestamp while awaiting snapshots", async () => {
-  const repository = new MemoryAgentControlRepository();
-  const awaiting = node(allowedId, "awaiting-host", "a");
-  delete awaiting.firewallDenySnapshot;
-  await repository.update((state) => state.nodes.push(awaiting));
+  const repository = new MemoryAgentControlRepository(); const awaiting = node(allowedId, "awaiting-host", "a");
+  delete awaiting.firewallDenySnapshot; await repository.update((state) => state.nodes.push(awaiting));
   const payload = await new FirewallDenyService(repository).list("all");
-  assert.equal(payload.collectedAt, null);
-  assert.equal(payload.collectionStatus, "unavailable");
+  assert.equal(payload.collectedAt, null); assert.equal(payload.collectionStatus, "unavailable");
 });
 
 test("firewall deny HTTP endpoint requires firewall read and preserves node scope", async () => {
@@ -84,5 +77,34 @@ test("firewall deny HTTP endpoint requires firewall read and preserves node scop
     const response = await fetch(`${base}/api/firewall/deny-records`, { headers: { Authorization: `Bearer ${scoped}` } }); const body = await response.json();
     assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store"); assert.equal(body.records.length, 1); assert.equal(body.records[0].nodeId, allowedId);
     assert.doesNotMatch(JSON.stringify(body), /hidden-host|b-deny/);
+  } finally { server.close(); await once(server, "close"); database.close(); }
+});
+
+test("socket parser classifies real bind addresses and emits stable identifiers", () => {
+  const input = ["tcp LISTEN 0 511 0.0.0.0:443 0.0.0.0:*", "tcp LISTEN 0 128 127.0.0.1:18787 0.0.0.0:*", "udp UNCONN 0 0 127.0.0.53%lo:53 0.0.0.0:*", "udp UNCONN 0 0 10.0.0.8:53 0.0.0.0:*", "tcp LISTEN 0 511 [::]:80 [::]:*", "tcp LISTEN 0 511 [::1]:6379 [::]:*"].join("\n");
+  const first = parseListeningSockets(input, "prod-controller"); const second = parseListeningSockets(input, "prod-controller");
+  assert.deepEqual(first, second);
+  assert.deepEqual(first.map((row) => [row.port, row.exposure]), [[53, "private"], [53, "loopback"], [80, "public"], [443, "public"], [6379, "loopback"], [18787, "loopback"]]);
+  assert.match(first[0].id, /^port_[a-f0-9]{24}$/);
+});
+
+test("collector marks probe failures unavailable without fixture rows", async () => {
+  const payload = await new FirewallOpenPortService(async () => { throw new Error("ss unavailable"); }, "prod-controller").list();
+  assert.equal(payload.collectionStatus, "unavailable"); assert.deepEqual(payload.ports, []); assert.match(payload.warnings[0], /暂不可用/);
+});
+
+test("firewall open-port route requires permission and returns backend collection time", async () => {
+  const database = openDatabase(":memory:"); const identity = new IdentityService(database, Buffer.alloc(32, 6));
+  await identity.createInitialAdministrator("admin", "Administrator", "correct horse battery staple");
+  const login = await identity.login("admin", "correct horse battery staple", "test", "node-test");
+  const token = identity.createApiToken(login.principal, { name: "firewall-read", permissions: ["firewall:read"], nodeScope: "all", expiresAt: null }).token;
+  const services = createControllerServices(new FakePlatformAdapter(), process.cwd(), loadControllerConfig({}), undefined, database);
+  services.firewallOpenPorts = { async list() { return { collectedAt: openPortsCollectedAt, collectionStatus: "complete", backend: "ss", warnings: [], ports: [] }; } };
+  const server = createStackPilotServer({ env: { STACKPILOT_COOKIE_SECURE: "0" }, platform: new FakePlatformAdapter(), database, identity, services });
+  server.listen(0, "127.0.0.1"); await once(server, "listening"); const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    assert.equal((await fetch(`${base}/api/firewall/open-ports`)).status, 401);
+    const response = await fetch(`${base}/api/firewall/open-ports`, { headers: { Authorization: `Bearer ${token}` } });
+    assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store"); assert.equal((await response.json()).collectedAt, openPortsCollectedAt);
   } finally { server.close(); await once(server, "close"); database.close(); }
 });

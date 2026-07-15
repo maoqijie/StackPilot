@@ -2,7 +2,7 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.19 - 2026-07-15
+## 0.3.0-preview.21 - 2026-07-15
 
 ### Added
 
@@ -14,6 +14,29 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Removed demo deny records and browser-only allow, promote and export actions that previously reported success without a backend effect.
 - Kept firewall collection read-only, bounded and free of raw kernel log output; the browser receives normalized event fields only.
+
+## 0.3.0-preview.20 - 2026-07-15
+
+### Fixed
+
+- Classified the complete IPv4 `127.0.0.0/8` loopback range, including interface-scoped systemd-resolved listeners, as local-only instead of a specific-address binding.
+
+## 0.3.0-preview.19 - 2026-07-15
+
+### Added
+
+- Added an authenticated Controller API that reports real TCP and UDP listening sockets with stable identifiers, bind scope and backend collection time.
+- Connected the firewall open-port workbench to the real API with strict shared contracts, explicit permission handling and visibility-aware 10-second polling.
+
+### Changed
+
+- Replaced the `#firewall-open` fixture rule view with actual Controller host listeners while keeping the separate rule-management and deny-record workbenches unchanged.
+- Repaired missing optional CycloneDX dependency metadata in the lockfile so `npm ci` remains reproducible.
+
+### Security
+
+- Open-port collection runs through a fixed `/usr/bin/ss -H -lntu` invocation without a shell, requires `firewall:read`, and exposes no process identity or arbitrary command input.
+- The Web surface states that a listening socket does not prove upstream network reachability and does not offer unsafe UFW mutations on hosts where UFW is inactive.
 
 ## 0.3.0-preview.18 - 2026-07-15
 

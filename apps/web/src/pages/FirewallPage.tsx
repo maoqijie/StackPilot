@@ -13,6 +13,8 @@ import { firewallPagePreset, isValidFirewallSource } from "../features/firewall/
 import { initialFirewallRules } from "../mocks/demoData";
 import type { Notify, PageKey } from "../types/app";
 import { FirewallDenyPage } from "./FirewallDenyPage";
+import type { Permission } from "@stackpilot/contracts";
+import { FirewallOpenPortsPage } from "../features/firewall/FirewallOpenPortsPage";
 
 type FirewallDrawer =
   | { type: "create" }
@@ -163,8 +165,12 @@ function FirewallRulesPage({ page, notify }: { page: PageKey; notify: Notify }) 
   );
 }
 
-function FirewallPage(props: { page: PageKey; notify: Notify }) {
-  return props.page === "firewall-deny" ? <FirewallDenyPage page={props.page} /> : <FirewallRulesPage {...props} />;
+function FirewallPage({ page, notify, permissions = [] }: { page: PageKey; notify: Notify; permissions?: Permission[] }) {
+  return page === "firewall-open"
+    ? <FirewallOpenPortsPage permissions={permissions} />
+    : page === "firewall-deny"
+      ? <FirewallDenyPage page={page} />
+      : <FirewallRulesPage page={page} notify={notify} />;
 }
 
 export { FirewallPage };
