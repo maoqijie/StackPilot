@@ -1,1 +1,14 @@
 :is(.module-page-firewall, .module-page-firewall-open) .module-main { gap: 24px; }
+
+.firewall-freshness { display: flex; align-items: flex-start; gap: 12px; padding: 16px; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-subtle); }
+.firewall-freshness > svg { flex: 0 0 auto; color: var(--primary); }
+.firewall-freshness > div { min-width: 0; display: grid; gap: 4px; }
+.firewall-freshness strong { font-size: 14px; }
+.firewall-freshness span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.firewall-rule-value { display: block; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.firewall-unavailable { margin: 0; }
+
+@media (max-width: 773px) {
+  .firewall-rule-value { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .module-page-firewall-rules .module-card-code { white-space: normal; overflow-wrap: anywhere; }
+}

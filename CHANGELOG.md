@@ -2,6 +2,19 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.18 - 2026-07-15
+
+### Added
+
+- Connected the firewall rules workbench to the host's real UFW state through strict shared contracts, authenticated APIs and a dedicated root-only Unix socket helper.
+- Added backend collection timestamps, visibility-aware 10-second polling, explicit unavailable states and permission-aware create/delete workflows.
+
+### Security
+
+- Firewall mutations require CSRF, `firewall:operate`, one-time reauthentication, an idempotency key and optimistic rule versions.
+- The helper accepts only fixed UFW list/create/delete operations; StackPilot can delete only rules carrying its opaque managed comment, while externally managed rules remain read-only.
+- UFW activation and default-policy changes remain outside the API, preventing a page visit or mutation from unexpectedly changing host connectivity.
+
 ## 0.3.0-preview.17 - 2026-07-15
 
 ### Changed

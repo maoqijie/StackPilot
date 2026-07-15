@@ -10,10 +10,26 @@ version=$(node -p "require('$root/package.json').version")
 case "$component" in
   controller) prefix=/opt/stackpilot; units="stackpilot-controller.service"; entry=apps/controller/dist/server.js; workspace=@stackpilot/controller ;;
   agent) prefix=/opt/stackpilot-agent; units="stackpilot-agent.service"; entry=apps/agent/dist/main.js; workspace=@stackpilot/agent ;;
-  cert-helper) prefix=/opt/stackpilot-cert-helper; units="stackpilot-cert-helper.socket stackpilot-cert-helper@.service"; entry=apps/cert-helper/dist/main.js; workspace=@stackpilot/cert-helper ;;
+  cert-helper) prefix=/opt/stackpilot-cert-helper; units="stackpilot-cert-helper.socket stackpilot-cert-helper@.service stackpilot-firewall-helper.socket stackpilot-firewall-helper@.service"; entry=apps/cert-helper/dist/main.js; workspace=@stackpilot/cert-helper ;;
 esac
+required_entries=$entry
+if [ "$component" = "cert-helper" ]; then
+  required_entries="$required_entries apps/cert-helper/dist/firewallMain.js"
+fi
 release="$prefix/releases/$version"
 staging="$release.installing.$$"
+
+verify_component_release() {
+  candidate=$1
+  description=$2
+  [ -f "$candidate/package.json" ] || { echo "$description is incomplete: $candidate" >&2; exit 1; }
+  for required_entry in $required_entries; do
+    [ -f "$candidate/$required_entry" ] || { echo "$description is incomplete: $candidate" >&2; exit 1; }
+  done
+  if [ "$component" = "controller" ]; then
+    [ -f "$candidate/apps/web/dist/index.html" ] || { echo "$description is missing Web assets: $candidate" >&2; exit 1; }
+  fi
+}
 
 copy_path() {
   source=$1
@@ -66,10 +82,7 @@ install_units() {
 
 if [ -e "$release" ]; then
   [ -d "$release" ] && [ ! -L "$release" ] || { echo "Existing release is not a regular directory: $release" >&2; exit 1; }
-  [ -f "$release/package.json" ] && [ -f "$release/$entry" ] || { echo "Existing release is incomplete: $release" >&2; exit 1; }
-  if [ "$component" = "controller" ]; then
-    [ -f "$release/apps/web/dist/index.html" ] || { echo "Existing controller release is missing Web assets: $release" >&2; exit 1; }
-  fi
+  verify_component_release "$release" "Existing release"
   [ -L "$prefix/current" ] && [ "$(readlink -f "$prefix/current")" = "$(readlink -f "$release")" ] || { echo "Existing release is not the current release: $release" >&2; exit 1; }
   install_units
   echo "Release already installed: $release; systemd units synchronized without changing the release, current link or service state. Restart the installed component explicitly to apply unit changes."
@@ -82,7 +95,7 @@ rm -rf "$staging"
 trap 'rm -rf "$staging"' EXIT HUP INT TERM
 stage_component
 (cd "$staging" && npm ci --omit=dev --workspace "$workspace" --include-workspace-root)
-[ -f "$staging/package.json" ] && [ -f "$staging/$entry" ] || { echo "Staged release is incomplete: $staging" >&2; exit 1; }
+verify_component_release "$staging" "Staged release"
 chown -R root:root "$staging"
 chmod -R go-w "$staging"
 mv "$staging" "$release"
@@ -97,7 +110,7 @@ if [ "$component" = "cert-helper" ]; then
   if [ ! -f /etc/stackpilot-site-helper/helper.env ]; then
     install -m 0600 "$root/deploy/examples/site-helper.env.example" /etc/stackpilot-site-helper/helper.env
   fi
-  echo "Installed $component $version. Enable the local-only socket: systemctl enable --now stackpilot-cert-helper.socket"
+  echo "Installed $component $version. Enable the local-only sockets: systemctl enable --now stackpilot-cert-helper.socket stackpilot-firewall-helper.socket"
 else
   echo "Installed $component $version. Configure /etc before running: systemctl enable --now stackpilot-$component.service"
 fi

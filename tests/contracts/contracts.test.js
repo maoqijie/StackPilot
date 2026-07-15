@@ -16,6 +16,7 @@ import {
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, ExecuteDatabaseOperationPlanRequestSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
+  CreateFirewallRuleRequestSchema, FirewallRulesPayloadSchema,
   CreateDirectoryRequestSchema,
   UpdateNodeCapabilitiesRequestSchema,
 } from "@stackpilot/contracts";
@@ -24,6 +25,15 @@ test("shared API constants preserve the existing HTTP contract", () => {
   assert.equal(API_CLIENT_PREFIX, "/api");
   assert.deepEqual(API_ROOT_SEGMENTS, ["api", "overview"]);
   assert.deepEqual(WRITE_METHODS, ["POST", "PATCH", "DELETE"]);
+});
+
+test("firewall contracts accept bounded UFW rules and reject shell-shaped input", () => {
+  const collectedAt = new Date().toISOString();
+  const rule = { id: "firewall:11111111-1111-4111-8111-111111111111:ipv4", name: "HTTPS", port: "443", protocol: "tcp", source: "Anywhere", destination: "Anywhere", action: "allow", direction: "in", ipVersion: "ipv4", managed: true, version: "a".repeat(64) };
+  assert.equal(FirewallRulesPayloadSchema.safeParse({ engine: "ufw", host: "host-a", active: true, collectedAt, collectionStatus: "complete", warnings: [], rules: [rule] }).success, true);
+  assert.equal(CreateFirewallRuleRequestSchema.safeParse({ name: "HTTPS", port: 443, protocol: "tcp", source: "0.0.0.0/0", idempotencyKey: crypto.randomUUID() }).success, true);
+  assert.equal(CreateFirewallRuleRequestSchema.safeParse({ name: "bad", port: "443; reboot", protocol: "tcp", source: "any", idempotencyKey: crypto.randomUUID(), command: "ufw allow" }).success, false);
+  assert.equal(PermissionSchema.safeParse("firewall:read").success, true); assert.equal(PermissionSchema.safeParse("firewall:operate").success, true);
 });
 
 test("node capability updates accept the complete shared Agent capability set", () => {
