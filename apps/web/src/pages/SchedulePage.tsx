@@ -6,23 +6,27 @@ import { resolvePageMeta } from "../app/navigation";
 import { useQuickIntent } from "../app/routing";
 import { ModulePageShell } from "../components/layout/ModulePageShell";
 import { MetricTile, ModuleSearch } from "../components/ui/Cards";
-import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { DataTable } from "../components/ui/DataTable";
 import { DetailDrawer } from "../components/ui/DetailDrawer";
 import { FieldSelect, FormLine, ToggleLine } from "../components/ui/FormControls";
 import { createScheduleDraft, describeCronExpression, isLikelyCronExpression, scheduleCronPresets, scheduleCrontabPreview, schedulePagePreset } from "../features/schedule/model";
 import type { ScheduleDraft } from "../features/schedule/model";
+import { ScheduleMutationDialog, type ScheduleMutationConfirmation } from "../features/schedule/ScheduleMutationDialog";
 import { reportApiError } from "../features/overview/model";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import type { Notify, PageKey } from "../types/app";
 import { activateOnKeyboard } from "../utils/focus";
 import { formatBackendDateTime } from "../utils/time";
+import type { Permission } from "@stackpilot/contracts";
 
-function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
+const defaultPermissions: Permission[] = ["schedules:read", "schedules:write"];
+
+function SchedulePage({ page, notify, permissions = defaultPermissions }: { page: PageKey; notify: Notify; permissions?: Permission[] }) {
   const [rows, setRows] = useState<ScheduleJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [scannedAt, setScannedAt] = useState<string | undefined>();
+  const [writeEnabled, setWriteEnabled] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const schedulePreset = schedulePagePreset(page);
   const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
@@ -31,23 +35,25 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
     | { type: "create" }
     | { type: "edit"; job: ScheduleJob }
     | { type: "detail"; id: string }
-    | { type: "delete"; id: string }
     | null
   >(null);
+  const [confirmation, setConfirmation] = useState<ScheduleMutationConfirmation | null>(null);
   const [draft, setDraft] = useState<ScheduleDraft>(() => createScheduleDraft());
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const cronInputRef = useRef<HTMLInputElement>(null);
+  const hasWritePermission = permissions.includes("schedules:write");
+  const canWrite = hasWritePermission && writeEnabled;
   const search = searchByPage[page] ?? schedulePreset.search;
   const stateFilter = stateByPage[page] ?? schedulePreset.state;
-  const selectedJob = drawer?.type === "detail" || drawer?.type === "delete"
+  const selectedJob = drawer?.type === "detail"
     ? rows.find((row) => row.id === drawer.id) ?? null
     : null;
 
   const openScheduleCreateFromQuick = useCallback(() => {
+    if (!hasWritePermission) return;
     setDraft(createScheduleDraft());
     setDrawer({ type: "create" });
-  }, []);
+  }, [hasWritePermission]);
 
   useQuickIntent("schedule-enabled", "create-schedule", openScheduleCreateFromQuick);
   const loadSchedules = useCallback(async (signal: AbortSignal, silent: boolean) => {
@@ -56,9 +62,11 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       if (signal.aborted) return;
       setRows(payload.jobs);
       setScannedAt(payload.scannedAt);
+      setWriteEnabled(payload.writeEnabled);
       setLoadError(null);
       setDrawer((current) => {
-        if ((current?.type === "detail" || current?.type === "delete") && !payload.jobs.some((row) => row.id === current.id)) return null;
+        if ((current?.type === "create" || current?.type === "edit") && (!hasWritePermission || !payload.writeEnabled)) return null;
+        if (current?.type === "detail" && !payload.jobs.some((row) => row.id === current.id)) return null;
         return current;
       });
     } catch (error) {
@@ -71,7 +79,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
     } finally {
       if (!silent && !signal.aborted) setLoading(false);
     }
-  }, [notify]);
+  }, [hasWritePermission, notify]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -93,7 +101,6 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
     return matchSearch && matchState && matchFailed;
   });
   const selectedVisibleJob = selectedJob;
-
   const applySchedulePayload = (jobs: ScheduleJob[], selectedId?: string) => {
     setRows(jobs);
     setDrawer((current) => {
@@ -103,8 +110,8 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
     if (selectedId) setDrawer({ type: "detail", id: selectedId });
   };
 
-  const saveJob = async () => {
-    if (saving) return;
+  const requestSaveJob = () => {
+    if (saving || !canWrite) return;
     const currentDrawer = drawer;
     const nextName = draft.name.trim();
     const nextCron = draft.cron.trim();
@@ -118,52 +125,71 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       return;
     }
     if (!currentDrawer || (currentDrawer.type !== "create" && currentDrawer.type !== "edit")) return;
-    setSaving(true);
-    try {
-      const payload = currentDrawer.type === "edit"
-        ? await updateScheduleJob(currentDrawer.job.id, { name: nextName, cron: nextCron, command: nextCommand, enabled: draft.enabled })
-        : await createScheduleJob({ name: nextName, cron: nextCron, command: nextCommand, enabled: draft.enabled });
-      applySchedulePayload(payload.jobs, payload.job.id);
-      notify(payload.message, payload.tone ?? "success");
-      setDrawer({ type: "detail", id: payload.job.id });
-    } catch (error) {
-      reportApiError(error, notify, "保存定时任务失败");
-    } finally {
-      setSaving(false);
-    }
+    const editingId = currentDrawer.type === "edit" ? currentDrawer.job.id : null;
+    const idempotencyKey = `schedule-create:${crypto.randomUUID()}`;
+    setConfirmation({
+      title: editingId ? "确认保存定时任务" : "确认创建定时任务",
+      message: "该操作会修改 Controller 服务账号的真实 crontab。",
+      detail: `${nextCron} · ${nextCommand}`,
+      confirmLabel: editingId ? "确认保存" : "确认创建",
+      execute: async (proof) => {
+        setSaving(true);
+        try {
+          const payload = editingId
+            ? await updateScheduleJob(editingId, { name: nextName, cron: nextCron, command: nextCommand, enabled: draft.enabled }, proof)
+            : await createScheduleJob({ name: nextName, cron: nextCron, command: nextCommand, enabled: draft.enabled }, proof, idempotencyKey);
+          applySchedulePayload(payload.jobs, payload.job.id);
+          notify(payload.message, payload.tone ?? "success");
+          setDrawer({ type: "detail", id: payload.job.id });
+        } finally { setSaving(false); }
+      },
+    });
   };
-  const requestDeleteJob = (row: ScheduleJob) => setDrawer({ type: "delete", id: row.id });
-  const deleteJob = async (row: ScheduleJob) => {
-    if (deleting) return;
-    setDeleting(true);
-    try {
-      const payload = await deleteScheduleJob(row.id);
-      setRows(payload.jobs);
-      setDrawer(null);
-      notify(payload.message, payload.tone ?? "warning");
-    } catch (error) {
-      reportApiError(error, notify, "删除定时任务失败");
-    } finally {
-      setDeleting(false);
-    }
+  const requestDeleteJob = (row: ScheduleJob) => {
+    if (!canWrite) return;
+    setConfirmation({
+      title: "删除定时任务",
+      message: "删除后会从 StackPilot 托管的真实 crontab 中移除。",
+      detail: `${row.cron} · ${row.command}`,
+      confirmLabel: "确认删除",
+      tone: "danger",
+      execute: async (proof) => {
+        const payload = await deleteScheduleJob(row.id, proof);
+        setRows(payload.jobs);
+        setDrawer(null);
+        notify(payload.message, payload.tone ?? "warning");
+      },
+    });
   };
-  const runJobNow = async (row: ScheduleJob) => {
-    try {
-      const payload = await runScheduleJob(row.id);
-      applySchedulePayload(payload.jobs, row.id);
-      notify(payload.message, payload.tone ?? "success");
-    } catch (error) {
-      reportApiError(error, notify, "立即执行定时任务失败");
-    }
+  const requestRunJob = (row: ScheduleJob) => {
+    if (!canWrite) return;
+    const idempotencyKey = `schedule-run:${crypto.randomUUID()}`;
+    setConfirmation({
+      title: "确认立即执行",
+      message: "Controller 将立即执行该任务命令，不等待下一次 cron 调度。",
+      detail: row.command,
+      confirmLabel: "确认执行",
+      execute: async (proof) => {
+        const payload = await runScheduleJob(row.id, proof, idempotencyKey);
+        applySchedulePayload(payload.jobs, row.id);
+        notify(payload.message, payload.tone ?? "success");
+      },
+    });
   };
-  const toggleJob = async (row: ScheduleJob) => {
-    try {
-      const payload = await updateScheduleJob(row.id, { enabled: !row.enabled });
-      applySchedulePayload(payload.jobs, row.id);
-      notify(payload.message, payload.tone ?? "success");
-    } catch (error) {
-      reportApiError(error, notify, "切换定时任务状态失败");
-    }
+  const requestToggleJob = (row: ScheduleJob) => {
+    if (!canWrite) return;
+    const nextEnabled = !row.enabled;
+    setConfirmation({
+      title: nextEnabled ? "确认启用定时任务" : "确认停用定时任务",
+      message: nextEnabled ? "启用后任务会按 cron 周期自动执行。" : "停用后会从可执行 crontab 行中移除，但保留任务配置。",
+      detail: `${row.cron} · ${row.command}`,
+      confirmLabel: nextEnabled ? "确认启用" : "确认停用",
+      execute: async (proof) => {
+        const payload = await updateScheduleJob(row.id, { enabled: nextEnabled }, proof);
+        applySchedulePayload(payload.jobs, row.id);
+        notify(payload.message, payload.tone ?? "success");
+      },
+    });
   };
   const editJob = (row: ScheduleJob) => {
     setDraft({ name: row.name, cron: row.cron, command: row.command, enabled: row.enabled });
@@ -171,11 +197,11 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
   };
   const scheduleActionButtons = (row: ScheduleJob) => (
     <>
-      <button type="button" onClick={() => toggleJob(row)}>{row.enabled ? "停用" : "启用"}</button>
-      <button type="button" disabled={!row.enabled} onClick={() => runJobNow(row)}>执行</button>
+      {canWrite && <button type="button" onClick={() => requestToggleJob(row)}>{row.enabled ? "停用" : "启用"}</button>}
+      {canWrite && <button type="button" disabled={!row.enabled} onClick={() => requestRunJob(row)}>执行</button>}
       <button type="button" onClick={() => setDrawer({ type: "detail", id: row.id })}>详情</button>
-      <button type="button" onClick={() => editJob(row)}>编辑</button>
-      <button type="button" onClick={() => requestDeleteJob(row)}>删除</button>
+      {canWrite && <button type="button" onClick={() => editJob(row)}>编辑</button>}
+      {canWrite && <button type="button" onClick={() => requestDeleteJob(row)}>删除</button>}
     </>
   );
   const editingJobId = drawer?.type === "edit" ? drawer.job.id : undefined;
@@ -190,7 +216,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       onClose={() => { if (!saving) setDrawer(null); }}
       className="schedule-job-modal"
       modal
-      actions={<><button className="ghost" type="button" disabled={saving} onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" disabled={saving} onClick={saveJob}>{saving ? "保存中..." : "保存任务"}</button></>}
+      actions={<><button className="ghost" type="button" disabled={saving} onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" disabled={saving} onClick={requestSaveJob}>{saving ? "保存中..." : "保存任务"}</button></>}
     >
       <div className="schedule-modal-form">
         <div className="schedule-modal-source">
@@ -259,7 +285,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       </div>
     </DetailDrawer>
   ) : drawer?.type === "detail" && selectedVisibleJob ? (
-    <DetailDrawer title="任务详情" subtitle={selectedVisibleJob.name} onClose={() => setDrawer(null)} className="schedule-job-drawer" actions={<><button className="ghost" type="button" onClick={() => editJob(selectedVisibleJob)}>编辑</button><button className="primary" type="button" disabled={!selectedVisibleJob.enabled} onClick={() => runJobNow(selectedVisibleJob)}>立即执行</button></>}>
+    <DetailDrawer title="任务详情" subtitle={selectedVisibleJob.name} onClose={() => setDrawer(null)} className="schedule-job-drawer" actions={canWrite ? <><button className="ghost" type="button" onClick={() => editJob(selectedVisibleJob)}>编辑</button><button className="primary" type="button" disabled={!selectedVisibleJob.enabled} onClick={() => requestRunJob(selectedVisibleJob)}>立即执行</button></> : undefined}>
       <div className="detail-kv">
         <p><span>cron</span><b>{selectedVisibleJob.cron}</b></p>
         <p><span>命令</span><b>{selectedVisibleJob.command}</b></p>
@@ -273,17 +299,6 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
         <p>{selectedVisibleJob.result === "失败" ? "最近一次立即执行失败" : selectedVisibleJob.result === "成功" ? "最近一次立即执行成功" : "等待 crontab 调度或手动执行"}</p>
       </div>
     </DetailDrawer>
-  ) : drawer?.type === "delete" && selectedVisibleJob ? (
-    <ConfirmDialog
-      title="删除定时任务"
-      message="删除后会从 StackPilot 托管的当前用户 crontab 中移除。"
-      detail={`${selectedVisibleJob.cron} · ${selectedVisibleJob.command}`}
-      confirmLabel="确认删除"
-      onConfirm={() => void deleteJob(selectedVisibleJob)}
-      onClose={() => setDrawer(null)}
-      className="schedule-delete-dialog"
-      busy={deleting}
-    />
   ) : null;
 
   const freshness = scannedAt ? `最近采集：${formatBackendDateTime(scannedAt)}` : loading ? "正在读取当前用户 crontab。" : "采集时间不可用";
@@ -293,11 +308,12 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       title={resolvePageMeta(page).title}
       subtitle={`${schedulePreset.subtitle} ${freshness}`}
       page={page}
-      actions={page === "schedule-failed" ? undefined : <button className="primary" type="button" onClick={openScheduleCreateFromQuick}><Plus size={15} /> 新建任务</button>}
+      actions={page === "schedule-failed" || !canWrite ? undefined : <button className="primary" type="button" onClick={openScheduleCreateFromQuick}><Plus size={15} /> 新建任务</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索任务、cron 或命令" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={stateFilter} options={["全部", "已启用", "已停用"]} onChange={(value) => setStateByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={CalendarDays} label="任务数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.result === "失败").length}`} tone="red" /><MetricTile icon={TerminalSquare} label="来源" value="cron" tone="orange" /></>}
     >
       {scheduleDialog}
+      {confirmation && <ScheduleMutationDialog confirmation={confirmation} onClose={() => setConfirmation(null)} />}
       {loadError && (
         <section className="schedule-load-error" role="alert">
           <AlertTriangle size={18} />
@@ -308,6 +324,15 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
           <button className="ghost" type="button" onClick={() => { setLoading(true); setLoadError(null); setRetryKey((current) => current + 1); }}>
             <RotateCcw size={14} /> 重试
           </button>
+        </section>
+      )}
+      {!loading && !loadError && !canWrite && (
+        <section className="schedule-load-error" role="status">
+          <Shield size={18} />
+          <div>
+            <strong>当前为只读模式</strong>
+            <p>{hasWritePermission ? "服务器未开启 crontab 写入与立即执行能力。" : "当前账号没有修改定时任务的权限。"}</p>
+          </div>
         </section>
       )}
       {schedulePreset.mode === "calendar" && (

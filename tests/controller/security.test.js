@@ -40,6 +40,24 @@ function authHeaders(token, extra = {}) {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...extra };
 }
 
+async function authenticatedSession(baseUrl) {
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "admin", password: "correct horse battery staple" }),
+  });
+  const body = await login.json();
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const headers = (proof) => ({
+    Origin: allowedOrigin, Cookie: cookie, "X-CSRF-Token": body.csrfToken, "Content-Type": "application/json",
+    ...(proof ? { "X-Reauth-Proof": proof } : {}),
+  });
+  const reauthenticate = async () => (await (await fetch(`${baseUrl}/api/auth/reauthenticate`, {
+    method: "POST", headers: headers(), body: JSON.stringify({ password: "correct horse battery staple" }),
+  })).json()).proof;
+  return { headers, reauthenticate };
+}
+
 test("liveness and readiness remain public while business reads require authentication", async () => {
   await withServer({}, async (baseUrl, { apiToken }) => {
     const health = await jsonResponse(await fetch(`${baseUrl}/healthz`));
@@ -223,11 +241,14 @@ test("CORS preflight advertises Authorization only for allowlisted origins", asy
 
 test("all crontab mutations and immediate execution stay disabled by default", async () => {
   await withServer({}, async (baseUrl, { platform, apiToken }) => {
+    const list = await jsonResponse(await fetch(`${baseUrl}/api/overview/current-user-crontab`, { headers: authHeaders(apiToken) }));
+    assert.equal(list.status, 200);
+    assert.equal(list.body.writeEnabled, false);
     const cases = [
-      { method: "POST", path: "", body: { name: "blocked", cron: "0 4 * * *", command: "true" } },
+      { method: "POST", path: "", body: { name: "blocked", cron: "0 4 * * *", command: "true", idempotencyKey: "blocked-create-1" } },
       { method: "PATCH", path: "/example", body: { enabled: false } },
       { method: "DELETE", path: "/example" },
-      { method: "PATCH", path: "/example", body: { action: "run" } },
+      { method: "PATCH", path: "/example", body: { action: "run", idempotencyKey: "blocked-run-1" } },
     ];
     for (const item of cases) {
       const response = await jsonResponse(await fetch(`${baseUrl}/api/overview/current-user-crontab${item.path}`, {
@@ -236,8 +257,29 @@ test("all crontab mutations and immediate execution stay disabled by default", a
       assert.equal(response.status, 403);
       assert.equal(response.body.code, "FORBIDDEN");
     }
-    assert.equal(platform.calls.readCrontab, 0);
+    assert.equal(platform.calls.readCrontab, 1);
     assert.equal(platform.calls.writeCrontab, 0);
+    assert.equal(platform.calls.runScheduledCommand, 0);
+  });
+});
+
+test("enabled schedule mutations require a user session and one-time reauthentication", async () => {
+  await withServer({ STACKPILOT_ENABLE_CRONTAB_WRITE: "1", STACKPILOT_ALLOWED_ORIGINS: allowedOrigin }, async (baseUrl, { platform, apiToken }) => {
+    const input = { name: "safe-disabled", cron: "0 4 * * *", command: "true", enabled: false, idempotencyKey: "create-safe-disabled-1" };
+    assert.equal((await fetch(`${baseUrl}/api/overview/current-user-crontab`, { method: "POST", headers: authHeaders(apiToken), body: JSON.stringify(input) })).status, 403);
+
+    const session = await authenticatedSession(baseUrl);
+    assert.equal((await fetch(`${baseUrl}/api/overview/current-user-crontab`, { method: "POST", headers: session.headers(), body: JSON.stringify(input) })).status, 403);
+    const proof = await session.reauthenticate();
+    const created = await jsonResponse(await fetch(`${baseUrl}/api/overview/current-user-crontab`, { method: "POST", headers: session.headers(proof), body: JSON.stringify(input) }));
+    assert.equal(created.status, 201);
+    assert.equal(created.body.job.enabled, false);
+    assert.equal((await fetch(`${baseUrl}/api/overview/current-user-crontab/${created.body.job.id}`, { method: "PATCH", headers: session.headers(proof), body: JSON.stringify({ enabled: true }) })).status, 403);
+    const retryProof = await session.reauthenticate();
+    const retried = await jsonResponse(await fetch(`${baseUrl}/api/overview/current-user-crontab`, { method: "POST", headers: session.headers(retryProof), body: JSON.stringify(input) }));
+    assert.equal(retried.status, 201);
+    assert.equal(retried.body.job.id, created.body.job.id);
+    assert.equal(platform.calls.writeCrontab, 1);
     assert.equal(platform.calls.runScheduledCommand, 0);
   });
 });
@@ -257,9 +299,11 @@ test("oversized and invalid JSON bodies return safe 413 and 400 errors", async (
 });
 
 test("runtime schemas reject illegal fields, query parameters and path ids", async () => {
-  await withServer({ STACKPILOT_ENABLE_CRONTAB_WRITE: "1" }, async (baseUrl, { platform, apiToken }) => {
+  await withServer({ STACKPILOT_ENABLE_CRONTAB_WRITE: "1", STACKPILOT_ALLOWED_ORIGINS: allowedOrigin }, async (baseUrl, { platform, apiToken }) => {
+    const session = await authenticatedSession(baseUrl);
+    const proof = await session.reauthenticate();
     const illegalBody = await jsonResponse(await fetch(`${baseUrl}/api/overview/current-user-crontab`, {
-      method: "POST", headers: authHeaders(apiToken), body: JSON.stringify({ name: "job", cron: "0 4 * * *", command: "true", unexpected: true }),
+      method: "POST", headers: session.headers(proof), body: JSON.stringify({ name: "job", cron: "0 4 * * *", command: "true", idempotencyKey: "illegal-body-1", unexpected: true }),
     }));
     assert.equal(illegalBody.status, 400);
     assert.equal(illegalBody.body.code, "BAD_REQUEST");

@@ -2,7 +2,7 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.22 - 2026-07-16
+## 0.3.0-preview.23 - 2026-07-15
 
 ### Added
 
@@ -14,6 +14,19 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Removed demo deny records and browser-only allow, promote and export actions that previously reported success without a backend effect.
 - Kept firewall collection read-only, bounded and free of raw kernel log output; the browser receives normalized event fields only.
+
+## 0.3.0-preview.22 - 2026-07-15
+
+### Fixed
+
+- Made the native Controller installer verify the distribution `cron` package contract before synchronizing units, and reapplied Controller sysusers membership during same-version unit updates.
+- Extended production preflight to reject enabled crontab writes when the executable, system group, or spool directory is unavailable, while keeping the optional capability non-blocking when disabled.
+- Restored complete registry resolution and integrity metadata in the workspace lockfile so clean release installs remain reproducible after concurrent version merges.
+
+### Security
+
+- Added user-scoped idempotency keys to schedule creation and immediate execution so a retried confirmation cannot duplicate a managed job or execute its command twice after a lost response.
+- Added bounded replay caching and payload-conflict rejection for completed schedule side effects while preserving session, CSRF, permission, and one-time reauthentication checks.
 
 ## 0.3.0-preview.21 - 2026-07-15
 
@@ -39,13 +52,21 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 - Added an authenticated Controller API that reports real TCP and UDP listening sockets with stable identifiers, bind scope and backend collection time.
 - Connected the firewall open-port workbench to the real API with strict shared contracts, explicit permission handling and visibility-aware 10-second polling.
 
+### Fixed
+
+- Allowed the hardened native Controller service to read and write its own crontab by granting only the operating system `crontab` supplementary group while retaining `NoNewPrivileges` and an empty capability set.
+- Restored reproducible clean installs by synchronizing the lockfile with the committed CycloneDX dependency graph.
+
 ### Changed
 
+- Exposed the server-side crontab mutation capability in the schedule read model and rendered the real schedule inventory as read-only when the dangerous write switch is disabled.
+- Applied `schedules:read` and `schedules:write` permissions to schedule navigation and mutation controls while preserving the backend authorization checks.
 - Replaced the `#firewall-open` fixture rule view with actual Controller host listeners while keeping the separate rule-management and deny-record workbenches unchanged.
-- Repaired missing optional CycloneDX dependency metadata in the lockfile so `npm ci` remains reproducible.
 
 ### Security
 
+- Required a user session and one-time reauthentication proof for every crontab mutation or immediate command execution; API tokens remain read-only for schedules.
+- Serialized schedule read-modify-write operations and switched task identifiers to UUIDs so concurrent mutations cannot overwrite or alias managed jobs.
 - Open-port collection runs through a fixed `/usr/bin/ss -H -lntu` invocation without a shell, requires `firewall:read`, and exposes no process identity or arbitrary command input.
 - The Web surface states that a listening socket does not prove upstream network reachability and does not offer unsafe UFW mutations on hosts where UFW is inactive.
 
