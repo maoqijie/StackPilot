@@ -15,6 +15,13 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 - Added `cron-parser` as the bounded schedule-expression engine and tightened schedule collection timestamps to ISO datetime values in the shared contract.
 - Preserved the fixed runner, command-versioned execution history, permission, reauthentication, mutation serialization and idempotency boundaries from `0.3.0-preview.28`.
 
+## 0.3.0-preview.28 - 2026-07-16
+
+### Fixed
+
+- Classified `journalctl --grep` exit code 1 with empty stdout and stderr as a successful query with no matching firewall deny events, instead of reporting the kernel journal as unavailable.
+- Preserved unavailable status for permission failures and all other probe errors while keeping probe diagnostics bounded and internal to the Agent.
+
 ## 0.3.0-preview.27 - 2026-07-16
 
 ### Fixed
