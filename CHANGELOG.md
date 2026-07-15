@@ -8,6 +8,7 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Made the native Controller installer verify the distribution `cron` package contract before synchronizing units, and reapplied Controller sysusers membership during same-version unit updates.
 - Extended production preflight to reject enabled crontab writes when the executable, system group, or spool directory is unavailable, while keeping the optional capability non-blocking when disabled.
+- Restored complete registry resolution and integrity metadata in the workspace lockfile so clean release installs remain reproducible after concurrent version merges.
 
 ### Security
 
