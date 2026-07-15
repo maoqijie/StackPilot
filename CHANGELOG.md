@@ -18,6 +18,12 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Declared the Debian and Ubuntu `cron` package as an explicit native Controller dependency and installed it in the systemd CI gate before unit verification.
 
+## 0.3.0-preview.20 - 2026-07-15
+
+### Fixed
+
+- Classified the complete IPv4 `127.0.0.0/8` loopback range, including interface-scoped systemd-resolved listeners, as local-only instead of a specific-address binding.
+
 ## 0.3.0-preview.19 - 2026-07-15
 
 ### Added
