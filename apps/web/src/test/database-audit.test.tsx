@@ -12,7 +12,6 @@ describe("database audit context", () => {
       collectedAt: "2026-07-14T00:00:01.000Z",
       events: [
         auditEvent({ eventId: "database-event", source: "database-controller", targetType: "database-operation", targetId: "operation-1", action: "database.operation.queued", outcome: "queued", requestId: "request-1", traceId: "trace-1" }),
-        auditEvent({ eventId: "other-event", source: "controller", targetType: "file", targetId: "/tmp/a", action: "file.trash", outcome: "success", requestId: "request-2", traceId: "trace-2" }),
       ],
     });
   });
@@ -20,6 +19,7 @@ describe("database audit context", () => {
   it("renders only real database audit events", async () => {
     render(<AuditPage page="audit" notify={vi.fn()} />);
     await waitFor(() => expect(fetchAuditEvents).toHaveBeenCalledTimes(1));
+    expect(fetchAuditEvents).toHaveBeenCalledWith(expect.objectContaining({ result: "all", actionPrefix: "database." }));
     expect((await screen.findAllByText("database.operation.queued")).length).toBeGreaterThan(0);
     expect(screen.queryByText("file.trash")).not.toBeInTheDocument();
     expect(screen.queryByText("创建只读用户")).not.toBeInTheDocument();

@@ -35,6 +35,13 @@ export const UserRecordSchema = z.object({ id: z.string().uuid(), username: z.st
 export const UserListResponseSchema = z.object({ users: z.array(UserRecordSchema) });
 export const CreateUserRequestSchema = z.object({ username: z.string().trim().min(1).max(128).regex(/^[\p{L}\p{N}_.@-]+$/u), displayName: z.string().trim().min(1).max(128), password: z.string().min(12).max(128), roleIds: z.array(z.string()).min(1), nodeScope: NodeScopeSchema }).strict();
 export const UpdateUserAccessRequestSchema = z.object({ roleIds: z.array(z.string()).min(1), nodeScope: NodeScopeSchema, disabled: z.boolean() }).strict();
+export const AUDIT_FAILURE_OUTCOMES = ["failure", "failed", "error", "denied", "rejected", "cancelled", "canceled", "expired", "timeout", "timed_out", "unauthorized", "forbidden", "aborted", "interrupted"] as const;
+export const AuditQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(1000).default(200),
+  result: z.enum(["all", "failed"]).default("all"),
+  actionPrefix: z.string().trim().min(1).max(120).optional(),
+}).strict();
+export type AuditQuery = z.infer<typeof AuditQuerySchema>;
 export const AuditEventSchema = z.object({
   sequence: z.number().int().positive(),
   eventId: z.string().min(1),

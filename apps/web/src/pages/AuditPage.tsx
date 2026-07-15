@@ -1,5 +1,5 @@
 import { CheckCircle2, Download, FileText, Shield } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchAuditEvents } from "../api/auditApi";
 import { auditPagePreset } from "../app/pagePresets";
 import { resolvePageMeta } from "../app/navigation";
@@ -31,11 +31,14 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [selectedExport, setSelectedExport] = useState<AuditExportRecord | null>(null);
   const isExportMode = auditPreset.mode === "exports";
   const auditSource = sourceByPage[page];
-  const audit = usePollingResource(fetchAuditEvents, null, !isExportMode, `audit:${auditSource ?? "all"}`);
+  const loadAudit = useCallback((signal: AbortSignal) => fetchAuditEvents({
+    signal,
+    result: page === "audit-failed" ? "failed" : "all",
+    actionPrefix: auditSource === "database" ? "database." : undefined,
+  }), [auditSource, page]);
+  const audit = usePollingResource(loadAudit, null, !isExportMode, `audit:${page}:${auditSource ?? "all"}`);
   const auditEvents = audit.data?.events ?? [];
-  const auditRecords = auditEvents
-    .filter((event) => auditSource !== "database" || event.action.startsWith("database."))
-    .map(auditRecord);
+  const auditRecords = auditEvents.map(auditRecord);
   const selected = auditRecords.find((row) => row.id === selectedId) ?? null;
   const users = ["全部", ...Array.from(new Set(auditRecords.map((row) => row.user)))];
   const search = searchByPage[page] ?? auditPreset.search;
@@ -137,7 +140,7 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
       actions={<><button className="ghost" type="button" disabled={!isExportMode && !filteredRows.length} onClick={() => isExportMode ? createExport() : exportAuditRecords()}><Download size={15} /> {isExportMode ? "新建导出" : "导出"}</button>{!isExportMode && auditSource === "database" && <button className="ghost" type="button" onClick={returnToGlobalAudit}>全部审计</button>}</>}
       filters={isExportMode
         ? <><ModuleSearch value={search} placeholder="搜索导出名称、范围或 trace id" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="格式" value={formatFilter} options={["全部", "CSV", "JSON", "ZIP"]} onChange={setFormatFilter} /><FieldSelect label="状态" value={exportStatusFilter} options={["全部", "可下载", "生成中", "失败"]} onChange={setExportStatusFilter} /></>
-        : <><ModuleSearch value={search} placeholder="搜索关键字、对象或 trace id" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="用户" value={userFilter} options={users} onChange={(value) => setUserByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="结果" value={resultFilter} options={["全部", "成功", "失败"]} onChange={(value) => setResultByPage((current) => ({ ...current, [page]: value }))} /></>}
+        : <><ModuleSearch value={search} placeholder="搜索关键字、对象或 trace id" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="用户" value={userFilter} options={users} onChange={(value) => setUserByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="结果" value={resultFilter} options={page === "audit-failed" ? ["失败"] : ["全部", "成功", "失败"]} onChange={(value) => setResultByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={isExportMode
         ? <><MetricTile icon={Download} label="导出任务" value={`${exportRows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="可下载" value={`${exportRows.filter((row) => row.status === "可下载").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${exportRows.filter((row) => row.status === "失败").length}`} tone="red" /></>
         : <><MetricTile icon={FileText} label="日志" value={`${auditRecords.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="成功" value={`${auditRecords.filter((row) => row.result === "成功").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${auditRecords.filter((row) => row.result === "失败").length}`} tone="red" /></>}

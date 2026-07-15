@@ -1,8 +1,9 @@
+import { AUDIT_FAILURE_OUTCOMES } from "@stackpilot/contracts";
 import type { AuditEvent } from "../../api/auditApi";
 import type { AuditRecord } from "./types";
 
 function isFailedOutcome(outcome: string) {
-  return /fail|error|denied|reject|cancel|expire|timeout|unauthor|forbidden|abort|interrupted/i.test(outcome);
+  return (AUDIT_FAILURE_OUTCOMES as readonly string[]).includes(outcome.toLowerCase());
 }
 
 function auditRecord(event: AuditEvent): AuditRecord {

@@ -19,6 +19,7 @@ describe("failed audit page", () => {
     render(<AuditPage page="audit-failed" notify={vi.fn()} />);
 
     await waitFor(() => expect(fetchAuditEvents).toHaveBeenCalledTimes(1));
+    expect(fetchAuditEvents).toHaveBeenCalledWith(expect.objectContaining({ result: "failed", actionPrefix: undefined }));
     expect((await screen.findAllByText("database.backup.scheduled")).length).toBeGreaterThan(0);
     expect(screen.queryByText("auth.login")).not.toBeInTheDocument();
     expect(screen.getByText(/后端采集于/)).toHaveTextContent("2026");

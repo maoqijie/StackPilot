@@ -56,7 +56,7 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     sendJson(response, 200, await services.systemd.list(context.principal?.nodeScope ?? []), SystemdServicesPayloadSchema);
     return;
   }
-  if (context.url.searchParams.size > 0 && context.url.pathname !== "/api/files") throw new ApiError(400, "BAD_REQUEST", "查询参数无效：当前接口不接受查询参数");
+  if (context.url.searchParams.size > 0 && !["/api/files", "/api/audit"].includes(context.url.pathname)) throw new ApiError(400, "BAD_REQUEST", "查询参数无效：当前接口不接受查询参数");
 
   if (context.url.pathname === "/healthz" && method === "GET") {
     sendJson(response, 200, { ok: true, service: "stackpilot-api", time: new Date().toLocaleString("zh-CN", { hour12: false }) }, HealthResponseSchema);
