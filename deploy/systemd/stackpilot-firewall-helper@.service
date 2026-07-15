@@ -1,5 +1,5 @@
 [Unit]
-Description=StackPilot Controller-only firewall helper connection
+Description=StackPilot fixed Controller-only UFW helper connection
 Requires=stackpilot-firewall-helper.socket
 After=stackpilot-firewall-helper.socket
 
@@ -8,6 +8,7 @@ Type=exec
 User=root
 Group=root
 WorkingDirectory=/opt/stackpilot-cert-helper/current
+EnvironmentFile=-/etc/stackpilot-site-helper/helper.env
 ExecStart=/usr/bin/flock --timeout 15 --exclusive /run/stackpilot-firewall-helper/operation.lock /usr/bin/node /opt/stackpilot-cert-helper/current/apps/cert-helper/dist/firewallMain.js
 StandardInput=socket
 StandardOutput=socket
@@ -22,7 +23,7 @@ ProtectSystem=strict
 ProtectHome=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
-ProtectKernelLogs=no
+ProtectKernelLogs=yes
 ProtectControlGroups=yes
 ProtectClock=yes
 ProtectHostname=yes
@@ -36,5 +37,5 @@ CapabilityBoundingSet=CAP_NET_ADMIN
 AmbientCapabilities=CAP_NET_ADMIN
 SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_NETLINK
-ReadWritePaths=/etc/ufw -/var/lib/ufw /run/stackpilot-firewall-helper
+ReadWritePaths=/var/lib/stackpilot-site-helper /etc/ufw -/var/lib/ufw /run/stackpilot-firewall-helper
 ReadWritePaths=/run/ufw.lock

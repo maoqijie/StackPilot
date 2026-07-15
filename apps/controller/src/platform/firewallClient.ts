@@ -1,20 +1,19 @@
 import { connect } from "node:net";
 import { StringDecoder } from "node:string_decoder";
-import type { CreateFirewallRuleRequest, FirewallPayload } from "@stackpilot/contracts";
+import type { CreateFirewallRuleRequest, DeleteFirewallRuleRequest } from "@stackpilot/contracts";
 
 const SOCKET_PATH = "/run/stackpilot-firewall-helper/helper.sock";
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 export const FIREWALL_HELPER_TIMEOUT_MS = { list: 90_000, mutation: 120_000 } as const;
-
 export type FirewallHelperRequest =
   | { operation: "firewall-list" }
-  | { operation: "firewall-create"; requestId: string; name: string; port: number; protocol: CreateFirewallRuleRequest["protocol"]; source: string }
-  | { operation: "firewall-delete"; requestId: string; ruleId: string };
-type FirewallHelperResponse = { ok: boolean; operation: FirewallHelperRequest["operation"]; data?: Record<string, unknown>; errorCode?: string; message?: string };
-export type FirewallHelperRequester = (request: FirewallHelperRequest, socketPath?: string) => Promise<FirewallHelperResponse>;
+  | ({ operation: "firewall-create"; requestId: string } & Omit<CreateFirewallRuleRequest, "idempotencyKey">)
+  | ({ operation: "firewall-delete"; requestId: string; ruleId: string } & Omit<DeleteFirewallRuleRequest, "idempotencyKey">);
+type FirewallHelperResponse = { ok: boolean; operation: FirewallHelperRequest["operation"]; errorCode?: string; message?: string; data?: unknown };
+export type FirewallHelperRequester = (request: FirewallHelperRequest, socketPath?: string, timeoutMs?: number) => Promise<FirewallHelperResponse>;
 
 export class FirewallHelperError extends Error {
-  constructor(public readonly code: string, message = "firewall helper request failed") { super(message); this.name = code; }
+  constructor(public readonly code: string, message = "Firewall helper request failed") { super(message); this.name = code; }
 }
 
 export function requestFirewallHelper(request: FirewallHelperRequest, socketPath = SOCKET_PATH, timeoutMs?: number): Promise<FirewallHelperResponse> {
@@ -27,18 +26,11 @@ export function requestFirewallHelper(request: FirewallHelperRequest, socketPath
     socket.once("error", fail);
     socket.once("end", () => {
       try {
-        response += decoder.end();
-        const parsed = JSON.parse(response.trim()) as FirewallHelperResponse;
-        if (!parsed || typeof parsed.ok !== "boolean" || parsed.operation !== request.operation) throw new Error("invalid response");
+        response += decoder.end(); const parsed = JSON.parse(response.trim()) as FirewallHelperResponse;
+        if (!parsed || typeof parsed.ok !== "boolean" || parsed.operation !== request.operation) throw new Error();
         if (!parsed.ok) { reject(new FirewallHelperError(parsed.errorCode ?? "FIREWALL_HELPER_FAILED", parsed.message)); return; }
         resolve(parsed);
       } catch (error) { reject(error instanceof FirewallHelperError ? error : new FirewallHelperError("FIREWALL_HELPER_INVALID_RESPONSE")); }
     });
   });
 }
-
-export type FirewallBackend = {
-  list(): Promise<FirewallPayload>;
-  create(input: CreateFirewallRuleRequest): Promise<FirewallPayload>;
-  delete(ruleId: string, idempotencyKey: string): Promise<FirewallPayload>;
-};

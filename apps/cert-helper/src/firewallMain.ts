@@ -1,7 +1,6 @@
 import { handleFirewallRequest } from "./firewallProtocol.js";
 
-const MAX_REQUEST_BYTES = 16 * 1024;
-
+const MAX_REQUEST_BYTES = 4 * 1024;
 export async function serveFirewall(input: NodeJS.ReadableStream = process.stdin, output: NodeJS.WritableStream = process.stdout) {
   let request = "";
   for await (const chunk of input) {
@@ -10,7 +9,7 @@ export async function serveFirewall(input: NodeJS.ReadableStream = process.stdin
     if (request.includes("\n")) break;
   }
   const [line, ...remaining] = request.split(/\r?\n/);
-  const response = remaining.some((item) => item.trim()) || !line
+  const response = remaining.some((item) => item.trim().length > 0) || !line
     ? { ok: false, operation: "firewall-list", errorCode: "INVALID_REQUEST", message: "Exactly one JSON request is required" }
     : await handleFirewallRequest(line);
   output.write(`${JSON.stringify(response)}\n`);

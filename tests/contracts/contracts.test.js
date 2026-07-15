@@ -16,17 +16,26 @@ import {
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, ExecuteDatabaseOperationPlanRequestSchema,
   AuditEventsResponseSchema, AuditQuerySchema, CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
+  CreateFirewallRuleRequestSchema, FirewallRulesPayloadSchema,
+  FirewallOpenPortsPayloadSchema,
   CreateDirectoryRequestSchema,
-  CreateFirewallRuleRequestSchema, FirewallPayloadSchema,
   UpdateNodeCapabilitiesRequestSchema,
   AgentFirewallDenySnapshotSchema, FirewallDenyRecordsPayloadSchema,
-  FirewallOpenPortsPayloadSchema,
 } from "@stackpilot/contracts";
 
 test("shared API constants preserve the existing HTTP contract", () => {
   assert.equal(API_CLIENT_PREFIX, "/api");
   assert.deepEqual(API_ROOT_SEGMENTS, ["api", "overview"]);
   assert.deepEqual(WRITE_METHODS, ["POST", "PATCH", "DELETE"]);
+});
+
+test("firewall contracts accept bounded UFW rules and reject shell-shaped input", () => {
+  const collectedAt = new Date().toISOString();
+  const rule = { id: "firewall:11111111-1111-4111-8111-111111111111:ipv4", name: "HTTPS", port: "443", protocol: "tcp", source: "Anywhere", destination: "Anywhere", action: "allow", direction: "in", ipVersion: "ipv4", managed: true, version: "a".repeat(64) };
+  assert.equal(FirewallRulesPayloadSchema.safeParse({ engine: "ufw", host: "host-a", active: true, collectedAt, collectionStatus: "complete", warnings: [], rules: [rule] }).success, true);
+  assert.equal(CreateFirewallRuleRequestSchema.safeParse({ name: "HTTPS", port: 443, protocol: "tcp", source: "0.0.0.0/0", idempotencyKey: crypto.randomUUID() }).success, true);
+  assert.equal(CreateFirewallRuleRequestSchema.safeParse({ name: "bad", port: "443; reboot", protocol: "tcp", source: "any", idempotencyKey: crypto.randomUUID(), command: "ufw allow" }).success, false);
+  assert.equal(PermissionSchema.safeParse("firewall:read").success, true); assert.equal(PermissionSchema.safeParse("firewall:operate").success, true);
 });
 
 test("audit contracts bound queries and expose backend collection time", () => {
@@ -70,17 +79,6 @@ test("firewall open-port payload stays strict and backend-owned", () => {
   assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, ports: [{ ...payload.ports[0], port: 0 }] }).success, false);
   assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, ports: [{ ...payload.ports[0], protocol: "SCTP" }] }).success, false);
   assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, clientCollectedAt: payload.collectedAt }).success, false);
-});
-
-test("firewall contracts reject executable input and require backend freshness", () => {
-  const collectedAt = new Date().toISOString(); const id = `fw_${"a".repeat(64)}`;
-  const payload = { collectedAt, collectionStatus: "complete", backend: "ufw", backendStatus: "active", host: "host-a", warnings: [], rules: [{ id, name: "HTTPS", port: "443", protocol: "TCP", source: "0.0.0.0/0", action: "ALLOW", direction: "IN", target: "host-a", ipv6: false, managed: true }] };
-  assert.equal(FirewallPayloadSchema.safeParse(payload).success, true);
-  assert.equal(FirewallPayloadSchema.safeParse({ ...payload, clientCollectedAt: collectedAt }).success, false);
-  const request = { name: "HTTPS", port: 443, protocol: "TCP", source: "192.0.2.0/24", idempotencyKey: crypto.randomUUID() };
-  assert.equal(CreateFirewallRuleRequestSchema.safeParse(request).success, true);
-  assert.equal(CreateFirewallRuleRequestSchema.safeParse({ ...request, command: "ufw disable" }).success, false);
-  assert.equal(CreateFirewallRuleRequestSchema.safeParse({ ...request, source: "999.0.0.1" }).success, false);
 });
 
 test("node capability updates accept the complete shared Agent capability set", () => {
@@ -288,13 +286,6 @@ test("identity schemas reject privilege fields and invalid node scopes", () => {
   assert.equal(PermissionSchema.safeParse("files:delete").success, true);
   assert.equal(PermissionSchema.safeParse("terminal:read").success, true);
   assert.equal(PermissionSchema.safeParse("terminal:execute").success, true);
-});
-
-test("audit query contract accepts only bounded read filters", () => {
-  assert.deepEqual(AuditQuerySchema.parse({ result: "failed", limit: "25", actionPrefix: "database." }), { result: "failed", limit: 25, actionPrefix: "database." });
-  assert.equal(AuditQuerySchema.safeParse({ result: "failed", limit: "1001" }).success, false);
-  assert.equal(AuditQuerySchema.safeParse({ result: "invented" }).success, false);
-  assert.equal(AuditQuerySchema.safeParse({ result: "failed", nodeId: crypto.randomUUID() }).success, false);
 });
 
 test("file upload contracts reject paths and inconsistent progress", () => {

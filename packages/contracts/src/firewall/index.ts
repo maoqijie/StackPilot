@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const FIREWALL_DENY_MAX_EVENTS = 500;
 export const FirewallCollectionStatusSchema = z.enum(["complete", "partial", "unavailable"]);
-export const FirewallProtocolSchema = z.enum(["TCP", "UDP", "ICMP", "ICMPV6", "OTHER"]);
+export const FirewallDenyProtocolSchema = z.enum(["TCP", "UDP", "ICMP", "ICMPV6", "OTHER"]);
 
 export const AgentFirewallDenyEventSchema = z.object({
   id: z.string().regex(/^fw_[a-f0-9]{64}$/),
@@ -10,7 +10,7 @@ export const AgentFirewallDenyEventSchema = z.object({
   sourceAddress: z.union([z.ipv4(), z.ipv6()]),
   destinationAddress: z.union([z.ipv4(), z.ipv6()]).nullable(),
   destinationPort: z.number().int().min(1).max(65_535).nullable(),
-  protocol: FirewallProtocolSchema,
+  protocol: FirewallDenyProtocolSchema,
   interfaceName: z.string().min(1).max(32).nullable(),
   rule: z.string().min(1).max(120),
   reason: z.string().min(1).max(256),
@@ -48,6 +48,65 @@ export type AgentFirewallDenySnapshot = z.infer<typeof AgentFirewallDenySnapshot
 export type FirewallDenyRecord = z.infer<typeof FirewallDenyRecordSchema>;
 export type FirewallDenyRecordsPayload = z.infer<typeof FirewallDenyRecordsPayloadSchema>;
 
+export const FirewallProtocolSchema = z.enum(["tcp", "udp"]);
+export const FirewallActionSchema = z.enum(["allow", "deny", "reject", "limit"]);
+export const FirewallDirectionSchema = z.enum(["in", "out"]);
+const FirewallSourceSchema = z.string().trim().min(1).max(128).refine((value) => {
+  const [address, prefix, extra] = value.split("/");
+  if (!address || extra !== undefined) return false;
+  const maxPrefix = z.ipv4().safeParse(address).success ? 32 : z.ipv6().safeParse(address).success ? 128 : null;
+  return maxPrefix !== null && (prefix === undefined || /^\d+$/.test(prefix) && Number(prefix) <= maxPrefix);
+}, "source must be an IP address or CIDR");
+
+export const FirewallRuleSchema = z.object({
+  id: z.string().min(1).max(100).regex(/^[A-Za-z0-9._:-]+$/),
+  name: z.string().min(1).max(120),
+  port: z.string().min(1).max(64),
+  protocol: FirewallProtocolSchema.nullable(),
+  source: z.string().min(1).max(128),
+  destination: z.string().min(1).max(128),
+  action: FirewallActionSchema,
+  direction: FirewallDirectionSchema,
+  ipVersion: z.enum(["ipv4", "ipv6"]),
+  managed: z.boolean(),
+  version: z.string().regex(/^[a-f0-9]{64}$/),
+}).strict();
+
+export const FirewallRulesPayloadSchema = z.object({
+  engine: z.literal("ufw"),
+  host: z.string().min(1).max(255),
+  active: z.boolean(),
+  collectedAt: z.string().datetime(),
+  collectionStatus: z.enum(["complete", "unavailable"]),
+  warnings: z.array(z.string().min(1).max(512)).max(20),
+  rules: z.array(FirewallRuleSchema).max(2_000),
+}).strict();
+
+export const CreateFirewallRuleRequestSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  port: z.number().int().min(1).max(65_535),
+  protocol: FirewallProtocolSchema,
+  source: FirewallSourceSchema,
+  idempotencyKey: z.string().uuid(),
+}).strict();
+
+export const DeleteFirewallRuleRequestSchema = z.object({
+  version: z.string().regex(/^[a-f0-9]{64}$/),
+  idempotencyKey: z.string().uuid(),
+}).strict();
+
+export const FirewallMutationResponseSchema = FirewallRulesPayloadSchema.extend({
+  message: z.string().min(1).max(512),
+  tone: z.enum(["success", "warning"]),
+}).strict();
+
+export type FirewallProtocol = z.infer<typeof FirewallProtocolSchema>;
+export type FirewallRule = z.infer<typeof FirewallRuleSchema>;
+export type FirewallRulesPayload = z.infer<typeof FirewallRulesPayloadSchema>;
+export type CreateFirewallRuleRequest = z.infer<typeof CreateFirewallRuleRequestSchema>;
+export type DeleteFirewallRuleRequest = z.infer<typeof DeleteFirewallRuleRequestSchema>;
+export type FirewallMutationResponse = z.infer<typeof FirewallMutationResponseSchema>;
+
 export const FirewallOpenPortProtocolSchema = z.enum(["TCP", "UDP"]);
 export const FirewallExposureSchema = z.enum(["public", "private", "loopback", "specific"]);
 
@@ -72,54 +131,3 @@ export const FirewallOpenPortsPayloadSchema = z.object({
 export type FirewallExposure = z.infer<typeof FirewallExposureSchema>;
 export type FirewallOpenPort = z.infer<typeof FirewallOpenPortSchema>;
 export type FirewallOpenPortsPayload = z.infer<typeof FirewallOpenPortsPayloadSchema>;
-
-export const UfwRuleProtocolSchema = z.enum(["TCP", "UDP"]);
-export const FirewallActionSchema = z.enum(["ALLOW", "DENY", "REJECT", "LIMIT"]);
-export const FirewallBackendStatusSchema = z.enum(["active", "inactive", "unavailable"]);
-
-const IpSourceSchema = z.string().trim().min(1).max(64).regex(/^(?:\d{1,3}\.){3}\d{1,3}(?:\/(?:[0-9]|[12][0-9]|3[0-2]))?$/)
-  .refine((value) => value.split("/")[0]!.split(".").every((octet) => Number(octet) <= 255), "invalid IPv4 source");
-const FirewallRuleIdSchema = z.string().regex(/^fw_[a-f0-9]{64}$/);
-
-export const FirewallRuleSchema = z.object({
-  id: FirewallRuleIdSchema,
-  name: z.string().min(1).max(120),
-  port: z.string().min(1).max(64),
-  protocol: z.enum(["TCP", "UDP", "ALL"]),
-  source: z.string().min(1).max(128),
-  action: FirewallActionSchema,
-  direction: z.enum(["IN", "OUT"]),
-  target: z.string().min(1).max(255),
-  ipv6: z.boolean(),
-  managed: z.boolean(),
-}).strict();
-
-export const FirewallPayloadSchema = z.object({
-  collectedAt: z.string().datetime(),
-  collectionStatus: FirewallCollectionStatusSchema,
-  backend: z.literal("ufw"),
-  backendStatus: FirewallBackendStatusSchema,
-  host: z.string().min(1).max(255),
-  warnings: z.array(z.string().min(1).max(512)).max(100),
-  rules: z.array(FirewallRuleSchema).max(2_000),
-}).strict();
-
-export const CreateFirewallRuleRequestSchema = z.object({
-  name: z.string().trim().min(1).max(64),
-  port: z.number().int().min(1).max(65_535),
-  protocol: UfwRuleProtocolSchema,
-  source: IpSourceSchema,
-  idempotencyKey: z.string().uuid(),
-}).strict();
-
-export const DeleteFirewallRuleRequestSchema = z.object({ idempotencyKey: z.string().uuid() }).strict();
-export const FirewallMutationResponseSchema = FirewallPayloadSchema.extend({
-  message: z.string().min(1).max(240),
-  tone: z.enum(["success", "warning"]),
-}).strict();
-
-export type UfwRuleProtocol = z.infer<typeof UfwRuleProtocolSchema>;
-export type FirewallRule = z.infer<typeof FirewallRuleSchema>;
-export type FirewallPayload = z.infer<typeof FirewallPayloadSchema>;
-export type CreateFirewallRuleRequest = z.infer<typeof CreateFirewallRuleRequestSchema>;
-export type FirewallMutationResponse = z.infer<typeof FirewallMutationResponseSchema>;

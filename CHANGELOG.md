@@ -2,19 +2,31 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.31 - 2026-07-16
+
+### Fixed
+
+- Merged the parallel firewall backends onto the stable `/api/firewall/rules` contract and retained real listening-port and deny-record reads without fixture fallbacks.
+- Made managed-rule deletion validate once before its persistent operation receipt is created, then delete the captured marker-bearing UFW rule instead of re-reading a mutable numbered position.
+- Preserved the browser's current rules after background failures, kept mutation payloads and idempotency keys stable for safe retries, and replaced the visible data immediately after successful writes.
+
+### Security
+
+- Required `firewall:read`, `firewall:operate`, Controller node scope, a user session, CSRF and one-time reauthentication for every rule mutation.
+- Kept UFW outside the general privileged command allowlist, denied native-rule deletion, persisted unknown operation results to prevent side-effect replay, and limited the helper to a Controller-only Unix socket and fixed UFW arguments.
+- Left UFW activation, deactivation and default-policy management outside StackPilot.
+
 ## 0.3.0-preview.30 - 2026-07-16
 
 ### Added
 
-- Connected the firewall rule workbench to the Controller host's real UFW status and rules through a fixed root-only Unix socket helper, while keeping native rules read-only and limiting deletion to StackPilot-marked rules.
-- Added authenticated, read-only `GET /api/firewall` and `GET /api/firewall/open-ports` data paths with backend collection timestamps, 10-second visibility-aware polling, stable filters, explicit unavailable states and responsive layouts.
-- Added `firewall:operate` as a separate high-risk permission; rule mutations require both read and operate access, a user session, CSRF protection, one-time reauthentication and bounded idempotency keys.
+- Connected the firewall rule workbench to the host's real UFW state through authenticated Controller APIs and a dedicated root-only Unix socket helper.
+- Added real backend freshness, visibility-aware 10-second polling and permission-aware rule creation and deletion while preserving the real listening-port and deny-record workbenches.
 
 ### Security
 
-- Kept UFW enablement and disablement outside StackPilot, removed browser fixture rule mutations, and preserved the Agent-backed firewall deny workbench as the only normalized deny-event source.
-- Isolated UFW access behind a Controller-only group, strict systemd sandbox, exact `/run/ufw.lock` write access, bounded socket connections and runtime, and fixed executable arguments without shell input.
-- Deleted managed rules by their complete marker-bearing UFW rule instead of a stale numeric position, preventing concurrent external rule changes from redirecting a deletion to a native rule.
+- Required Controller node scope, `firewall:operate`, CSRF, one-time reauthentication, stable idempotency keys and optimistic rule versions for every UFW mutation.
+- Kept external UFW rules read-only, rechecked rule identity immediately before numbered deletion, and excluded UFW activation and default-policy changes from the API.
 
 ## 0.3.0-preview.29 - 2026-07-16
 

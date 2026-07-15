@@ -36,6 +36,7 @@ sudo systemd-analyze verify deploy/systemd/*.service
 sudo systemd-analyze verify deploy/systemd/*.socket
 sudo systemctl enable --now stackpilot-controller nginx
 sudo systemctl enable --now stackpilot-cert-helper.socket # managed site or renewal hosts only
+sudo systemctl enable --now stackpilot-firewall-helper.socket # Controller hosts using the UFW workbench
 sudo systemctl enable --now stackpilot-agent
 sudo systemctl show stackpilot-controller -p User -p Group -p NoNewPrivileges
 ```
