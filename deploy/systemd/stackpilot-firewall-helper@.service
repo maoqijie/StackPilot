@@ -39,3 +39,4 @@ SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_NETLINK
 ReadWritePaths=/var/lib/stackpilot-site-helper /etc/ufw -/var/lib/ufw /run/stackpilot-firewall-helper
 ReadWritePaths=/run/ufw.lock
+ReadWritePaths=/run/xtables.lock

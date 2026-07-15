@@ -2,6 +2,18 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.32 - 2026-07-16
+
+### Fixed
+
+- Made firewall action receipts durable before and after UFW mutations so a host power loss cannot silently reopen the side-effect replay window.
+- Added the exact xtables runtime lock to the firewall helper sandbox and tmpfiles setup so active UFW mutations remain functional under `ProtectSystem=strict`.
+- Validated managed firewall rule IDs before consuming one-time reauthentication and expanded Controller mutation tests for delete, replay and scoped access.
+
+### Security
+
+- Kept UFW access limited to the dedicated Controller-only socket, fixed command grammar and explicit runtime lock files while preserving inactive-state and default-policy boundaries.
+
 ## 0.3.0-preview.31 - 2026-07-16
 
 ### Fixed

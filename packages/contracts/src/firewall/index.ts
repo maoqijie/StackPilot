@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const FIREWALL_DENY_MAX_EVENTS = 500;
+export const CONTROLLER_FIREWALL_NODE_ID = "00000000-0000-4000-8000-000000000002";
 export const FirewallCollectionStatusSchema = z.enum(["complete", "partial", "unavailable"]);
 export const FirewallDenyProtocolSchema = z.enum(["TCP", "UDP", "ICMP", "ICMPV6", "OTHER"]);
 
@@ -51,6 +52,7 @@ export type FirewallDenyRecordsPayload = z.infer<typeof FirewallDenyRecordsPaylo
 export const FirewallProtocolSchema = z.enum(["tcp", "udp"]);
 export const FirewallActionSchema = z.enum(["allow", "deny", "reject", "limit"]);
 export const FirewallDirectionSchema = z.enum(["in", "out"]);
+export const FirewallRuleIdSchema = z.string().regex(/^firewall:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}:(?:ipv4|ipv6)$/i);
 const FirewallSourceSchema = z.string().trim().min(1).max(128).refine((value) => {
   const [address, prefix, extra] = value.split("/");
   if (!address || extra !== undefined) return false;
@@ -59,7 +61,7 @@ const FirewallSourceSchema = z.string().trim().min(1).max(128).refine((value) =>
 }, "source must be an IP address or CIDR");
 
 export const FirewallRuleSchema = z.object({
-  id: z.string().min(1).max(100).regex(/^[A-Za-z0-9._:-]+$/),
+  id: z.union([FirewallRuleIdSchema, z.string().regex(/^firewall:external:[a-f0-9]{32}$/)]),
   name: z.string().min(1).max(120),
   port: z.string().min(1).max(64),
   protocol: FirewallProtocolSchema.nullable(),

@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { isIP } from "node:net";
 import { hostname } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { runFirewallCommand, type FixedCommandRunner } from "./runner.js";
 import { HelperError } from "./types.js";
 
@@ -60,7 +60,21 @@ function safeSource(value: string) {
   return value;
 }
 
-async function writeReceipt(path: string, receipt: Receipt) { const temporary = `${path}.${process.pid}.tmp`; await writeFile(temporary, JSON.stringify(receipt), { mode: 0o600 }); await rename(temporary, path); }
+async function writeReceipt(path: string, receipt: Receipt) {
+  const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    const file = await open(temporary, "wx", 0o600);
+    try {
+      await file.writeFile(JSON.stringify(receipt));
+      await file.sync();
+    } finally { await file.close(); }
+    await rename(temporary, path);
+    const directory = await open(dirname(path), "r");
+    try { await directory.sync(); } finally { await directory.close(); }
+  } finally {
+    await rm(temporary, { force: true }).catch(() => undefined);
+  }
+}
 async function actionReceipt(stateRoot: string, requestId: string, operation: Receipt["operation"], identity: string, validate: () => Promise<void>, perform: () => Promise<unknown>) {
   const directory = join(stateRoot, "firewall-actions"); const path = join(directory, `${requestId}.json`); await mkdir(directory, { recursive: true, mode: 0o700 });
   let receipt: Receipt | null = null;

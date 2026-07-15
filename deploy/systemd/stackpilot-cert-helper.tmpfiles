@@ -9,3 +9,4 @@ d /run/stackpilot-sites 0755 root root -
 d /run/stackpilot-cert-helper 0750 root stackpilot-cert -
 d /run/stackpilot-firewall-helper 0750 root stackpilot-firewall -
 f /run/ufw.lock 0600 root root -
+f /run/xtables.lock 0600 root root -
