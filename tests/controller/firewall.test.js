@@ -15,6 +15,7 @@ test("socket parser classifies real bind addresses and emits stable identifiers"
   const input = [
     "tcp LISTEN 0 511 0.0.0.0:443 0.0.0.0:*",
     "tcp LISTEN 0 128 127.0.0.1:18787 0.0.0.0:*",
+    "udp UNCONN 0 0 127.0.0.53%lo:53 0.0.0.0:*",
     "udp UNCONN 0 0 10.0.0.8:53 0.0.0.0:*",
     "tcp LISTEN 0 511 [::]:80 [::]:*",
     "tcp LISTEN 0 511 [::1]:6379 [::]:*",
@@ -22,7 +23,7 @@ test("socket parser classifies real bind addresses and emits stable identifiers"
   const first = parseListeningSockets(input, "prod-controller");
   const second = parseListeningSockets(input, "prod-controller");
   assert.deepEqual(first, second);
-  assert.deepEqual(first.map((row) => [row.port, row.exposure]), [[53, "private"], [80, "public"], [443, "public"], [6379, "loopback"], [18787, "loopback"]]);
+  assert.deepEqual(first.map((row) => [row.port, row.exposure]), [[53, "private"], [53, "loopback"], [80, "public"], [443, "public"], [6379, "loopback"], [18787, "loopback"]]);
   assert.match(first[0].id, /^port_[a-f0-9]{24}$/);
 });
 
