@@ -1,6 +1,5 @@
 import type { TopbarNotification } from "../components/layout/types";
 import type { AclPolicy, AclRole, AclUser } from "../features/access/types";
-import type { AuditExportRecord } from "../features/audit/types";
 import type { HostRecord } from "../features/hosts/types";
 import type { ProxyEndpoint, ProxyRouteRule, SettingsChangeRow, TokenRow } from "../features/settings/types";
 import type { SiteRecord } from "../features/sites/types";
@@ -77,15 +76,6 @@ const initialTerminalHistory: TerminalHistoryRecord[] = [
   { id: "term-history-3", command: "mysqladmin processlist", host: "panel-hk-03", user: "root", status: "失败", duration: "5.0s", time: "昨天 22:18", output: "ERROR 2002: connection timed out" },
   { id: "term-history-4", command: "tail -n 100 /var/log/nginx/error.log", host: "panel-bj-02", user: "deploy", status: "成功", duration: "0.7s", time: "昨天 21:12", output: "no critical errors" },
 ];
-
-
-const initialAuditExports: AuditExportRecord[] = [
-  { id: "exp-1", name: "今日操作审计 CSV", format: "CSV", range: "今天 00:00 - 现在", status: "可下载", rows: 482, size: "318 KB", creator: "管理员", createdAt: "今天 10:24", expiresAt: "7 天后", traceId: "EXP-20260619-001" },
-  { id: "exp-2", name: "失败操作 JSON", format: "JSON", range: "近 24 小时", status: "可下载", rows: 17, size: "42 KB", creator: "王工", createdAt: "今天 09:16", expiresAt: "6 天后", traceId: "EXP-20260619-002" },
-  { id: "exp-3", name: "合规审计归档包", format: "ZIP", range: "近 30 天", status: "生成中", rows: 18642, size: "生成中", creator: "系统任务", createdAt: "今天 08:30", expiresAt: "永久归档", traceId: "EXP-20260619-003" },
-  { id: "exp-4", name: "昨日配置变更 CSV", format: "CSV", range: "昨天", status: "失败", rows: 0, size: "-", creator: "管理员", createdAt: "昨天 18:33", expiresAt: "-", traceId: "EXP-20260618-017" },
-];
-
 const permissionOptions = ["主机读写", "网站发布", "数据库管理", "文件管理", "终端访问", "防火墙管理", "审计查看", "权限管理"];
 
 const initialAclUsers: AclUser[] = [
@@ -113,4 +103,4 @@ const initialAclPolicies: AclPolicy[] = [
   { id: "pol-8", name: "权限管理", module: "权限", risk: "高", desc: "允许变更用户、角色和权限项绑定。", roles: ["管理员"], lastUpdated: "今天 10:02" },
 ];
 
-export { topbarNotifications, topbarHelpLinks, initialProxyEndpoints, initialProxyRules, initialSettingsChanges, initialTokenRows, initialHostRecords, initialSiteRecords, initialTerminalSessions, initialTerminalSnippets, initialTerminalHistory, initialAuditExports, permissionOptions, initialAclUsers, initialAclRoles, initialAclPolicies };
+export { topbarNotifications, topbarHelpLinks, initialProxyEndpoints, initialProxyRules, initialSettingsChanges, initialTokenRows, initialHostRecords, initialSiteRecords, initialTerminalSessions, initialTerminalSnippets, initialTerminalHistory, permissionOptions, initialAclUsers, initialAclRoles, initialAclPolicies };

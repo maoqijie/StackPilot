@@ -5,7 +5,6 @@ export const PermissionSchema = z.enum([
   "services:read", "services:operate",
   "terminal:read", "terminal:execute",
   "systemd:read",
-  "firewall:read",
   "sites:read", "sites:logs", "sites:deploy", "sites:operate", "sites:renew",
   "files:read", "files:write", "files:delete", "firewall:read", "firewall:operate", "databases:read", "databases:sql:read", "databases:backup",
   "databases:operate", "databases:install", "databases:restore",
@@ -40,12 +39,12 @@ export const AUDIT_FAILURE_OUTCOMES = ["failure", "failed", "error", "denied", "
 export const AuditQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(1000).default(200),
   result: z.enum(["all", "failed"]).default("all"),
-  actionPrefix: z.string().trim().min(1).max(120).optional(),
+  actionPrefix: z.string().trim().min(1).max(128).regex(/^[a-z0-9._:-]+$/i).optional(),
 }).strict();
 export type AuditQuery = z.infer<typeof AuditQuerySchema>;
 export const AuditEventSchema = z.object({
   sequence: z.number().int().positive(),
-  eventId: z.string().min(1),
+  eventId: z.string().uuid(),
   occurredAt: z.string().datetime(),
   actorType: z.string().min(1),
   actorId: z.string().nullable(),
@@ -58,11 +57,11 @@ export const AuditEventSchema = z.object({
   authorization: z.string().min(1),
   requestId: z.string().min(1),
   traceId: z.string().min(1),
-  eventHash: z.string().min(1),
-});
+  eventHash: z.string().regex(/^[a-f0-9]{64}$/),
+}).strict();
 export const AuditEventsResponseSchema = z.object({
-  events: z.array(AuditEventSchema),
+  events: z.array(AuditEventSchema).max(1000),
   collectedAt: z.string().datetime(),
-});
+}).strict();
 export type AuditEvent = z.infer<typeof AuditEventSchema>;
 export type AuditEventsResponse = z.infer<typeof AuditEventsResponseSchema>;

@@ -6,6 +6,7 @@ import { commitPageUpdate } from "./pageTransition";
 import type { Notify, PageKey, SetPage, ToastState } from "../types/app";
 import { AuthGate } from "../features/auth/AuthGate";
 import { logout } from "../api/authApi";
+import { navPageFor } from "./navigation";
 
 function AuthenticatedApp({ user }: { user: PublicUser }) {
   const [page, setPageState] = useState<PageKey>(readPageFromHash);
@@ -26,6 +27,13 @@ function AuthenticatedApp({ user }: { user: PublicUser }) {
   useEffect(() => {
     pageRef.current = page;
   }, [page]);
+
+  useEffect(() => {
+    if (navPageFor(page) !== "audit" || user.permissions.includes("audit:read")) return;
+    pageRef.current = "overview";
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#overview`);
+    commitPage("overview");
+  }, [commitPage, page, user.permissions]);
 
   useEffect(() => {
     sessionLockedRef.current = sessionLocked;

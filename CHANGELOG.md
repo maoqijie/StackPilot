@@ -2,7 +2,7 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.23 - 2026-07-16
+## 0.3.0-preview.24 - 2026-07-16
 
 ### Added
 
@@ -13,6 +13,18 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Required Controller node scope, `firewall:operate`, CSRF, one-time reauthentication, stable idempotency keys and optimistic rule versions for every UFW mutation.
 - Kept external UFW rules read-only, rechecked rule identity immediately before numbered deletion, and excluded UFW activation and default-policy changes from the API.
+
+## 0.3.0-preview.23 - 2026-07-15
+
+### Changed
+
+- Unified global, failed, database and export audit views on the authenticated Controller repository, with backend collection timestamps, visibility-aware 10-second polling, stable details and confirmed CSV downloads of current real results.
+- Preserved the `0.3.0-preview.22` schedule idempotency and native cron deployment hardening while removing simulated audit export tasks and fixture fallback paths.
+
+### Security
+
+- Enforced strict shared audit event and query contracts, rejected duplicate or unknown query parameters, applied failed-result and action-prefix filters before the SQLite limit, and kept `audit:read` protection on API, navigation and direct rendering.
+- Preserved backend parameter redaction and represented non-terminal outcomes such as `queued` as recorded rather than successful.
 
 ## 0.3.0-preview.22 - 2026-07-15
 
@@ -43,6 +55,22 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 ### Fixed
 
 - Classified the complete IPv4 `127.0.0.0/8` loopback range, including interface-scoped systemd-resolved listeners, as local-only instead of a specific-address binding.
+
+### Added
+
+- Added strict shared audit event/query contracts, backend collection timestamps and bounded action-prefix filtering before result limiting.
+- Added desktop and mobile real-backend E2E coverage for authenticated audit loading, silent 10-second polling, detail inspection and CSV download.
+
+### Changed
+
+- Replaced the global, failed-operation and database audit fixtures with the authenticated Controller audit API while preserving filters and stable detail state.
+- Replaced simulated export history and browser-only task mutations with a confirmed CSV download of the current real query result.
+- Hid audit navigation and direct page rendering unless the signed-in user holds `audit:read`.
+
+### Security
+
+- Audit responses remain protected by session/RBAC, disable caching, preserve server-side sensitive-parameter redaction and strictly reject invalid or repeated query parameters.
+- Non-terminal outcomes such as `queued` are shown as recorded states instead of being misrepresented as successful operations.
 
 ## 0.3.0-preview.19 - 2026-07-15
 

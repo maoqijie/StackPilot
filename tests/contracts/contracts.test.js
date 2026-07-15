@@ -14,7 +14,7 @@ import {
   AgentDatabaseBackupPlanPollResponseSchema, AgentDatabaseOperationUpdateSchema, AgentDatabaseQueryUploadSchema, AgentDatabaseScheduledBackupResultsRequestSchema,
   BusinessDatabaseBackupsPayloadSchema, CreateBusinessDatabaseBackupPlanRequestSchema, CreateDatabaseOperationPlanRequestSchema, DatabaseOperationPlanSchema,
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, ExecuteDatabaseOperationPlanRequestSchema,
-  CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
+  AuditEventsResponseSchema, AuditQuerySchema, CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
   CreateFirewallRuleRequestSchema, FirewallRulesPayloadSchema,
   FirewallOpenPortsPayloadSchema,
@@ -35,6 +35,23 @@ test("firewall contracts accept bounded UFW rules and reject shell-shaped input"
   assert.equal(CreateFirewallRuleRequestSchema.safeParse({ name: "HTTPS", port: 443, protocol: "tcp", source: "0.0.0.0/0", idempotencyKey: crypto.randomUUID() }).success, true);
   assert.equal(CreateFirewallRuleRequestSchema.safeParse({ name: "bad", port: "443; reboot", protocol: "tcp", source: "any", idempotencyKey: crypto.randomUUID(), command: "ufw allow" }).success, false);
   assert.equal(PermissionSchema.safeParse("firewall:read").success, true); assert.equal(PermissionSchema.safeParse("firewall:operate").success, true);
+});
+
+test("audit contracts bound queries and expose backend collection time", () => {
+  const collectedAt = new Date().toISOString();
+  const event = { sequence: 1, eventId: crypto.randomUUID(), occurredAt: collectedAt, actorType: "user", actorId: "operator", source: "controller", targetType: "file", targetId: "/tmp/a", action: "file.trash", parameters: '{"token":"[REDACTED]"}', outcome: "success", authorization: "allowed", requestId: crypto.randomUUID(), traceId: crypto.randomUUID(), eventHash: "a".repeat(64) };
+  assert.equal(AuditEventsResponseSchema.safeParse({ events: [event], collectedAt }).success, true);
+  assert.equal(AuditEventsResponseSchema.safeParse({ events: [event], collectedAt, clientTime: collectedAt }).success, false);
+  assert.deepEqual(AuditQuerySchema.parse({}), { limit: 200, result: "all" });
+  assert.deepEqual(AuditQuerySchema.parse({ limit: "50", result: "failed", actionPrefix: "database." }), { limit: 50, result: "failed", actionPrefix: "database." });
+  for (const query of [{ limit: 0 }, { limit: 1001 }, { actionPrefix: "database%" }, { unknown: "value" }]) assert.equal(AuditQuerySchema.safeParse(query).success, false);
+});
+
+test("schedule side effects require bounded idempotency keys", () => {
+  const request = { name: "backup", cron: "0 4 * * *", command: "true", idempotencyKey: "schedule-create-1" };
+  assert.equal(CreateScheduleJobRequestSchema.safeParse(request).success, true);
+  assert.equal(CreateScheduleJobRequestSchema.safeParse({ ...request, idempotencyKey: "short" }).success, false);
+  assert.equal(CreateScheduleJobRequestSchema.safeParse({ ...request, idempotencyKey: "invalid key" }).success, false);
 });
 
 test("firewall open-port payload stays strict and backend-owned", () => {
