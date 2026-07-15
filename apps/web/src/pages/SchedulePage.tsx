@@ -126,6 +126,7 @@ function SchedulePage({ page, notify, permissions = defaultPermissions }: { page
     }
     if (!currentDrawer || (currentDrawer.type !== "create" && currentDrawer.type !== "edit")) return;
     const editingId = currentDrawer.type === "edit" ? currentDrawer.job.id : null;
+    const idempotencyKey = `schedule-create:${crypto.randomUUID()}`;
     setConfirmation({
       title: editingId ? "确认保存定时任务" : "确认创建定时任务",
       message: "该操作会修改 Controller 服务账号的真实 crontab。",
@@ -136,7 +137,7 @@ function SchedulePage({ page, notify, permissions = defaultPermissions }: { page
         try {
           const payload = editingId
             ? await updateScheduleJob(editingId, { name: nextName, cron: nextCron, command: nextCommand, enabled: draft.enabled }, proof)
-            : await createScheduleJob({ name: nextName, cron: nextCron, command: nextCommand, enabled: draft.enabled }, proof);
+            : await createScheduleJob({ name: nextName, cron: nextCron, command: nextCommand, enabled: draft.enabled }, proof, idempotencyKey);
           applySchedulePayload(payload.jobs, payload.job.id);
           notify(payload.message, payload.tone ?? "success");
           setDrawer({ type: "detail", id: payload.job.id });
@@ -162,13 +163,14 @@ function SchedulePage({ page, notify, permissions = defaultPermissions }: { page
   };
   const requestRunJob = (row: ScheduleJob) => {
     if (!canWrite) return;
+    const idempotencyKey = `schedule-run:${crypto.randomUUID()}`;
     setConfirmation({
       title: "确认立即执行",
       message: "Controller 将立即执行该任务命令，不等待下一次 cron 调度。",
       detail: row.command,
       confirmLabel: "确认执行",
       execute: async (proof) => {
-        const payload = await runScheduleJob(row.id, proof);
+        const payload = await runScheduleJob(row.id, proof, idempotencyKey);
         applySchedulePayload(payload.jobs, row.id);
         notify(payload.message, payload.tone ?? "success");
       },

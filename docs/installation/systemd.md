@@ -2,6 +2,20 @@
 
 Native installation is supported on Debian 12 and Ubuntu 24.04 LTS x86_64 with Node.js 22.x. Verify the tagged archive, extract it into a root-owned staging directory, then run:
 
+The native Controller unit always uses the fixed `/usr/bin/crontab` executable, existing `crontab` system group and `/var/spool/cron/crontabs` spool path. Install the distribution package before the first installation or any same-version unit synchronization:
+
+```bash
+sudo apt-get update
+sudo apt-get install cron
+test -x /usr/bin/crontab
+getent group crontab
+test -d /var/spool/cron/crontabs
+```
+
+The installer fails with an actionable error before running Controller sysusers or replacing units when any dependency is absent. It then synchronizes the dedicated Controller user and its membership in the existing system `crontab` group on every run; the project sysusers file does not create or replace that distribution-owned group.
+
+Release preflight checks the same three host dependencies when `STACKPILOT_ENABLE_CRONTAB_WRITE=1`. With the switch left at its default `0`, missing cron support does not fail preflight because schedule mutation remains disabled.
+
 ```bash
 sudo deploy/scripts/install-systemd.sh controller
 sudo deploy/scripts/install-systemd.sh agent   # only on an Agent host
@@ -12,7 +26,7 @@ The installer creates versioned directories and `current` symlinks. It installs 
 
 The site helper is optional and Linux-only. Its local socket is `/run/stackpilot-cert-helper/helper.sock`, mode `0660`, owner `root:stackpilot-cert`; native Controller and Agent processes receive supplementary membership in that group. The one-shot root helper accepts only strict schemas for readiness and public certificate inventory, plan preparation and activation, lifecycle changes, bounded structured-log reads, and opaque certificate renewal. It executes fixed Git, systemd, Nginx, Certbot, curl, and archive commands against configured roots. It has no network listener, sudoers rule, generic shell, caller-controlled executable, or caller-controlled filesystem path. Outbound access is limited by each fixed operation, including public GitHub HTTPS clones, pinned Node.js archives, local health checks, and ACME.
 
-Re-running the installer for an already installed version only synchronizes the corresponding systemd units and runs `daemon-reload`; it does not modify the release, `current` symlink, or service state. Review the unit diff, then restart the affected service or socket during a controlled maintenance window and verify readiness.
+Re-running the installer for an already installed version revalidates the Controller cron dependencies, synchronizes Controller sysusers, synchronizes the corresponding systemd units and runs `daemon-reload`; it does not modify the release, `current` symlink, or service state. Review the unit diff, then restart the affected service or socket during a controlled maintenance window and verify readiness.
 
 Install the nginx example after replacing every `.invalid` hostname and certificate path. Controller remains on `127.0.0.1:8787`; nginx is the only public listener. Bind Agent port 9443 to a private management address and allow only enrolled node networks at the firewall.
 

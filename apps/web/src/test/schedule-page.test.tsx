@@ -159,4 +159,25 @@ describe("schedule failed page", () => {
     expect(reauthenticate).toHaveBeenCalledWith("correct horse battery staple");
     expect(updateScheduleJob).toHaveBeenCalledWith(failedJob.id, { enabled: false }, "proof-1");
   });
+
+  it("uses one stable idempotency key for an immediate execution confirmation", async () => {
+    vi.mocked(fetchScheduleJobs).mockResolvedValue(payload([failedJob]));
+    vi.mocked(reauthenticate).mockResolvedValue({ proof: "proof-1", expiresAt: "2026-07-15T03:00:00.000Z" });
+    vi.mocked(runScheduleJob).mockRejectedValueOnce(new Error("响应丢失")).mockResolvedValue({ job: failedJob, jobs: [failedJob], message: "已执行", tone: "success" });
+    render(<SchedulePage page="schedule-enabled" notify={notify} />);
+    await act(async () => undefined);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "执行" })[0]);
+    const dialog = screen.getByRole("alertdialog", { name: "确认立即执行" });
+    const password = within(dialog).getByLabelText("当前密码");
+    fireEvent.change(password, { target: { value: "correct horse battery staple" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认执行" }));
+    await act(async () => undefined);
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认执行" }));
+    await act(async () => undefined);
+
+    const firstKey = vi.mocked(runScheduleJob).mock.calls[0]?.[2];
+    expect(firstKey).toMatch(/^schedule-run:/);
+    expect(vi.mocked(runScheduleJob).mock.calls[1]?.[2]).toBe(firstKey);
+  });
 });

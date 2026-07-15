@@ -27,6 +27,13 @@ test("shared API constants preserve the existing HTTP contract", () => {
   assert.deepEqual(WRITE_METHODS, ["POST", "PATCH", "DELETE"]);
 });
 
+test("schedule side effects require bounded idempotency keys", () => {
+  const request = { name: "backup", cron: "0 4 * * *", command: "true", idempotencyKey: "schedule-create-1" };
+  assert.equal(CreateScheduleJobRequestSchema.safeParse(request).success, true);
+  assert.equal(CreateScheduleJobRequestSchema.safeParse({ ...request, idempotencyKey: "short" }).success, false);
+  assert.equal(CreateScheduleJobRequestSchema.safeParse({ ...request, idempotencyKey: "invalid key" }).success, false);
+});
+
 test("firewall open-port payload stays strict and backend-owned", () => {
   const payload = { collectedAt: new Date().toISOString(), collectionStatus: "complete", backend: "ss", warnings: [], ports: [{ id: `port_${"a".repeat(24)}`, protocol: "TCP", port: 443, address: "0.0.0.0", source: "0.0.0.0/0", exposure: "public", host: "controller-1" }] };
   assert.equal(FirewallOpenPortsPayloadSchema.safeParse(payload).success, true);

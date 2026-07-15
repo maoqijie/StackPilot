@@ -12,11 +12,11 @@ export function fetchScheduleJobs(signal?: AbortSignal) {
   return requestJson<SchedulePayload>("/overview/current-user-crontab", { signal });
 }
 
-export function createScheduleJob(payload: CreateScheduleJobRequest, proof: string) {
+export function createScheduleJob(payload: Omit<CreateScheduleJobRequest, "idempotencyKey">, proof: string, idempotencyKey: string) {
   return requestJson<ScheduleMutationResponse>("/overview/current-user-crontab", {
     method: "POST",
     headers: { "X-Reauth-Proof": proof },
-    body: JSON.stringify({ ...payload, enabled: payload.enabled ?? true }),
+    body: JSON.stringify({ ...payload, enabled: payload.enabled ?? true, idempotencyKey }),
   });
 }
 
@@ -28,11 +28,11 @@ export function updateScheduleJob(id: string, payload: UpdateScheduleJobRequest,
   });
 }
 
-export function runScheduleJob(id: string, proof: string) {
+export function runScheduleJob(id: string, proof: string, idempotencyKey: string) {
   return requestJson<ScheduleMutationResponse & { output?: string }>(`/overview/current-user-crontab/${id}`, {
     method: "PATCH",
     headers: { "X-Reauth-Proof": proof },
-    body: JSON.stringify({ action: "run" }),
+    body: JSON.stringify({ action: "run", idempotencyKey }),
   });
 }
 

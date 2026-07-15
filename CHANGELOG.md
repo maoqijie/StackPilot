@@ -2,6 +2,22 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.21 - 2026-07-15
+
+### Fixed
+
+- Made the native Controller installer verify the distribution `cron` package contract before synchronizing units, and reapplied Controller sysusers membership during same-version unit updates.
+- Extended production preflight to reject enabled crontab writes when the executable, system group, or spool directory is unavailable, while keeping the optional capability non-blocking when disabled.
+
+### Security
+
+- Added user-scoped idempotency keys to schedule creation and immediate execution so a retried confirmation cannot duplicate a managed job or execute its command twice after a lost response.
+- Added bounded replay caching and payload-conflict rejection for completed schedule side effects while preserving session, CSRF, permission, and one-time reauthentication checks.
+
+### Changed
+
+- Declared the Debian and Ubuntu `cron` package as an explicit native Controller dependency and installed it in the systemd CI gate before unit verification.
+
 ## 0.3.0-preview.19 - 2026-07-15
 
 ### Added

@@ -245,10 +245,10 @@ test("all crontab mutations and immediate execution stay disabled by default", a
     assert.equal(list.status, 200);
     assert.equal(list.body.writeEnabled, false);
     const cases = [
-      { method: "POST", path: "", body: { name: "blocked", cron: "0 4 * * *", command: "true" } },
+      { method: "POST", path: "", body: { name: "blocked", cron: "0 4 * * *", command: "true", idempotencyKey: "blocked-create-1" } },
       { method: "PATCH", path: "/example", body: { enabled: false } },
       { method: "DELETE", path: "/example" },
-      { method: "PATCH", path: "/example", body: { action: "run" } },
+      { method: "PATCH", path: "/example", body: { action: "run", idempotencyKey: "blocked-run-1" } },
     ];
     for (const item of cases) {
       const response = await jsonResponse(await fetch(`${baseUrl}/api/overview/current-user-crontab${item.path}`, {
@@ -265,7 +265,7 @@ test("all crontab mutations and immediate execution stay disabled by default", a
 
 test("enabled schedule mutations require a user session and one-time reauthentication", async () => {
   await withServer({ STACKPILOT_ENABLE_CRONTAB_WRITE: "1", STACKPILOT_ALLOWED_ORIGINS: allowedOrigin }, async (baseUrl, { platform, apiToken }) => {
-    const input = { name: "safe-disabled", cron: "0 4 * * *", command: "true", enabled: false };
+    const input = { name: "safe-disabled", cron: "0 4 * * *", command: "true", enabled: false, idempotencyKey: "create-safe-disabled-1" };
     assert.equal((await fetch(`${baseUrl}/api/overview/current-user-crontab`, { method: "POST", headers: authHeaders(apiToken), body: JSON.stringify(input) })).status, 403);
 
     const session = await authenticatedSession(baseUrl);
@@ -275,6 +275,10 @@ test("enabled schedule mutations require a user session and one-time reauthentic
     assert.equal(created.status, 201);
     assert.equal(created.body.job.enabled, false);
     assert.equal((await fetch(`${baseUrl}/api/overview/current-user-crontab/${created.body.job.id}`, { method: "PATCH", headers: session.headers(proof), body: JSON.stringify({ enabled: true }) })).status, 403);
+    const retryProof = await session.reauthenticate();
+    const retried = await jsonResponse(await fetch(`${baseUrl}/api/overview/current-user-crontab`, { method: "POST", headers: session.headers(retryProof), body: JSON.stringify(input) }));
+    assert.equal(retried.status, 201);
+    assert.equal(retried.body.job.id, created.body.job.id);
     assert.equal(platform.calls.writeCrontab, 1);
     assert.equal(platform.calls.runScheduledCommand, 0);
   });
@@ -299,7 +303,7 @@ test("runtime schemas reject illegal fields, query parameters and path ids", asy
     const session = await authenticatedSession(baseUrl);
     const proof = await session.reauthenticate();
     const illegalBody = await jsonResponse(await fetch(`${baseUrl}/api/overview/current-user-crontab`, {
-      method: "POST", headers: session.headers(proof), body: JSON.stringify({ name: "job", cron: "0 4 * * *", command: "true", unexpected: true }),
+      method: "POST", headers: session.headers(proof), body: JSON.stringify({ name: "job", cron: "0 4 * * *", command: "true", idempotencyKey: "illegal-body-1", unexpected: true }),
     }));
     assert.equal(illegalBody.status, 400);
     assert.equal(illegalBody.body.code, "BAD_REQUEST");
