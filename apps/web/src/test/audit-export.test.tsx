@@ -22,6 +22,27 @@ describe("audit export real backend", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/audit-exports", expect.objectContaining({ method: "POST", headers: expect.objectContaining({ "X-CSRF-Token": "csrf-token-held-in-memory-1234567890", "X-Reauth-Proof": "proof-held-in-memory-1234567890123456" }), body: expect.stringContaining('"format":"csv"') })));
   });
 
+  it("shows the POST result immediately when an older list request is still running", async () => {
+    window.history.replaceState(null, "", "/#audit-export"); setCsrfToken("csrf-token-held-in-memory-1234567890");
+    let resolveInitial: ((response: Response) => void) | undefined;
+    const created = { ...record, id: "33333333-3333-4333-8333-333333333333", name: "竞态后的真实快照" };
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveInitial = resolve; }))
+      .mockResolvedValueOnce(json({ proof: "proof-held-in-memory-1234567890123456", expiresAt: "2026-07-15T12:05:00.000Z" }))
+      .mockResolvedValueOnce(json({ export: created }, 201))
+      .mockResolvedValueOnce(json({ exports: [created], collectedAt: "2026-07-15T12:00:04.000Z" }));
+    vi.stubGlobal("fetch", fetchMock); const user = userEvent.setup();
+    render(<AuditPage page="audit-export" notify={vi.fn()} permissions={["audit:read", "audit:export"]} />);
+    await user.click(screen.getByRole("button", { name: "新建导出" }));
+    const dialog = screen.getByRole("alertdialog", { name: "创建审计快照" });
+    await user.type(within(dialog).getByLabelText("当前密码"), "current password");
+    await user.click(within(dialog).getByRole("button", { name: "确认生成" }));
+    expect((await screen.findAllByText("竞态后的真实快照")).length).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    resolveInitial?.(json({ exports: [], collectedAt: "2026-07-15T11:59:59.000Z" }));
+    await waitFor(() => expect((screen.getAllByText("竞态后的真实快照")).length).toBeGreaterThan(0));
+  });
+
   it("hides export actions and polling without audit:export", () => {
     const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
     render(<AuditPage page="audit-export" notify={vi.fn()} permissions={["audit:read"]} />);

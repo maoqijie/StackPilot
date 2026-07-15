@@ -39,6 +39,10 @@ export function usePollingResource<T>(loader: (signal: AbortSignal) => Promise<T
     resourceKeyRef.current = resourceKey;
     controllerRef.current?.abort();
     requestRef.current = null;
+    if (resourceChanged) {
+      dataRef.current = initialData;
+      setState({ data: initialData, loading: enabled && initialData === null, error: null, backgroundError: null });
+    }
     if (enabled && (initialData === null || resourceChanged)) {
       queueMicrotask(() => {
         if (disposed) return;

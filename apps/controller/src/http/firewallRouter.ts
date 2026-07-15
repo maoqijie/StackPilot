@@ -1,13 +1,13 @@
-import { CreateFirewallRuleRequestSchema, DeleteFirewallRuleRequestSchema, FirewallMutationResponseSchema, FirewallRulesPayloadSchema, PathIdSchema } from "@stackpilot/contracts";
+import { CONTROLLER_FIREWALL_NODE_ID, CreateFirewallRuleRequestSchema, DeleteFirewallRuleRequestSchema, FirewallMutationResponseSchema, FirewallRuleIdSchema, FirewallRulesPayloadSchema } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
 import { badRequest, notFound } from "./errors/ApiError.js";
 import { sendJson } from "./response/json.js";
 import { parseSchema } from "./validation.js";
 
-export const CONTROLLER_FIREWALL_NODE_ID = "00000000-0000-4000-8000-000000000002";
+export { CONTROLLER_FIREWALL_NODE_ID };
 
 function ruleId(context: RequestContext) {
-  try { return parseSchema(PathIdSchema, decodeURIComponent(context.parts[3] ?? ""), "防火墙规则 ID"); }
+  try { return parseSchema(FirewallRuleIdSchema, decodeURIComponent(context.parts[3] ?? ""), "防火墙规则 ID"); }
   catch (error) { if (error instanceof URIError) throw badRequest("防火墙规则 ID 编码无效"); throw error; }
 }
 
@@ -31,8 +31,9 @@ export async function routeFirewallRequest(context: RequestContext) {
   if (context.parts.length === 4 && method === "DELETE") {
     requireReadAndOperate(context);
     const input = parseSchema(DeleteFirewallRuleRequestSchema, context.body, "删除防火墙规则");
+    const id = ruleId(context);
     context.identity?.consumeReauth(context.principal!, typeof context.request.headers["x-reauth-proof"] === "string" ? context.request.headers["x-reauth-proof"] : undefined);
-    sendJson(context.response, 200, await context.services.firewall.delete(ruleId(context), input), FirewallMutationResponseSchema); return;
+    sendJson(context.response, 200, await context.services.firewall.delete(id, input), FirewallMutationResponseSchema); return;
   }
   throw notFound("防火墙接口不存在");
 }

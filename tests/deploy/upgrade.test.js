@@ -9,6 +9,28 @@ import { openDatabase } from "../../apps/controller/dist/database/database.js";
 
 const applicationVersion = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8")).version;
 
+const legacyAuditExportMigration = `CREATE TABLE audit_exports (
+  export_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  format TEXT NOT NULL CHECK(format IN ('csv','json')),
+  status TEXT NOT NULL CHECK(status IN ('ready','failed')),
+  row_count INTEGER NOT NULL CHECK(row_count >= 0),
+  size_bytes INTEGER NOT NULL CHECK(size_bytes >= 0),
+  storage_name TEXT UNIQUE,
+  sha256 TEXT,
+  creator_user_id TEXT NOT NULL,
+  creator_display_name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  completed_at TEXT,
+  expires_at TEXT NOT NULL,
+  trace_id TEXT NOT NULL UNIQUE,
+  error_code TEXT,
+  source_max_sequence INTEGER NOT NULL CHECK(source_max_sequence >= 0)
+);
+CREATE INDEX audit_exports_created_idx ON audit_exports(created_at DESC);
+CREATE INDEX audit_exports_expires_idx ON audit_exports(expires_at);
+UPDATE release_metadata SET schema_version = 9, upgraded_at = CURRENT_TIMESTAMP WHERE singleton = 1;`;
+
 const migrations = new URL("../../apps/controller/src/database/migrations/", import.meta.url);
 const migrationFiles = [
   [1, "identity", "001_identity.sql"],
@@ -228,8 +250,18 @@ test("legacy schema 9 audit exports gain pagination metadata and advance to sche
     ];
     const db = new Database(path);
     migrateDatabase(db, await loadMigrations(entries));
-    const exportSql = (await readFile(new URL("010_audit_exports.sql", migrations), "utf8")).replace("schema_version = 10", "schema_version = 9");
-    migrateDatabase(db, [{ version: 9, name: "audit-exports", sql: exportSql }]);
+    migrateDatabase(db, [{ version: 9, name: "audit-exports", sql: legacyAuditExportMigration }]);
+    const legacyRecord = {
+      exportId: "99999999-9999-4999-8999-999999999999", name: "legacy snapshot", format: "json", status: "failed",
+      rowCount: 0, sizeBytes: 0, storageName: null, sha256: null, creatorUserId: "legacy-user", creatorDisplayName: "Legacy User",
+      createdAt: "2026-07-15T00:00:00.000Z", completedAt: "2026-07-15T00:00:01.000Z", expiresAt: "2026-07-22T00:00:00.000Z",
+      traceId: "88888888-8888-4888-8888-888888888888", errorCode: "GENERATION_FAILED", sourceMaxSequence: 0,
+    };
+    db.prepare(`INSERT INTO audit_exports(
+      export_id,name,format,status,row_count,size_bytes,storage_name,sha256,creator_user_id,creator_display_name,
+      created_at,completed_at,expires_at,trace_id,error_code,source_max_sequence
+    ) VALUES(@exportId,@name,@format,@status,@rowCount,@sizeBytes,@storageName,@sha256,@creatorUserId,@creatorDisplayName,
+      @createdAt,@completedAt,@expiresAt,@traceId,@errorCode,@sourceMaxSequence)`).run(legacyRecord);
     db.close();
 
     const upgraded = openDatabase(path);
@@ -240,7 +272,45 @@ test("legacy schema 9 audit exports gain pagination metadata and advance to sche
     assert.ok(upgraded.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_exports'").get());
     assert.ok(upgraded.prepare("SELECT name FROM pragma_table_info('audit_events') WHERE name='node_id'").get());
     assert.ok(upgraded.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='audit_events_node_sequence_idx'").get());
+    assert.deepEqual(upgraded.prepare(`SELECT
+      export_id AS exportId,name,format,status,row_count AS rowCount,size_bytes AS sizeBytes,storage_name AS storageName,
+      sha256,creator_user_id AS creatorUserId,creator_display_name AS creatorDisplayName,created_at AS createdAt,
+      completed_at AS completedAt,expires_at AS expiresAt,trace_id AS traceId,error_code AS errorCode,source_max_sequence AS sourceMaxSequence
+      FROM audit_exports WHERE export_id=?`).get(legacyRecord.exportId), legacyRecord);
     upgraded.close();
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("production schema 9 audit pagination upgrades to schema 10 across restarts", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "stackpilot-production-schema9-upgrade-"));
+  const path = join(dir, "stackpilot.db");
+  try {
+    const entries = [
+      ...migrationFiles,
+      [7, "site-management", "007_site_management.sql"],
+      [8, "deployment-environment", "008_deployment_environment.sql"],
+      [9, "audit-pagination", "009_audit_pagination.sql"],
+    ];
+    const productionSchema9 = new Database(path);
+    migrateDatabase(productionSchema9, await loadMigrations(entries));
+    assert.deepEqual(productionSchema9.prepare("SELECT version,name FROM schema_migrations WHERE version=9").get(), { version: 9, name: "audit-pagination" });
+    assert.equal(productionSchema9.prepare("SELECT max(version) AS version FROM schema_migrations").get().version, 9);
+    productionSchema9.close();
+
+    const upgraded = openDatabase(path);
+    assert.deepEqual(upgraded.prepare("SELECT version,name FROM schema_migrations WHERE version>=9 ORDER BY version").all(), [
+      { version: 9, name: "audit-pagination" },
+      { version: 10, name: "audit-exports" },
+    ]);
+    assert.ok(upgraded.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_exports'").get());
+    upgraded.close();
+
+    const reopened = openDatabase(path);
+    assert.deepEqual(reopened.prepare("SELECT version,name FROM schema_migrations WHERE version>=9 ORDER BY version").all(), [
+      { version: 9, name: "audit-pagination" },
+      { version: 10, name: "audit-exports" },
+    ]);
+    reopened.close();
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

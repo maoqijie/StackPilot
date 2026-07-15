@@ -92,6 +92,18 @@ describe("audit real backend", () => {
     expect((await screen.findAllByText("没有匹配的真实审计日志，系统将继续自动查询")).length).toBeGreaterThan(0);
   });
 
+  it("clears rows from the previous query when a changed filter fails", async () => {
+    vi.mocked(fetchAuditEvents)
+      .mockResolvedValueOnce(response([successEvent], { total: 1 }))
+      .mockRejectedValueOnce(new Error("筛选查询失败"));
+    render(<AuditPage page="audit-all" notify={vi.fn()} />);
+    expect((await screen.findAllByText("file.upload")).length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByPlaceholderText("搜索关键字、对象、request id 或 trace id"), { target: { value: "missing" } });
+    expect(await screen.findByText("筛选查询失败")).toBeInTheDocument();
+    expect(screen.queryByText("file.upload")).not.toBeInTheDocument();
+    expect(fetchAuditEvents).toHaveBeenLastCalledWith({ search: "missing" }, expect.any(AbortSignal));
+  });
+
   it("keeps a selected actor visible when polling replaces the result window", async () => {
     const user = userEvent.setup();
     let resolveRefresh: ((value: AuditEventsResponse) => void) | undefined;

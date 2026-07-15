@@ -156,7 +156,7 @@ test("firewall HTTP routes enforce authentication, permission and one-time reaut
   const wrongToken = identity.createApiToken(principal, { name: "wrong", permissions: ["overview:read"], nodeScope: "all", expiresAt: null }).token;
   const operateToken = identity.createApiToken(principal, { name: "operate", permissions: ["firewall:operate"], nodeScope: "all", expiresAt: null }).token;
   const services = createControllerServices(new FakePlatformAdapter(), process.cwd(), loadControllerConfig({}), undefined, database); const calls = [];
-  services.firewall = { async list() { calls.push("list"); return rulesPayload; }, async create(input) { calls.push(["create", input]); return { ...rulesPayload, message: "规则已应用", tone: "success" }; }, async delete() { throw new Error("not used"); } };
+  services.firewall = { async list() { calls.push("list"); return rulesPayload; }, async create(input) { calls.push(["create", input]); return { ...rulesPayload, message: "规则已应用", tone: "success" }; }, async delete(id, input) { calls.push(["delete", id, input]); return { ...rulesPayload, message: "规则已删除", tone: "success" }; } };
   const server = createStackPilotServer({ env: { STACKPILOT_COOKIE_SECURE: "0", STACKPILOT_ALLOWED_ORIGINS: "http://127.0.0.1:5173" }, database, identity, services, platform: new FakePlatformAdapter() });
   server.listen(0, "127.0.0.1"); await once(server, "listening"); const base = `http://127.0.0.1:${server.address().port}`;
   try {
@@ -181,5 +181,12 @@ test("firewall HTTP routes enforce authentication, permission and one-time reaut
     assert.equal(invalid.status, 400);
     const created = await fetch(`${base}/api/firewall/rules`, { method: "POST", headers: { Cookie: cookie, Origin: "http://127.0.0.1:5173", "X-CSRF-Token": loginBody.csrfToken, "X-Reauth-Proof": proof, "Content-Type": "application/json" }, body: JSON.stringify(createBody) });
     assert.equal(created.status, 201); assert.equal(calls.some((entry) => Array.isArray(entry) && entry[0] === "create"), true);
+    assert.equal((await fetch(`${base}/api/firewall/rules`, { method: "POST", headers: { Cookie: cookie, Origin: "http://127.0.0.1:5173", "X-CSRF-Token": loginBody.csrfToken, "X-Reauth-Proof": proof, "Content-Type": "application/json" }, body: JSON.stringify(createBody) })).status, 403);
+    const deleteReauth = await fetch(`${base}/api/auth/reauthenticate`, { method: "POST", headers: { Cookie: cookie, Origin: "http://127.0.0.1:5173", "X-CSRF-Token": loginBody.csrfToken, "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
+    const deleteProof = (await deleteReauth.json()).proof; const deleteBody = { version: "a".repeat(64), idempotencyKey: crypto.randomUUID() };
+    assert.equal((await fetch(`${base}/api/firewall/rules/not-a-managed-rule`, { method: "DELETE", headers: { Cookie: cookie, Origin: "http://127.0.0.1:5173", "X-CSRF-Token": loginBody.csrfToken, "X-Reauth-Proof": deleteProof, "Content-Type": "application/json" }, body: JSON.stringify(deleteBody) })).status, 400);
+    const managedId = "firewall:33333333-3333-4333-8333-333333333333:ipv4";
+    assert.equal((await fetch(`${base}/api/firewall/rules/${encodeURIComponent(managedId)}`, { method: "DELETE", headers: { Cookie: cookie, Origin: "http://127.0.0.1:5173", "X-CSRF-Token": loginBody.csrfToken, "X-Reauth-Proof": deleteProof, "Content-Type": "application/json" }, body: JSON.stringify(deleteBody) })).status, 200);
+    assert.deepEqual(calls.find((entry) => Array.isArray(entry) && entry[0] === "delete"), ["delete", managedId, deleteBody]);
   } finally { server.close(); await once(server, "close"); database.close(); }
 });

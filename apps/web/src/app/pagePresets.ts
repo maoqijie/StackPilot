@@ -8,7 +8,7 @@ function aclPagePreset(page: PageKey) {
 
 function auditPagePreset(page: PageKey) {
   if (page === "audit-failed") return { result: "失败", user: "全部", search: "", mode: "list", subtitle: "失败操作视图，默认筛选审计中的失败记录。" };
-  if (page === "audit-export") return { result: "全部", user: "全部", search: "", mode: "exports", subtitle: "使用当前真实审计结果和筛选条件生成 CSV 文件。" };
+  if (page === "audit-export") return { result: "全部", user: "全部", search: "", mode: "exports", subtitle: "生成并管理全量 CSV/JSON 审计快照。" };
   return { result: "全部", user: "全部", search: "", mode: "list", subtitle: "真实只读审计视图，支持关键字、用户和结果过滤。" };
 }
 

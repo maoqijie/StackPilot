@@ -54,6 +54,16 @@ if (!identity.hasAdministrator()) {
   await identity.createUser(administrator.principal, "e2e-reader", "E2E Reader", "e2e reader password", ["audit-reader"], []);
 }
 const repository = new SqliteAgentControlRepository(database, identity.audit);
+const failedExportId = "00000000-0000-4000-8000-000000000034";
+const failedCreator = database.prepare("SELECT id,display_name AS displayName FROM users WHERE username=?").get("e2e-admin");
+database.prepare(`INSERT OR IGNORE INTO audit_exports(
+  export_id,name,format,status,row_count,size_bytes,storage_name,sha256,creator_user_id,creator_display_name,
+  created_at,completed_at,expires_at,trace_id,error_code,source_max_sequence
+) VALUES(?,?,'json','failed',0,0,NULL,NULL,?,?,?,?,?,?,'GENERATION_FAILED',0)`).run(
+  failedExportId, "E2E 失败快照", failedCreator.id, failedCreator.displayName,
+  new Date(Date.now() - 60_000).toISOString(), new Date(Date.now() - 59_000).toISOString(),
+  new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString(), "00000000-0000-4000-8000-000000000035",
+);
 const platform = new FakePlatformAdapter();
 const collectFixtureSnapshot = platform.collectSnapshot.bind(platform);
 platform.collectSnapshot = async () => ({ ...await collectFixtureSnapshot(), platformLabel: "win32 10.0" });

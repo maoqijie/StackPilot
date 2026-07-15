@@ -1,6 +1,6 @@
 import { CheckCircle2, CircleAlert, Eye, KeyRound, Plus, RefreshCw, ShieldCheck, UserRound } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PermissionSchema } from "@stackpilot/contracts";
+import { CONTROLLER_FIREWALL_NODE_ID, PermissionSchema } from "@stackpilot/contracts";
 import { createIdentityUser, listIdentityRoles, listIdentityUsers, reauthenticate, updateIdentityUser, type RoleRecord, type UserRecord } from "../../api/identityApi";
 import { DetailDrawer } from "../../components/ui/DetailDrawer";
 import type { Notify } from "../../types/app";
@@ -199,7 +199,7 @@ function IdentityManagement({ notify, search }: { notify: Notify; search: string
             <label><span>显示名称</span><input value={form.displayName} onChange={(event) => setForm({ ...form, displayName: event.target.value })} placeholder="例如 运维只读" /></label>
             <label><span>初始密码</span><input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="至少 12 个字符" autoComplete="new-password" /><small>密码仅用于首次登录，不会显示在用户列表中。</small></label>
             <label><span>角色</span><select value={createRoleId} onChange={(event) => setForm({ ...form, roleId: event.target.value })}>{roles.map((role) => <option key={role.id} value={role.id}>{role.name}{role.builtin ? "（内置）" : ""}</option>)}</select></label>
-            <label><span>节点范围</span><input value={form.nodeIds} onChange={(event) => setForm({ ...form, nodeIds: event.target.value })} placeholder="all 或 UUID，逗号分隔" /><small>输入 all 表示允许访问全部节点。</small></label>
+            <label><span>节点范围</span><input value={form.nodeIds} onChange={(event) => setForm({ ...form, nodeIds: event.target.value })} placeholder="all 或 UUID，逗号分隔" /><small>全部节点用 all；Controller 本机防火墙用 {CONTROLLER_FIREWALL_NODE_ID}。</small></label>
             <label><span>当前管理员密码</span><input type="password" value={form.adminPassword} onChange={(event) => setForm({ ...form, adminPassword: event.target.value })} placeholder="用于确认本次敏感操作" autoComplete="current-password" /></label>
             {error && <p className="identity-form-error" role="alert"><CircleAlert size={16} aria-hidden="true" />{error}</p>}
           </form>
@@ -211,7 +211,7 @@ function IdentityManagement({ notify, search }: { notify: Notify; search: string
           <form id="acl-edit-user-form" className="identity-form identity-edit-form" onSubmit={submitEdit}>
             <div className="identity-detail-banner"><ShieldCheck size={20} aria-hidden="true" /><div><strong>{selectedUser.displayName}</strong><code>{selectedUser.username}</code></div><span className={`pill ${selectedUser.disabled ? "red" : "green"}`}>{selectedUser.disabled ? "已禁用" : "已启用"}</span></div>
             <div className="identity-detail-grid"><p><span>用户 ID</span><code>{selectedUser.id}</code></p><p><span>当前角色</span><strong>{selectedUser.roles.join("、") || "未分配角色"}</strong></p><p><span>节点范围</span><strong>{formatNodeScope(selectedUser.nodeScope)}</strong></p></div>
-            <fieldset><legend>访问设置</legend><label><span>角色</span><select value={editForm.roleId} onChange={(event) => setEditForm({ ...editForm, roleId: event.target.value })}>{roles.map((role) => <option key={role.id} value={role.id}>{role.name} · {formatPermissions(role.permissions)}</option>)}</select></label><label><span>节点范围</span><input value={editForm.nodeIds} onChange={(event) => setEditForm({ ...editForm, nodeIds: event.target.value })} placeholder="all 或 UUID，逗号分隔" /></label><label className="identity-checkbox"><input type="checkbox" checked={editForm.disabled} onChange={(event) => setEditForm({ ...editForm, disabled: event.target.checked })} /><span>禁用该用户</span><small>禁用后会撤销该用户的现有会话。</small></label></fieldset>
+            <fieldset><legend>访问设置</legend><label><span>角色</span><select value={editForm.roleId} onChange={(event) => setEditForm({ ...editForm, roleId: event.target.value })}>{roles.map((role) => <option key={role.id} value={role.id}>{role.name} · {formatPermissions(role.permissions)}</option>)}</select></label><label><span>节点范围</span><input value={editForm.nodeIds} onChange={(event) => setEditForm({ ...editForm, nodeIds: event.target.value })} placeholder="all 或 UUID，逗号分隔" /><small>Controller 本机防火墙：{CONTROLLER_FIREWALL_NODE_ID}</small></label><label className="identity-checkbox"><input type="checkbox" checked={editForm.disabled} onChange={(event) => setEditForm({ ...editForm, disabled: event.target.checked })} /><span>禁用该用户</span><small>禁用后会撤销该用户的现有会话。</small></label></fieldset>
             <label><span>当前管理员密码</span><input type="password" value={editForm.adminPassword} onChange={(event) => setEditForm({ ...editForm, adminPassword: event.target.value })} placeholder="用于确认本次敏感操作" autoComplete="current-password" /></label>
             {error && <p className="identity-form-error" role="alert"><CircleAlert size={16} aria-hidden="true" />{error}</p>}
           </form>
