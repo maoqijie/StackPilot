@@ -1,9 +1,10 @@
 import type { ScheduleJob } from "../../api/scheduleApi";
 import type { PageKey } from "../../types/app";
+import { formatBackendDateTime } from "../../utils/time";
 
 function schedulePagePreset(page: PageKey) {
   if (page === "schedule-failed") return { state: "全部", search: "", mode: "list", subtitle: "失败任务视图，默认定位最近执行失败的自动化任务。" };
-  if (page === "schedule-calendar") return { state: "全部", search: "", mode: "calendar", subtitle: "执行日历视图，按时间线展示今天的定时任务。" };
+  if (page === "schedule-calendar") return { state: "全部", search: "", mode: "calendar", subtitle: "执行日历视图，按时间先后展示真实的下一次执行。" };
   return { state: page === "schedule-enabled" ? "已启用" : "全部", search: "", mode: "list", subtitle: "管理 cron 自动化，支持启停、立即执行、编辑和新增。" };
 }
 
@@ -44,5 +45,16 @@ function scheduleCrontabPreview(draft: ScheduleDraft, id?: string) {
   return `${cron} ${command} # stackpilot:id=${id ?? "保存后生成"}`;
 }
 
-export { schedulePagePreset, isLikelyCronExpression, scheduleCronPresets, createScheduleDraft, describeCronExpression, scheduleCrontabPreview };
+function scheduleNextRunLabel(row: ScheduleJob) {
+  if (!row.enabled) return "已停用";
+  if (!row.nextRunAt || Number.isNaN(Date.parse(row.nextRunAt))) return "时间暂不可用";
+  return formatBackendDateTime(row.nextRunAt, "时间暂不可用");
+}
+
+function sortScheduleCalendarRows(rows: ScheduleJob[]) {
+  const sortableTime = (row: ScheduleJob) => row.enabled && row.nextRunAt && !Number.isNaN(Date.parse(row.nextRunAt)) ? Date.parse(row.nextRunAt) : Number.POSITIVE_INFINITY;
+  return [...rows].sort((left, right) => sortableTime(left) - sortableTime(right) || left.name.localeCompare(right.name, "zh-CN"));
+}
+
+export { schedulePagePreset, isLikelyCronExpression, scheduleCronPresets, createScheduleDraft, describeCronExpression, scheduleCrontabPreview, scheduleNextRunLabel, sortScheduleCalendarRows };
 export type { ScheduleDraft };

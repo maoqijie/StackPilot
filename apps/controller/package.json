@@ -26,6 +26,7 @@
     "@stackpilot/contracts": "0.3.0-preview.29",
     "@stackpilot/host-telemetry": "0.3.0-preview.29",
     "better-sqlite3": "^12.11.1",
+    "cron-parser": "^5.6.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
