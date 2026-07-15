@@ -61,6 +61,7 @@ import type { AuditRepository } from "./audit/auditRepository.js";
 import { SystemdDatabaseCollector } from "@stackpilot/host-telemetry";
 import { SystemdService } from "./modules/systemd/systemdService.js";
 import { FirewallOpenPortService } from "./modules/firewall/firewallOpenPortService.js";
+import { AuditExportService } from "./modules/audit/auditExportService.js";
 
 export type AppOptions = {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -123,6 +124,7 @@ export function createControllerServices(
     terminalSnippets: new TerminalSnippetService(terminalRepository, remoteTasks),
     systemd: new SystemdService(repository),
     firewallOpenPorts: new FirewallOpenPortService(),
+    ...(database && audit ? { auditExports: new AuditExportService(database, audit, isAbsolute(config.auditExportDir) ? config.auditExportDir : resolve(repoRoot, config.auditExportDir)) } : {}),
     ...(databaseRepository ? {
       databaseInventory: new DatabaseInventoryService(databaseRepository),
       databaseWorkspace: new DatabaseBackupWorkspaceService(databaseRepository, audit),

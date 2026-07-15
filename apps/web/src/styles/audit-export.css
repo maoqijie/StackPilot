@@ -1,0 +1,15 @@
+.audit-export-freshness {
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-soft);
+  background: var(--surface-soft);
+  font-size: 13px;
+}
+.audit-export-freshness svg { flex: 0 0 auto; color: var(--primary); }
+.audit-export-digest { font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }

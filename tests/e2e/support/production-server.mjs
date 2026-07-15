@@ -43,6 +43,7 @@ const config = loadControllerConfig({
   STACKPILOT_AGENT_STATE_PATH: join(runtime, "legacy.json"), STACKPILOT_TRUSTED_PROXIES: "127.0.0.1/32",
   STACKPILOT_FILE_ROOT: join(runtime, "files"), STACKPILOT_FILE_TRASH_DIR: join(runtime, "file-trash"),
   STACKPILOT_FILE_UPLOAD_LIMIT_BYTES: String(128 * 1024 * 1024), STACKPILOT_UPLOAD_ROOT: join(runtime, "resumable-uploads"),
+  STACKPILOT_AUDIT_EXPORT_DIR: join(runtime, "audit-exports"),
 });
 const database = openDatabase(config.databasePath);
 const identity = new IdentityService(database, Buffer.alloc(32, 8));

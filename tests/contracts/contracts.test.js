@@ -16,6 +16,7 @@ import {
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, ExecuteDatabaseOperationPlanRequestSchema,
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
+  AuditExportListResponseSchema, CreateAuditExportRequestSchema,
   CreateDirectoryRequestSchema,
   UpdateNodeCapabilitiesRequestSchema,
   FirewallOpenPortsPayloadSchema,
@@ -33,6 +34,14 @@ test("firewall open-port payload stays strict and backend-owned", () => {
   assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, ports: [{ ...payload.ports[0], port: 0 }] }).success, false);
   assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, ports: [{ ...payload.ports[0], protocol: "SCTP" }] }).success, false);
   assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, clientCollectedAt: payload.collectedAt }).success, false);
+});
+
+test("audit export contracts are strict, bounded and limited to implemented formats", () => {
+  assert.equal(CreateAuditExportRequestSchema.safeParse({ name: "审计快照", format: "csv" }).success, true);
+  assert.equal(CreateAuditExportRequestSchema.safeParse({ name: "审计快照", format: "zip" }).success, false);
+  assert.equal(CreateAuditExportRequestSchema.safeParse({ name: "审计快照", format: "json", extra: true }).success, false);
+  assert.equal(PermissionSchema.safeParse("audit:export").success, true);
+  assert.equal(AuditExportListResponseSchema.safeParse({ exports: [], collectedAt: new Date().toISOString() }).success, true);
 });
 
 test("node capability updates accept the complete shared Agent capability set", () => {

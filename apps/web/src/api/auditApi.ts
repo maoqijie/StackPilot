@@ -1,24 +1,32 @@
-import { z } from "zod";
-import { requestJson } from "./client";
-
-const AuditEventSchema = z.object({
-  eventId: z.string().min(1),
-  occurredAt: z.string().datetime(),
-  actorType: z.string().min(1),
-  actorId: z.string().nullable(),
-  source: z.string().min(1),
-  targetType: z.string().nullable(),
-  targetId: z.string().nullable(),
-  action: z.string().min(1),
-  parameters: z.string(),
-  outcome: z.string().min(1),
-  requestId: z.string().min(1),
-  traceId: z.string().min(1),
-}).passthrough();
-
-const AuditEventsResponseSchema = z.object({ events: z.array(AuditEventSchema) }).strict();
+import { AuditEventsResponseSchema, AuditExportCreateResponseSchema, AuditExportListResponseSchema, CreateAuditExportRequestSchema } from "@stackpilot/contracts";
+import type { AuditEvent, AuditExportRecord, CreateAuditExportRequest } from "@stackpilot/contracts";
+import { getCsrfToken, requestJson, responseError } from "./client";
 
 export const fetchAuditEvents = (signal?: AbortSignal) => requestJson<unknown>("/audit", { signal })
   .then((payload) => AuditEventsResponseSchema.parse(payload).events);
 
-export type AuditEvent = z.infer<typeof AuditEventSchema>;
+export const fetchAuditExports = (signal?: AbortSignal) => requestJson<unknown>("/audit-exports", { signal })
+  .then((payload) => AuditExportListResponseSchema.parse(payload));
+
+export const createAuditExport = (input: CreateAuditExportRequest, reauthProof: string) => requestJson<unknown>("/audit-exports", {
+  method: "POST",
+  headers: { "X-Reauth-Proof": reauthProof },
+  body: JSON.stringify(CreateAuditExportRequestSchema.parse(input)),
+}).then((payload) => AuditExportCreateResponseSchema.parse(payload).export);
+
+export const retryAuditExport = (id: string, reauthProof: string) => requestJson<unknown>(`/audit-exports/${encodeURIComponent(id)}/retry`, {
+  method: "POST", headers: { "X-Reauth-Proof": reauthProof }, body: "{}",
+}).then((payload) => AuditExportCreateResponseSchema.parse(payload).export);
+
+export async function downloadAuditExport(record: AuditExportRecord, reauthProof: string): Promise<void> {
+  const response = await fetch(`/api/audit-exports/${encodeURIComponent(record.id)}/download`, {
+    method: "POST", credentials: "include", body: "{}",
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrfToken(), "X-Reauth-Proof": reauthProof },
+  });
+  if (!response.ok) throw await responseError(response);
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a"); link.href = url; link.download = `${record.name}.${record.format}`; link.click();
+  URL.revokeObjectURL(url);
+}
+
+export type { AuditEvent, AuditExportRecord };

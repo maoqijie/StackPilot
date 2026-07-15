@@ -28,6 +28,5 @@ export class AuditRepository {
     }
     return { valid: true, count: rows.length };
   }
-  list(limit = 200) { return this.database.prepare("SELECT sequence,event_id AS eventId,occurred_at AS occurredAt,actor_type AS actorType,actor_id AS actorId,source,target_type AS targetType,target_id AS targetId,action,parameters,outcome,authorization,request_id AS requestId,trace_id AS traceId,event_hash AS eventHash FROM audit_events ORDER BY sequence DESC LIMIT ?").all(Math.min(limit, 1000)); }
+  list(limit = 200) { return this.database.prepare("SELECT sequence,event_id AS eventId,occurred_at AS occurredAt,actor_type AS actorType,actor_id AS actorId,source,target_type AS targetType,target_id AS targetId,action,parameters,outcome,request_id AS requestId,trace_id AS traceId FROM audit_events ORDER BY sequence DESC LIMIT ?").all(Math.min(limit, 1000)); }
 }
-

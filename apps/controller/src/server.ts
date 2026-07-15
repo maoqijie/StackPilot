@@ -64,6 +64,7 @@ if (isMainModule) {
       process.once(signal, () => {
         services.sites.shutdown();
         services.databaseRetention?.shutdown();
+        services.auditExports?.shutdown();
         const reconciliationStopped = services.siteManagement.stopBackgroundReconciliation();
         let remaining=agentServer?2:1;const closed=()=>{remaining-=1;if(remaining===0){void reconciliationStopped.finally(()=>{database.close();process.exit(0);});}};
         agentServer?.close(closed);

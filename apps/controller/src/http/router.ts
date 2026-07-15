@@ -24,6 +24,7 @@ import { routeSiteRequest } from "./siteRouter.js";
 import { routeDatabaseRequest } from "./databaseRouter.js";
 import { routeFileRequest, routeFileUploadRequest } from "./fileRouter.js";
 import { routeSystemdRequest } from "./systemdRouter.js";
+import { routeAuditExportRequest } from "./auditExportRouter.js";
 
 function idAt(context: RequestContext, index: number) {
   try {
@@ -75,6 +76,7 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     return;
   }
   if (parts[0] === "api" && ["auth", "tokens", "roles", "users", "audit"].includes(parts[1] ?? "")) { await routeIdentityRequest(context); return; }
+  if (parts[0] === "api" && parts[1] === "audit-exports") { await routeAuditExportRequest(context); return; }
   if (parts[0] === "api" && ["enrollments", "nodes", "remote-tasks"].includes(parts[1] ?? "")) {
     await routeControlPlaneRequest(context); return;
   }

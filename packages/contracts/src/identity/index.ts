@@ -9,7 +9,7 @@ export const PermissionSchema = z.enum([
   "sites:read", "sites:logs", "sites:deploy", "sites:operate", "sites:renew",
   "files:read", "files:write", "files:delete", "databases:read", "databases:sql:read", "databases:backup",
   "databases:operate", "databases:install", "databases:restore",
-  "tasks:read", "tasks:create", "tasks:cancel", "audit:read", "users:read", "users:manage", "roles:read", "roles:manage", "tokens:manage", "system:backup",
+  "tasks:read", "tasks:create", "tasks:cancel", "audit:read", "audit:export", "users:read", "users:manage", "roles:read", "roles:manage", "tokens:manage", "system:backup",
 ]);
 export type Permission = z.infer<typeof PermissionSchema>;
 export const NodeScopeSchema = z.union([z.literal("all"), z.array(z.string().uuid()).max(1000)]);

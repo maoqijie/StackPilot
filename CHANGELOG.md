@@ -2,6 +2,18 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.23 - 2026-07-15
+
+### Added
+
+- Connected the audit-export workbench to persistent Controller APIs for real CSV and JSON snapshots, 10-second list polling, stable details, reauthentication and authenticated file downloads.
+- Added schema 9 audit-export metadata, fixed high-water audit snapshots, SHA-256 evidence, seven-day expiry and bounded storage under the Controller state directory.
+
+### Security
+
+- Added the separate high-risk `audit:export` permission and limited export creation, retry and download to full-node user sessions with CSRF and one-time reauthentication.
+- Verified the append-only audit chain before export, retained parameter redaction, exported the complete hash payload, prevented spreadsheet formula injection, bounded active exports and rejected API-token or scoped-session access.
+
 ## 0.3.0-preview.20 - 2026-07-15
 
 ### Fixed
