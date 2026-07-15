@@ -50,6 +50,7 @@ const identity = new IdentityService(database, Buffer.alloc(32, 8));
 if (!identity.hasAdministrator()) {
   await identity.createInitialAdministrator("e2e-admin", "E2E Administrator", "e2e administrator password");
   const administrator = await identity.login("e2e-admin", "e2e administrator password", "e2e-fixture", "stackpilot-e2e");
+  await identity.createUser(administrator.principal, "e2e-admin-mobile", "E2E Mobile Administrator", "e2e administrator password", ["administrator"], "all");
   await identity.createUser(administrator.principal, "e2e-reader", "E2E Reader", "e2e reader password", ["audit-reader"], []);
 }
 const repository = new SqliteAgentControlRepository(database, identity.audit);

@@ -2,17 +2,58 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.29 - 2026-07-16
+
+### Added
+
+- Connected the audit-export workbench to persistent Controller APIs for real CSV and JSON snapshots, 10-second list polling, stable details, reauthentication and authenticated streaming downloads.
+- Added schema 9 audit-export metadata, fixed high-water audit snapshots, SHA-256 evidence, seven-day expiry and bounded storage under the Controller state directory.
+
+### Fixed
+
+- Generated, verified and downloaded large audit snapshots through asynchronous chunks and streams so Controller health, login and Agent heartbeat requests remain responsive.
+- Allowed failed exports to retry immediately without being blocked by their own creation timestamp, and isolated periodic maintenance failures with structured retryable logging.
+
+### Security
+
+- Added the separate high-risk `audit:export` permission and required it together with `audit:read`, a full-node user session, CSRF and one-time reauthentication.
+- Verified the append-only audit chain before export, retained parameter redaction, exported the complete hash payload, prevented spreadsheet formula injection, bounded active exports and rejected API-token or scoped-session access.
+
+## 0.3.0-preview.28 - 2026-07-16
+
+### Fixed
+
+- Classified `journalctl --grep` exit code 1 with empty stdout and stderr as a successful query with no matching firewall deny events, instead of reporting the kernel journal as unavailable.
+- Preserved unavailable status for permission failures and all other probe errors while keeping probe diagnostics bounded and internal to the Agent.
+
+## 0.3.0-preview.27 - 2026-07-16
+
+### Fixed
+
+- Made the database provisioner fixture use a non-root synthetic database identity when release tests run as root, preserving the production rejection of privileged database service users while keeping Linux release gates deterministic.
+
+## 0.3.0-preview.26 - 2026-07-16
+
+### Fixed
+
+- Isolated the database authorization HTTP test from host systemd database discovery so Linux release gates remain deterministic on production-like hosts without changing Controller-local database collection behavior.
+
 ## 0.3.0-preview.25 - 2026-07-16
 
 ### Added
 
-- Connected the audit-export workbench to persistent Controller APIs for real CSV and JSON snapshots, 10-second list polling, stable details, reauthentication and authenticated file downloads.
-- Added schema 9 audit-export metadata, fixed high-water audit snapshots, SHA-256 evidence, seven-day expiry and bounded storage under the Controller state directory.
+- Added bounded Controller-side execution records for automatic cron and immediate schedule runs, including source, timestamps, command revision, exit code, duration, stdout and stderr.
+- Connected the failed-schedule workbench and task detail drawer to backend-recorded executions instead of inferring failure from browser state.
+
+### Fixed
+
+- Bound execution records to the SHA-256 revision of the scheduled command so late results from deleted or edited jobs cannot be attributed to a new command.
+- Killed the complete derived process group when a scheduled command times out, preventing timed-out shell children from continuing side effects in the background.
+- Preserved concurrent schedule edits and deletes when immediate execution completes, rejected overlapping runs of the same task, and retained user-scoped replay idempotency.
 
 ### Security
 
-- Added the separate high-risk `audit:export` permission and limited export creation, retry and download to full-node user sessions with CSRF and one-time reauthentication.
-- Verified the append-only audit chain before export, retained parameter redaction, exported the complete hash payload, prevented spreadsheet formula injection, bounded active exports and rejected API-token or scoped-session access.
+- Managed crontab rows invoke only the fixed StackPilot runner with encoded bounded input; execution records use private atomic files with bounded retention and invalid runner parameters are rejected before command execution.
 
 ## 0.3.0-preview.24 - 2026-07-15
 

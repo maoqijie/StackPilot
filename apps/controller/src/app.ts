@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { AGENT_API_BODY_LIMIT_BYTES } from "@stackpilot/contracts";
 import type { IncomingMessage, RequestListener, ServerResponse } from "node:http";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadControllerConfig, type ControllerConfig } from "./config/environment.js";
 import { mapError } from "./http/errors/mapError.js";
@@ -63,6 +63,7 @@ import { SystemdService } from "./modules/systemd/systemdService.js";
 import { FirewallDenyService } from "./modules/firewall/firewallDenyService.js";
 import { FirewallOpenPortService } from "./modules/firewall/firewallOpenPortService.js";
 import { AuditExportService } from "./modules/audit/auditExportService.js";
+import { FileScheduleExecutionRepository } from "./modules/schedules/scheduleExecutionRepository.js";
 
 export type AppOptions = {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -105,6 +106,13 @@ export function createControllerServices(
     ? new SqliteDatabaseRepository(database, parseMasterKey(config.masterKey))
     : undefined;
   const nodes = new NodeService(repository);
+  const databasePath = isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath);
+  const scheduleExecutions = new FileScheduleExecutionRepository(
+    join(dirname(databasePath), "schedule-executions"),
+    join(repoRoot, "apps/controller/dist/modules/schedules/scheduleRunner.js"),
+    process.execPath,
+    repoRoot,
+  );
   return {
     overview,
     hosts: new HostMonitoringService(platform, repository, 45_000, config.production),
@@ -118,7 +126,7 @@ export function createControllerServices(
     databaseBackups: new DatabaseBackupService(database, isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath), config, repoRoot),
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
-    schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform, config.crontabWriteEnabled),
+    schedules: new ScheduleService(new CrontabScheduleRepository(platform, scheduleExecutions), platform, scheduleExecutions, config.crontabWriteEnabled),
     enrollments: new EnrollmentService(repository),
     nodes,
     remoteTasks,

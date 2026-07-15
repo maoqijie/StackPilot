@@ -220,7 +220,7 @@ export class NativePlatformAdapter implements PlatformAdapter {
   }
 
   runScheduledCommand(command: string) {
-    return runFixedCommand("/bin/sh", ["-lc", command], { cwd: this.repoRoot, timeoutMs: 120000 });
+    return runFixedCommand("/bin/sh", ["-lc", command], { cwd: this.repoRoot, timeoutMs: 120000, killProcessGroup: true });
   }
 
   async restartNode() {

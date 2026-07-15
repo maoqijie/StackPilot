@@ -23,6 +23,18 @@ const failedJob = {
   nextRun: "明天 02:00",
   lastRun: "今天 02:00",
   result: "失败" as const,
+  lastExecution: {
+    id: "11111111-1111-4111-8111-111111111111",
+    commandDigest: "a".repeat(64),
+    source: "cron" as const,
+    startedAt: "2026-07-15T02:00:00.000Z",
+    finishedAt: "2026-07-15T02:00:01.000Z",
+    status: "失败" as const,
+    exitCode: 17,
+    durationMs: 1000,
+    output: "partial output",
+    error: "backup failed",
+  },
 };
 
 const successfulJob = {
@@ -30,6 +42,7 @@ const successfulJob = {
   id: "job-success",
   name: "health-check",
   result: "成功" as const,
+  lastExecution: { ...failedJob.lastExecution, id: "22222222-2222-4222-8222-222222222222", status: "成功" as const, exitCode: 0, error: "" },
 };
 
 function payload(jobs = [failedJob, successfulJob]): SchedulePayload {
@@ -57,7 +70,7 @@ describe("schedule failed page", () => {
     vi.useFakeTimers();
     vi.mocked(fetchScheduleJobs)
       .mockResolvedValueOnce(payload())
-      .mockResolvedValueOnce(payload([{ ...failedJob, lastRun: "今天 02:10" }]));
+      .mockResolvedValueOnce(payload([{ ...failedJob, name: "nightly-backup-updated" }]));
 
     render(<SchedulePage page="schedule-failed" notify={notify} />);
     await act(async () => undefined);
@@ -71,7 +84,7 @@ describe("schedule failed page", () => {
     });
 
     expect(fetchScheduleJobs).toHaveBeenCalledTimes(2);
-    expect(screen.getAllByText("今天 02:10")).toHaveLength(2);
+    expect(screen.getAllByText("nightly-backup-updated")).toHaveLength(2);
     expect(notify).not.toHaveBeenCalled();
   });
 
@@ -105,6 +118,9 @@ describe("schedule failed page", () => {
     expect(drawer).toHaveClass("schedule-job-drawer");
     expect(drawer).not.toHaveClass("schedule-job-modal");
     expect(within(drawer).getByText("/usr/local/bin/backup --all")).toBeInTheDocument();
+    expect(within(drawer).getByText("cron 自动调度")).toBeInTheDocument();
+    expect(within(drawer).getByText("backup failed")).toBeInTheDocument();
+    expect(within(drawer).getByText("partial output")).toBeInTheDocument();
 
     fireEvent.click(within(drawer).getByRole("button", { name: "关闭详情" }));
     act(() => vi.advanceTimersByTime(180));

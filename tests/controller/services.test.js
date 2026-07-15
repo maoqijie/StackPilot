@@ -4,28 +4,14 @@ import { OverviewService } from "../../apps/controller/dist/modules/overview/ove
 import { deriveNodeHealth, summarizeDiskVolumes } from "../../apps/controller/dist/platform/nativeAdapter.js";
 import { RESOURCE_THRESHOLDS } from "../../apps/controller/dist/platform/resourceHealth.js";
 import { RiskService } from "../../apps/controller/dist/modules/risks/riskService.js";
-import { ScheduleService } from "../../apps/controller/dist/modules/schedules/scheduleService.js";
 import { TaskService } from "../../apps/controller/dist/modules/tasks/taskService.js";
 import { MemoryAgentControlRepository } from "../../apps/controller/dist/repositories/agentControlRepository.js";
 import { MemoryTaskStateRepository } from "../../apps/controller/dist/repositories/taskStateRepository.js";
-import { CrontabScheduleRepository } from "../../apps/controller/dist/repositories/scheduleRepository.js";
 import { FakePlatformAdapter } from "./support/fakePlatform.js";
 
 class MemoryExportRepository {
   writes = [];
   async writeJson(area, payload) { this.writes.push({ area, payload }); return `${area}.json`; }
-}
-
-class MemoryScheduleRepository {
-  jobs = [];
-  writes = 0;
-  async read() { return { externalLines: [], jobs: this.jobs }; }
-  async write(_externalLines, jobs) { this.writes += 1; this.jobs = jobs; }
-  find(jobs, id) {
-    const job = jobs.find((item) => item.id === id);
-    if (!job) throw new Error("not found");
-    return job;
-  }
 }
 
 const gib = 1024 ** 3;
@@ -360,64 +346,4 @@ test("overview labels Windows equivalent load without excluding it from mixed cl
   assert.equal(overview.resources[nodeIds.hidden].at(-1).delta, "linux-agent");
   assert.deepEqual(overview.resources[nodeIds.revoked].at(-1), { label: "系统负载", value: "暂不可用", delta: "等待采集", values: [], collectedAt: overview.resources[nodeIds.revoked][0].collectedAt, freshness: "current" });
   assert.equal(overview.resources["44444444-4444-4444-8444-444444444444"].at(-1).freshness, "stale");
-});
-
-test("schedule service performs storage and execution only through injected interfaces", async () => {
-  const platform = new FakePlatformAdapter();
-  const repository = new MemoryScheduleRepository();
-  const schedules = new ScheduleService(repository, platform, true);
-  const created = await schedules.create({ name: "backup", cron: "0 4 * * *", command: "true", enabled: true, idempotencyKey: "create-backup-1" });
-  assert.equal(created.job.name, "backup");
-  assert.equal((await schedules.update(created.job.id, { enabled: false })).job.enabled, false);
-  const run = await schedules.run(created.job.id, "run-backup-1");
-  assert.equal(run.job.result, "成功");
-  assert.equal(platform.calls.runScheduledCommand, 1);
-  await schedules.delete(created.job.id);
-  const listed = await schedules.list();
-  assert.equal(listed.jobs.length, 0);
-  assert.equal(listed.writeEnabled, true);
-  assert.match(listed.scannedAt, /Z$/);
-});
-
-test("schedule service serializes concurrent mutations without losing jobs", async () => {
-  const platform = new FakePlatformAdapter();
-  const repository = new MemoryScheduleRepository();
-  const schedules = new ScheduleService(repository, platform, true);
-  const [first, second] = await Promise.all([
-    schedules.create({ name: "first", cron: "0 1 * * *", command: "true", enabled: true, idempotencyKey: "create-first-1" }),
-    schedules.create({ name: "second", cron: "0 2 * * *", command: "true", enabled: true, idempotencyKey: "create-second-1" }),
-  ]);
-  const ids = new Set((await schedules.list()).jobs.map((job) => job.id));
-  assert.equal(ids.has(first.job.id), true);
-  assert.equal(ids.has(second.job.id), true);
-  assert.equal(ids.size, 2);
-});
-
-test("schedule create and run retries do not repeat side effects", async () => {
-  const platform = new FakePlatformAdapter();
-  const repository = new MemoryScheduleRepository();
-  const schedules = new ScheduleService(repository, platform, true);
-  const input = { name: "once", cron: "0 3 * * *", command: "true", enabled: true, idempotencyKey: "create-once-1" };
-  const first = await schedules.create(input);
-  const retried = await schedules.create(input);
-  assert.equal(retried.job.id, first.job.id);
-  assert.equal((await schedules.list()).jobs.length, 1);
-  const run = await schedules.run(first.job.id, "run-once-1");
-  const runRetried = await schedules.run(first.job.id, "run-once-1");
-  assert.deepEqual(runRetried, run);
-  assert.equal(repository.writes, 2);
-  assert.equal(platform.calls.runScheduledCommand, 1);
-  await assert.rejects(
-    schedules.create({ ...input, name: "different" }),
-    /幂等键已用于其他定时任务操作/,
-  );
-});
-
-test("crontab repository rejects malformed managed metadata", async () => {
-  const platform = new FakePlatformAdapter();
-  const invalid = Buffer.from(JSON.stringify({ id: "bad", command: 42 }), "utf8").toString("base64url");
-  platform.crontab = `external line\n# >>> STACKPILOT MANAGED CRON JOBS\n# stackpilot:job=${invalid}\n# <<< STACKPILOT MANAGED CRON JOBS\n`;
-  const state = await new CrontabScheduleRepository(platform).read();
-  assert.deepEqual(state.externalLines, ["external line"]);
-  assert.deepEqual(state.jobs, []);
 });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  API_CLIENT_PREFIX, API_ROOT_SEGMENTS, ApiErrorResponseSchema, CreateScheduleJobRequestSchema,
+  API_CLIENT_PREFIX, API_ROOT_SEGMENTS, ApiErrorResponseSchema, CreateScheduleJobRequestSchema, ScheduleExecutionSchema,
   OverviewSummaryPayloadSchema, PathIdSchema, SchedulePayloadSchema, WRITE_METHODS,
   AGENT_PROTOCOL_VERSION, AgentDatabaseSnapshotSchema, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, PhysicalHostIdSchema,
   CreateRemoteTaskRequestSchema, RemoteTaskListResponseSchema, isAgentProtocolCompatible,
@@ -55,6 +55,13 @@ test("schedule side effects require bounded idempotency keys", () => {
   assert.equal(CreateScheduleJobRequestSchema.safeParse(request).success, true);
   assert.equal(CreateScheduleJobRequestSchema.safeParse({ ...request, idempotencyKey: "short" }).success, false);
   assert.equal(CreateScheduleJobRequestSchema.safeParse({ ...request, idempotencyKey: "invalid key" }).success, false);
+});
+
+test("schedule execution records are command-versioned and bounded", () => {
+  const execution = { id: crypto.randomUUID(), commandDigest: "a".repeat(64), source: "cron", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), status: "失败", exitCode: 17, durationMs: 5, output: "partial", error: "failed" };
+  assert.equal(ScheduleExecutionSchema.safeParse(execution).success, true);
+  assert.equal(ScheduleExecutionSchema.safeParse({ ...execution, commandDigest: "old" }).success, false);
+  assert.equal(ScheduleExecutionSchema.safeParse({ ...execution, output: "x".repeat(16_001) }).success, false);
 });
 
 test("firewall open-port payload stays strict and backend-owned", () => {

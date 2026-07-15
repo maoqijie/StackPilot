@@ -2,9 +2,9 @@ import { expect, test, type Page } from "@playwright/test";
 
 const adminPassword = "e2e administrator password";
 
-async function login(page: Page) {
+async function login(page: Page, username: string) {
   await page.goto("/");
-  await page.getByRole("textbox", { name: "用户名" }).fill("e2e-admin");
+  await page.getByRole("textbox", { name: "用户名" }).fill(username);
   await page.getByRole("textbox", { name: "密码" }).fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
   await expect(page.getByRole("region", { name: "实时工作台状态" })).toBeVisible();
@@ -17,7 +17,8 @@ test("audit export uses the real backend across desktop and mobile", async ({ pa
   page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
   page.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()}`));
   page.on("response", (response) => { if (new URL(response.url()).pathname === "/api/audit-exports" && response.request().method() === "GET" && response.status() === 200) listResponses += 1; });
-  await login(page);
+  const username = testInfo.project.name.startsWith("mobile") ? "e2e-admin-mobile" : "e2e-admin";
+  await login(page, username);
   await page.goto("/#audit-export");
   await expect(page.getByText(/后端采集/)).toBeVisible();
   await expect(page.getByText("今日操作审计 CSV")).toHaveCount(0);

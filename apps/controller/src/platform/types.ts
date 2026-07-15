@@ -1,6 +1,6 @@
 import type { OverviewNode, OverviewTaskRecord, PhysicalHostId } from "@stackpilot/contracts";
 
-export type CommandResult = { ok: boolean; stdout: string; stderr: string; elapsedMs: number };
+export type CommandResult = { ok: boolean; stdout: string; stderr: string; elapsedMs: number; exitCode?: number | null };
 export type DiskVolume = { label: string; mount: string; totalBytes: number; freeBytes: number; usedBytes: number; percent: number };
 export type PlatformSnapshot = {
   physicalHostId: PhysicalHostId | null;

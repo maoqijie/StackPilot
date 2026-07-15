@@ -34,6 +34,18 @@ test("firewall collector uses one fixed read-only journalctl invocation", async 
   assert.ok(calls[0][1].every((argument) => !/[;`$]/.test(argument)));
 });
 
+test("firewall collector treats an empty journal grep as a successful empty snapshot", async () => {
+  const empty = await new FirewallDenyCollector(async () => ({ ok: false, output: "", errorOutput: "", code: 1 }), () => new Date("2026-07-16T00:00:00.000Z")).collect("linux");
+  assert.equal(empty.collectionStatus, "complete");
+  assert.deepEqual(empty.events, []);
+  assert.deepEqual(empty.warnings, []);
+
+  const denied = await new FirewallDenyCollector(async () => ({ ok: false, output: "", errorOutput: "permission denied", code: 1 }), () => new Date("2026-07-16T00:00:00.000Z")).collect("linux");
+  assert.equal(denied.collectionStatus, "unavailable");
+  assert.deepEqual(denied.events, []);
+  assert.equal(denied.warnings.length, 1);
+});
+
 test("firewall collection is unavailable off Linux and cache does not overlap refreshes", async () => {
   assert.equal((await new FirewallDenyCollector(async () => { throw new Error("must not run"); }).collect("win32")).collectionStatus, "unavailable");
   let calls = 0; let release;

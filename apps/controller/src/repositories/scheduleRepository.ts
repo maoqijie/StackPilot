@@ -2,6 +2,8 @@ import { ScheduleJobSchema, type ScheduleJob } from "@stackpilot/contracts";
 import { z } from "zod";
 import type { PlatformAdapter } from "../platform/types.js";
 
+type CronCommandFactory = { cronCommand(jobId: string, command: string): string };
+
 export type StoredScheduleJob = Omit<ScheduleJob, "nextRun"> & { createdAt: string; updatedAt: string };
 const StoredScheduleJobSchema = ScheduleJobSchema.omit({ nextRun: true }).extend({ createdAt: z.string(), updatedAt: z.string() });
 const blockStart = "# >>> STACKPILOT MANAGED CRON JOBS";
@@ -26,7 +28,7 @@ export interface ScheduleRepository {
 }
 
 export class CrontabScheduleRepository implements ScheduleRepository {
-  constructor(private readonly platform: PlatformAdapter) {}
+  constructor(private readonly platform: PlatformAdapter, private readonly commands: CronCommandFactory) {}
   async read() {
     const raw = await this.platform.readCrontab();
     const lines = raw.split(/\r?\n/);
@@ -43,7 +45,7 @@ export class CrontabScheduleRepository implements ScheduleRepository {
       lines.push(blockStart);
       for (const job of jobs) {
         lines.push(`${metaPrefix}${encodeJob(job)}`);
-        if (job.enabled) lines.push(`${job.cron} ${job.command} ${idMarker}${job.id}`);
+        if (job.enabled) lines.push(`${job.cron} ${this.commands.cronCommand(job.id, job.command)} ${idMarker}${job.id}`);
       }
       lines.push(blockEnd);
     }
