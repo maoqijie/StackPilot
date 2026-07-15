@@ -32,8 +32,8 @@ test("audit contracts bound queries and expose backend collection time", () => {
   const event = { sequence: 1, eventId: crypto.randomUUID(), occurredAt: collectedAt, actorType: "user", actorId: "operator", source: "controller", targetType: "file", targetId: "/tmp/a", action: "file.trash", parameters: '{"token":"[REDACTED]"}', outcome: "success", authorization: "allowed", requestId: crypto.randomUUID(), traceId: crypto.randomUUID(), eventHash: "a".repeat(64) };
   assert.equal(AuditEventsResponseSchema.safeParse({ events: [event], collectedAt }).success, true);
   assert.equal(AuditEventsResponseSchema.safeParse({ events: [event], collectedAt, clientTime: collectedAt }).success, false);
-  assert.deepEqual(AuditQuerySchema.parse({}), { limit: 200 });
-  assert.deepEqual(AuditQuerySchema.parse({ limit: "50", actionPrefix: "database." }), { limit: 50, actionPrefix: "database." });
+  assert.deepEqual(AuditQuerySchema.parse({}), { limit: 200, result: "all" });
+  assert.deepEqual(AuditQuerySchema.parse({ limit: "50", result: "failed", actionPrefix: "database." }), { limit: 50, result: "failed", actionPrefix: "database." });
   for (const query of [{ limit: 0 }, { limit: 1001 }, { actionPrefix: "database%" }, { unknown: "value" }]) assert.equal(AuditQuerySchema.safeParse(query).success, false);
 });
 
@@ -250,6 +250,13 @@ test("identity schemas reject privilege fields and invalid node scopes", () => {
   assert.equal(PermissionSchema.safeParse("files:delete").success, true);
   assert.equal(PermissionSchema.safeParse("terminal:read").success, true);
   assert.equal(PermissionSchema.safeParse("terminal:execute").success, true);
+});
+
+test("audit query contract accepts only bounded read filters", () => {
+  assert.deepEqual(AuditQuerySchema.parse({ result: "failed", limit: "25", actionPrefix: "database." }), { result: "failed", limit: 25, actionPrefix: "database." });
+  assert.equal(AuditQuerySchema.safeParse({ result: "failed", limit: "1001" }).success, false);
+  assert.equal(AuditQuerySchema.safeParse({ result: "invented" }).success, false);
+  assert.equal(AuditQuerySchema.safeParse({ result: "failed", nodeId: crypto.randomUUID() }).success, false);
 });
 
 test("file upload contracts reject paths and inconsistent progress", () => {

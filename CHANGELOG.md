@@ -2,6 +2,17 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.21 - 2026-07-15
+
+### Changed
+
+- Connected the global and failed-audit views to the authenticated Controller audit repository, with backend collection timestamps, visibility-aware 10-second polling, stable event details and real CSV export.
+- Removed the Web audit fixture fallback and centralized the audit response and bounded read-filter schemas in the shared contracts package.
+
+### Security
+
+- Preserved the explicitly global `audit:read` enforcement on the API, hid audit navigation and search actions from principals without that permission, and applied failed-result and action-prefix filters before the SQLite limit.
+
 ## 0.3.0-preview.20 - 2026-07-15
 
 ### Fixed

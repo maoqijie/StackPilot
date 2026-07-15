@@ -1,8 +1,17 @@
-import { AuditEventsResponseSchema, type AuditEventsResponse } from "@stackpilot/contracts";
+import { AuditEventsResponseSchema } from "@stackpilot/contracts";
+import type { AuditEvent, AuditEventsResponse, AuditQuery } from "@stackpilot/contracts";
 import { requestJson } from "./client";
 
-export const fetchAuditEvents = (actionPrefix?: string, signal?: AbortSignal): Promise<AuditEventsResponse> => {
-  const query = new URLSearchParams({ limit: "200" });
-  if (actionPrefix) query.set("actionPrefix", actionPrefix);
-  return requestJson<unknown>(`/audit?${query}`, { signal }).then(AuditEventsResponseSchema.parse);
+type FetchAuditOptions = Partial<AuditQuery> & { signal?: AbortSignal };
+
+export const fetchAuditEvents = ({ signal, ...query }: FetchAuditOptions = {}) => {
+  const params = new URLSearchParams();
+  if (query.limit !== undefined) params.set("limit", String(query.limit));
+  if (query.result !== undefined) params.set("result", query.result);
+  if (query.actionPrefix !== undefined) params.set("actionPrefix", query.actionPrefix);
+  const search = params.size ? `?${params.toString()}` : "";
+  return requestJson<unknown>(`/audit${search}`, { signal })
+  .then((payload) => AuditEventsResponseSchema.parse(payload));
 };
+
+export type { AuditEvent, AuditEventsResponse };

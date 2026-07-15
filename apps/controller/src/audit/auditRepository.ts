@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { AUDIT_FAILURE_OUTCOMES } from "@stackpilot/contracts";
 import type Database from "better-sqlite3";
 import { hmac } from "../security/crypto.js";
 import type { AuditQuery } from "@stackpilot/contracts";
@@ -29,12 +30,18 @@ export class AuditRepository {
     }
     return { valid: true, count: rows.length };
   }
-  list(query: AuditQuery = { limit: 200 }) {
-    const columns = "sequence,event_id AS eventId,occurred_at AS occurredAt,actor_type AS actorType,actor_id AS actorId,source,target_type AS targetType,target_id AS targetId,action,parameters,outcome,authorization,request_id AS requestId,trace_id AS traceId,event_hash AS eventHash";
-    if (query.actionPrefix) {
-      const prefix = query.actionPrefix.replaceAll("_", "\\_");
-      return this.database.prepare(`SELECT ${columns} FROM audit_events WHERE action LIKE ? ESCAPE '\\' ORDER BY sequence DESC LIMIT ?`).all(`${prefix}%`, query.limit);
+  list(options: AuditQuery = { limit: 200, result: "all" }) {
+    const clauses: string[] = [];
+    const parameters: Array<string | number> = [];
+    if (options.result === "failed") {
+      clauses.push(`lower(outcome) IN (${AUDIT_FAILURE_OUTCOMES.map(() => "?").join(",")})`);
+      parameters.push(...AUDIT_FAILURE_OUTCOMES);
     }
-    return this.database.prepare(`SELECT ${columns} FROM audit_events ORDER BY sequence DESC LIMIT ?`).all(query.limit);
+    if (options.actionPrefix) { clauses.push("action LIKE ? ESCAPE '\\'"); parameters.push(`${escapeLike(options.actionPrefix)}%`); }
+    const where = clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const sql = `SELECT sequence,event_id AS eventId,occurred_at AS occurredAt,actor_type AS actorType,actor_id AS actorId,source,target_type AS targetType,target_id AS targetId,action,parameters,outcome,authorization,request_id AS requestId,trace_id AS traceId,event_hash AS eventHash FROM audit_events${where} ORDER BY sequence DESC LIMIT ?`;
+    return this.database.prepare(sql).all(...parameters, options.limit);
   }
 }
+
+function escapeLike(value: string) { return value.replace(/[\\%_]/g, "\\$&"); }
