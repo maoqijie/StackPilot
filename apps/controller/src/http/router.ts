@@ -26,6 +26,7 @@ import { routeDatabaseRequest } from "./databaseRouter.js";
 import { routeFileRequest, routeFileUploadRequest } from "./fileRouter.js";
 import { routeSystemdRequest } from "./systemdRouter.js";
 import { routeAuditExportRequest } from "./auditExportRouter.js";
+import { routeFirewallRequest } from "./firewallRouter.js";
 
 function idAt(context: RequestContext, index: number) {
   try {
@@ -66,7 +67,7 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     return;
   }
   if (context.url.pathname === "/api/firewall/open-ports" && method === "GET") {
-    context.identity?.require(context.principal, "firewall:read");
+    context.identity?.require(context.principal, "firewall:read", context.platform.nodeId);
     response.setHeader("Cache-Control", "no-store");
     sendJson(response, 200, await services.firewallOpenPorts.list(), FirewallOpenPortsPayloadSchema);
     return;
@@ -89,6 +90,7 @@ export async function routeRequest(context: RequestContext): Promise<void> {
   }
   if (parts[0] === "api" && parts[1] === "terminal") { await routeTerminalRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "systemd" && parts[2] === "services") { await routeSystemdRequest(context); return; }
+  if (parts[0] === "api" && parts[1] === "firewall" && parts[2] === "rules") { await routeFirewallRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "database-backups") { await routeDatabaseBackupRequest(context); return; }
   if (parts[0] === "api" && ["files", "file-trash", "file-uploads"].includes(parts[1] ?? "")) { await routeFileRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "resumable-file-uploads") { await routeFileUploadRequest(context); return; }

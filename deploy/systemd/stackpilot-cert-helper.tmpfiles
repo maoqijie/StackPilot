@@ -7,3 +7,4 @@ d /opt/stackpilot-runtimes 0755 root root -
 d /var/lib/letsencrypt/stackpilot-challenges 0755 root root -
 d /run/stackpilot-sites 0755 root root -
 d /run/stackpilot-cert-helper 0750 root stackpilot-cert -
+d /run/stackpilot-firewall-helper 0750 root stackpilot-firewall -

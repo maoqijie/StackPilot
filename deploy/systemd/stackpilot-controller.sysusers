@@ -1,4 +1,6 @@
 g stackpilot-cert -
+g stackpilot-firewall -
 u stackpilot-controller - "StackPilot Controller" /var/lib/stackpilot-controller /usr/sbin/nologin
 m stackpilot-controller stackpilot-cert
+m stackpilot-controller stackpilot-firewall
 m stackpilot-controller crontab

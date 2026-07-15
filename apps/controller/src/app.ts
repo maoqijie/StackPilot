@@ -60,6 +60,7 @@ import { DatabaseRetentionService } from "./modules/databases/databaseRetentionS
 import type { AuditRepository } from "./audit/auditRepository.js";
 import { SystemdDatabaseCollector } from "@stackpilot/host-telemetry";
 import { SystemdService } from "./modules/systemd/systemdService.js";
+import { FirewallService } from "./modules/firewall/firewallService.js";
 import { FirewallDenyService } from "./modules/firewall/firewallDenyService.js";
 import { FirewallOpenPortService } from "./modules/firewall/firewallOpenPortService.js";
 import { AuditExportService } from "./modules/audit/auditExportService.js";
@@ -132,6 +133,7 @@ export function createControllerServices(
     remoteTasks,
     terminalSnippets: new TerminalSnippetService(terminalRepository, remoteTasks),
     systemd: new SystemdService(repository),
+    firewall: new FirewallService(),
     firewallDeny: new FirewallDenyService(repository),
     firewallOpenPorts: new FirewallOpenPortService(),
     ...(database && audit ? { auditExports: new AuditExportService(database, audit, isAbsolute(config.auditExportDir) ? config.auditExportDir : resolve(repoRoot, config.auditExportDir)) } : {}),

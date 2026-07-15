@@ -2,7 +2,7 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.29 - 2026-07-16
+## 0.3.0-preview.31 - 2026-07-16
 
 ### Added
 
@@ -13,6 +13,28 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Generated, verified and downloaded large audit snapshots through asynchronous chunks and streams so Controller health, login and Agent heartbeat requests remain responsive.
 - Allowed failed exports to retry immediately without being blocked by their own creation timestamp, and isolated periodic maintenance failures with structured retryable logging.
+
+### Security
+
+- Added the separate high-risk `audit:export` permission and required it together with `audit:read`, a full-node user session, CSRF and one-time reauthentication.
+- Verified the append-only audit chain before export, retained parameter redaction, exported the complete hash payload, prevented spreadsheet formula injection, bounded active exports and rejected API-token or scoped-session access.
+
+## 0.3.0-preview.30 - 2026-07-16
+
+### Added
+
+- Connected the firewall rule workbench to the host's real UFW state through authenticated Controller APIs and a dedicated root-only Unix socket helper.
+- Added real backend freshness, visibility-aware 10-second polling and permission-aware rule creation and deletion while preserving the real listening-port and deny-record workbenches.
+
+### Security
+
+- Required Controller node scope, `firewall:operate`, CSRF, one-time reauthentication, stable idempotency keys and optimistic rule versions for every UFW mutation.
+- Kept external UFW rules read-only, rechecked rule identity immediately before numbered deletion, and excluded UFW activation and default-policy changes from the API.
+
+## 0.3.0-preview.29 - 2026-07-16
+
+### Fixed
+
 - Replaced the schedule calendar's placeholder next-run text with a Controller-calculated ISO `nextRunAt` while preserving real cron and manual execution records.
 - Sorted calendar entries by their real next execution time and kept disabled or unresolvable jobs explicitly labeled at the end of the timeline.
 - Marked the automatically polled schedule read endpoint as `no-store` and validated schedule responses at the browser API boundary.
@@ -21,11 +43,6 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Added `cron-parser` as the bounded schedule-expression engine and tightened schedule collection timestamps to ISO datetime values in the shared contract.
 - Preserved the fixed runner, command-versioned execution history, permission, reauthentication, mutation serialization and idempotency boundaries from `0.3.0-preview.28`.
-
-### Security
-
-- Added the separate high-risk `audit:export` permission and required it together with `audit:read`, a full-node user session, CSRF and one-time reauthentication.
-- Verified the append-only audit chain before export, retained parameter redaction, exported the complete hash payload, prevented spreadsheet formula injection, bounded active exports and rejected API-token or scoped-session access.
 
 ## 0.3.0-preview.28 - 2026-07-16
 

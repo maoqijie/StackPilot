@@ -45,6 +45,11 @@ export type ManagedSite = {
   updatedAt: string;
 };
 
+export type FirewallHelperRequest =
+  | { operation: "firewall-list" }
+  | { operation: "firewall-create"; requestId: string; name: string; port: number; protocol: "tcp" | "udp"; source: string }
+  | { operation: "firewall-delete"; requestId: string; ruleId: string; version: string };
+
 export type HelperRequest =
   | { operation: "status" }
   | { operation: "renew"; certificateId: string }
@@ -59,7 +64,7 @@ export type HelperRequest =
 
 export type HelperResponse = {
   ok: boolean;
-  operation: HelperRequest["operation"];
+  operation: HelperRequest["operation"] | FirewallHelperRequest["operation"];
   errorCode?: string;
   message?: string;
   data?: Record<string, unknown>;
