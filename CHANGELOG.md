@@ -2,7 +2,7 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.28 - 2026-07-16
+## 0.3.0-preview.29 - 2026-07-16
 
 ### Added
 
@@ -13,6 +13,13 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Required Controller node scope, `firewall:operate`, CSRF, one-time reauthentication, stable idempotency keys and optimistic rule versions for every UFW mutation.
 - Kept external UFW rules read-only, rechecked rule identity immediately before numbered deletion, and excluded UFW activation and default-policy changes from the API.
+
+## 0.3.0-preview.28 - 2026-07-16
+
+### Fixed
+
+- Classified `journalctl --grep` exit code 1 with empty stdout and stderr as a successful query with no matching firewall deny events, instead of reporting the kernel journal as unavailable.
+- Preserved unavailable status for permission failures and all other probe errors while keeping probe diagnostics bounded and internal to the Agent.
 
 ## 0.3.0-preview.27 - 2026-07-16
 
