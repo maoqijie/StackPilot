@@ -35,3 +35,26 @@ export const UserRecordSchema = z.object({ id: z.string().uuid(), username: z.st
 export const UserListResponseSchema = z.object({ users: z.array(UserRecordSchema) });
 export const CreateUserRequestSchema = z.object({ username: z.string().trim().min(1).max(128).regex(/^[\p{L}\p{N}_.@-]+$/u), displayName: z.string().trim().min(1).max(128), password: z.string().min(12).max(128), roleIds: z.array(z.string()).min(1), nodeScope: NodeScopeSchema }).strict();
 export const UpdateUserAccessRequestSchema = z.object({ roleIds: z.array(z.string()).min(1), nodeScope: NodeScopeSchema, disabled: z.boolean() }).strict();
+export const AuditEventSchema = z.object({
+  sequence: z.number().int().positive(),
+  eventId: z.string().min(1),
+  occurredAt: z.string().datetime(),
+  actorType: z.string().min(1),
+  actorId: z.string().nullable(),
+  source: z.string().min(1),
+  targetType: z.string().nullable(),
+  targetId: z.string().nullable(),
+  action: z.string().min(1),
+  parameters: z.string(),
+  outcome: z.string().min(1),
+  authorization: z.string().min(1),
+  requestId: z.string().min(1),
+  traceId: z.string().min(1),
+  eventHash: z.string().min(1),
+});
+export const AuditEventsResponseSchema = z.object({
+  events: z.array(AuditEventSchema),
+  collectedAt: z.string().datetime(),
+});
+export type AuditEvent = z.infer<typeof AuditEventSchema>;
+export type AuditEventsResponse = z.infer<typeof AuditEventsResponseSchema>;

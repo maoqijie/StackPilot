@@ -3,11 +3,15 @@
 type AuditRecord = {
   id: string;
   time: string;
-  ip: string;
+  source: string;
   user: string;
   action: string;
   object: string;
   result: "成功" | "失败";
+  outcome: string;
+  authorization: string;
+  parameters: string;
+  requestId: string;
   traceId: string;
   summary: string;
 };

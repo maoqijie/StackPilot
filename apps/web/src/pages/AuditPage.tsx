@@ -1,6 +1,6 @@
 import { CheckCircle2, Download, FileText, Shield } from "lucide-react";
 import { useEffect, useState } from "react";
-import { fetchAuditEvents, type AuditEvent } from "../api/auditApi";
+import { fetchAuditEvents } from "../api/auditApi";
 import { auditPagePreset } from "../app/pagePresets";
 import { resolvePageMeta } from "../app/navigation";
 import { clearAuditSourceRoute, consumePendingAuditSource, readAuditSourceParam } from "../app/routing";
@@ -9,10 +9,11 @@ import { MetricTile, ModuleSearch } from "../components/ui/Cards";
 import { DataTable } from "../components/ui/DataTable";
 import { DetailDrawer } from "../components/ui/DetailDrawer";
 import { FieldSelect } from "../components/ui/FormControls";
-import type { AuditExportRecord, AuditRecord } from "../features/audit/types";
-import { initialAuditExports, initialAuditRecords } from "../mocks/demoData";
+import type { AuditExportRecord } from "../features/audit/types";
+import { auditRecord, downloadAuditCsv } from "../features/audit/model";
+import { initialAuditExports } from "../mocks/demoData";
 import type { AuditSource, Notify, PageKey } from "../types/app";
-import { currentClock } from "../utils/time";
+import { currentClock, formatBackendDateTime } from "../utils/time";
 import { usePollingResource } from "../hooks/usePollingResource";
 
 function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
@@ -26,14 +27,16 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [resultByPage, setResultByPage] = useState<Record<string, string>>({});
   const [formatFilter, setFormatFilter] = useState("全部");
   const [exportStatusFilter, setExportStatusFilter] = useState("全部");
-  const [selected, setSelected] = useState<AuditRecord | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedExport, setSelectedExport] = useState<AuditExportRecord | null>(null);
   const isExportMode = auditPreset.mode === "exports";
   const auditSource = sourceByPage[page];
-  const databaseAudit = usePollingResource(fetchAuditEvents, null, auditSource === "database");
-  const auditRecords = auditSource === "database"
-    ? (databaseAudit.data ?? []).filter((event) => event.action.startsWith("database.")).map(databaseAuditRecord)
-    : initialAuditRecords;
+  const audit = usePollingResource(fetchAuditEvents, null, !isExportMode, `audit:${auditSource ?? "all"}`);
+  const auditEvents = audit.data?.events ?? [];
+  const auditRecords = auditEvents
+    .filter((event) => auditSource !== "database" || event.action.startsWith("database."))
+    .map(auditRecord);
+  const selected = auditRecords.find((row) => row.id === selectedId) ?? null;
   const users = ["全部", ...Array.from(new Set(auditRecords.map((row) => row.user)))];
   const search = searchByPage[page] ?? auditPreset.search;
   const userFilter = userByPage[page] ?? auditPreset.user;
@@ -50,7 +53,7 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
       setSearchByPage((current) => ({ ...current, [page]: "" }));
       setUserByPage((current) => ({ ...current, [page]: "全部" }));
       setResultByPage((current) => ({ ...current, [page]: "全部" }));
-      setSelected(null);
+      setSelectedId(null);
       notify("已切换到数据库审计上下文", "info");
     };
     applyAuditSource();
@@ -66,7 +69,7 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
 
   const filteredRows = auditRecords.filter((row) => {
     const query = search.trim().toLowerCase();
-    const matchSearch = !query || `${row.user} ${row.action} ${row.object} ${row.result} ${row.traceId} ${row.ip}`.toLowerCase().includes(query);
+    const matchSearch = !query || `${row.user} ${row.action} ${row.object} ${row.result} ${row.traceId} ${row.source} ${row.outcome}`.toLowerCase().includes(query);
     return matchSearch && (userFilter === "全部" || row.user === userFilter) && (resultFilter === "全部" || row.result === resultFilter);
   });
   const filteredExports = exportRows.filter((row) => {
@@ -110,24 +113,28 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
     }
     regenerateExport(row);
   };
+  const exportAuditRecords = () => {
+    downloadAuditCsv(filteredRows);
+    notify(`已导出 ${filteredRows.length} 条真实审计日志`, "success");
+  };
   const returnToGlobalAudit = () => {
     clearAuditSourceRoute();
     setSourceByPage((current) => ({ ...current, [page]: undefined }));
     setSearchByPage((current) => ({ ...current, [page]: "" }));
-    setSelected(null);
+    setSelectedId(null);
     notify("已返回全部审计日志", "info");
   };
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
-      subtitle={auditSource === "database" ? "数据库审计视图，只展示数据库实例、备份、连接池和权限相关操作。" : auditPreset.subtitle}
+      subtitle={isExportMode ? auditPreset.subtitle : `${auditSource === "database" ? "数据库审计视图，只展示数据库相关操作。" : auditPreset.subtitle} · ${audit.backgroundError ? `后台刷新失败，保留上次数据：${audit.backgroundError}` : `后端采集于 ${formatBackendDateTime(audit.data?.collectedAt)}`}`}
       page={page}
       viewContext={isExportMode ? undefined : {
-        eyebrow: auditSource === "database" ? "审计日志 / 数据库" : "审计日志 / 全部",
-        title: auditSource === "database" ? "数据库审计" : "只读审计",
+        eyebrow: auditSource === "database" ? "审计日志 / 数据库" : page === "audit-failed" ? "审计日志 / 失败操作" : "审计日志 / 全部",
+        title: auditSource === "database" ? "数据库审计" : page === "audit-failed" ? "失败审计" : "只读审计",
         chips: [`记录 ${filteredRows.length}/${auditRecords.length}`, `结果 ${resultFilter}`, `用户 ${userFilter}`],
       }}
-      actions={<><button className="ghost" type="button" onClick={() => isExportMode ? createExport() : notify(`已导出 ${filteredRows.length} 条审计日志`, "info")}><Download size={15} /> {isExportMode ? "新建导出" : "导出"}</button>{!isExportMode && auditSource === "database" && <button className="ghost" type="button" onClick={returnToGlobalAudit}>全部审计</button>}</>}
+      actions={<><button className="ghost" type="button" disabled={!isExportMode && !filteredRows.length} onClick={() => isExportMode ? createExport() : exportAuditRecords()}><Download size={15} /> {isExportMode ? "新建导出" : "导出"}</button>{!isExportMode && auditSource === "database" && <button className="ghost" type="button" onClick={returnToGlobalAudit}>全部审计</button>}</>}
       filters={isExportMode
         ? <><ModuleSearch value={search} placeholder="搜索导出名称、范围或 trace id" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="格式" value={formatFilter} options={["全部", "CSV", "JSON", "ZIP"]} onChange={setFormatFilter} /><FieldSelect label="状态" value={exportStatusFilter} options={["全部", "可下载", "生成中", "失败"]} onChange={setExportStatusFilter} /></>
         : <><ModuleSearch value={search} placeholder="搜索关键字、对象或 trace id" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="用户" value={userFilter} options={users} onChange={(value) => setUserByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="结果" value={resultFilter} options={["全部", "成功", "失败"]} onChange={(value) => setResultByPage((current) => ({ ...current, [page]: value }))} /></>}
@@ -146,13 +153,17 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
           </div>
         </DetailDrawer>
       ) : !isExportMode && selected && (
-        <DetailDrawer title="审计详情" subtitle={selected.traceId} onClose={() => setSelected(null)}>
+        <DetailDrawer title="审计详情" subtitle={selected.traceId} onClose={() => setSelectedId(null)}>
           <div className="detail-kv">
             <p><span>时间</span><b>{selected.time}</b></p>
             <p><span>用户</span><b>{selected.user}</b></p>
-            <p><span>IP</span><b>{selected.ip}</b></p>
+            <p><span>来源</span><b>{selected.source}</b></p>
             <p><span>对象</span><b>{selected.object}</b></p>
+            <p><span>结果</span><b>{selected.outcome}</b></p>
+            <p><span>授权</span><b>{selected.authorization}</b></p>
+            <p><span>请求 ID</span><b>{selected.requestId}</b></p>
             <p><span>摘要</span><b>{selected.summary}</b></p>
+            <p><span>参数</span><code>{selected.parameters}</code></p>
           </div>
         </DetailDrawer>
       )}
@@ -207,21 +218,21 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
           />
         </>
       ) : (
-        <>{auditSource === "database" && databaseAudit.loading && !databaseAudit.data && <span className="sr-only" role="status">正在读取数据库审计</span>}
-        {auditSource === "database" && databaseAudit.error && !databaseAudit.data && <div className="overview-error-state"><Shield size={18} /><span>{databaseAudit.error}</span><button type="button" onClick={() => void databaseAudit.retry()}>重试</button></div>}
+        <>{audit.loading && !audit.data && <span className="sr-only" role="status">正在读取真实审计日志</span>}
+        {audit.error && !audit.data && <div className="overview-error-state"><Shield size={18} /><span>{audit.error}</span><button type="button" onClick={() => void audit.retry()}>重试</button></div>}
         <DataTable
           columns={[
             { key: "time", label: "时间", width: "130px", render: (row) => row.time },
-            { key: "ip", label: "IP", render: (row) => row.ip },
+            { key: "source", label: "来源", render: (row) => row.source },
             { key: "user", label: "用户", render: (row) => row.user },
             { key: "action", label: "动作", render: (row) => row.action },
             { key: "object", label: "对象", render: (row) => row.object },
             { key: "result", label: "结果", render: (row) => <span className={`pill ${row.result === "成功" ? "green" : "red"}`}>{row.result}</span> },
             { key: "trace", label: "trace id", render: (row) => row.traceId },
-            { key: "ops", label: "操作", width: "78px", render: (row) => <span className="table-actions"><button type="button" onClick={() => setSelected(row)}>详情</button></span> },
+            { key: "ops", label: "操作", width: "78px", render: (row) => <span className="table-actions"><button type="button" onClick={() => setSelectedId(row.id)}>详情</button></span> },
           ]}
           rows={filteredRows}
-          emptyText="没有匹配的审计日志"
+          emptyText={audit.error ? "真实审计日志读取失败" : audit.loading ? "正在读取真实审计日志" : "没有匹配的审计日志"}
           getRowKey={(row) => row.id}
           mobileCard={(row) => (
             <>
@@ -233,11 +244,11 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
               <div className="module-card-meta">
                 <span><b>用户</b><em>{row.user}</em></span>
                 <span><b>对象</b><em>{row.object}</em></span>
-                <span><b>IP</b><em>{row.ip}</em></span>
+                <span><b>来源</b><em>{row.source}</em></span>
                 <span><b>时间</b><em>{row.time}</em></span>
               </div>
               <div className="module-card-footer">
-                <div className="table-actions actions-1"><button type="button" onClick={() => setSelected(row)}>详情</button></div>
+                <div className="table-actions actions-1"><button type="button" onClick={() => setSelectedId(row.id)}>详情</button></div>
               </div>
             </>
           )}
@@ -245,21 +256,6 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
       )}
     </ModulePageShell>
   );
-}
-
-function databaseAuditRecord(event: AuditEvent): AuditRecord {
-  const result = ["failed", "failure", "denied", "error"].includes(event.outcome.toLowerCase()) ? "失败" : "成功";
-  return {
-    id: event.eventId,
-    time: new Date(event.occurredAt).toLocaleString("zh-CN", { hour12: false }),
-    ip: event.source,
-    user: event.actorId ?? event.actorType,
-    action: event.action,
-    object: event.targetId ?? event.targetType ?? "数据库",
-    result,
-    traceId: event.traceId,
-    summary: `${event.action} · ${event.outcome}`,
-  };
 }
 
 export { AuditPage };
