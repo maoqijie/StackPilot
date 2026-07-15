@@ -2,6 +2,12 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.26 - 2026-07-16
+
+### Fixed
+
+- Isolated the database authorization HTTP test from host systemd database discovery so Linux release gates remain deterministic on production-like hosts without changing Controller-local database collection behavior.
+
 ## 0.3.0-preview.25 - 2026-07-16
 
 ### Added

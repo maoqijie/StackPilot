@@ -137,6 +137,7 @@ test("GET /api/databases enforces read permission and principal node scope", asy
   const repository = new MemoryAgentControlRepository(); const firstId = "11111111-1111-4111-8111-111111111111"; const secondId = "22222222-2222-4222-8222-222222222222";
   await repository.update((state) => state.nodes.push(node(firstId, "db-a"), node(secondId, "db-b")));
   const services = createControllerServices(new FakePlatformAdapter(), process.cwd(), loadControllerConfig({}), repository);
+  services.databaseInstances = new DatabaseMonitoringService(repository);
   const noPermission = identity.createApiToken(admin, { name: "nodes", permissions: ["nodes:read"], nodeScope: "all", expiresAt: null }).token;
   const scoped = identity.createApiToken(admin, { name: "database", permissions: ["databases:read"], nodeScope: [firstId], expiresAt: null }).token;
   const server = createStackPilotServer({ env: { STACKPILOT_COOKIE_SECURE: "0" }, services, database: databaseStore, identity });
