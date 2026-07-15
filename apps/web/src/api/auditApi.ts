@@ -1,24 +1,17 @@
-import { z } from "zod";
+import { AuditEventsResponseSchema } from "@stackpilot/contracts";
+import type { AuditEvent, AuditEventsResponse, AuditQuery } from "@stackpilot/contracts";
 import { requestJson } from "./client";
 
-const AuditEventSchema = z.object({
-  eventId: z.string().min(1),
-  occurredAt: z.string().datetime(),
-  actorType: z.string().min(1),
-  actorId: z.string().nullable(),
-  source: z.string().min(1),
-  targetType: z.string().nullable(),
-  targetId: z.string().nullable(),
-  action: z.string().min(1),
-  parameters: z.string(),
-  outcome: z.string().min(1),
-  requestId: z.string().min(1),
-  traceId: z.string().min(1),
-}).passthrough();
+type FetchAuditOptions = Partial<AuditQuery> & { signal?: AbortSignal };
 
-const AuditEventsResponseSchema = z.object({ events: z.array(AuditEventSchema) }).strict();
+export const fetchAuditEvents = ({ signal, ...query }: FetchAuditOptions = {}) => {
+  const params = new URLSearchParams();
+  if (query.limit !== undefined) params.set("limit", String(query.limit));
+  if (query.result !== undefined) params.set("result", query.result);
+  if (query.actionPrefix !== undefined) params.set("actionPrefix", query.actionPrefix);
+  const search = params.size ? `?${params.toString()}` : "";
+  return requestJson<unknown>(`/audit${search}`, { signal })
+  .then((payload) => AuditEventsResponseSchema.parse(payload));
+};
 
-export const fetchAuditEvents = (signal?: AbortSignal) => requestJson<unknown>("/audit", { signal })
-  .then((payload) => AuditEventsResponseSchema.parse(payload).events);
-
-export type AuditEvent = z.infer<typeof AuditEventSchema>;
+export type { AuditEvent, AuditEventsResponse };

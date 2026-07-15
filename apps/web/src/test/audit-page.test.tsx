@@ -1,15 +1,25 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchAuditEvents } from "../api/auditApi";
 import { AuditPage } from "../pages/AuditPage";
 
+vi.mock("../api/auditApi", () => ({ fetchAuditEvents: vi.fn() }));
+
 describe("audit failed page", () => {
+  beforeEach(() => {
+    vi.mocked(fetchAuditEvents).mockReset().mockResolvedValue({
+      collectedAt: "2026-07-15T02:03:04.000Z",
+      events: [auditEvent({ targetId: "/tmp/old.log", action: "执行 删除文件", outcome: "failed" })],
+    });
+  });
+
   it("keeps the failed filter and opens the detail as a modal drawer", async () => {
     const user = userEvent.setup();
     render(<AuditPage page="audit-failed" notify={vi.fn()} />);
 
     expect(screen.getByRole("heading", { name: "失败操作" })).toBeInTheDocument();
-    expect(screen.getAllByText("/tmp/old.log").length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("/tmp/old.log")).length).toBeGreaterThan(0);
     expect(screen.queryByText("/api (sg-web-02)")).not.toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "详情" })[0]);
@@ -40,3 +50,24 @@ describe("audit export page", () => {
     expect(screen.queryByRole("dialog", { name: "新建审计导出" })).not.toBeInTheDocument();
   });
 });
+
+function auditEvent(overrides: Record<string, unknown>) {
+  return {
+    sequence: 1,
+    eventId: "failed-event",
+    occurredAt: "2026-07-15T02:00:00.000Z",
+    actorType: "user",
+    actorId: "operator",
+    source: "controller",
+    targetType: "file",
+    targetId: "/tmp/old.log",
+    action: "test.action",
+    parameters: "{}",
+    outcome: "failed",
+    authorization: "session+rbac",
+    requestId: "request",
+    traceId: "trace",
+    eventHash: "hash",
+    ...overrides,
+  };
+}

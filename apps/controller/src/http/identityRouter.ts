@@ -1,6 +1,6 @@
-import { ApiTokenListResponseSchema, CreateApiTokenRequestSchema, CreateApiTokenResponseSchema, CreateUserRequestSchema, CurrentUserResponseSchema, EmptyObjectSchema, LoginRequestSchema, LoginResponseSchema, PasswordChangeRequestSchema, ReauthenticateRequestSchema, ReauthenticateResponseSchema, RoleListResponseSchema, SessionStatusResponseSchema, UpdateUserAccessRequestSchema, UpsertRoleRequestSchema, UserListResponseSchema } from "@stackpilot/contracts";
+import { ApiTokenListResponseSchema, AuditEventsResponseSchema, AuditQuerySchema, CreateApiTokenRequestSchema, CreateApiTokenResponseSchema, CreateUserRequestSchema, CurrentUserResponseSchema, EmptyObjectSchema, LoginRequestSchema, LoginResponseSchema, PasswordChangeRequestSchema, ReauthenticateRequestSchema, ReauthenticateResponseSchema, RoleListResponseSchema, SessionStatusResponseSchema, UpdateUserAccessRequestSchema, UpsertRoleRequestSchema, UserListResponseSchema } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
-import { notFound } from "./errors/ApiError.js";
+import { badRequest, notFound } from "./errors/ApiError.js";
 import { clearSessionCookie, sessionCookie } from "./middleware/userAuthentication.js";
 import { sendJson } from "./response/json.js";
 import { parseSchema } from "./validation.js";
@@ -26,6 +26,15 @@ export async function routeIdentityRequest(context:RequestContext):Promise<void>
   if(path==="/api/users"&&method==="GET"){identity.require(principal,"users:read");sendJson(context.response,200,{users:identity.listUsers()},UserListResponseSchema);return;}
   if(path==="/api/users"&&method==="POST"){identity.require(principal,"users:manage");identity.consumeReauth(principal,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);const input=parseSchema(CreateUserRequestSchema,context.body,"用户");await identity.createUser(principal,input.username,input.displayName,input.password,input.roleIds,input.nodeScope);sendJson(context.response,201,{message:"用户已创建",tone:"success"});return;}
   if(context.parts[1]==="users"&&context.parts.length===3&&method==="PATCH"){identity.require(principal,"users:manage");identity.consumeReauth(principal,typeof context.request.headers["x-reauth-proof"]==="string"?context.request.headers["x-reauth-proof"]:undefined);const input=parseSchema(UpdateUserAccessRequestSchema,context.body,"用户权限");identity.updateUserAccess(principal,context.parts[2]??"",input.roleIds,input.nodeScope,input.disabled);sendJson(context.response,200,{message:"用户权限已更新",tone:"success"});return;}
-  if(path==="/api/audit"&&method==="GET"){identity.require(principal,"audit:read");sendJson(context.response,200,{events:identity.audit.list()});return;}
+  if(path==="/api/audit"&&method==="GET"){identity.require(principal,"audit:read");const query=queryObject(context.url.searchParams);const input=parseSchema(AuditQuerySchema,query,"审计查询");context.response.setHeader("Cache-Control","no-store");sendJson(context.response,200,{events:identity.audit.list(input),collectedAt:new Date().toISOString()},AuditEventsResponseSchema);return;}
   throw notFound("身份接口不存在");
+}
+
+function queryObject(params: URLSearchParams) {
+  const query: Record<string, string> = {};
+  for (const [key, value] of params) {
+    if (key in query) throw badRequest(`审计查询参数不能重复：${key}`);
+    query[key] = value;
+  }
+  return query;
 }

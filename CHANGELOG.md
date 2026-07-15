@@ -2,7 +2,7 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.21 - 2026-07-15
+## 0.3.0-preview.22 - 2026-07-16
 
 ### Added
 
@@ -14,6 +14,17 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Removed demo deny records and browser-only allow, promote and export actions that previously reported success without a backend effect.
 - Kept firewall collection read-only, bounded and free of raw kernel log output; the browser receives normalized event fields only.
+
+## 0.3.0-preview.21 - 2026-07-15
+
+### Changed
+
+- Connected the global and failed-audit views to the authenticated Controller audit repository, with backend collection timestamps, visibility-aware 10-second polling, stable event details and real CSV export.
+- Removed the Web audit fixture fallback and centralized the audit response and bounded read-filter schemas in the shared contracts package.
+
+### Security
+
+- Preserved the explicitly global `audit:read` enforcement on the API, hid audit navigation and search actions from principals without that permission, and applied failed-result and action-prefix filters before the SQLite limit.
 
 ## 0.3.0-preview.20 - 2026-07-15
 
