@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   API_CLIENT_PREFIX, API_ROOT_SEGMENTS, ApiErrorResponseSchema, CreateScheduleJobRequestSchema,
-  OverviewSummaryPayloadSchema, PathIdSchema, WRITE_METHODS,
+  OverviewSummaryPayloadSchema, PathIdSchema, SchedulePayloadSchema, WRITE_METHODS,
   AGENT_PROTOCOL_VERSION, AgentDatabaseSnapshotSchema, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, PhysicalHostIdSchema,
   CreateRemoteTaskRequestSchema, RemoteTaskListResponseSchema, isAgentProtocolCompatible,
   SiteRuntimePayloadSchema,
@@ -35,6 +35,13 @@ test("audit contracts bound queries and expose backend collection time", () => {
   assert.deepEqual(AuditQuerySchema.parse({}), { limit: 200, result: "all" });
   assert.deepEqual(AuditQuerySchema.parse({ limit: "50", result: "failed", actionPrefix: "database." }), { limit: 50, result: "failed", actionPrefix: "database." });
   for (const query of [{ limit: 0 }, { limit: 1001 }, { actionPrefix: "database%" }, { unknown: "value" }]) assert.equal(AuditQuerySchema.safeParse(query).success, false);
+});
+
+test("schedule side effects require bounded idempotency keys", () => {
+  const request = { name: "backup", cron: "0 4 * * *", command: "true", idempotencyKey: "schedule-create-1" };
+  assert.equal(CreateScheduleJobRequestSchema.safeParse(request).success, true);
+  assert.equal(CreateScheduleJobRequestSchema.safeParse({ ...request, idempotencyKey: "short" }).success, false);
+  assert.equal(CreateScheduleJobRequestSchema.safeParse({ ...request, idempotencyKey: "invalid key" }).success, false);
 });
 
 test("firewall open-port payload stays strict and backend-owned", () => {
@@ -291,6 +298,8 @@ test("shared schemas validate external request and error contracts at runtime", 
   assert.equal(PathIdSchema.safeParse("node-local").success, true);
   assert.equal(PathIdSchema.safeParse("../node").success, false);
   assert.equal(CreateScheduleJobRequestSchema.safeParse({ name: "backup", cron: "0 4 * * *", command: "true", extra: true }).success, false);
+  assert.equal(SchedulePayloadSchema.safeParse({ jobs: [], scannedAt: new Date().toISOString(), writeEnabled: false }).success, true);
+  assert.equal(SchedulePayloadSchema.safeParse({ jobs: [], scannedAt: new Date().toISOString() }).success, false);
   assert.equal(ApiErrorResponseSchema.safeParse({ code: "BAD_REQUEST", error: "invalid", requestId: "request-1" }).success, true);
   assert.equal(ApiErrorResponseSchema.safeParse({ code: "REAUTHENTICATION_FAILED", error: "重新认证失败", requestId: "request-2" }).success, true);
   assert.equal(OverviewSummaryPayloadSchema.safeParse({}).success, false);

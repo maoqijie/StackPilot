@@ -64,6 +64,17 @@ install_units() {
   systemctl daemon-reload
 }
 
+prepare_controller_host() {
+  [ "$component" = "controller" ] || return 0
+  [ -x /usr/bin/crontab ] || { echo "Controller installation requires executable /usr/bin/crontab. Install the Debian/Ubuntu cron package and retry." >&2; exit 1; }
+  command -v getent >/dev/null 2>&1 || { echo "Controller installation requires getent to verify the system crontab group. Install the Debian/Ubuntu libc-bin package and retry." >&2; exit 1; }
+  getent group crontab >/dev/null 2>&1 || { echo "Controller installation requires the existing system crontab group. Install the Debian/Ubuntu cron package and retry." >&2; exit 1; }
+  [ -d /var/spool/cron/crontabs ] || { echo "Controller installation requires /var/spool/cron/crontabs. Install or repair the Debian/Ubuntu cron package and retry." >&2; exit 1; }
+  systemd-sysusers "$root/deploy/systemd/stackpilot-controller.sysusers"
+}
+
+prepare_controller_host
+
 if [ -e "$release" ]; then
   [ -d "$release" ] && [ ! -L "$release" ] || { echo "Existing release is not a regular directory: $release" >&2; exit 1; }
   [ -f "$release/package.json" ] && [ -f "$release/$entry" ] || { echo "Existing release is incomplete: $release" >&2; exit 1; }
@@ -76,7 +87,9 @@ if [ -e "$release" ]; then
   exit 0
 fi
 
-systemd-sysusers "$root/deploy/systemd/stackpilot-${component}.sysusers"
+if [ "$component" != "controller" ]; then
+  systemd-sysusers "$root/deploy/systemd/stackpilot-${component}.sysusers"
+fi
 install -d -m 0755 "$prefix/releases"
 rm -rf "$staging"
 trap 'rm -rf "$staging"' EXIT HUP INT TERM

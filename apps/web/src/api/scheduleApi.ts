@@ -1,7 +1,6 @@
 import type {
   CreateScheduleJobRequest,
-  ScheduleJob,
-  ScheduleNotice,
+  ScheduleMutationResponse,
   SchedulePayload,
   UpdateScheduleJobRequest,
 } from "@stackpilot/contracts";
@@ -13,29 +12,33 @@ export function fetchScheduleJobs(signal?: AbortSignal) {
   return requestJson<SchedulePayload>("/overview/current-user-crontab", { signal });
 }
 
-export function createScheduleJob(payload: CreateScheduleJobRequest) {
-  return requestJson<SchedulePayload & { job: ScheduleJob } & ScheduleNotice>("/overview/current-user-crontab", {
+export function createScheduleJob(payload: Omit<CreateScheduleJobRequest, "idempotencyKey">, proof: string, idempotencyKey: string) {
+  return requestJson<ScheduleMutationResponse>("/overview/current-user-crontab", {
     method: "POST",
-    body: JSON.stringify({ ...payload, enabled: payload.enabled ?? true }),
+    headers: { "X-Reauth-Proof": proof },
+    body: JSON.stringify({ ...payload, enabled: payload.enabled ?? true, idempotencyKey }),
   });
 }
 
-export function updateScheduleJob(id: string, payload: UpdateScheduleJobRequest) {
-  return requestJson<SchedulePayload & { job: ScheduleJob } & ScheduleNotice>(`/overview/current-user-crontab/${id}`, {
+export function updateScheduleJob(id: string, payload: UpdateScheduleJobRequest, proof: string) {
+  return requestJson<ScheduleMutationResponse>(`/overview/current-user-crontab/${id}`, {
     method: "PATCH",
+    headers: { "X-Reauth-Proof": proof },
     body: JSON.stringify(payload),
   });
 }
 
-export function runScheduleJob(id: string) {
-  return requestJson<SchedulePayload & { job: ScheduleJob; output?: string } & ScheduleNotice>(`/overview/current-user-crontab/${id}`, {
+export function runScheduleJob(id: string, proof: string, idempotencyKey: string) {
+  return requestJson<ScheduleMutationResponse & { output?: string }>(`/overview/current-user-crontab/${id}`, {
     method: "PATCH",
-    body: JSON.stringify({ action: "run" }),
+    headers: { "X-Reauth-Proof": proof },
+    body: JSON.stringify({ action: "run", idempotencyKey }),
   });
 }
 
-export function deleteScheduleJob(id: string) {
-  return requestJson<SchedulePayload & { job: ScheduleJob } & ScheduleNotice>(`/overview/current-user-crontab/${id}`, {
+export function deleteScheduleJob(id: string, proof: string) {
+  return requestJson<ScheduleMutationResponse>(`/overview/current-user-crontab/${id}`, {
     method: "DELETE",
+    headers: { "X-Reauth-Proof": proof },
   });
 }
