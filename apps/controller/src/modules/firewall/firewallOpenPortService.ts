@@ -20,7 +20,7 @@ function addressMeta(address: string): { exposure: FirewallExposure; source: str
   const normalized = address.split("%", 1)[0] ?? address;
   if (["0.0.0.0", "*"].includes(normalized)) return { exposure: "public", source: "0.0.0.0/0" };
   if (["::", "::0"].includes(normalized)) return { exposure: "public", source: "::/0" };
-  if (normalized === "127.0.0.1" || normalized === "::1") return { exposure: "loopback", source: "仅本机" };
+  if (/^127\./.test(normalized) || normalized === "::1") return { exposure: "loopback", source: "仅本机" };
   if (isIP(normalized) === 4 && (/^10\./.test(normalized) || /^192\.168\./.test(normalized) || /^172\.(1[6-9]|2\d|3[01])\./.test(normalized))) return { exposure: "private", source: "私有网络" };
   if (isIP(normalized) === 6 && (/^f[cd]/i.test(normalized) || /^fe[89ab]/i.test(normalized))) return { exposure: "private", source: "私有网络" };
   return { exposure: "specific", source: "指定地址" };

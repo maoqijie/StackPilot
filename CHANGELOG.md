@@ -2,25 +2,52 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.20 - 2026-07-15
+## 0.3.0-preview.23 - 2026-07-16
 
 ### Added
 
-- Added a bounded cron execution runner that records real automatic execution timestamps, source, exit code, duration and capped output in the Controller state directory.
-- Added typed schedule execution details to the shared contract and the failed-schedule workbench.
-
-### Changed
-
-- The failed schedule view now filters backend-recorded executions instead of inferring failures from browser state, and retains visibility-aware 10-second polling without overwriting completed mutations.
-- Schedule navigation and operations now honor `schedules:read`, `schedules:write` and the backend crontab capability flag.
+- Added bounded Controller-side execution records for automatic cron and immediate schedule runs, including source, timestamps, command revision, exit code, duration, stdout and stderr.
+- Connected the failed-schedule workbench and task detail drawer to backend-recorded executions instead of inferring failure from browser state.
 
 ### Fixed
 
-- Serialized schedule mutations, preserved concurrent edits and deletes when manual execution completes, and rejected duplicate execution of the same task while it is already running.
+- Bound execution records to the SHA-256 revision of the scheduled command so late results from deleted or edited jobs cannot be attributed to a new command.
+- Killed the complete derived process group when a scheduled command times out, preventing timed-out shell children from continuing side effects in the background.
+- Preserved concurrent schedule edits and deletes when immediate execution completes, rejected overlapping runs of the same task, and retained user-scoped replay idempotency.
 
 ### Security
 
-- Managed crontab rows invoke only the fixed StackPilot runner with encoded bounded input; external crontab rows remain untouched and execution records use private atomic files with bounded retention.
+- Managed crontab rows invoke only the fixed StackPilot runner with encoded bounded input; execution records use private atomic files with bounded retention and invalid runner parameters are rejected before command execution.
+
+## 0.3.0-preview.22 - 2026-07-15
+
+### Fixed
+
+- Made the native Controller installer verify the distribution `cron` package contract before synchronizing units, and reapplied Controller sysusers membership during same-version unit updates.
+- Extended production preflight to reject enabled crontab writes when the executable, system group, or spool directory is unavailable, while keeping the optional capability non-blocking when disabled.
+- Restored complete registry resolution and integrity metadata in the workspace lockfile so clean release installs remain reproducible after concurrent version merges.
+
+### Security
+
+- Added user-scoped idempotency keys to schedule creation and immediate execution so a retried confirmation cannot duplicate a managed job or execute its command twice after a lost response.
+- Added bounded replay caching and payload-conflict rejection for completed schedule side effects while preserving session, CSRF, permission, and one-time reauthentication checks.
+
+## 0.3.0-preview.21 - 2026-07-15
+
+### Changed
+
+- Connected the global and failed-audit views to the authenticated Controller audit repository, with backend collection timestamps, visibility-aware 10-second polling, stable event details and real CSV export.
+- Removed the Web audit fixture fallback and centralized the audit response and bounded read-filter schemas in the shared contracts package.
+
+### Security
+
+- Preserved the explicitly global `audit:read` enforcement on the API, hid audit navigation and search actions from principals without that permission, and applied failed-result and action-prefix filters before the SQLite limit.
+
+## 0.3.0-preview.20 - 2026-07-15
+
+### Fixed
+
+- Classified the complete IPv4 `127.0.0.0/8` loopback range, including interface-scoped systemd-resolved listeners, as local-only instead of a specific-address binding.
 
 ## 0.3.0-preview.19 - 2026-07-15
 
@@ -29,13 +56,21 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 - Added an authenticated Controller API that reports real TCP and UDP listening sockets with stable identifiers, bind scope and backend collection time.
 - Connected the firewall open-port workbench to the real API with strict shared contracts, explicit permission handling and visibility-aware 10-second polling.
 
+### Fixed
+
+- Allowed the hardened native Controller service to read and write its own crontab by granting only the operating system `crontab` supplementary group while retaining `NoNewPrivileges` and an empty capability set.
+- Restored reproducible clean installs by synchronizing the lockfile with the committed CycloneDX dependency graph.
+
 ### Changed
 
+- Exposed the server-side crontab mutation capability in the schedule read model and rendered the real schedule inventory as read-only when the dangerous write switch is disabled.
+- Applied `schedules:read` and `schedules:write` permissions to schedule navigation and mutation controls while preserving the backend authorization checks.
 - Replaced the `#firewall-open` fixture rule view with actual Controller host listeners while keeping the separate rule-management and deny-record workbenches unchanged.
-- Repaired missing optional CycloneDX dependency metadata in the lockfile so `npm ci` remains reproducible.
 
 ### Security
 
+- Required a user session and one-time reauthentication proof for every crontab mutation or immediate command execution; API tokens remain read-only for schedules.
+- Serialized schedule read-modify-write operations and switched task identifiers to UUIDs so concurrent mutations cannot overwrite or alias managed jobs.
 - Open-port collection runs through a fixed `/usr/bin/ss -H -lntu` invocation without a shell, requires `firewall:read`, and exposes no process identity or arbitrary command input.
 - The Web surface states that a listening socket does not prove upstream network reachability and does not offer unsafe UFW mutations on hosts where UFW is inactive.
 

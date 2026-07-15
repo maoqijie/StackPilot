@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ScheduleExecutionSchema, type ScheduleExecution } from "@stackpilot/contracts";
@@ -17,11 +17,13 @@ function trimOutput(value: string, limit: number) {
 
 export function scheduleExecution(
   source: ScheduleExecution["source"],
+  commandDigest: string,
   startedAt: string,
   result: CommandResult,
 ): ScheduleExecution {
   return ScheduleExecutionSchema.parse({
     id: randomUUID(),
+    commandDigest,
     source,
     startedAt,
     finishedAt: new Date().toISOString(),
@@ -34,10 +36,14 @@ export function scheduleExecution(
 }
 
 export interface ScheduleExecutionRepository {
-  latest(jobId: string): Promise<ScheduleExecution | null>;
+  latest(jobId: string, commandDigest: string): Promise<ScheduleExecution | null>;
   write(jobId: string, execution: ScheduleExecution): Promise<void>;
   delete(jobId: string): Promise<void>;
   cronCommand(jobId: string, command: string): string;
+}
+
+export function scheduleCommandDigest(command: string) {
+  return createHash("sha256").update(command, "utf8").digest("hex");
 }
 
 export class FileScheduleExecutionRepository implements ScheduleExecutionRepository {
@@ -53,7 +59,7 @@ export class FileScheduleExecutionRepository implements ScheduleExecutionReposit
     return join(this.stateDir, jobId);
   }
 
-  async latest(jobId: string) {
+  async latest(jobId: string, commandDigest: string) {
     const directory = this.jobDir(jobId);
     const files = await readdir(directory).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return [];
@@ -67,8 +73,10 @@ export class FileScheduleExecutionRepository implements ScheduleExecutionReposit
       } catch {
         return null;
       }
-    }))).filter((item): item is ScheduleExecution => item !== null);
-    return executions.sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt))[0] ?? null;
+    }))).filter((item): item is ScheduleExecution => item?.commandDigest === commandDigest);
+    return executions.sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt)
+      || Date.parse(right.finishedAt) - Date.parse(left.finishedAt)
+      || right.id.localeCompare(left.id))[0] ?? null;
   }
 
   async write(jobId: string, execution: ScheduleExecution) {
@@ -88,6 +96,6 @@ export class FileScheduleExecutionRepository implements ScheduleExecutionReposit
 
   cronCommand(jobId: string, command: string) {
     const encoded = Buffer.from(command, "utf8").toString("base64url");
-    return [this.nodePath, "--preserve-symlinks-main", this.runnerPath, this.stateDir, this.workDir, jobId, encoded].map(shellArg).join(" ");
+    return [this.nodePath, "--preserve-symlinks-main", this.runnerPath, this.stateDir, this.workDir, jobId, scheduleCommandDigest(command), encoded].map(shellArg).join(" ");
   }
 }
