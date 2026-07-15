@@ -1,11 +1,12 @@
 import { CheckCircle2, Download, FileText, Shield } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchAuditEvents, type AuditEvent } from "../api/auditApi";
 import { auditPagePreset } from "../app/pagePresets";
 import { resolvePageMeta } from "../app/navigation";
 import { clearAuditSourceRoute, consumePendingAuditSource, readAuditSourceParam } from "../app/routing";
 import { ModulePageShell } from "../components/layout/ModulePageShell";
 import { MetricTile, ModuleSearch } from "../components/ui/Cards";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { DataTable } from "../components/ui/DataTable";
 import { DetailDrawer } from "../components/ui/DetailDrawer";
 import { FieldSelect } from "../components/ui/FormControls";
@@ -26,18 +27,26 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [resultByPage, setResultByPage] = useState<Record<string, string>>({});
   const [formatFilter, setFormatFilter] = useState("全部");
   const [exportStatusFilter, setExportStatusFilter] = useState("全部");
-  const [selected, setSelected] = useState<AuditRecord | null>(null);
-  const [selectedExport, setSelectedExport] = useState<AuditExportRecord | null>(null);
+  const [createExportOpen, setCreateExportOpen] = useState(false);
+  const [selectedIdByPage, setSelectedIdByPage] = useState<Record<string, string | null>>({});
+  const [selectedExportIdByPage, setSelectedExportIdByPage] = useState<Record<string, string | null>>({});
   const isExportMode = auditPreset.mode === "exports";
   const auditSource = sourceByPage[page];
   const databaseAudit = usePollingResource(fetchAuditEvents, null, auditSource === "database");
   const auditRecords = auditSource === "database"
     ? (databaseAudit.data ?? []).filter((event) => event.action.startsWith("database.")).map(databaseAuditRecord)
     : initialAuditRecords;
+  const selectedId = selectedIdByPage[page] ?? null;
+  const selectedExportId = selectedExportIdByPage[page] ?? null;
+  const selected = auditRecords.find((row) => row.id === selectedId) ?? null;
+  const selectedExport = exportRows.find((row) => row.id === selectedExportId) ?? null;
   const users = ["全部", ...Array.from(new Set(auditRecords.map((row) => row.user)))];
   const search = searchByPage[page] ?? auditPreset.search;
   const userFilter = userByPage[page] ?? auditPreset.user;
   const resultFilter = resultByPage[page] ?? auditPreset.result;
+
+  const setSelectedId = useCallback((id: string | null) => setSelectedIdByPage((current) => ({ ...current, [page]: id })), [page]);
+  const setSelectedExportId = useCallback((id: string | null) => setSelectedExportIdByPage((current) => ({ ...current, [page]: id })), [page]);
 
   useEffect(() => {
     const applyAuditSource = () => {
@@ -50,7 +59,7 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
       setSearchByPage((current) => ({ ...current, [page]: "" }));
       setUserByPage((current) => ({ ...current, [page]: "全部" }));
       setResultByPage((current) => ({ ...current, [page]: "全部" }));
-      setSelected(null);
+      setSelectedId(null);
       notify("已切换到数据库审计上下文", "info");
     };
     applyAuditSource();
@@ -62,7 +71,7 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
       window.removeEventListener("hashchange", applyAuditSource);
       window.removeEventListener("popstate", applyAuditSource);
     };
-  }, [notify, page]);
+  }, [notify, page, setSelectedId]);
 
   const filteredRows = auditRecords.filter((row) => {
     const query = search.trim().toLowerCase();
@@ -74,12 +83,13 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
     const matchSearch = !query || `${row.name} ${row.format} ${row.range} ${row.status} ${row.creator} ${row.traceId}`.toLowerCase().includes(query);
     return matchSearch && (formatFilter === "全部" || row.format === formatFilter) && (exportStatusFilter === "全部" || row.status === exportStatusFilter);
   });
+  const exportFormat = formatFilter === "全部" ? "CSV" : formatFilter as AuditExportRecord["format"];
   const createExport = () => {
     const exportId = crypto.randomUUID();
     const next: AuditExportRecord = {
       id: `exp-${exportId}`,
       name: `审计导出 ${exportRows.length + 1}`,
-      format: formatFilter === "全部" ? "CSV" : formatFilter as AuditExportRecord["format"],
+      format: exportFormat,
       range: "当前筛选范围",
       status: "生成中",
       rows: filteredRows.length,
@@ -114,10 +124,11 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
     clearAuditSourceRoute();
     setSourceByPage((current) => ({ ...current, [page]: undefined }));
     setSearchByPage((current) => ({ ...current, [page]: "" }));
-    setSelected(null);
+    setSelectedId(null);
     notify("已返回全部审计日志", "info");
   };
   return (
+    <>
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={auditSource === "database" ? "数据库审计视图，只展示数据库实例、备份、连接池和权限相关操作。" : auditPreset.subtitle}
@@ -127,7 +138,7 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
         title: auditSource === "database" ? "数据库审计" : "只读审计",
         chips: [`记录 ${filteredRows.length}/${auditRecords.length}`, `结果 ${resultFilter}`, `用户 ${userFilter}`],
       }}
-      actions={<><button className="ghost" type="button" onClick={() => isExportMode ? createExport() : notify(`已导出 ${filteredRows.length} 条审计日志`, "info")}><Download size={15} /> {isExportMode ? "新建导出" : "导出"}</button>{!isExportMode && auditSource === "database" && <button className="ghost" type="button" onClick={returnToGlobalAudit}>全部审计</button>}</>}
+      actions={<><button className="ghost" type="button" onClick={() => isExportMode ? setCreateExportOpen(true) : notify(`已导出 ${filteredRows.length} 条审计日志`, "info")}><Download size={15} /> {isExportMode ? "新建导出" : "导出"}</button>{!isExportMode && auditSource === "database" && <button className="ghost" type="button" onClick={returnToGlobalAudit}>全部审计</button>}</>}
       filters={isExportMode
         ? <><ModuleSearch value={search} placeholder="搜索导出名称、范围或 trace id" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="格式" value={formatFilter} options={["全部", "CSV", "JSON", "ZIP"]} onChange={setFormatFilter} /><FieldSelect label="状态" value={exportStatusFilter} options={["全部", "可下载", "生成中", "失败"]} onChange={setExportStatusFilter} /></>
         : <><ModuleSearch value={search} placeholder="搜索关键字、对象或 trace id" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="用户" value={userFilter} options={users} onChange={(value) => setUserByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="结果" value={resultFilter} options={["全部", "成功", "失败"]} onChange={(value) => setResultByPage((current) => ({ ...current, [page]: value }))} /></>}
@@ -135,7 +146,7 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
         ? <><MetricTile icon={Download} label="导出任务" value={`${exportRows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="可下载" value={`${exportRows.filter((row) => row.status === "可下载").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${exportRows.filter((row) => row.status === "失败").length}`} tone="red" /></>
         : <><MetricTile icon={FileText} label="日志" value={`${auditRecords.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="成功" value={`${auditRecords.filter((row) => row.result === "成功").length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${auditRecords.filter((row) => row.result === "失败").length}`} tone="red" /></>}
       side={isExportMode && selectedExport ? (
-        <DetailDrawer title="导出详情" subtitle={selectedExport.traceId} onClose={() => setSelectedExport(null)}>
+        <DetailDrawer className="audit-detail-drawer" modal title="导出详情" subtitle={selectedExport.traceId} closeLabel="关闭导出详情" scrimCloseLabel="点击遮罩关闭导出详情" onClose={() => setSelectedExportId(null)}>
           <div className="detail-kv">
             <p><span>名称</span><b>{selectedExport.name}</b></p>
             <p><span>格式</span><b>{selectedExport.format}</b></p>
@@ -146,7 +157,7 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
           </div>
         </DetailDrawer>
       ) : !isExportMode && selected && (
-        <DetailDrawer title="审计详情" subtitle={selected.traceId} onClose={() => setSelected(null)}>
+        <DetailDrawer className="audit-detail-drawer" modal title="审计详情" subtitle={selected.traceId} closeLabel="关闭审计详情" scrimCloseLabel="点击遮罩关闭审计详情" onClose={() => setSelectedId(null)}>
           <div className="detail-kv">
             <p><span>时间</span><b>{selected.time}</b></p>
             <p><span>用户</span><b>{selected.user}</b></p>
@@ -156,29 +167,20 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
           </div>
         </DetailDrawer>
       )}
+      sideModal={Boolean((isExportMode && selectedExport) || (!isExportMode && selected))}
     >
       {isExportMode ? (
         <>
-          <div className="export-list">
-            {filteredExports.map((row) => (
-              <p key={row.id}>
-                <Download size={14} />
-                <span><b>{row.name}</b><em>{row.range} · {row.rows.toLocaleString("zh-CN")} 条 · {row.size}</em></span>
-                <strong className={row.status === "可下载" ? "green-text" : row.status === "生成中" ? "blue-text" : "red-text"}>{row.status}</strong>
-              </p>
-            ))}
-            {filteredExports.length === 0 && <div className="module-empty-card">没有匹配的导出记录</div>}
-          </div>
           <DataTable
             columns={[
-              { key: "name", label: "导出名称", width: "220px", render: (row) => <b>{row.name}</b> },
+              { key: "name", label: "导出名称", width: "220px", render: (row) => <b className="audit-cell-value" title={row.name}>{row.name}</b> },
               { key: "format", label: "格式", render: (row) => <span className="pill blue">{row.format}</span> },
-              { key: "range", label: "范围", render: (row) => row.range },
+              { key: "range", label: "范围", render: (row) => <span className="audit-cell-value" title={row.range}>{row.range}</span> },
               { key: "status", label: "状态", render: (row) => <span className={`pill ${row.status === "可下载" ? "green" : row.status === "生成中" ? "blue" : "red"}`}>{row.status}</span> },
               { key: "rows", label: "记录数", render: (row) => row.rows.toLocaleString("zh-CN") },
-              { key: "creator", label: "创建人", render: (row) => row.creator },
-              { key: "created", label: "创建时间", render: (row) => row.createdAt },
-              { key: "ops", label: "操作", width: "160px", render: (row) => <span className="table-actions export-actions"><button type="button" onClick={() => setSelectedExport(row)}>详情</button><button type="button" onClick={() => handleExportPrimaryAction(row)}>{row.status === "可下载" ? "下载" : "重试"}</button></span> },
+              { key: "creator", label: "创建人", render: (row) => <span className="audit-cell-value" title={row.creator}>{row.creator}</span> },
+              { key: "created", label: "创建时间", render: (row) => <span className="audit-cell-value" title={row.createdAt}>{row.createdAt}</span> },
+              { key: "ops", label: "操作", width: "160px", render: (row) => <span className="table-actions export-actions"><button type="button" onClick={() => setSelectedExportId(row.id)}>详情</button><button type="button" onClick={() => handleExportPrimaryAction(row)}>{row.status === "可下载" ? "下载" : "重试"}</button></span> },
             ]}
             rows={filteredExports}
             emptyText="没有匹配的导出记录"
@@ -198,7 +200,7 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
                 </div>
                 <div className="module-card-footer">
                   <div className="table-actions actions-2">
-                    <button type="button" onClick={() => setSelectedExport(row)}>详情</button>
+                    <button type="button" onClick={() => setSelectedExportId(row.id)}>详情</button>
                     <button type="button" onClick={() => handleExportPrimaryAction(row)}>{row.status === "可下载" ? "下载" : "重试"}</button>
                   </div>
                 </div>
@@ -211,14 +213,14 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
         {auditSource === "database" && databaseAudit.error && !databaseAudit.data && <div className="overview-error-state"><Shield size={18} /><span>{databaseAudit.error}</span><button type="button" onClick={() => void databaseAudit.retry()}>重试</button></div>}
         <DataTable
           columns={[
-            { key: "time", label: "时间", width: "130px", render: (row) => row.time },
-            { key: "ip", label: "IP", render: (row) => row.ip },
-            { key: "user", label: "用户", render: (row) => row.user },
-            { key: "action", label: "动作", render: (row) => row.action },
-            { key: "object", label: "对象", render: (row) => row.object },
+            { key: "time", label: "时间", width: "130px", render: (row) => <span className="audit-cell-value" title={row.time}>{row.time}</span> },
+            { key: "ip", label: "IP", width: "120px", render: (row) => <span className="audit-cell-value" title={row.ip}>{row.ip}</span> },
+            { key: "user", label: "用户", width: "100px", render: (row) => <span className="audit-cell-value" title={row.user}>{row.user}</span> },
+            { key: "action", label: "动作", width: "170px", render: (row) => <span className="audit-cell-value" title={row.action}>{row.action}</span> },
+            { key: "object", label: "对象", width: "180px", render: (row) => <span className="audit-cell-value" title={row.object}>{row.object}</span> },
             { key: "result", label: "结果", render: (row) => <span className={`pill ${row.result === "成功" ? "green" : "red"}`}>{row.result}</span> },
-            { key: "trace", label: "trace id", render: (row) => row.traceId },
-            { key: "ops", label: "操作", width: "78px", render: (row) => <span className="table-actions"><button type="button" onClick={() => setSelected(row)}>详情</button></span> },
+            { key: "trace", label: "trace id", width: "150px", render: (row) => <code className="audit-cell-value" title={row.traceId}>{row.traceId}</code> },
+            { key: "ops", label: "操作", width: "78px", render: (row) => <span className="table-actions"><button type="button" onClick={() => setSelectedId(row.id)}>详情</button></span> },
           ]}
           rows={filteredRows}
           emptyText="没有匹配的审计日志"
@@ -226,7 +228,7 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
           mobileCard={(row) => (
             <>
               <div className="module-card-head">
-                <span className="module-card-title"><FileText size={15} /><b>{row.action}</b></span>
+                <span className="module-card-title"><FileText size={15} /><b title={row.action}>{row.action}</b></span>
                 <span className={`pill ${row.result === "成功" ? "green" : "red"}`}>{row.result}</span>
               </div>
               <code className="module-card-code">{row.traceId}</code>
@@ -237,13 +239,32 @@ function AuditPage({ page, notify }: { page: PageKey; notify: Notify }) {
                 <span><b>时间</b><em>{row.time}</em></span>
               </div>
               <div className="module-card-footer">
-                <div className="table-actions actions-1"><button type="button" onClick={() => setSelected(row)}>详情</button></div>
+                <div className="table-actions actions-1"><button type="button" onClick={() => setSelectedId(row.id)}>详情</button></div>
               </div>
             </>
           )}
         /></>
       )}
     </ModulePageShell>
+    {isExportMode && createExportOpen && (
+      <ConfirmDialog
+        className="audit-export-confirm"
+        tone="info"
+        title="新建审计导出"
+        message="将按当前筛选条件生成新的审计导出任务。"
+        confirmLabel="创建导出"
+        detail={`${exportFormat} · 当前筛选范围 · ${filteredRows.length.toLocaleString("zh-CN")} 条记录`}
+        onClose={() => setCreateExportOpen(false)}
+        onConfirm={() => { createExport(); setCreateExportOpen(false); }}
+      >
+        <div className="audit-export-confirm-summary">
+          <p><span>格式</span><b>{exportFormat}</b></p>
+          <p><span>范围</span><b>当前筛选范围</b></p>
+          <p><span>记录数</span><b>{filteredRows.length.toLocaleString("zh-CN")}</b></p>
+        </div>
+      </ConfirmDialog>
+    )}
+    </>
   );
 }
 

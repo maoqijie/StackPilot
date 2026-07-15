@@ -51,7 +51,7 @@ CapabilityBoundingSet=
 AmbientCapabilities=
 SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
-ReadWritePaths=/var/lib/stackpilot-controller
+ReadWritePaths=/var/lib/stackpilot-controller /var/spool/cron/crontabs
 
 [Install]
 WantedBy=multi-user.target
