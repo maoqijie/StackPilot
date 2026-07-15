@@ -32,11 +32,11 @@ describe("failed audit page", () => {
       .mockResolvedValueOnce({ collectedAt: "2026-07-15T02:03:14.000Z", events: [] });
     render(<AuditPage page="audit-failed" notify={vi.fn()} />);
     fireEvent.click((await screen.findAllByRole("button", { name: "详情" }))[0]);
-    expect(screen.getByRole("region", { name: "审计详情" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "审计详情" })).toBeInTheDocument();
 
     document.dispatchEvent(new Event("visibilitychange"));
     await waitFor(() => expect(fetchAuditEvents).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.queryByRole("region", { name: "审计详情" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "审计详情" })).not.toBeInTheDocument());
   });
 
 });

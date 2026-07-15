@@ -8,6 +8,7 @@ import {
   RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
   SystemdServicesPayloadSchema,
+  FirewallOpenPortsPayloadSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
 import { ApiNoticeSchema } from "@stackpilot/contracts";
@@ -54,6 +55,12 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     context.identity?.require(context.principal, "systemd:read");
     response.setHeader("Cache-Control", "no-store");
     sendJson(response, 200, await services.systemd.list(context.principal?.nodeScope ?? []), SystemdServicesPayloadSchema);
+    return;
+  }
+  if (context.url.pathname === "/api/firewall/open-ports" && method === "GET") {
+    context.identity?.require(context.principal, "firewall:read");
+    response.setHeader("Cache-Control", "no-store");
+    sendJson(response, 200, await services.firewallOpenPorts.list(), FirewallOpenPortsPayloadSchema);
     return;
   }
   if (context.url.searchParams.size > 0 && !["/api/files", "/api/audit"].includes(context.url.pathname)) throw new ApiError(400, "BAD_REQUEST", "查询参数无效：当前接口不接受查询参数");

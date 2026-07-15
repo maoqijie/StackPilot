@@ -1014,15 +1014,93 @@
 }
 
 .permission-grid,
-.policy-catalog { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.policy-catalog { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .permission-grid > *,
-.policy-catalog > * { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-soft); }
+.policy-catalog > * {
+  min-width: 0;
+  padding: 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+.permission-grid > button,
+.policy-catalog > button {
+  width: 100%;
+  display: grid;
+  align-items: center;
+  gap: 4px 12px;
+  color: var(--text-soft);
+  text-align: left;
+}
+.permission-grid > button { min-height: 52px; grid-template-columns: minmax(0, 1fr) auto; }
+.permission-grid > button > span,
+.policy-catalog > button > span { min-width: 0; }
+.permission-grid > button > i,
+.policy-catalog > button > em { color: var(--muted); font-size: 12px; font-style: normal; white-space: nowrap; }
+.permission-grid > button.checked,
+.permission-grid > button:is(:hover, :active),
+.policy-catalog > button.active,
+.policy-catalog > button:is(:hover, :active) {
+  border: 0;
+  color: var(--primary-hover);
+  background: var(--primary-soft);
+  box-shadow: none;
+}
+.permission-grid > button.checked > i,
+.policy-catalog > button.active > em { color: var(--primary-hover); }
+.policy-catalog > button { grid-template-columns: minmax(0, 1fr) auto; }
+.policy-catalog > button > span { display: grid; gap: 4px; }
+.policy-catalog > button > span > b { min-width: 0; overflow-wrap: anywhere; }
+.policy-catalog > button > span > i { color: var(--muted); font-size: 11px; font-style: normal; }
+.policy-catalog > button > small { grid-column: 1 / -1; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.policy-detail,
+.policy-role-list { display: grid; gap: 8px; }
+.policy-detail p {
+  min-width: 0;
+  padding: 8px 12px;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  display: grid;
+  grid-template-columns: minmax(76px, 0.32fr) minmax(0, 1fr);
+  gap: 12px;
+  background: var(--surface-soft);
+}
+.policy-detail p > span { color: var(--muted); font-size: 12px; }
+.policy-detail p > b { min-width: 0; overflow-wrap: anywhere; }
+.policy-role-list > button {
+  min-height: 48px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-soft);
+  background: var(--surface-soft);
+  text-align: left;
+}
+.policy-role-list > button:is(:hover, :active),
+.policy-role-list > button.checked {
+  color: var(--primary-hover);
+  background: var(--primary-soft);
+  box-shadow: none;
+}
+.policy-role-list > button > i { color: var(--muted); font-size: 12px; font-style: normal; }
+.policy-role-list > button.checked > i { color: var(--primary-hover); }
 .acl-role-layout,
 .acl-policy-layout { display: grid; grid-template-columns: minmax(220px, 0.55fr) minmax(0, 1fr); gap: 16px; }
-.role-list { display: grid; align-content: start; gap: 5px; }
-.role-list button { min-height: 44px; padding: 0 12px; border-radius: var(--radius-md); color: var(--text-soft); background: transparent; text-align: left; }
+.acl-role-layout > *,
+.acl-policy-layout > * { min-width: 0; }
+.role-list { display: grid; align-content: start; gap: 8px; }
+.role-list button { width: 100%; min-height: 48px; padding: 8px 12px; border-radius: var(--radius-md); color: var(--text-soft); background: transparent; text-align: left; }
 .role-list button:hover,
 .role-list button.active { color: var(--primary-hover); background: var(--primary-soft); }
+.role-list button > strong,
+.role-list button > span { display: block; min-width: 0; overflow-wrap: anywhere; }
+.role-list button > span { margin-top: 4px; color: var(--muted); font-size: 12px; }
+.role-list button.active > span,
+.role-list button:hover > span { color: var(--primary-hover); }
 
 .auth-screen {
   min-height: 100dvh;

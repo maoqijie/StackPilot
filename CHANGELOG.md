@@ -2,16 +2,39 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.19 - 2026-07-15
+## 0.3.0-preview.21 - 2026-07-15
 
 ### Changed
 
 - Connected the global and failed-audit views to the authenticated Controller audit repository, with backend collection timestamps, visibility-aware 10-second polling, stable event details and real CSV export.
-- Removed the Web audit fixture fallback and centralized the audit response schema in the shared contracts package.
+- Removed the Web audit fixture fallback and centralized the audit response and bounded read-filter schemas in the shared contracts package.
 
 ### Security
 
-- Preserved the explicitly global `audit:read` enforcement on the API, hides audit navigation and search actions from principals without that permission, and validates bounded read-only audit filters before querying SQLite.
+- Preserved the explicitly global `audit:read` enforcement on the API, hid audit navigation and search actions from principals without that permission, and applied failed-result and action-prefix filters before the SQLite limit.
+
+## 0.3.0-preview.20 - 2026-07-15
+
+### Fixed
+
+- Classified the complete IPv4 `127.0.0.0/8` loopback range, including interface-scoped systemd-resolved listeners, as local-only instead of a specific-address binding.
+
+## 0.3.0-preview.19 - 2026-07-15
+
+### Added
+
+- Added an authenticated Controller API that reports real TCP and UDP listening sockets with stable identifiers, bind scope and backend collection time.
+- Connected the firewall open-port workbench to the real API with strict shared contracts, explicit permission handling and visibility-aware 10-second polling.
+
+### Changed
+
+- Replaced the `#firewall-open` fixture rule view with actual Controller host listeners while keeping the separate rule-management and deny-record workbenches unchanged.
+- Repaired missing optional CycloneDX dependency metadata in the lockfile so `npm ci` remains reproducible.
+
+### Security
+
+- Open-port collection runs through a fixed `/usr/bin/ss -H -lntu` invocation without a shell, requires `firewall:read`, and exposes no process identity or arbitrary command input.
+- The Web surface states that a listening socket does not prove upstream network reachability and does not offer unsafe UFW mutations on hosts where UFW is inactive.
 
 ## 0.3.0-preview.18 - 2026-07-15
 
@@ -23,6 +46,12 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 ### Security
 
 - Kept schedule writes behind the existing `STACKPILOT_ENABLE_CRONTAB_WRITE=1`, session, CSRF and `schedules:write` permission boundaries while limiting filesystem access to the Controller state and user-crontab spool.
+
+### Changed
+
+- Rebuilt access-control, audit and settings workbenches with stable shared page framing, semantic user and permission states, complete detail surfaces and responsive long-value handling.
+- Added guarded user access updates, clearer system-backup permission states and a confirmed audit-export workflow based on current filters.
+- Split access, ACL, audit and settings CloudPulse styling into dedicated modules and expanded page-level test coverage.
 
 ## 0.3.0-preview.17 - 2026-07-15
 
