@@ -13,6 +13,7 @@ type AuditRecord = {
   traceId: string;
   requestId: string;
   parameters: string;
+  eventHash: string;
   summary: string;
 };
 

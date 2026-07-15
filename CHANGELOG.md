@@ -2,7 +2,7 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.32 - 2026-07-16
+## 0.3.0-preview.33 - 2026-07-16
 
 ### Fixed
 
@@ -13,6 +13,22 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 ### Security
 
 - Kept UFW access limited to the dedicated Controller-only socket, fixed command grammar and explicit runtime lock files while preserving inactive-state and default-policy boundaries.
+
+## 0.3.0-preview.32 - 2026-07-16
+
+### Added
+
+- Added strict server-side audit filters for result, actor, source, action prefix and search, plus stable sequence-cursor pagination and complete filtered JSON export.
+- Added SQLite schema 9 with indexed audit node ownership, historical ownership backfill and query-plan coverage for node-scoped polling.
+
+### Changed
+
+- Extended the real global, failed, database and export audit views with backend pagination while preserving 10-second visibility-aware polling, selected details and loaded history.
+- Updated database backup, restore, preflight, release provenance and upgrade-drill gates to accept and verify schema 9.
+
+### Security
+
+- Applied node scope and every audit filter before result limits, rejected unknown, duplicate or malformed query parameters, and retained append-only hash verification across ownership backfill.
 
 ## 0.3.0-preview.31 - 2026-07-16
 
