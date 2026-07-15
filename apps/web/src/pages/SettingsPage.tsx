@@ -1,16 +1,13 @@
-import { CheckCircle2, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, LockKeyhole, Plus, Settings2, Trash2 } from "lucide-react";
 import type { Permission } from "@stackpilot/contracts";
 import { useRef, useState } from "react";
 import { settingsPagePreset } from "../app/pagePresets";
-import { settingsPageForTab } from "../features/settings/navigation";
-import { SettingsTabs } from "../features/settings/SettingsTabs";
-import { resolvePageMeta, viewContextForPage } from "../app/navigation";
-import { ModuleViewContext } from "../components/layout/ModulePageShell";
 import { PanelCard } from "../components/ui/Cards";
 import { FormLine, FormSelectLine, ToggleLine } from "../components/ui/FormControls";
 import { StatusLight } from "../components/ui/StatusVisuals";
 import { TokenSecretDrawer, TokenTable } from "../features/settings/TokenManagement";
 import { SystemBackupsPanel } from "../features/settings/SystemBackupsPanel";
+import { SettingsPageFrame } from "../features/settings/SettingsPageFrame";
 import { useNotificationSettings } from "../features/settings/useNotificationSettings";
 import { useSecuritySettings } from "../features/settings/useSecuritySettings";
 import type { GeneratedTokenSecret, SettingsChangeRow, TokenRow, TokenStatus } from "../features/settings/types";
@@ -51,7 +48,6 @@ function SettingsPage({
   const [tokenRows, setTokenRows] = useState<TokenRow[]>(initialTokenRows);
   const [generatedToken, setGeneratedToken] = useState<GeneratedTokenSecret | null>(null);
   const [settingsAuditRows, setSettingsAuditRows] = useState<SettingsChangeRow[]>(initialSettingsChanges);
-  const activeSettingsPage = settingsPageForTab(activeTab);
   const settingsModalOpen = Boolean(generatedToken);
   const guardSettingsWrite = (action: string) => {
     if (!readOnly) return true;
@@ -193,21 +189,26 @@ function SettingsPage({
       .catch(() => notify("复制令牌失败，请检查剪贴板权限", "danger"));
   };
   return (
-    <div className="settings-mock-page">
-      <div className="page-head settings-title" inert={settingsModalOpen} aria-hidden={settingsModalOpen ? "true" : undefined}>
-        <div>
-          <h1>{resolvePageMeta(page).title}</h1>
-        </div>
-      </div>
-      <div inert={settingsModalOpen} aria-hidden={settingsModalOpen ? "true" : undefined}>
-        <ModuleViewContext context={viewContextForPage(activeSettingsPage) ?? {
-          eyebrow: "设置 / 基础设置",
-          title: activeTab,
-          chips: [`Tab ${activeTab}`],
-        }} />
-      </div>
-      <SettingsTabs activeTab={activeTab} setPage={setPage} inert={settingsModalOpen} />
-      <div className={`settings-layout ${activeTab === "基础" ? "base-settings-layout" : ""}`} inert={settingsModalOpen} aria-hidden={settingsModalOpen ? "true" : undefined}>
+    <>
+      <SettingsPageFrame
+        page={page}
+        setPage={setPage}
+        inert={settingsModalOpen}
+        actions={(
+          <span className={`settings-mode-indicator ${readOnly || activeTab === "审计" ? "is-readonly" : ""}`}>
+            {readOnly || activeTab === "审计" ? <LockKeyhole size={16} /> : <Settings2 size={16} />}
+            <span>
+              <b>{activeTab === "审计" ? "只读审计" : readOnly ? "只读模式" : "可编辑"}</b>
+              <small>{activeTab === "审计" ? "变更记录不可修改" : readOnly ? "更改已锁定" : "设置可保存"}</small>
+            </span>
+          </span>
+        )}
+      >
+      <div
+        className={`settings-page-content settings-layout ${activeTab === "基础" ? "base-settings-layout" : ""} settings-layout-${activeTab === "基础" ? "general" : activeTab === "安全" ? "security" : activeTab === "通知" ? "notice" : activeTab === "备份" ? "backup" : "audit"}`}
+        inert={settingsModalOpen}
+        aria-hidden={settingsModalOpen ? "true" : undefined}
+      >
         {activeTab === "基础" && <PanelCard title="面板身份" className="settings-card-tall">
           <div className="settings-form">
             <FormLine label="面板名称" value={identityDraft.panelName} onChange={readOnly ? undefined : (value) => updateIdentityDraft("panelName", value)} error={identityErrors.panelName} inputRef={identityPanelNameInputRef} />
@@ -308,10 +309,9 @@ function SettingsPage({
             ))}
           </div>
         </PanelCard>}
-      </div>
-      {(activeTab === "审计" || activeTab === "基础") && (
-        <div inert={settingsModalOpen} aria-hidden={settingsModalOpen ? "true" : undefined}>
-          <PanelCard title="最近配置变更" action="查看审计日志" onAction={() => setPage("settings-audit", { message: "已打开设置审计日志", tone: "info" })}>
+        {(activeTab === "审计" || activeTab === "基础") && (
+        <div className="settings-audit-section">
+          <PanelCard title="最近配置变更" action={activeTab === "基础" ? "查看审计日志" : undefined} onAction={activeTab === "基础" ? () => setPage("settings-audit", { message: "已打开设置审计日志", tone: "info" }) : undefined}>
             <div className="changes-table-wrap">
               <table className="mini-table changes-table">
                 <caption>最近配置变更</caption>
@@ -337,6 +337,8 @@ function SettingsPage({
           </PanelCard>
         </div>
       )}
+      </div>
+      </SettingsPageFrame>
       {generatedToken && (
         <TokenSecretDrawer
           generated={generatedToken}
@@ -344,7 +346,7 @@ function SettingsPage({
           onClose={() => setGeneratedToken(null)}
         />
       )}
-    </div>
+    </>
   );
 }
 
