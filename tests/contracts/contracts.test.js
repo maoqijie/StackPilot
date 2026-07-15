@@ -18,12 +18,21 @@ import {
   PermissionSchema,
   CreateDirectoryRequestSchema,
   UpdateNodeCapabilitiesRequestSchema,
+  FirewallOpenPortsPayloadSchema,
 } from "@stackpilot/contracts";
 
 test("shared API constants preserve the existing HTTP contract", () => {
   assert.equal(API_CLIENT_PREFIX, "/api");
   assert.deepEqual(API_ROOT_SEGMENTS, ["api", "overview"]);
   assert.deepEqual(WRITE_METHODS, ["POST", "PATCH", "DELETE"]);
+});
+
+test("firewall open-port payload stays strict and backend-owned", () => {
+  const payload = { collectedAt: new Date().toISOString(), collectionStatus: "complete", backend: "ss", warnings: [], ports: [{ id: `port_${"a".repeat(24)}`, protocol: "TCP", port: 443, address: "0.0.0.0", source: "0.0.0.0/0", exposure: "public", host: "controller-1" }] };
+  assert.equal(FirewallOpenPortsPayloadSchema.safeParse(payload).success, true);
+  assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, ports: [{ ...payload.ports[0], port: 0 }] }).success, false);
+  assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, ports: [{ ...payload.ports[0], protocol: "SCTP" }] }).success, false);
+  assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, clientCollectedAt: payload.collectedAt }).success, false);
 });
 
 test("node capability updates accept the complete shared Agent capability set", () => {

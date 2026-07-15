@@ -2,7 +2,7 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.19 - 2026-07-15
+## 0.3.0-preview.20 - 2026-07-15
 
 ### Added
 
@@ -14,9 +14,30 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 - The failed schedule view now filters backend-recorded executions instead of inferring failures from browser state, and retains visibility-aware 10-second polling without overwriting completed mutations.
 - Schedule navigation and operations now honor `schedules:read`, `schedules:write` and the backend crontab capability flag.
 
+### Fixed
+
+- Serialized schedule mutations, preserved concurrent edits and deletes when manual execution completes, and rejected duplicate execution of the same task while it is already running.
+
 ### Security
 
 - Managed crontab rows invoke only the fixed StackPilot runner with encoded bounded input; external crontab rows remain untouched and execution records use private atomic files with bounded retention.
+
+## 0.3.0-preview.19 - 2026-07-15
+
+### Added
+
+- Added an authenticated Controller API that reports real TCP and UDP listening sockets with stable identifiers, bind scope and backend collection time.
+- Connected the firewall open-port workbench to the real API with strict shared contracts, explicit permission handling and visibility-aware 10-second polling.
+
+### Changed
+
+- Replaced the `#firewall-open` fixture rule view with actual Controller host listeners while keeping the separate rule-management and deny-record workbenches unchanged.
+- Repaired missing optional CycloneDX dependency metadata in the lockfile so `npm ci` remains reproducible.
+
+### Security
+
+- Open-port collection runs through a fixed `/usr/bin/ss -H -lntu` invocation without a shell, requires `firewall:read`, and exposes no process identity or arbitrary command input.
+- The Web surface states that a listening socket does not prove upstream network reachability and does not offer unsafe UFW mutations on hosts where UFW is inactive.
 
 ## 0.3.0-preview.18 - 2026-07-15
 

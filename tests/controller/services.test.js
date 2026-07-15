@@ -20,11 +20,7 @@ class MemoryScheduleRepository {
   jobs = [];
   async read() { return { externalLines: [], jobs: this.jobs }; }
   async write(_externalLines, jobs) { this.jobs = jobs; }
-  find(jobs, id) {
-    const job = jobs.find((item) => item.id === id);
-    if (!job) throw new Error("not found");
-    return job;
-  }
+  find(jobs, id) { return jobs.find((item) => item.id === id); }
 }
 
 class MemoryScheduleExecutionRepository {
@@ -386,6 +382,58 @@ test("schedule service performs storage and execution only through injected inte
   assert.equal((await schedules.update(created.job.id, { command: "printf changed" })).job.lastExecution, null);
   await schedules.delete(created.job.id);
   assert.equal((await schedules.list()).jobs.length, 0);
+});
+
+test("schedule execution preserves concurrent edits and rejects duplicate runs", async () => {
+  const platform = new FakePlatformAdapter();
+  const repository = new MemoryScheduleRepository();
+  const executions = new MemoryScheduleExecutionRepository();
+  const schedules = new ScheduleService(repository, platform, executions, true);
+  let releaseRun;
+  let markStarted;
+  const started = new Promise((resolve) => { markStarted = resolve; });
+  platform.runScheduledCommand = async () => {
+    platform.calls.runScheduledCommand += 1;
+    markStarted();
+    return new Promise((resolve) => { releaseRun = resolve; });
+  };
+  const created = await schedules.create({ name: "before", cron: "0 4 * * *", command: "true", enabled: true });
+  const running = schedules.run(created.job.id);
+  await started;
+  await assert.rejects(schedules.run(created.job.id), /正在执行/);
+  await schedules.update(created.job.id, { name: "after" });
+  releaseRun({ ok: true, stdout: "done", stderr: "", elapsedMs: 5, exitCode: 0 });
+  const result = await running;
+  assert.equal(result.job.name, "after");
+  assert.equal(result.job.lastExecution.output, "done");
+  assert.equal(platform.calls.runScheduledCommand, 1);
+});
+
+test("schedule execution never restores a deleted job or records an obsolete command", async () => {
+  const platform = new FakePlatformAdapter();
+  const repository = new MemoryScheduleRepository();
+  const executions = new MemoryScheduleExecutionRepository();
+  const schedules = new ScheduleService(repository, platform, executions, true);
+  const pending = [];
+  platform.runScheduledCommand = async () => new Promise((resolve) => { pending.push(resolve); });
+
+  const deleted = await schedules.create({ name: "deleted", cron: "0 4 * * *", command: "old-delete", enabled: true });
+  const deletedRun = schedules.run(deleted.job.id);
+  await new Promise((resolve) => setImmediate(resolve));
+  await schedules.delete(deleted.job.id);
+  pending.shift()({ ok: true, stdout: "stale", stderr: "", elapsedMs: 5, exitCode: 0 });
+  await assert.rejects(deletedRun, /定时任务不存在/);
+  assert.equal((await schedules.list()).jobs.length, 0);
+  assert.equal(await executions.latest(deleted.job.id), null);
+
+  const changed = await schedules.create({ name: "changed", cron: "0 4 * * *", command: "old-command", enabled: true });
+  const changedRun = schedules.run(changed.job.id);
+  await new Promise((resolve) => setImmediate(resolve));
+  await schedules.update(changed.job.id, { command: "new-command" });
+  pending.shift()({ ok: false, stdout: "", stderr: "old failure", elapsedMs: 5, exitCode: 9 });
+  await assert.rejects(changedRun, /命令已变化/);
+  assert.equal((await schedules.list()).jobs[0].command, "new-command");
+  assert.equal(await executions.latest(changed.job.id), null);
 });
 
 test("crontab repository rejects malformed managed metadata", async () => {
