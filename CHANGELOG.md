@@ -2,6 +2,13 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.26 - 2026-07-16
+
+### Fixed
+
+- Classified `journalctl --grep` exit code 1 with empty stdout and stderr as a successful query with no matching firewall deny events, instead of reporting the kernel journal as unavailable.
+- Preserved unavailable status for permission failures and all other probe errors while keeping probe diagnostics bounded and internal to the Agent.
+
 ## 0.3.0-preview.25 - 2026-07-16
 
 ### Added

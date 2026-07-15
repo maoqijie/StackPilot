@@ -8,7 +8,7 @@ import {
 } from "@stackpilot/contracts";
 import { runPlatformProbe } from "../platform/commandRunner.js";
 
-type Probe = (executable: string, args: readonly string[], signal: AbortSignal, timeoutMs: number, maxOutputBytes: number) => Promise<{ ok: boolean; output: string; code?: string }>;
+type Probe = typeof runPlatformProbe;
 const unitPattern = /^[A-Za-z0-9_.@:-]+\.service$/;
 const secretPatterns = [
   /(-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)[\s\S]*/g,

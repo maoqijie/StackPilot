@@ -67,7 +67,8 @@ export class FirewallDenyCollector {
     const collectedAt = this.now().toISOString();
     if (platform !== "linux") return AgentFirewallDenySnapshotSchema.parse({ collectedAt, collectionStatus: "unavailable", warnings: ["Firewall deny collection is supported only on Linux"], events: [] });
     const result = await this.probe("journalctl", ["--dmesg", "--since=-24 hours", `--grep=${journalDenyPattern}`, `--lines=${FIREWALL_DENY_MAX_EVENTS}`, "--reverse", "--output=json", "--no-pager", "--quiet"], new AbortController().signal, 12_000, 768 * 1024);
-    if (!result.ok) return AgentFirewallDenySnapshotSchema.parse({ collectedAt, collectionStatus: "unavailable", warnings: ["Kernel firewall journal is unavailable to the Agent service account"], events: [] });
+    const noMatches = !result.ok && String(result.code) === "1" && result.output === "" && result.errorOutput === "";
+    if (!result.ok && !noMatches) return AgentFirewallDenySnapshotSchema.parse({ collectedAt, collectionStatus: "unavailable", warnings: ["Kernel firewall journal is unavailable to the Agent service account"], events: [] });
     return AgentFirewallDenySnapshotSchema.parse({ collectedAt, collectionStatus: "complete", warnings: [], events: parseFirewallJournal(result.output) });
   }
 }
