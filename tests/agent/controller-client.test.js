@@ -17,7 +17,7 @@ test("Controller client enables advertised Agent features only while present", a
   let advertise = true;
   const server = createServer({ cert: certificate.cert, key: certificate.private }, (request, response) => {
     request.resume(); request.on("end", () => {
-      if (advertise) response.setHeader("X-StackPilot-Agent-Features", "database-inventory-v1, physical-host-identity-v1");
+      if (advertise) response.setHeader("X-StackPilot-Agent-Features", "database-inventory-v1, physical-host-identity-v1, firewall-deny-snapshot-v1");
       response.writeHead(advertise ? 200 : 400, { "Content-Type": "application/json" });
       response.end(advertise ? "{}" : '{"error":"unsupported"}');
     });
@@ -27,10 +27,12 @@ test("Controller client enables advertised Agent features only while present", a
   try {
     assert.equal(client.supportsDatabaseInventory(), false);
     assert.equal(client.supportsPhysicalHostIdentity(), false);
-    await client.json("/api/agent/heartbeat", {}); assert.equal(client.supportsDatabaseInventory(), true); assert.equal(client.supportsPhysicalHostIdentity(), true);
+    assert.equal(client.supportsFirewallDenySnapshot(), false);
+    await client.json("/api/agent/heartbeat", {}); assert.equal(client.supportsDatabaseInventory(), true); assert.equal(client.supportsPhysicalHostIdentity(), true); assert.equal(client.supportsFirewallDenySnapshot(), true);
     advertise = false; await assert.rejects(client.json("/api/agent/heartbeat", {}));
     assert.equal(client.supportsDatabaseInventory(), false);
     assert.equal(client.supportsPhysicalHostIdentity(), false);
+    assert.equal(client.supportsFirewallDenySnapshot(), false);
   } finally { server.close(); await once(server, "close"); }
   await rm(work, { recursive: true, force: true });
 });

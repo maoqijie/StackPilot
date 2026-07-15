@@ -11,11 +11,12 @@ import { DataTable } from "../components/ui/DataTable";
 import { DetailDrawer } from "../components/ui/DetailDrawer";
 import { FieldSelect, FormLine, FormSelectLine } from "../components/ui/FormControls";
 import { StatusLight } from "../components/ui/StatusVisuals";
+import { FirewallOpenPortsPage } from "../features/firewall/FirewallOpenPortsPage";
 import { useFirewallRules } from "../features/firewall/useFirewallRules";
 import { firewallPagePreset, isValidFirewallSource } from "../features/firewall/validation";
 import type { Notify, PageKey } from "../types/app";
 import { formatBackendDateTime } from "../utils/time";
-import { FirewallOpenPortsPage } from "../features/firewall/FirewallOpenPortsPage";
+import { FirewallDenyPage } from "./FirewallDenyPage";
 
 type Drawer = { type: "create" } | { type: "detail" | "delete"; ruleId: string } | null;
 type Props = { page: PageKey; notify: Notify; permissions?: Permission[] };
@@ -33,8 +34,7 @@ function FirewallRulesPage({ page, notify, permissions = [] }: Props) {
   const selectedRule = drawer && drawer.type !== "create" ? rows.find((row) => row.id === drawer.ruleId) ?? null : null;
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase(); const protocol = row.protocol?.toUpperCase() ?? "ANY";
-    const publicOnly = page !== "firewall-open" || ["Anywhere", "0.0.0.0/0", "::/0"].includes(row.source);
-    return publicOnly && (!query || `${row.name} ${row.port} ${row.source} ${resource.data?.host ?? ""}`.toLowerCase().includes(query))
+    return (!query || `${row.name} ${row.port} ${row.source} ${resource.data?.host ?? ""}`.toLowerCase().includes(query))
       && (protocolFilter === "全部" || protocol === protocolFilter) && (sourceFilter === "全部" || row.source === sourceFilter);
   });
   const open = (next: Exclude<Drawer, null>, trigger: HTMLElement) => { idempotencyKeyRef.current = crypto.randomUUID(); setDrawerTrigger(trigger); setMutationError(null); setPassword(""); setDrawer(next); };
@@ -63,11 +63,6 @@ function FirewallRulesPage({ page, notify, permissions = [] }: Props) {
     } catch (error) { setMutationError(error instanceof Error ? error.message : "防火墙规则删除失败"); } finally { setSubmitting(false); }
   };
 
-  if (page === "firewall-deny") return <ModulePageShell title={resolvePageMeta(page).title} subtitle="拦截事件采集尚未配置，页面不会显示演示数据。" page={page}
-    metrics={<><MetricTile icon={Shield} label="事件源" value="未配置" tone="gray" /><MetricTile icon={Lock} label="演示记录" value="0" tone="gray" /><MetricTile icon={CheckCircle2} label="真实数据" value="等待采集" tone="blue" /></>}>
-    <div className="overview-error-state firewall-unavailable"><Shield size={18} /><span>当前真实后端仅提供 UFW 规则状态；尚未配置内核拦截日志采集器。</span></div>
-  </ModulePageShell>;
-
   const collectionMessage = resource.backgroundError ? `后台刷新失败，保留上次数据：${resource.backgroundError}` : resource.data?.warnings[0] ?? "数据来自本机 UFW 实际规则";
   return <ModulePageShell title={resolvePageMeta(page).title} subtitle={preset.subtitle} page={page} sideModal
     actions={canOperate && <button className="primary" type="button" disabled={!resource.data?.active} title={resource.data?.active ? undefined : "UFW 未启用"} onClick={(event) => { setDraftErrors({}); open({ type: "create" }, event.currentTarget); }}><Plus size={15} />新增规则</button>}
@@ -86,7 +81,9 @@ function FirewallRulesPage({ page, notify, permissions = [] }: Props) {
 function FirewallPage(props: Props) {
   return props.page === "firewall-open"
     ? <FirewallOpenPortsPage permissions={props.permissions ?? []} />
-    : <FirewallRulesPage {...props} />;
+    : props.page === "firewall-deny"
+      ? <FirewallDenyPage page={props.page} />
+      : <FirewallRulesPage {...props} />;
 }
 
 export { FirewallPage };

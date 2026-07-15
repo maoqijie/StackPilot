@@ -2,7 +2,7 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.24 - 2026-07-16
+## 0.3.0-preview.25 - 2026-07-16
 
 ### Added
 
@@ -13,6 +13,19 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Required Controller node scope, `firewall:operate`, CSRF, one-time reauthentication, stable idempotency keys and optimistic rule versions for every UFW mutation.
 - Kept external UFW rules read-only, rechecked rule identity immediately before numbered deletion, and excluded UFW activation and default-policy changes from the API.
+
+## 0.3.0-preview.24 - 2026-07-15
+
+### Added
+
+- Added a bounded Agent firewall-deny snapshot collected from fixed read-only Linux kernel journal queries, negotiated through the Controller feature header and persisted with the existing signed heartbeat state.
+- Added the authenticated `GET /api/firewall/deny-records` endpoint with dedicated `firewall:read` RBAC and node-scope filtering.
+- Connected the firewall deny workbench to the real Controller API with visibility-aware 10-second polling, backend freshness, stable details, explicit unavailable states and responsive long-value handling.
+
+### Security
+
+- Removed demo deny records and browser-only allow, promote and export actions that previously reported success without a backend effect.
+- Kept firewall collection read-only, bounded and free of raw kernel log output; the browser receives normalized event fields only.
 
 ## 0.3.0-preview.23 - 2026-07-15
 

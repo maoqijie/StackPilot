@@ -8,6 +8,7 @@ vi.mock("../api/identityApi", () => ({ reauthenticate: vi.fn() }));
 const collectedAt = "2026-07-15T12:00:00.000Z";
 const rule = { id: "firewall:11111111-1111-4111-8111-111111111111:ipv4", name: "HTTPS 公网访问", port: "443", protocol: "tcp", source: "Anywhere", destination: "Anywhere", action: "allow", direction: "in", ipVersion: "ipv4", managed: true, version: "a".repeat(64) };
 const response = { engine: "ufw", host: "host-a", active: true, collectedAt, collectionStatus: "complete", warnings: [], rules: [rule] };
+const denyResponse = { collectedAt, collectionStatus: "complete", warnings: [], records: [] };
 
 describe("firewall real backend", () => {
   beforeEach(() => { vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }))); vi.mocked(reauthenticate).mockResolvedValue({ proof: "proof-value-with-more-than-thirty-two-characters", expiresAt: collectedAt }); });
@@ -24,7 +25,11 @@ describe("firewall real backend", () => {
     await waitFor(() => expect(reauthenticate).toHaveBeenCalledWith("current-password"));
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/firewall/rules", expect.objectContaining({ method: "POST", headers: expect.objectContaining({ "X-Reauth-Proof": expect.any(String) }) })));
   });
-  it("does not render fixture deny records", () => {
-    render(<FirewallPage page="firewall-deny" notify={vi.fn()} permissions={["firewall:read"]} />); expect(screen.getByText(/尚未配置内核拦截日志采集器/)).toBeInTheDocument(); expect(screen.queryByText("198.51.100.24")).not.toBeInTheDocument();
+  it("loads real deny records without rendering fixture rows", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(denyResponse), { status: 200 }));
+    render(<FirewallPage page="firewall-deny" notify={vi.fn()} permissions={["firewall:read"]} />);
+    expect(await screen.findByText(/数据来自 Agent 的只读内核防火墙日志/)).toBeInTheDocument();
+    expect(screen.getAllByText(/没有匹配的真实拦截记录/)).toHaveLength(2);
+    expect(screen.queryByText("198.51.100.24")).not.toBeInTheDocument();
   });
 });
