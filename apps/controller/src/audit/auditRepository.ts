@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { setImmediate } from "node:timers/promises";
 import { AUDIT_FAILURE_OUTCOMES } from "@stackpilot/contracts";
 import type Database from "better-sqlite3";
 import { hmac } from "../security/crypto.js";
@@ -29,6 +30,23 @@ export class AuditRepository {
       previousHash = row.event_hash as string;
     }
     return { valid: true, count: rows.length };
+  }
+  async verifyThrough(maxSequence: number): Promise<{ valid: boolean; count: number; sequence?: number }> {
+    let previousHash = "0".repeat(64);
+    let lastSequence = 0;
+    let count = 0;
+    while (true) {
+      const rows = this.database.prepare("SELECT * FROM audit_events WHERE sequence>? AND sequence<=? ORDER BY sequence LIMIT 250").all(lastSequence, maxSequence) as Array<Record<string, unknown>>;
+      if (rows.length === 0) return { valid: true, count };
+      for (const row of rows) {
+        const event = { eventId: row.event_id, occurredAt: row.occurred_at, actorType: row.actor_type, actorId: row.actor_id, sessionId: row.session_id, source: row.source, targetType: row.target_type, targetId: row.target_id, action: row.action, parameters: row.parameters, outcome: row.outcome, authorization: row.authorization, requestId: row.request_id, traceId: row.trace_id, previousHash: row.previous_hash };
+        if (row.previous_hash !== previousHash || row.event_hash !== hmac(this.key, JSON.stringify(event))) return { valid: false, count: count + rows.length, sequence: row.sequence as number };
+        previousHash = row.event_hash as string;
+        lastSequence = row.sequence as number;
+        count += 1;
+      }
+      await setImmediate();
+    }
   }
   list(options: AuditQuery = { limit: 200, result: "all" }) {
     const clauses: string[] = [];

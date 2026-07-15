@@ -19,7 +19,7 @@ import type { AuditSource, Notify, PageKey } from "../types/app";
 import { formatBackendDateTime } from "../utils/time";
 
 function AuditPage({ page, notify, permissions }: { page: PageKey; notify: Notify; permissions: Permission[] }) {
-  if (page === "audit-export") return <AuditExportPage page={page} notify={notify} allowed={permissions.includes("audit:export")} />;
+  if (page === "audit-export") return <AuditExportPage page={page} notify={notify} allowed={permissions.includes("audit:read") && permissions.includes("audit:export")} />;
   return <AuditLogPage page={page} notify={notify} />;
 }
 

@@ -1,5 +1,5 @@
 import {
-  AGENT_FEATURE_DATABASE_INVENTORY, AGENT_FEATURE_PHYSICAL_HOST_IDENTITY, AGENT_FEATURE_SYSTEMD_SNAPSHOT, AgentEnrollmentRequestSchema, AgentEnrollmentResponseSchema, AgentHeartbeatResponseSchema, AgentHeartbeatSchema,
+  AGENT_FEATURE_DATABASE_INVENTORY, AGENT_FEATURE_FIREWALL_DENY_SNAPSHOT, AGENT_FEATURE_PHYSICAL_HOST_IDENTITY, AGENT_FEATURE_SYSTEMD_SNAPSHOT, AgentEnrollmentRequestSchema, AgentEnrollmentResponseSchema, AgentHeartbeatResponseSchema, AgentHeartbeatSchema,
   RemoteTaskPollResponseSchema, RemoteTaskRecordSchema, RemoteTaskStatusUpdateSchema, RotateCredentialRequestSchema, RotateCredentialResponseSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
@@ -10,7 +10,7 @@ import { routeDatabaseAgentRequest } from "./databaseAgentRouter.js";
 
 export async function routeAgentRequest(context: RequestContext) {
   const method = context.request.method ?? "GET";
-  context.response.setHeader("X-StackPilot-Agent-Features", [AGENT_FEATURE_DATABASE_INVENTORY, AGENT_FEATURE_PHYSICAL_HOST_IDENTITY, AGENT_FEATURE_SYSTEMD_SNAPSHOT].join(","));
+  context.response.setHeader("X-StackPilot-Agent-Features", [AGENT_FEATURE_DATABASE_INVENTORY, AGENT_FEATURE_PHYSICAL_HOST_IDENTITY, AGENT_FEATURE_SYSTEMD_SNAPSHOT, AGENT_FEATURE_FIREWALL_DENY_SNAPSHOT].join(","));
   if (context.url.pathname.startsWith("/api/agent/databases/")) {
     await routeDatabaseAgentRequest(context);
     return;

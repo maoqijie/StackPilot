@@ -1,9 +1,11 @@
 import type { AuditExportFormat, AuditExportRecord } from "@stackpilot/contracts";
 import type Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { constants } from "node:fs";
+import { mkdir, open, readdir, rename, rm, unlink, type FileHandle } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import type { AuditRepository } from "../../audit/auditRepository.js";
+import { consoleLogger, type Logger } from "../../logging/logger.js";
 import { ServiceError } from "../serviceError.js";
 
 const MAX_EXPORT_ROWS = 50_000;
@@ -32,14 +34,19 @@ type AuditRow = {
 
 export class AuditExportService {
   private readonly maintenanceTimer: NodeJS.Timeout;
+  private maintenancePromise: Promise<void> | null = null;
+  private readonly activeStorageNames = new Set<string>();
 
   constructor(
     private readonly database: Database.Database,
     private readonly audit: AuditRepository,
     private readonly storageRoot: string,
+    private readonly logger: Logger = consoleLogger,
   ) {
-    this.runMaintenance();
-    this.maintenanceTimer = setInterval(() => this.runMaintenance(), MAINTENANCE_INTERVAL_MS);
+    void this.runMaintenance().catch((error) => this.logMaintenanceError(error));
+    this.maintenanceTimer = setInterval(() => {
+      void this.runMaintenance().catch((error) => this.logMaintenanceError(error));
+    }, MAINTENANCE_INTERVAL_MS);
     this.maintenanceTimer.unref();
   }
 
@@ -48,7 +55,6 @@ export class AuditExportService {
   }
 
   list(userId: string, includeAll: boolean): { exports: AuditExportRecord[]; collectedAt: string } {
-    this.cleanupExpired();
     const now = new Date().toISOString();
     const rows = (includeAll
       ? this.database.prepare("SELECT * FROM audit_exports WHERE expires_at>? ORDER BY created_at DESC LIMIT 200").all(now)
@@ -56,13 +62,13 @@ export class AuditExportService {
     return { exports: rows.map(publicRecord), collectedAt: now };
   }
 
-  create(input: { name: string; format: AuditExportFormat }, actor: { userId: string; displayName: string }, requestId: string): AuditExportRecord {
-    this.cleanupExpired();
-    this.enforceCapacity(actor.userId);
+  async create(input: { name: string; format: AuditExportFormat }, actor: { userId: string; displayName: string }, requestId: string, skipRateLimit = false): Promise<AuditExportRecord> {
+    await this.runMaintenance();
+    this.enforceCapacity(actor.userId, !skipRateLimit);
     const sourceMaxSequence = (this.database.prepare("SELECT coalesce(max(sequence),0) AS value FROM audit_events").get() as { value: number }).value;
     const rowCount = (this.database.prepare("SELECT count(*) AS value FROM audit_events WHERE sequence<=?").get(sourceMaxSequence) as { value: number }).value;
     if (rowCount > MAX_EXPORT_ROWS) throw new ServiceError(413, "PAYLOAD_TOO_LARGE", `审计记录超过 ${MAX_EXPORT_ROWS} 条导出上限`);
-    const chain = this.audit.verify();
+    const chain = await this.audit.verifyThrough(sourceMaxSequence);
     if (!chain.valid) throw new ServiceError(409, "BAD_REQUEST", "审计链校验失败，已拒绝生成导出");
 
     const id = randomUUID();
@@ -70,19 +76,17 @@ export class AuditExportService {
     const createdAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + EXPORT_TTL_MS).toISOString();
     const storageName = `${id}.${input.format}`;
+    const temporaryName = `.${id}.tmp`;
     let temporaryPath = "";
     let finalPath = "";
+    this.activeStorageNames.add(storageName);
+    this.activeStorageNames.add(temporaryName);
     try {
-      const rows = this.database.prepare("SELECT * FROM audit_events WHERE sequence<=? ORDER BY sequence ASC").all(sourceMaxSequence) as AuditRow[];
-      const contents = input.format === "csv" ? csvDocument(rows) : jsonDocument(rows, createdAt, sourceMaxSequence);
-      const bytes = Buffer.byteLength(contents);
-      if (bytes > MAX_EXPORT_BYTES) throw new ServiceError(413, "PAYLOAD_TOO_LARGE", "审计导出超过 50 MiB 文件上限");
-      mkdirSync(this.storageRoot, { recursive: true, mode: 0o700 });
+      await mkdir(this.storageRoot, { recursive: true, mode: 0o700 });
       finalPath = this.pathFor(storageName);
-      temporaryPath = this.pathFor(`.${id}.tmp`);
-      writeFileSync(temporaryPath, contents, { encoding: "utf8", flag: "wx", mode: 0o600 });
-      renameSync(temporaryPath, finalPath);
-      const sha256 = createHash("sha256").update(contents).digest("hex");
+      temporaryPath = this.pathFor(temporaryName);
+      const { bytes, sha256 } = await this.writeSnapshot(temporaryPath, input.format, createdAt, sourceMaxSequence, rowCount);
+      await rename(temporaryPath, finalPath);
       const completedAt = new Date().toISOString();
       this.database.transaction(() => {
         this.database.prepare(`INSERT INTO audit_exports(
@@ -96,8 +100,8 @@ export class AuditExportService {
       })();
       return publicRecord(this.row(id));
     } catch (error) {
-      if (temporaryPath) rmSync(temporaryPath, { force: true });
-      if (finalPath) rmSync(finalPath, { force: true });
+      if (temporaryPath) await rm(temporaryPath, { force: true });
+      if (finalPath) await rm(finalPath, { force: true });
       if (error instanceof ServiceError) throw error;
       try {
         this.database.transaction(() => {
@@ -113,28 +117,35 @@ export class AuditExportService {
         throw new ServiceError(500, "INTERNAL_ERROR", "审计导出状态未保存");
       }
       return publicRecord(this.row(id));
+    } finally {
+      this.activeStorageNames.delete(storageName);
+      this.activeStorageNames.delete(temporaryName);
     }
   }
 
-  retry(id: string, userId: string, includeAll: boolean, actor: { userId: string; displayName: string }, requestId: string): AuditExportRecord {
+  async retry(id: string, userId: string, includeAll: boolean, actor: { userId: string; displayName: string }, requestId: string): Promise<AuditExportRecord> {
     const row = this.row(id);
     if ((!includeAll && row.creator_user_id !== userId) || row.status !== "failed") throw new ServiceError(404, "NOT_FOUND", "审计导出不存在");
-    return this.create({ name: row.name, format: row.format }, actor, requestId);
+    return this.create({ name: row.name, format: row.format }, actor, requestId, true);
   }
 
-  download(id: string, userId: string, includeAll: boolean, requestId: string): { record: AuditExportRecord; contents: Buffer } {
+  async download(id: string, userId: string, includeAll: boolean, requestId: string): Promise<{ record: AuditExportRecord; handle: FileHandle }> {
     const row = this.row(id);
     if ((!includeAll && row.creator_user_id !== userId) || row.status !== "ready" || row.expires_at <= new Date().toISOString() || !row.storage_name || !row.sha256) {
       throw new ServiceError(404, "NOT_FOUND", "审计导出不存在");
     }
     const path = this.pathFor(row.storage_name);
-    let stat;
-    try { stat = lstatSync(path); } catch { throw new ServiceError(404, "NOT_FOUND", "审计导出不存在"); }
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== row.size_bytes) throw new ServiceError(404, "NOT_FOUND", "审计导出不存在");
-    const contents = readFileSync(path);
-    if (createHash("sha256").update(contents).digest("hex") !== row.sha256) throw new ServiceError(404, "NOT_FOUND", "审计导出不存在");
+    let handle: FileHandle | undefined;
+    try {
+      handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+      const stat = await handle.stat();
+      if (!stat.isFile() || stat.size !== row.size_bytes || await hashFile(handle) !== row.sha256) throw new Error("invalid export file");
+    } catch {
+      await handle?.close().catch(() => undefined);
+      throw new ServiceError(404, "NOT_FOUND", "审计导出不存在");
+    }
     this.audit.append({ actorType: "user", actorId: userId, source: "audit-export", targetType: "audit-export", targetId: id, action: "audit.export.downloaded", parameters: { format: row.format, rowCount: row.row_count, sha256: row.sha256 }, outcome: "success", authorization: "session+csrf+reauth+audit:export+full-node-scope", requestId, traceId: row.trace_id });
-    return { record: publicRecord(row), contents };
+    return { record: publicRecord(row), handle };
   }
 
   private row(id: string): ExportRow {
@@ -143,23 +154,19 @@ export class AuditExportService {
     return row;
   }
 
-  runMaintenance(): void {
-    mkdirSync(this.storageRoot, { recursive: true, mode: 0o700 });
-    this.cleanupExpired();
-    const referenced = new Set((this.database.prepare("SELECT storage_name FROM audit_exports WHERE storage_name IS NOT NULL").all() as Array<{ storage_name: string }>).map((row) => row.storage_name));
-    for (const name of readdirSync(this.storageRoot)) {
-      if (referenced.has(name) || !/^(?:\.?[0-9a-f-]{36})(?:\.(?:csv|json|tmp))?$/.test(name)) continue;
-      const path = this.pathFor(name);
-      let stat;
-      try { stat = lstatSync(path); } catch { continue; }
-      if (stat.isFile() && !stat.isSymbolicLink()) rmSync(path, { force: true });
-    }
+  runMaintenance(): Promise<void> {
+    if (this.maintenancePromise) return this.maintenancePromise;
+    const current = this.maintain().finally(() => {
+      if (this.maintenancePromise === current) this.maintenancePromise = null;
+    });
+    this.maintenancePromise = current;
+    return current;
   }
 
-  private enforceCapacity(userId: string): void {
+  private enforceCapacity(userId: string, enforceRateLimit: boolean): void {
     const now = new Date().toISOString();
     const last = this.database.prepare("SELECT max(created_at) AS createdAt FROM audit_exports WHERE creator_user_id=?").get(userId) as { createdAt: string | null };
-    if (last.createdAt && Date.now() - Date.parse(last.createdAt) < MIN_CREATE_INTERVAL_MS) throw new ServiceError(429, "TOO_MANY_REQUESTS", "审计导出创建过于频繁，请稍后重试");
+    if (enforceRateLimit && last.createdAt && Date.now() - Date.parse(last.createdAt) < MIN_CREATE_INTERVAL_MS) throw new ServiceError(429, "TOO_MANY_REQUESTS", "审计导出创建过于频繁，请稍后重试");
     const global = this.database.prepare("SELECT count(*) AS count,coalesce(sum(size_bytes),0) AS bytes FROM audit_exports WHERE expires_at>?").get(now) as { count: number; bytes: number };
     const own = this.database.prepare("SELECT count(*) AS count,coalesce(sum(size_bytes),0) AS bytes FROM audit_exports WHERE expires_at>? AND creator_user_id=?").get(now, userId) as { count: number; bytes: number };
     if (global.count >= MAX_ACTIVE_EXPORTS_GLOBAL || global.bytes >= MAX_ACTIVE_BYTES_GLOBAL || own.count >= MAX_ACTIVE_EXPORTS_PER_USER || own.bytes >= MAX_ACTIVE_BYTES_PER_USER) {
@@ -167,17 +174,73 @@ export class AuditExportService {
     }
   }
 
-  private cleanupExpired(): void {
+  private async maintain(): Promise<void> {
+    await mkdir(this.storageRoot, { recursive: true, mode: 0o700 });
+    await this.cleanupExpired();
+    const referenced = new Set((this.database.prepare("SELECT storage_name FROM audit_exports WHERE storage_name IS NOT NULL").all() as Array<{ storage_name: string }>).map((row) => row.storage_name));
+    for (const name of await readdir(this.storageRoot)) {
+      if (referenced.has(name) || this.activeStorageNames.has(name) || !/^(?:\.?[0-9a-f-]{36})(?:\.(?:csv|json|tmp))?$/.test(name)) continue;
+      const path = this.pathFor(name);
+      const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => null);
+      if (!handle) continue;
+      const isFile = (await handle.stat()).isFile();
+      await handle.close();
+      if (isFile) await rm(path, { force: true });
+    }
+  }
+
+  private async cleanupExpired(): Promise<void> {
     const expired = this.database.prepare("SELECT export_id,storage_name FROM audit_exports WHERE expires_at<=?").all(new Date().toISOString()) as Array<{ export_id: string; storage_name: string | null }>;
     for (const row of expired) {
       if (row.storage_name) {
-        try { unlinkSync(this.pathFor(row.storage_name)); }
+        try { await unlink(this.pathFor(row.storage_name)); }
         catch (error) {
           if (!isFileMissing(error)) continue;
         }
       }
       this.database.prepare("DELETE FROM audit_exports WHERE export_id=?").run(row.export_id);
     }
+  }
+
+  private async writeSnapshot(path: string, format: AuditExportFormat, createdAt: string, sourceMaxSequence: number, expectedRows: number): Promise<{ bytes: number; sha256: string }> {
+    const handle = await open(path, "wx", 0o600);
+    const hash = createHash("sha256");
+    let bytes = 0;
+    let rowsWritten = 0;
+    const write = async (value: string) => {
+      const chunk = Buffer.from(value);
+      if (bytes + chunk.byteLength > MAX_EXPORT_BYTES) throw new ServiceError(413, "PAYLOAD_TOO_LARGE", "审计导出超过 50 MiB 文件上限");
+      await handle.writeFile(chunk);
+      hash.update(chunk);
+      bytes += chunk.byteLength;
+    };
+    try {
+      if (format === "csv") await write(`\uFEFF${CSV_HEADINGS.map(csvCell).join(",")}\r\n`);
+      else await write(`{\n  "exportedAt": ${JSON.stringify(createdAt)},\n  "sourceMaxSequence": ${sourceMaxSequence},\n  "rowCount": ${expectedRows},\n  "events": [\n`);
+      let lastSequence = 0;
+      while (true) {
+        const rows = this.database.prepare("SELECT * FROM audit_events WHERE sequence>? AND sequence<=? ORDER BY sequence LIMIT 250").all(lastSequence, sourceMaxSequence) as AuditRow[];
+        if (rows.length === 0) break;
+        const records = rows.map(eventRecord);
+        if (format === "csv") {
+          await write(`${records.map((record) => Object.values(record).map((value) => csvCell(typeof value === "object" && value !== null ? JSON.stringify(value) : String(value ?? ""))).join(",")).join("\r\n")}\r\n`);
+        } else {
+          await write(`${rowsWritten ? ",\n" : ""}${records.map((record) => `    ${JSON.stringify(record)}`).join(",\n")}`);
+        }
+        rowsWritten += rows.length;
+        lastSequence = rows.at(-1)!.sequence;
+      }
+      if (rowsWritten !== expectedRows) throw new ServiceError(409, "BAD_REQUEST", "审计快照在生成期间发生不一致");
+      if (format === "json") await write("\n  ]\n}\n");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    return { bytes, sha256: hash.digest("hex") };
+  }
+
+  private logMaintenanceError(error: unknown): void {
+    this.logger.log({ level: "error", time: new Date().toISOString(), message: "审计导出维护失败，将在下一周期重试", errorName: error instanceof Error ? error.name : "UnknownError" });
   }
 
   private pathFor(storageName: string): string {
@@ -199,15 +262,7 @@ function eventRecord(row: AuditRow) {
   return { sequence: row.sequence, eventId: row.event_id, occurredAt: row.occurred_at, actorType: row.actor_type, actorId: row.actor_id, sessionId: row.session_id, source: row.source, targetType: row.target_type, targetId: row.target_id, action: row.action, parameters, outcome: row.outcome, authorization: row.authorization, requestId: row.request_id, traceId: row.trace_id, previousHash: row.previous_hash, eventHash: row.event_hash };
 }
 
-function jsonDocument(rows: AuditRow[], createdAt: string, sourceMaxSequence: number): string {
-  return `${JSON.stringify({ exportedAt: createdAt, sourceMaxSequence, rowCount: rows.length, events: rows.map(eventRecord) }, null, 2)}\n`;
-}
-
-function csvDocument(rows: AuditRow[]): string {
-  const headings = ["sequence","eventId","occurredAt","actorType","actorId","sessionId","source","targetType","targetId","action","parameters","outcome","authorization","requestId","traceId","previousHash","eventHash"];
-  const records = rows.map((row) => Object.values(eventRecord(row)).map((value) => typeof value === "object" && value !== null ? JSON.stringify(value) : String(value ?? "")));
-  return `\uFEFF${[headings, ...records].map((record) => record.map(csvCell).join(",")).join("\r\n")}\r\n`;
-}
+const CSV_HEADINGS = ["sequence","eventId","occurredAt","actorType","actorId","sessionId","source","targetType","targetId","action","parameters","outcome","authorization","requestId","traceId","previousHash","eventHash"];
 
 function csvCell(value: string): string {
   const safe = /^[\s]*[=+\-@]/.test(value) ? `'${value}` : value;
@@ -216,4 +271,16 @@ function csvCell(value: string): string {
 
 function isFileMissing(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+
+async function hashFile(handle: FileHandle): Promise<string> {
+  const hash = createHash("sha256");
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  let position = 0;
+  while (true) {
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+    if (bytesRead === 0) return hash.digest("hex");
+    hash.update(buffer.subarray(0, bytesRead));
+    position += bytesRead;
+  }
 }

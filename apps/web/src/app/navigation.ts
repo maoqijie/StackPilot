@@ -267,7 +267,7 @@ function topbarSearchResults(query: string, permissions: readonly Permission[] =
     { id: "quick-create-host", label: "新增主机", detail: "打开主机新增页", page: "hosts", kind: "动作" },
     { id: "quick-open-terminal", label: "开启终端", detail: "进入终端会话", page: "terminal", kind: "动作" },
     { id: "quick-create-rule", label: "新增防火墙规则", detail: "打开防火墙规则列表", page: "firewall", kind: "动作" },
-    ...(permissions.includes("audit:export") ? [{ id: "quick-audit-export", label: "导出审计日志", detail: "进入审计导出记录", page: "audit-export" as PageKey, kind: "动作" }] : []),
+    ...(permissions.includes("audit:read") && permissions.includes("audit:export") ? [{ id: "quick-audit-export", label: "导出审计日志", detail: "进入审计导出记录", page: "audit-export" as PageKey, kind: "动作" }] : []),
   ];
   const allEntries = [...entries, ...quickActions];
   if (!normalized) return allEntries.slice(0, 6);

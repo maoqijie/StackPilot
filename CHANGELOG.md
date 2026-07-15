@@ -2,7 +2,7 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.24 - 2026-07-15
+## 0.3.0-preview.25 - 2026-07-16
 
 ### Added
 
@@ -13,6 +13,19 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Added the separate high-risk `audit:export` permission and limited export creation, retry and download to full-node user sessions with CSRF and one-time reauthentication.
 - Verified the append-only audit chain before export, retained parameter redaction, exported the complete hash payload, prevented spreadsheet formula injection, bounded active exports and rejected API-token or scoped-session access.
+
+## 0.3.0-preview.24 - 2026-07-15
+
+### Added
+
+- Added a bounded Agent firewall-deny snapshot collected from fixed read-only Linux kernel journal queries, negotiated through the Controller feature header and persisted with the existing signed heartbeat state.
+- Added the authenticated `GET /api/firewall/deny-records` endpoint with dedicated `firewall:read` RBAC and node-scope filtering.
+- Connected the firewall deny workbench to the real Controller API with visibility-aware 10-second polling, backend freshness, stable details, explicit unavailable states and responsive long-value handling.
+
+### Security
+
+- Removed demo deny records and browser-only allow, promote and export actions that previously reported success without a backend effect.
+- Kept firewall collection read-only, bounded and free of raw kernel log output; the browser receives normalized event fields only.
 
 ## 0.3.0-preview.23 - 2026-07-15
 
