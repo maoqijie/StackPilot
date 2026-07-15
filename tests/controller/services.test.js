@@ -27,6 +27,14 @@ class MemoryScheduleRepository {
   }
 }
 
+class MemoryScheduleExecutionRepository {
+  executions = new Map();
+  async latest(jobId) { return this.executions.get(jobId) ?? null; }
+  async write(jobId, execution) { this.executions.set(jobId, execution); }
+  async delete(jobId) { this.executions.delete(jobId); }
+  cronCommand(jobId, command) { return `runner ${jobId} ${command}`; }
+}
+
 const gib = 1024 ** 3;
 const nodeIds = {
   allowed: "11111111-1111-4111-8111-111111111111",
@@ -364,13 +372,18 @@ test("overview labels Windows equivalent load without excluding it from mixed cl
 test("schedule service performs storage and execution only through injected interfaces", async () => {
   const platform = new FakePlatformAdapter();
   const repository = new MemoryScheduleRepository();
-  const schedules = new ScheduleService(repository, platform);
+  const executions = new MemoryScheduleExecutionRepository();
+  const schedules = new ScheduleService(repository, platform, executions, true);
   const created = await schedules.create({ name: "backup", cron: "0 4 * * *", command: "true", enabled: true });
   assert.equal(created.job.name, "backup");
+  assert.equal((await schedules.list()).writable, true);
   assert.equal((await schedules.update(created.job.id, { enabled: false })).job.enabled, false);
   const run = await schedules.run(created.job.id);
   assert.equal(run.job.result, "成功");
+  assert.equal(run.job.lastExecution.source, "manual");
+  assert.equal(run.job.lastExecution.exitCode, 0);
   assert.equal(platform.calls.runScheduledCommand, 1);
+  assert.equal((await schedules.update(created.job.id, { command: "printf changed" })).job.lastExecution, null);
   await schedules.delete(created.job.id);
   assert.equal((await schedules.list()).jobs.length, 0);
 });
@@ -379,7 +392,7 @@ test("crontab repository rejects malformed managed metadata", async () => {
   const platform = new FakePlatformAdapter();
   const invalid = Buffer.from(JSON.stringify({ id: "bad", command: 42 }), "utf8").toString("base64url");
   platform.crontab = `external line\n# >>> STACKPILOT MANAGED CRON JOBS\n# stackpilot:job=${invalid}\n# <<< STACKPILOT MANAGED CRON JOBS\n`;
-  const state = await new CrontabScheduleRepository(platform).read();
+  const state = await new CrontabScheduleRepository(platform, new MemoryScheduleExecutionRepository()).read();
   assert.deepEqual(state.externalLines, ["external line"]);
   assert.deepEqual(state.jobs, []);
 });

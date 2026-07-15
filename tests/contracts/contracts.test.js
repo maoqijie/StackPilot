@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  API_CLIENT_PREFIX, API_ROOT_SEGMENTS, ApiErrorResponseSchema, CreateScheduleJobRequestSchema,
+  API_CLIENT_PREFIX, API_ROOT_SEGMENTS, ApiErrorResponseSchema, CreateScheduleJobRequestSchema, ScheduleExecutionSchema,
   OverviewSummaryPayloadSchema, PathIdSchema, WRITE_METHODS,
   AGENT_PROTOCOL_VERSION, AgentDatabaseSnapshotSchema, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, PhysicalHostIdSchema,
   CreateRemoteTaskRequestSchema, RemoteTaskListResponseSchema, isAgentProtocolCompatible,
@@ -262,9 +262,11 @@ test("agent protocol schemas reject incompatible and generic command tasks", () 
 });
 
 test("shared schemas validate external request and error contracts at runtime", () => {
+  const collectedAt = new Date().toISOString();
   assert.equal(PathIdSchema.safeParse("node-local").success, true);
   assert.equal(PathIdSchema.safeParse("../node").success, false);
   assert.equal(CreateScheduleJobRequestSchema.safeParse({ name: "backup", cron: "0 4 * * *", command: "true", extra: true }).success, false);
+  assert.equal(ScheduleExecutionSchema.safeParse({ id: crypto.randomUUID(), source: "cron", startedAt: collectedAt, finishedAt: collectedAt, status: "失败", exitCode: 17, durationMs: 12, output: "", error: "failed" }).success, true);
   assert.equal(ApiErrorResponseSchema.safeParse({ code: "BAD_REQUEST", error: "invalid", requestId: "request-1" }).success, true);
   assert.equal(ApiErrorResponseSchema.safeParse({ code: "REAUTHENTICATION_FAILED", error: "重新认证失败", requestId: "request-2" }).success, true);
   assert.equal(OverviewSummaryPayloadSchema.safeParse({}).success, false);

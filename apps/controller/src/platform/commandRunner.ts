@@ -15,14 +15,15 @@ export async function runFixedCommand(executable: string, args: readonly string[
       maxBuffer: options.maxBuffer ?? 1024 * 1024,
       windowsHide: true,
     });
-    return { ok: true, stdout: stdout.trim(), stderr: stderr.trim(), elapsedMs: Math.max(1, Math.round(performance.now() - startedAt)) };
+    return { ok: true, stdout: stdout.trim(), stderr: stderr.trim(), elapsedMs: Math.max(1, Math.round(performance.now() - startedAt)), exitCode: 0 };
   } catch (caught) {
-    const error = caught as NodeJS.ErrnoException & { stdout?: string; stderr?: string };
+    const error = caught as { code?: string | number; message?: string; stdout?: string; stderr?: string };
     return {
       ok: false,
       stdout: String(error.stdout ?? "").trim(),
       stderr: String(error.stderr ?? error.message).trim(),
       elapsedMs: Math.max(1, Math.round(performance.now() - startedAt)),
+      exitCode: typeof error.code === "number" ? error.code : null,
     };
   }
 }

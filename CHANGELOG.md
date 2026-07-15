@@ -2,6 +2,22 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.19 - 2026-07-15
+
+### Added
+
+- Added a bounded cron execution runner that records real automatic execution timestamps, source, exit code, duration and capped output in the Controller state directory.
+- Added typed schedule execution details to the shared contract and the failed-schedule workbench.
+
+### Changed
+
+- The failed schedule view now filters backend-recorded executions instead of inferring failures from browser state, and retains visibility-aware 10-second polling without overwriting completed mutations.
+- Schedule navigation and operations now honor `schedules:read`, `schedules:write` and the backend crontab capability flag.
+
+### Security
+
+- Managed crontab rows invoke only the fixed StackPilot runner with encoded bounded input; external crontab rows remain untouched and execution records use private atomic files with bounded retention.
+
 ## 0.3.0-preview.17 - 2026-07-15
 
 ### Changed

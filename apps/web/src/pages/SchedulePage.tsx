@@ -15,14 +15,16 @@ import type { ScheduleDraft } from "../features/schedule/model";
 import { reportApiError } from "../features/overview/model";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import type { Notify, PageKey } from "../types/app";
+import type { Permission } from "@stackpilot/contracts";
 import { activateOnKeyboard } from "../utils/focus";
 import { formatBackendDateTime } from "../utils/time";
 
-function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
+function SchedulePage({ page, notify, permissions }: { page: PageKey; notify: Notify; permissions: readonly Permission[] }) {
   const [rows, setRows] = useState<ScheduleJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [scannedAt, setScannedAt] = useState<string | undefined>();
+  const [scheduleWritable, setScheduleWritable] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const schedulePreset = schedulePagePreset(page);
   const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
@@ -38,6 +40,9 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const cronInputRef = useRef<HTMLInputElement>(null);
+  const requestRevision = useRef(0);
+  const [activeAction, setActiveAction] = useState<string | null>(null);
+  const canWrite = scheduleWritable && permissions.includes("schedules:write");
   const search = searchByPage[page] ?? schedulePreset.search;
   const stateFilter = stateByPage[page] ?? schedulePreset.state;
   const selectedJob = drawer?.type === "detail" || drawer?.type === "delete"
@@ -45,17 +50,20 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
     : null;
 
   const openScheduleCreateFromQuick = useCallback(() => {
+    if (!canWrite) return;
     setDraft(createScheduleDraft());
     setDrawer({ type: "create" });
-  }, []);
+  }, [canWrite]);
 
   useQuickIntent("schedule-enabled", "create-schedule", openScheduleCreateFromQuick);
   const loadSchedules = useCallback(async (signal: AbortSignal, silent: boolean) => {
+    const revision = requestRevision.current;
     try {
       const payload = await fetchScheduleJobs(signal);
-      if (signal.aborted) return;
+      if (signal.aborted || revision !== requestRevision.current) return;
       setRows(payload.jobs);
       setScannedAt(payload.scannedAt);
+      setScheduleWritable(payload.writable);
       setLoadError(null);
       setDrawer((current) => {
         if ((current?.type === "detail" || current?.type === "delete") && !payload.jobs.some((row) => row.id === current.id)) return null;
@@ -89,13 +97,14 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
     const query = search.trim().toLowerCase();
     const matchSearch = !query || `${row.name} ${row.cron} ${row.command}`.toLowerCase().includes(query);
     const matchState = stateFilter === "全部" || (stateFilter === "已启用" ? row.enabled : !row.enabled);
-    const matchFailed = page === "schedule-failed" ? row.result === "失败" : true;
+    const matchFailed = page === "schedule-failed" ? row.lastExecution?.status === "失败" : true;
     return matchSearch && matchState && matchFailed;
   });
   const selectedVisibleJob = selectedJob;
 
-  const applySchedulePayload = (jobs: ScheduleJob[], selectedId?: string) => {
+  const applySchedulePayload = (jobs: ScheduleJob[], writable: boolean, selectedId?: string) => {
     setRows(jobs);
+    setScheduleWritable(writable);
     setDrawer((current) => {
       if (!current || current.type === "create" || current.type === "edit") return current;
       return jobs.some((row) => row.id === current.id) ? current : null;
@@ -118,12 +127,13 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       return;
     }
     if (!currentDrawer || (currentDrawer.type !== "create" && currentDrawer.type !== "edit")) return;
+    requestRevision.current += 1;
     setSaving(true);
     try {
       const payload = currentDrawer.type === "edit"
         ? await updateScheduleJob(currentDrawer.job.id, { name: nextName, cron: nextCron, command: nextCommand, enabled: draft.enabled })
         : await createScheduleJob({ name: nextName, cron: nextCron, command: nextCommand, enabled: draft.enabled });
-      applySchedulePayload(payload.jobs, payload.job.id);
+      applySchedulePayload(payload.jobs, payload.writable, payload.job.id);
       notify(payload.message, payload.tone ?? "success");
       setDrawer({ type: "detail", id: payload.job.id });
     } catch (error) {
@@ -136,9 +146,11 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
   const deleteJob = async (row: ScheduleJob) => {
     if (deleting) return;
     setDeleting(true);
+    requestRevision.current += 1;
     try {
       const payload = await deleteScheduleJob(row.id);
       setRows(payload.jobs);
+      setScheduleWritable(payload.writable);
       setDrawer(null);
       notify(payload.message, payload.tone ?? "warning");
     } catch (error) {
@@ -148,21 +160,31 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
     }
   };
   const runJobNow = async (row: ScheduleJob) => {
+    if (activeAction) return;
+    requestRevision.current += 1;
+    setActiveAction(`run:${row.id}`);
     try {
       const payload = await runScheduleJob(row.id);
-      applySchedulePayload(payload.jobs, row.id);
+      applySchedulePayload(payload.jobs, payload.writable, row.id);
       notify(payload.message, payload.tone ?? "success");
     } catch (error) {
       reportApiError(error, notify, "立即执行定时任务失败");
+    } finally {
+      setActiveAction(null);
     }
   };
   const toggleJob = async (row: ScheduleJob) => {
+    if (activeAction) return;
+    requestRevision.current += 1;
+    setActiveAction(`toggle:${row.id}`);
     try {
       const payload = await updateScheduleJob(row.id, { enabled: !row.enabled });
-      applySchedulePayload(payload.jobs, row.id);
+      applySchedulePayload(payload.jobs, payload.writable, row.id);
       notify(payload.message, payload.tone ?? "success");
     } catch (error) {
       reportApiError(error, notify, "切换定时任务状态失败");
+    } finally {
+      setActiveAction(null);
     }
   };
   const editJob = (row: ScheduleJob) => {
@@ -171,11 +193,11 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
   };
   const scheduleActionButtons = (row: ScheduleJob) => (
     <>
-      <button type="button" onClick={() => toggleJob(row)}>{row.enabled ? "停用" : "启用"}</button>
-      <button type="button" disabled={!row.enabled} onClick={() => runJobNow(row)}>执行</button>
+      {canWrite && <button type="button" disabled={activeAction !== null} onClick={() => toggleJob(row)}>{activeAction === `toggle:${row.id}` ? "处理中" : row.enabled ? "停用" : "启用"}</button>}
+      {canWrite && <button type="button" disabled={!row.enabled || activeAction !== null} onClick={() => runJobNow(row)}>{activeAction === `run:${row.id}` ? "执行中" : "执行"}</button>}
       <button type="button" onClick={() => setDrawer({ type: "detail", id: row.id })}>详情</button>
-      <button type="button" onClick={() => editJob(row)}>编辑</button>
-      <button type="button" onClick={() => requestDeleteJob(row)}>删除</button>
+      {canWrite && <button type="button" onClick={() => editJob(row)}>编辑</button>}
+      {canWrite && <button type="button" onClick={() => requestDeleteJob(row)}>删除</button>}
     </>
   );
   const editingJobId = drawer?.type === "edit" ? drawer.job.id : undefined;
@@ -259,7 +281,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       </div>
     </DetailDrawer>
   ) : drawer?.type === "detail" && selectedVisibleJob ? (
-    <DetailDrawer title="任务详情" subtitle={selectedVisibleJob.name} onClose={() => setDrawer(null)} className="schedule-job-drawer" actions={<><button className="ghost" type="button" onClick={() => editJob(selectedVisibleJob)}>编辑</button><button className="primary" type="button" disabled={!selectedVisibleJob.enabled} onClick={() => runJobNow(selectedVisibleJob)}>立即执行</button></>}>
+    <DetailDrawer title="任务详情" subtitle={selectedVisibleJob.name} onClose={() => setDrawer(null)} className="schedule-job-drawer" actions={canWrite ? <><button className="ghost" type="button" onClick={() => editJob(selectedVisibleJob)}>编辑</button><button className="primary" type="button" disabled={!selectedVisibleJob.enabled || activeAction !== null} onClick={() => runJobNow(selectedVisibleJob)}>{activeAction === `run:${selectedVisibleJob.id}` ? "执行中..." : "立即执行"}</button></> : undefined}>
       <div className="detail-kv">
         <p><span>cron</span><b>{selectedVisibleJob.cron}</b></p>
         <p><span>命令</span><b>{selectedVisibleJob.command}</b></p>
@@ -267,10 +289,13 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
         <p><span>下次执行</span><b>{selectedVisibleJob.nextRun}</b></p>
         <p><span>最近执行</span><b>{selectedVisibleJob.lastRun}</b></p>
         <p><span>结果</span><b>{selectedVisibleJob.result}</b></p>
+        <p><span>执行来源</span><b>{selectedVisibleJob.lastExecution?.source === "cron" ? "cron 自动调度" : selectedVisibleJob.lastExecution?.source === "manual" ? "StackPilot 手动执行" : "尚无执行记录"}</b></p>
+        <p><span>退出码</span><b>{selectedVisibleJob.lastExecution?.exitCode ?? "不可用"}</b></p>
+        <p><span>耗时</span><b>{selectedVisibleJob.lastExecution ? `${selectedVisibleJob.lastExecution.durationMs}ms` : "不可用"}</b></p>
       </div>
       <div className="terminal-log compact-log">
         <p>$ {selectedVisibleJob.command}</p>
-        <p>{selectedVisibleJob.result === "失败" ? "最近一次立即执行失败" : selectedVisibleJob.result === "成功" ? "最近一次立即执行成功" : "等待 crontab 调度或手动执行"}</p>
+        <p>{selectedVisibleJob.lastExecution?.error || selectedVisibleJob.lastExecution?.output || "等待 crontab 调度或手动执行"}</p>
       </div>
     </DetailDrawer>
   ) : drawer?.type === "delete" && selectedVisibleJob ? (
@@ -293,9 +318,9 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       title={resolvePageMeta(page).title}
       subtitle={`${schedulePreset.subtitle} ${freshness}`}
       page={page}
-      actions={page === "schedule-failed" ? undefined : <button className="primary" type="button" onClick={openScheduleCreateFromQuick}><Plus size={15} /> 新建任务</button>}
+      actions={page === "schedule-failed" || !canWrite ? undefined : <button className="primary" type="button" onClick={openScheduleCreateFromQuick}><Plus size={15} /> 新建任务</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索任务、cron 或命令" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={stateFilter} options={["全部", "已启用", "已停用"]} onChange={(value) => setStateByPage((current) => ({ ...current, [page]: value }))} /></>}
-      metrics={<><MetricTile icon={CalendarDays} label="任务数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.result === "失败").length}`} tone="red" /><MetricTile icon={TerminalSquare} label="来源" value="cron" tone="orange" /></>}
+      metrics={<><MetricTile icon={CalendarDays} label={page === "schedule-failed" ? "失败任务" : "任务数"} value={`${page === "schedule-failed" ? filteredRows.length : rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.lastExecution?.status === "失败").length}`} tone="red" /><MetricTile icon={TerminalSquare} label="来源" value="cron" tone="orange" /></>}
     >
       {scheduleDialog}
       {loadError && (
@@ -322,12 +347,12 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
           { key: "cron", label: "cron", width: "70px", render: (row) => <code title={row.cron}>{row.cron}</code> },
           { key: "command", label: "命令", width: "120px", render: (row) => <span title={row.command}>{row.command}</span> },
           { key: "enabled", label: "启用", width: "66px", render: (row) => <span className={`pill ${row.enabled ? "green" : "blue"}`}>{row.enabled ? "启用" : "停用"}</span> },
-          { key: "last", label: "最近执行", width: "90px", render: (row) => row.lastRun },
+          { key: "last", label: "最近执行", width: "90px", render: (row) => formatBackendDateTime(row.lastExecution?.startedAt, row.lastRun) },
           { key: "result", label: "结果", width: "62px", render: (row) => <span className={`pill ${row.result === "成功" ? "green" : row.result === "失败" ? "red" : "blue"}`}>{row.result}</span> },
           { key: "ops", label: "操作", width: "230px", render: (row) => <span className="table-actions">{scheduleActionButtons(row)}</span> },
         ]}
         rows={filteredRows}
-        emptyText="没有匹配的定时任务"
+        emptyText={loading ? "正在读取定时任务" : "没有匹配的定时任务"}
         getRowKey={(row) => row.id}
         mobileCard={(row) => (
           <>
@@ -338,7 +363,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
             <code className="module-card-code">{row.cron} · {row.command}</code>
             <div className="module-card-meta">
               <span><b>状态</b><em>{row.enabled ? "启用" : "停用"}</em></span>
-              <span><b>最近</b><em>{row.lastRun}</em></span>
+              <span><b>最近</b><em>{formatBackendDateTime(row.lastExecution?.startedAt, row.lastRun)}</em></span>
               <span><b>下次</b><em>{row.nextRun}</em></span>
               <span><b>结果</b><em>{row.result}</em></span>
             </div>

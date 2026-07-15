@@ -21,6 +21,17 @@ const failedJob = {
   nextRun: "明天 02:00",
   lastRun: "今天 02:00",
   result: "失败" as const,
+  lastExecution: {
+    id: "11111111-1111-4111-8111-111111111111",
+    source: "cron" as const,
+    startedAt: "2026-07-15T02:00:00.000Z",
+    finishedAt: "2026-07-15T02:00:01.000Z",
+    status: "失败" as const,
+    exitCode: 2,
+    durationMs: 1000,
+    output: "",
+    error: "backup target unavailable",
+  },
 };
 
 const successfulJob = {
@@ -28,10 +39,11 @@ const successfulJob = {
   id: "job-success",
   name: "health-check",
   result: "成功" as const,
+  lastExecution: { ...failedJob.lastExecution, id: "22222222-2222-4222-8222-222222222222", status: "成功" as const, exitCode: 0, error: "", output: "ok" },
 };
 
 function payload(jobs = [failedJob, successfulJob]): SchedulePayload {
-  return { jobs, scannedAt: "2026-07-15T02:00:00.000Z" };
+  return { jobs, scannedAt: "2026-07-15T02:00:00.000Z", writable: true };
 }
 
 describe("schedule failed page", () => {
@@ -54,9 +66,9 @@ describe("schedule failed page", () => {
     vi.useFakeTimers();
     vi.mocked(fetchScheduleJobs)
       .mockResolvedValueOnce(payload())
-      .mockResolvedValueOnce(payload([{ ...failedJob, lastRun: "今天 02:10" }]));
+      .mockResolvedValueOnce(payload([{ ...failedJob, lastExecution: { ...failedJob.lastExecution, startedAt: "2026-07-15T02:10:00.000Z" } }]));
 
-    render(<SchedulePage page="schedule-failed" notify={notify} />);
+    render(<SchedulePage page="schedule-failed" notify={notify} permissions={["schedules:read", "schedules:write"]} />);
     await act(async () => undefined);
     expect(screen.getAllByText("nightly-backup")).toHaveLength(2);
     expect(screen.queryByText("health-check")).not.toBeInTheDocument();
@@ -68,7 +80,7 @@ describe("schedule failed page", () => {
     });
 
     expect(fetchScheduleJobs).toHaveBeenCalledTimes(2);
-    expect(screen.getAllByText("今天 02:10")).toHaveLength(2);
+    expect(screen.getAllByText(/2026\/07\/15 10:10:00/)).toHaveLength(2);
     expect(notify).not.toHaveBeenCalled();
   });
 
@@ -77,7 +89,7 @@ describe("schedule failed page", () => {
       .mockRejectedValueOnce(new Error("crontab 暂不可用"))
       .mockResolvedValueOnce(payload([failedJob]));
 
-    render(<SchedulePage page="schedule-failed" notify={notify} />);
+    render(<SchedulePage page="schedule-failed" notify={notify} permissions={["schedules:read", "schedules:write"]} />);
     await act(async () => undefined);
     expect(screen.getByText("crontab 暂不可用")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /重试/ })).toBeInTheDocument();
@@ -92,7 +104,7 @@ describe("schedule failed page", () => {
   it("keeps details in a body-level drawer and separates modal and delete surfaces", async () => {
     vi.useFakeTimers();
     vi.mocked(fetchScheduleJobs).mockResolvedValue(payload([failedJob]));
-    render(<SchedulePage page="schedule-enabled" notify={notify} />);
+    render(<SchedulePage page="schedule-enabled" notify={notify} permissions={["schedules:read", "schedules:write"]} />);
     await act(async () => undefined);
     expect(screen.getAllByText("nightly-backup")).toHaveLength(2);
 
@@ -102,6 +114,8 @@ describe("schedule failed page", () => {
     expect(drawer).toHaveClass("schedule-job-drawer");
     expect(drawer).not.toHaveClass("schedule-job-modal");
     expect(within(drawer).getByText("/usr/local/bin/backup --all")).toBeInTheDocument();
+    expect(within(drawer).getByText("cron 自动调度")).toBeInTheDocument();
+    expect(within(drawer).getByText("backup target unavailable")).toBeInTheDocument();
 
     fireEvent.click(within(drawer).getByRole("button", { name: "关闭详情" }));
     act(() => vi.advanceTimersByTime(180));
@@ -116,5 +130,24 @@ describe("schedule failed page", () => {
     const modal = screen.getByRole("dialog", { name: "新建计划任务" });
     expect(modal).toHaveClass("schedule-job-modal");
     expect(modal).toHaveAttribute("data-motion-surface", "modal");
+  });
+
+  it("keeps schedule actions read-only without write permission", async () => {
+    vi.mocked(fetchScheduleJobs).mockResolvedValue(payload([failedJob]));
+    render(<SchedulePage page="schedule-enabled" notify={notify} permissions={["schedules:read"]} />);
+    await act(async () => undefined);
+    expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "执行" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "详情" }).length).toBeGreaterThan(0);
+  });
+
+  it("hides write actions when the backend disables crontab mutations", async () => {
+    vi.mocked(fetchScheduleJobs).mockResolvedValue({ ...payload([failedJob]), writable: false });
+    render(<SchedulePage page="schedule-enabled" notify={notify} permissions={["schedules:read", "schedules:write"]} />);
+    await act(async () => undefined);
+    expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "执行" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "详情" }).length).toBeGreaterThan(0);
   });
 });

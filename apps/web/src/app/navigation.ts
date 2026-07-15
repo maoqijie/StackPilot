@@ -235,6 +235,7 @@ function navItemsForPermissions(permissions: readonly Permission[]) {
     if (item.key === "systemd" && !permissions.includes("systemd:read")) return visible;
     if (item.key === "databases" && !permissions.includes("databases:read")) return visible;
     if (item.key === "deploy" && !permissions.includes("sites:read")) return visible;
+    if (item.key === "schedule" && !permissions.includes("schedules:read")) return visible;
     if (item.key === "sites") {
       return [...visible, { ...item, children: item.children.filter((child) => child.id !== "sites-create" || permissions.includes("sites:deploy")) }];
     }
