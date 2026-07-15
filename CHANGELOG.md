@@ -2,6 +2,18 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.23 - 2026-07-15
+
+### Changed
+
+- Unified global, failed, database and export audit views on the authenticated Controller repository, with backend collection timestamps, visibility-aware 10-second polling, stable details and confirmed CSV downloads of current real results.
+- Preserved the `0.3.0-preview.22` schedule idempotency and native cron deployment hardening while removing simulated audit export tasks and fixture fallback paths.
+
+### Security
+
+- Enforced strict shared audit event and query contracts, rejected duplicate or unknown query parameters, applied failed-result and action-prefix filters before the SQLite limit, and kept `audit:read` protection on API, navigation and direct rendering.
+- Preserved backend parameter redaction and represented non-terminal outcomes such as `queued` as recorded rather than successful.
+
 ## 0.3.0-preview.22 - 2026-07-15
 
 ### Fixed
