@@ -2,7 +2,7 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.27 - 2026-07-16
+## 0.3.0-preview.28 - 2026-07-16
 
 ### Added
 
@@ -13,6 +13,12 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Required Controller node scope, `firewall:operate`, CSRF, one-time reauthentication, stable idempotency keys and optimistic rule versions for every UFW mutation.
 - Kept external UFW rules read-only, rechecked rule identity immediately before numbered deletion, and excluded UFW activation and default-policy changes from the API.
+
+## 0.3.0-preview.27 - 2026-07-16
+
+### Fixed
+
+- Made the database provisioner fixture use a non-root synthetic database identity when release tests run as root, preserving the production rejection of privileged database service users while keeping Linux release gates deterministic.
 
 ## 0.3.0-preview.26 - 2026-07-16
 
