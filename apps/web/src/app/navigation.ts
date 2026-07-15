@@ -269,7 +269,7 @@ function topbarSearchResults(query: string, permissions: readonly Permission[] =
     { id: "quick-create-rule", label: "新增防火墙规则", detail: "打开防火墙规则列表", page: "firewall", kind: "动作" },
     ...(permissions.includes("audit:read") ? [{ id: "quick-audit-export", label: "导出审计日志", detail: "导出当前真实审计结果", page: "audit-export" as PageKey, kind: "动作" }] : []),
   ];
-  const allEntries = [...entries, ...quickActions];
+  const allEntries = [...entries, ...quickActions.filter((item) => item.page !== "audit-export" || permissions.includes("audit:read"))];
   if (!normalized) return allEntries.slice(0, 6);
   return allEntries
     .filter((item) => `${item.label} ${item.detail} ${item.kind}`.toLowerCase().includes(normalized))
@@ -324,7 +324,7 @@ function viewContextForPage(page: PageKey): ViewContext | null {
     }
     case "audit": {
       const preset = auditPagePreset(page);
-      return { eyebrow, title, chips: [`用户 ${preset.user}`, `结果 ${preset.result}`, `模式 ${preset.mode === "exports" ? "导出" : "日志"}`] };
+      return { eyebrow, title, chips: [`操作者 ${preset.user}`, `结果 ${preset.result}`, `模式 ${preset.mode === "exports" ? "导出" : "日志"}`] };
     }
     case "acl": {
       const preset = aclPagePreset(page);

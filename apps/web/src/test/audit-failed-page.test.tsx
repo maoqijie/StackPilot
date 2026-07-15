@@ -3,33 +3,32 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchAuditEvents } from "../api/auditApi";
 import { AuditPage } from "../pages/AuditPage";
 
-vi.mock("../api/auditApi", () => ({ fetchAuditEvents: vi.fn() }));
+vi.mock("../api/auditApi", () => ({ fetchAuditEvents: vi.fn(), fetchAllAuditEvents: vi.fn() }));
 
 const collectedAt = "2026-07-15T02:03:04.000Z";
 const failed = auditEvent({ eventId: "failed-event", action: "database.backup.scheduled", outcome: "failed", traceId: "trace-failed" });
-const successful = auditEvent({ eventId: "success-event", action: "auth.login", outcome: "success", traceId: "trace-success" });
 
 describe("failed audit page", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/#audit-failed");
-    vi.mocked(fetchAuditEvents).mockReset().mockResolvedValue({ collectedAt, events: [failed, successful] });
+    vi.mocked(fetchAuditEvents).mockReset().mockResolvedValue({ collectedAt, events: [failed], total: 1, limit: 200, nextCursor: null });
   });
 
   it("renders only failed records from the real audit response", async () => {
     render(<AuditPage page="audit-failed" notify={vi.fn()} />);
 
     await waitFor(() => expect(fetchAuditEvents).toHaveBeenCalledTimes(1));
-    expect(fetchAuditEvents).toHaveBeenCalledWith(expect.objectContaining({ result: "failed", actionPrefix: undefined }));
+    expect(fetchAuditEvents).toHaveBeenCalledWith({ result: "failure" }, expect.any(AbortSignal));
     expect((await screen.findAllByText("database.backup.scheduled")).length).toBeGreaterThan(0);
     expect(screen.queryByText("auth.login")).not.toBeInTheDocument();
-    expect(screen.getByText(/后端查询时间/)).toHaveTextContent("2026");
+    expect(screen.getByText(/后端采集于/)).toHaveTextContent("2026");
     expect(screen.getAllByText("失败").length).toBeGreaterThan(0);
   });
 
   it("closes stale details after the next real polling response removes the event", async () => {
     vi.mocked(fetchAuditEvents)
-      .mockResolvedValueOnce({ collectedAt, events: [failed] })
-      .mockResolvedValueOnce({ collectedAt: "2026-07-15T02:03:14.000Z", events: [] });
+      .mockResolvedValueOnce({ collectedAt, events: [failed], total: 1, limit: 200, nextCursor: null })
+      .mockResolvedValueOnce({ collectedAt: "2026-07-15T02:03:14.000Z", events: [], total: 0, limit: 200, nextCursor: null });
     render(<AuditPage page="audit-failed" notify={vi.fn()} />);
     fireEvent.click((await screen.findAllByRole("button", { name: "详情" }))[0]);
     expect(screen.getByRole("dialog", { name: "审计详情" })).toBeInTheDocument();

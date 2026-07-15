@@ -27,7 +27,7 @@ async function loadMigrations(entries = migrationFiles) {
   })));
 }
 
-test("schema 1 upgrades to schema 8 without losing identity data", async () => {
+test("schema 1 upgrades to schema 9 without losing identity data", async () => {
   const dir = await mkdtemp(join(tmpdir(), "stackpilot-upgrade-"));
   const path = join(dir, "stackpilot.db");
   try {
@@ -40,10 +40,10 @@ test("schema 1 upgrades to schema 8 without losing identity data", async () => {
 
     const upgraded = openDatabase(path);
     assert.equal(upgraded.prepare("SELECT username FROM users").get().username, "upgrade-user");
-    assert.equal(upgraded.prepare("SELECT max(version) AS version FROM schema_migrations").get().version, 8);
+    assert.equal(upgraded.prepare("SELECT max(version) AS version FROM schema_migrations").get().version, 9);
     assert.deepEqual(upgraded.prepare("SELECT application_version, schema_version FROM release_metadata").get(), {
       application_version: applicationVersion,
-      schema_version: 8,
+      schema_version: 9,
     });
     for (const table of ["file_uploads", "terminal_snippet_preferences", "file_trash_entries", "database_instances", "database_operations", "site_plans", "site_operations"]) {
       assert.ok(upgraded.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table));
@@ -68,7 +68,7 @@ test("schema 5 file-trash data survives database and site migrations", async () 
     db.close();
 
     const upgraded = openDatabase(path);
-    assert.equal(upgraded.prepare("SELECT max(version) AS version FROM schema_migrations").get().version, 8);
+    assert.equal(upgraded.prepare("SELECT max(version) AS version FROM schema_migrations").get().version, 9);
     assert.equal(upgraded.prepare("SELECT username FROM users WHERE id=?").get("22222222-2222-4222-8222-222222222222").username, "schema5-user");
     assert.equal(upgraded.prepare("SELECT original_path FROM file_trash_entries WHERE entry_id=?").get("33333333-3333-4333-8333-333333333333").original_path, "/srv/example.txt");
     assert.ok(upgraded.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='database_instances'").get());
@@ -79,7 +79,7 @@ test("schema 5 file-trash data survives database and site migrations", async () 
   }
 });
 
-test("schema 6 database state upgrades additively to schema 8", async () => {
+test("schema 6 database state upgrades additively to schema 9", async () => {
   const dir = await mkdtemp(join(tmpdir(), "stackpilot-schema6-upgrade-"));
   const path = join(dir, "stackpilot.db");
   try {
@@ -88,7 +88,7 @@ test("schema 6 database state upgrades additively to schema 8", async () => {
     assert.equal(db.prepare("SELECT max(version) AS version FROM schema_migrations").get().version, 6);
     db.close();
     const upgraded = openDatabase(path);
-    assert.equal(upgraded.prepare("SELECT max(version) AS version FROM schema_migrations").get().version, 8);
+    assert.equal(upgraded.prepare("SELECT max(version) AS version FROM schema_migrations").get().version, 9);
     assert.ok(upgraded.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='database_operations'").get());
     assert.ok(upgraded.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='site_operations'").get());
     upgraded.close();
@@ -120,10 +120,11 @@ test("legacy site-management schema 6 is normalized without losing site data", a
       { version: 6, name: "database-operations" },
       { version: 7, name: "site-management" },
       { version: 8, name: "deployment-environment" },
+      { version: 9, name: "audit-pagination" },
     ]);
     assert.deepEqual(upgraded.prepare("SELECT application_version, schema_version FROM release_metadata").get(), {
       application_version: applicationVersion,
-      schema_version: 8,
+      schema_version: 9,
     });
     upgraded.close();
   } finally {
@@ -174,10 +175,51 @@ test("schema 7 plans preserve inferred staging while gaining explicit environmen
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test("schema 8 audit events gain indexed node ownership without changing event data", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "stackpilot-schema8-audit-upgrade-"));
+  const path = join(dir, "stackpilot.db");
+  try {
+    const entries = [
+      ...migrationFiles,
+      [7, "site-management", "007_site_management.sql"],
+      [8, "deployment-environment", "008_deployment_environment.sql"],
+    ];
+    const db = new Database(path);
+    migrateDatabase(db, await loadMigrations(entries));
+    const now = new Date().toISOString();
+    db.prepare("INSERT INTO remote_tasks(task_id,node_id,payload,status,updated_at) VALUES(?,?,?,?,?)").run("task-1", "node-remote", "{}", "queued", now);
+    const insert = db.prepare("INSERT INTO audit_events(event_id,occurred_at,actor_type,actor_id,source,target_type,target_id,action,parameters,outcome,authorization,request_id,trace_id,previous_hash,event_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+    const rows = [
+      ["event-node", "user", "operator", "node", "node-target", "{}", "hash-node"],
+      ["event-agent", "agent", "agent:node-agent", null, null, "{}", "hash-agent"],
+      ["event-parameters", "user", "operator", "database-operation", "operation-1", JSON.stringify({ nodeId: "node-parameters" }), "hash-parameters"],
+      ["event-remote", "user", "operator", "remote-task", "task-1", "{}", "hash-remote"],
+    ];
+    for (const [eventId, actorType, actorId, targetType, targetId, parameters, hash] of rows) insert.run(eventId, now, actorType, actorId, "controller", targetType, targetId, "audit.test", parameters, "success", "allowed", `${eventId}-request`, `${eventId}-trace`, "0".repeat(64), hash.padEnd(64, "0"));
+    const before = db.prepare("SELECT event_id,event_hash,parameters FROM audit_events ORDER BY sequence").all();
+    db.close();
+
+    const upgraded = openDatabase(path);
+    assert.equal(upgraded.prepare("SELECT max(version) AS version FROM schema_migrations").get().version, 9);
+    assert.deepEqual(upgraded.prepare("SELECT event_id,event_hash,parameters FROM audit_events ORDER BY sequence").all(), before);
+    assert.deepEqual(upgraded.prepare("SELECT event_id,node_id FROM audit_events ORDER BY sequence").all(), [
+      { event_id: "event-node", node_id: "node-target" },
+      { event_id: "event-agent", node_id: "node-agent" },
+      { event_id: "event-parameters", node_id: "node-parameters" },
+      { event_id: "event-remote", node_id: "node-remote" },
+    ]);
+    const plan = upgraded.prepare("EXPLAIN QUERY PLAN SELECT sequence FROM audit_events WHERE node_id IN (?) ORDER BY sequence DESC LIMIT 201").all("node-target").map((row) => row.detail).join("\n");
+    assert.match(plan, /audit_events_node_sequence_idx/);
+    assert.throws(() => upgraded.prepare("UPDATE audit_events SET node_id='changed'").run(), /append-only/);
+    assert.throws(() => upgraded.prepare("DELETE FROM audit_events").run(), /append-only/);
+    upgraded.close();
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test("future schema is rejected before migrations change the database", () => {
   const db = new Database(":memory:");
-  db.exec("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,name TEXT NOT NULL,applied_at TEXT NOT NULL); INSERT INTO schema_migrations VALUES(9,'future','2026-07-14T00:00:00.000Z'); CREATE TABLE preserved(value TEXT); INSERT INTO preserved VALUES('before')");
-  assert.throws(() => migrateDatabase(db, [{ version: 8, name: "supported", sql: "CREATE TABLE must_not_exist(id TEXT)" }]), /schema.*支持版本 8/);
+  db.exec("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,name TEXT NOT NULL,applied_at TEXT NOT NULL); INSERT INTO schema_migrations VALUES(10,'future','2026-07-14T00:00:00.000Z'); CREATE TABLE preserved(value TEXT); INSERT INTO preserved VALUES('before')");
+  assert.throws(() => migrateDatabase(db, [{ version: 9, name: "supported", sql: "CREATE TABLE must_not_exist(id TEXT)" }]), /schema.*支持版本 9/);
   assert.equal(db.prepare("SELECT value FROM preserved").get().value, "before");
   assert.equal(db.prepare("SELECT name FROM sqlite_master WHERE name='must_not_exist'").get(), undefined);
   db.close();
