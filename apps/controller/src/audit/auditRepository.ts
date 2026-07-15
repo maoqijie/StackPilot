@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { AUDIT_FAILURE_OUTCOMES } from "@stackpilot/contracts";
 import type Database from "better-sqlite3";
 import { hmac } from "../security/crypto.js";
+import type { AuditQuery } from "@stackpilot/contracts";
 
 const sensitive = /authorization|cookie|password|token|secret|private|key|environment|stdout|stderr/i;
 function redact(value: unknown): unknown {
@@ -28,5 +30,18 @@ export class AuditRepository {
     }
     return { valid: true, count: rows.length };
   }
-  list(limit = 200) { return this.database.prepare("SELECT sequence,event_id AS eventId,occurred_at AS occurredAt,actor_type AS actorType,actor_id AS actorId,source,target_type AS targetType,target_id AS targetId,action,parameters,outcome,request_id AS requestId,trace_id AS traceId FROM audit_events ORDER BY sequence DESC LIMIT ?").all(Math.min(limit, 1000)); }
+  list(options: AuditQuery = { limit: 200, result: "all" }) {
+    const clauses: string[] = [];
+    const parameters: Array<string | number> = [];
+    if (options.result === "failed") {
+      clauses.push(`lower(outcome) IN (${AUDIT_FAILURE_OUTCOMES.map(() => "?").join(",")})`);
+      parameters.push(...AUDIT_FAILURE_OUTCOMES);
+    }
+    if (options.actionPrefix) { clauses.push("action LIKE ? ESCAPE '\\'"); parameters.push(`${escapeLike(options.actionPrefix)}%`); }
+    const where = clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const sql = `SELECT sequence,event_id AS eventId,occurred_at AS occurredAt,actor_type AS actorType,actor_id AS actorId,source,target_type AS targetType,target_id AS targetId,action,parameters,outcome,authorization,request_id AS requestId,trace_id AS traceId,event_hash AS eventHash FROM audit_events${where} ORDER BY sequence DESC LIMIT ?`;
+    return this.database.prepare(sql).all(...parameters, options.limit);
+  }
 }
+
+function escapeLike(value: string) { return value.replace(/[\\%_]/g, "\\$&"); }

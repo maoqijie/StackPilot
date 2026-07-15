@@ -1,17 +1,24 @@
 import { AuditEventsResponseSchema, AuditExportCreateResponseSchema, AuditExportListResponseSchema, CreateAuditExportRequestSchema } from "@stackpilot/contracts";
-import type { AuditEvent, AuditExportRecord, CreateAuditExportRequest } from "@stackpilot/contracts";
+import type { AuditEvent, AuditEventsResponse, AuditExportRecord, AuditQuery, CreateAuditExportRequest } from "@stackpilot/contracts";
 import { getCsrfToken, requestJson, responseError } from "./client";
 
-export const fetchAuditEvents = (signal?: AbortSignal) => requestJson<unknown>("/audit", { signal })
-  .then((payload) => AuditEventsResponseSchema.parse(payload).events);
+type FetchAuditOptions = Partial<AuditQuery> & { signal?: AbortSignal };
+
+export const fetchAuditEvents = ({ signal, ...query }: FetchAuditOptions = {}) => {
+  const params = new URLSearchParams();
+  if (query.limit !== undefined) params.set("limit", String(query.limit));
+  if (query.result !== undefined) params.set("result", query.result);
+  if (query.actionPrefix !== undefined) params.set("actionPrefix", query.actionPrefix);
+  const search = params.size ? `?${params.toString()}` : "";
+  return requestJson<unknown>(`/audit${search}`, { signal })
+  .then((payload) => AuditEventsResponseSchema.parse(payload));
+};
 
 export const fetchAuditExports = (signal?: AbortSignal) => requestJson<unknown>("/audit-exports", { signal })
   .then((payload) => AuditExportListResponseSchema.parse(payload));
 
 export const createAuditExport = (input: CreateAuditExportRequest, reauthProof: string) => requestJson<unknown>("/audit-exports", {
-  method: "POST",
-  headers: { "X-Reauth-Proof": reauthProof },
-  body: JSON.stringify(CreateAuditExportRequestSchema.parse(input)),
+  method: "POST", headers: { "X-Reauth-Proof": reauthProof }, body: JSON.stringify(CreateAuditExportRequestSchema.parse(input)),
 }).then((payload) => AuditExportCreateResponseSchema.parse(payload).export);
 
 export const retryAuditExport = (id: string, reauthProof: string) => requestJson<unknown>(`/audit-exports/${encodeURIComponent(id)}/retry`, {
@@ -29,4 +36,4 @@ export async function downloadAuditExport(record: AuditExportRecord, reauthProof
   URL.revokeObjectURL(url);
 }
 
-export type { AuditEvent, AuditExportRecord };
+export type { AuditEvent, AuditEventsResponse, AuditExportRecord };

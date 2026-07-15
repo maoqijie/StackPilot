@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   API_CLIENT_PREFIX, API_ROOT_SEGMENTS, ApiErrorResponseSchema, CreateScheduleJobRequestSchema,
-  OverviewSummaryPayloadSchema, PathIdSchema, WRITE_METHODS,
+  OverviewSummaryPayloadSchema, PathIdSchema, SchedulePayloadSchema, WRITE_METHODS,
   AGENT_PROTOCOL_VERSION, AgentDatabaseSnapshotSchema, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, PhysicalHostIdSchema,
   CreateRemoteTaskRequestSchema, RemoteTaskListResponseSchema, isAgentProtocolCompatible,
   SiteRuntimePayloadSchema,
@@ -14,7 +14,7 @@ import {
   AgentDatabaseBackupPlanPollResponseSchema, AgentDatabaseOperationUpdateSchema, AgentDatabaseQueryUploadSchema, AgentDatabaseScheduledBackupResultsRequestSchema,
   BusinessDatabaseBackupsPayloadSchema, CreateBusinessDatabaseBackupPlanRequestSchema, CreateDatabaseOperationPlanRequestSchema, DatabaseOperationPlanSchema,
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, ExecuteDatabaseOperationPlanRequestSchema,
-  CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
+  AuditEventsResponseSchema, AuditQuerySchema, CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
   AuditExportListResponseSchema, CreateAuditExportRequestSchema,
   CreateDirectoryRequestSchema,
@@ -26,6 +26,23 @@ test("shared API constants preserve the existing HTTP contract", () => {
   assert.equal(API_CLIENT_PREFIX, "/api");
   assert.deepEqual(API_ROOT_SEGMENTS, ["api", "overview"]);
   assert.deepEqual(WRITE_METHODS, ["POST", "PATCH", "DELETE"]);
+});
+
+test("audit contracts bound queries and expose backend collection time", () => {
+  const collectedAt = new Date().toISOString();
+  const event = { sequence: 1, eventId: crypto.randomUUID(), occurredAt: collectedAt, actorType: "user", actorId: "operator", source: "controller", targetType: "file", targetId: "/tmp/a", action: "file.trash", parameters: '{"token":"[REDACTED]"}', outcome: "success", authorization: "allowed", requestId: crypto.randomUUID(), traceId: crypto.randomUUID(), eventHash: "a".repeat(64) };
+  assert.equal(AuditEventsResponseSchema.safeParse({ events: [event], collectedAt }).success, true);
+  assert.equal(AuditEventsResponseSchema.safeParse({ events: [event], collectedAt, clientTime: collectedAt }).success, false);
+  assert.deepEqual(AuditQuerySchema.parse({}), { limit: 200, result: "all" });
+  assert.deepEqual(AuditQuerySchema.parse({ limit: "50", result: "failed", actionPrefix: "database." }), { limit: 50, result: "failed", actionPrefix: "database." });
+  for (const query of [{ limit: 0 }, { limit: 1001 }, { actionPrefix: "database%" }, { unknown: "value" }]) assert.equal(AuditQuerySchema.safeParse(query).success, false);
+});
+
+test("schedule side effects require bounded idempotency keys", () => {
+  const request = { name: "backup", cron: "0 4 * * *", command: "true", idempotencyKey: "schedule-create-1" };
+  assert.equal(CreateScheduleJobRequestSchema.safeParse(request).success, true);
+  assert.equal(CreateScheduleJobRequestSchema.safeParse({ ...request, idempotencyKey: "short" }).success, false);
+  assert.equal(CreateScheduleJobRequestSchema.safeParse({ ...request, idempotencyKey: "invalid key" }).success, false);
 });
 
 test("firewall open-port payload stays strict and backend-owned", () => {
@@ -251,6 +268,13 @@ test("identity schemas reject privilege fields and invalid node scopes", () => {
   assert.equal(PermissionSchema.safeParse("terminal:execute").success, true);
 });
 
+test("audit query contract accepts only bounded read filters", () => {
+  assert.deepEqual(AuditQuerySchema.parse({ result: "failed", limit: "25", actionPrefix: "database." }), { result: "failed", limit: 25, actionPrefix: "database." });
+  assert.equal(AuditQuerySchema.safeParse({ result: "failed", limit: "1001" }).success, false);
+  assert.equal(AuditQuerySchema.safeParse({ result: "invented" }).success, false);
+  assert.equal(AuditQuerySchema.safeParse({ result: "failed", nodeId: crypto.randomUUID() }).success, false);
+});
+
 test("file upload contracts reject paths and inconsistent progress", () => {
   const request = { fileName: "artifact.zip", targetDirectory: "releases/2026", sizeBytes: 10, contentType: "application/zip", idempotencyKey: "upload-001" };
   assert.equal(CreateFileUploadRequestSchema.safeParse(request).success, true);
@@ -283,6 +307,8 @@ test("shared schemas validate external request and error contracts at runtime", 
   assert.equal(PathIdSchema.safeParse("node-local").success, true);
   assert.equal(PathIdSchema.safeParse("../node").success, false);
   assert.equal(CreateScheduleJobRequestSchema.safeParse({ name: "backup", cron: "0 4 * * *", command: "true", extra: true }).success, false);
+  assert.equal(SchedulePayloadSchema.safeParse({ jobs: [], scannedAt: new Date().toISOString(), writeEnabled: false }).success, true);
+  assert.equal(SchedulePayloadSchema.safeParse({ jobs: [], scannedAt: new Date().toISOString() }).success, false);
   assert.equal(ApiErrorResponseSchema.safeParse({ code: "BAD_REQUEST", error: "invalid", requestId: "request-1" }).success, true);
   assert.equal(ApiErrorResponseSchema.safeParse({ code: "REAUTHENTICATION_FAILED", error: "重新认证失败", requestId: "request-2" }).success, true);
   assert.equal(OverviewSummaryPayloadSchema.safeParse({}).success, false);

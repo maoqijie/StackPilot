@@ -2,7 +2,7 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.23 - 2026-07-15
+## 0.3.0-preview.24 - 2026-07-15
 
 ### Added
 
@@ -14,11 +14,63 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 - Added the separate high-risk `audit:export` permission and limited export creation, retry and download to full-node user sessions with CSRF and one-time reauthentication.
 - Verified the append-only audit chain before export, retained parameter redaction, exported the complete hash payload, prevented spreadsheet formula injection, bounded active exports and rejected API-token or scoped-session access.
 
+## 0.3.0-preview.23 - 2026-07-15
+
+### Changed
+
+- Unified global, failed, database and export audit views on the authenticated Controller repository, with backend collection timestamps, visibility-aware 10-second polling, stable details and confirmed CSV downloads of current real results.
+- Preserved the `0.3.0-preview.22` schedule idempotency and native cron deployment hardening while removing simulated audit export tasks and fixture fallback paths.
+
+### Security
+
+- Enforced strict shared audit event and query contracts, rejected duplicate or unknown query parameters, applied failed-result and action-prefix filters before the SQLite limit, and kept `audit:read` protection on API, navigation and direct rendering.
+- Preserved backend parameter redaction and represented non-terminal outcomes such as `queued` as recorded rather than successful.
+
+## 0.3.0-preview.22 - 2026-07-15
+
+### Fixed
+
+- Made the native Controller installer verify the distribution `cron` package contract before synchronizing units, and reapplied Controller sysusers membership during same-version unit updates.
+- Extended production preflight to reject enabled crontab writes when the executable, system group, or spool directory is unavailable, while keeping the optional capability non-blocking when disabled.
+- Restored complete registry resolution and integrity metadata in the workspace lockfile so clean release installs remain reproducible after concurrent version merges.
+
+### Security
+
+- Added user-scoped idempotency keys to schedule creation and immediate execution so a retried confirmation cannot duplicate a managed job or execute its command twice after a lost response.
+- Added bounded replay caching and payload-conflict rejection for completed schedule side effects while preserving session, CSRF, permission, and one-time reauthentication checks.
+
+## 0.3.0-preview.21 - 2026-07-15
+
+### Changed
+
+- Connected the global and failed-audit views to the authenticated Controller audit repository, with backend collection timestamps, visibility-aware 10-second polling, stable event details and real CSV export.
+- Removed the Web audit fixture fallback and centralized the audit response and bounded read-filter schemas in the shared contracts package.
+
+### Security
+
+- Preserved the explicitly global `audit:read` enforcement on the API, hid audit navigation and search actions from principals without that permission, and applied failed-result and action-prefix filters before the SQLite limit.
+
 ## 0.3.0-preview.20 - 2026-07-15
 
 ### Fixed
 
 - Classified the complete IPv4 `127.0.0.0/8` loopback range, including interface-scoped systemd-resolved listeners, as local-only instead of a specific-address binding.
+
+### Added
+
+- Added strict shared audit event/query contracts, backend collection timestamps and bounded action-prefix filtering before result limiting.
+- Added desktop and mobile real-backend E2E coverage for authenticated audit loading, silent 10-second polling, detail inspection and CSV download.
+
+### Changed
+
+- Replaced the global, failed-operation and database audit fixtures with the authenticated Controller audit API while preserving filters and stable detail state.
+- Replaced simulated export history and browser-only task mutations with a confirmed CSV download of the current real query result.
+- Hid audit navigation and direct page rendering unless the signed-in user holds `audit:read`.
+
+### Security
+
+- Audit responses remain protected by session/RBAC, disable caching, preserve server-side sensitive-parameter redaction and strictly reject invalid or repeated query parameters.
+- Non-terminal outcomes such as `queued` are shown as recorded states instead of being misrepresented as successful operations.
 
 ## 0.3.0-preview.19 - 2026-07-15
 
@@ -27,13 +79,21 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 - Added an authenticated Controller API that reports real TCP and UDP listening sockets with stable identifiers, bind scope and backend collection time.
 - Connected the firewall open-port workbench to the real API with strict shared contracts, explicit permission handling and visibility-aware 10-second polling.
 
+### Fixed
+
+- Allowed the hardened native Controller service to read and write its own crontab by granting only the operating system `crontab` supplementary group while retaining `NoNewPrivileges` and an empty capability set.
+- Restored reproducible clean installs by synchronizing the lockfile with the committed CycloneDX dependency graph.
+
 ### Changed
 
+- Exposed the server-side crontab mutation capability in the schedule read model and rendered the real schedule inventory as read-only when the dangerous write switch is disabled.
+- Applied `schedules:read` and `schedules:write` permissions to schedule navigation and mutation controls while preserving the backend authorization checks.
 - Replaced the `#firewall-open` fixture rule view with actual Controller host listeners while keeping the separate rule-management and deny-record workbenches unchanged.
-- Repaired missing optional CycloneDX dependency metadata in the lockfile so `npm ci` remains reproducible.
 
 ### Security
 
+- Required a user session and one-time reauthentication proof for every crontab mutation or immediate command execution; API tokens remain read-only for schedules.
+- Serialized schedule read-modify-write operations and switched task identifiers to UUIDs so concurrent mutations cannot overwrite or alias managed jobs.
 - Open-port collection runs through a fixed `/usr/bin/ss -H -lntu` invocation without a shell, requires `firewall:read`, and exposes no process identity or arbitrary command input.
 - The Web surface states that a listening socket does not prove upstream network reachability and does not offer unsafe UFW mutations on hosts where UFW is inactive.
 

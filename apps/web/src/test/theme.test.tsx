@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { desktopTopbarChrome } from "../app/navigation";
+import { desktopTopbarChrome, navItemsForPermissions, topbarSearchResults } from "../app/navigation";
 import { TopBar } from "../components/layout/TopBar";
 import { ThemeProvider } from "../theme/ThemeProvider";
 import { THEME_STORAGE_KEY, useTheme } from "../theme/theme";
@@ -137,4 +137,9 @@ describe("theme provider", () => {
     expect(screen.getByText("没有匹配结果")).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /部署站点/ })).not.toBeInTheDocument();
   });
+});
+
+describe("permission-aware audit navigation", () => {
+  it("hides audit navigation and quick export without audit:read", () => { expect(navItemsForPermissions([]).some((item) => item.key === "audit")).toBe(false); expect(topbarSearchResults("审计", []).some((item) => item.page === "audit" || item.page === "audit-export")).toBe(false); });
+  it("shows audit logs but not persistent exports with audit:read", () => { expect(navItemsForPermissions(["audit:read"]).some((item) => item.key === "audit")).toBe(true); expect(topbarSearchResults("审计", ["audit:read"]).some((item) => item.page === "audit-export")).toBe(false); });
 });

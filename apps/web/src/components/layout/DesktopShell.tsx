@@ -238,8 +238,8 @@ function DesktopShellContent({
             {activeModule === "systemd" && <SystemdPage page={page} notify={notify} canOperate={user.permissions.includes("services:operate")} />}
             {activeModule === "firewall" && <FirewallPage page={page} notify={notify} permissions={user.permissions} />}
             {activeModule === "deploy" && <DeployPage page={page} notify={notify} permissions={user.permissions} />}
-            {activeModule === "schedule" && <SchedulePage page={page} notify={notify} />}
-            {activeModule === "audit" && <AuditPage page={page} notify={notify} permissions={user.permissions} />}
+            {activeModule === "schedule" && <SchedulePage page={page} notify={notify} permissions={user.permissions} />}
+            {activeModule === "audit" && user.permissions.includes("audit:read") && <AuditPage page={page} notify={notify} permissions={user.permissions} />}
             {activeModule === "acl" && <AclPage page={page} setPage={setPage} notify={notify} />}
             {activeModule === "settings" && (
               page === "settings-proxy"
