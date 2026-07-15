@@ -8,6 +8,7 @@ import type { AgentControlRepository, AuditEvent } from "../../repositories/agen
 import { ServiceError } from "../serviceError.js";
 
 const terminal: readonly RemoteTaskStatus[] = ["succeeded", "failed", "cancelled", "expired"];
+const irreversibleTypes: ReadonlySet<CreateRemoteTaskRequest["type"]> = new Set(["sites.certificates.renew", "sites.rollback"]);
 const transitions: Record<RemoteTaskStatus, readonly RemoteTaskStatus[]> = {
   queued: ["dispatched", "cancelled", "expired"], dispatched: ["running", "queued", "succeeded", "failed", "cancelled", "expired"],
   running: ["succeeded", "failed", "cancelled", "expired"], succeeded: [], failed: ["queued"], cancelled: [], expired: [],
@@ -17,12 +18,13 @@ const requiredCapability: Record<CreateRemoteTaskRequest["type"], AgentCapabilit
   "service.status.read": "service.status.read",
   "sites.plan.prepare": "sites.deploy",
   "sites.plan.activate": "sites.deploy",
+  "sites.rollback": "sites.deploy",
   "sites.lifecycle.update": "sites.lifecycle.manage",
   "sites.logs.read": "sites.logs.read",
   "terminal.command.execute": "terminal.command.execute",
   "sites.certificates.renew": "sites.certificates.renew",
 };
-const singleAttemptTypes: ReadonlySet<CreateRemoteTaskRequest["type"]> = new Set(["terminal.command.execute", "sites.plan.prepare", "sites.plan.activate", "sites.lifecycle.update", "sites.logs.read", "sites.certificates.renew"]);
+const singleAttemptTypes: ReadonlySet<CreateRemoteTaskRequest["type"]> = new Set(["terminal.command.execute", "sites.plan.prepare", "sites.plan.activate", "sites.rollback", "sites.lifecycle.update", "sites.logs.read", "sites.certificates.renew"]);
 const audit = (event: Omit<AuditEvent, "eventId" | "timestamp">): AuditEvent => ({ eventId: randomUUID(), timestamp: new Date().toISOString(), ...event });
 const sensitiveResultKey = /authorization|cookie|token|secret|password|private|environment|stdout|stderr/i;
 function containsSensitiveKey(value: unknown): boolean {
@@ -34,13 +36,27 @@ const taskResultSummary = (task: RemoteTaskRecord, message?: string) => task.typ
 
 function sameTaskOperation(task: RemoteTaskRecord, input: CreateRemoteTaskRequest, requester: string) {
   return task.requester === requester && task.type === input.type
-    && isDeepStrictEqual(task.parameters, input.parameters);
+    && isDeepStrictEqual(parametersForIdentity(task.type, task.parameters), parametersForIdentity(input.type, input.parameters))
+    && Math.round((Date.parse(task.expiresAt) - Date.parse(task.createdAt)) / 1_000) === input.expiresInSeconds;
+}
+
+function parametersForIdentity(type: CreateRemoteTaskRequest["type"], parameters: Record<string, unknown>) {
+  if (type !== "sites.plan.prepare") return parameters;
+  const identity = { ...parameters };
+  delete identity.runtimeInstallAuthorized;
+  return identity;
+}
+
+function parametersForNode(type: CreateRemoteTaskRequest["type"], parameters: Record<string, unknown>, node: { allowedCapabilities: AgentCapability[]; declaredCapabilities: AgentCapability[] }) {
+  if (type !== "sites.plan.prepare") return parameters;
+  const runtimeInstallAuthorized = node.allowedCapabilities.includes("runtime.install") && node.declaredCapabilities.includes("runtime.install");
+  return { ...parameters, runtimeInstallAuthorized };
 }
 
 function expireTask(task: RemoteTaskRecord, now: string): RemoteTaskStatus | null {
   if (terminal.includes(task.status) || Date.parse(task.expiresAt) > Date.parse(now)) return null;
   const previous = task.status;
-  if (task.type === "sites.certificates.renew" && task.attempt > 0) {
+  if (irreversibleTypes.has(task.type) && task.attempt > 0) {
     task.status = "failed"; task.errorCode = "RESULT_UNKNOWN";
     task.result = { message: "Certificate renewal result is unknown after task expiry; it will not be replayed", truncated: false };
   } else { task.status = "expired"; task.errorCode = "TASK_EXPIRED"; }
@@ -78,9 +94,10 @@ export class RemoteTaskService {
       if (!node || node.revokedAt) throw new ServiceError(404, "NOT_FOUND", "目标节点不存在或已撤销");
       const capability = requiredCapability[input.type];
       if (!node.allowedCapabilities.includes(capability) || !node.declaredCapabilities.includes(capability)) throw new ServiceError(403, "FORBIDDEN", "Controller 未授权节点执行该能力或 Agent 未声明该能力");
+      const effectiveInput = { ...input, parameters: parametersForNode(input.type, input.parameters, node) } as CreateRemoteTaskRequest;
       const duplicate = state.tasks.find((item) => item.targetNodeId === nodeId && item.idempotencyKey === input.idempotencyKey);
       if (duplicate) {
-        if (!sameTaskOperation(duplicate, input, requester)) throw new ServiceError(409, "BAD_REQUEST", "幂等键已用于其他远程任务");
+        if (!sameTaskOperation(duplicate, effectiveInput, requester)) throw new ServiceError(409, "BAD_REQUEST", "幂等键已用于其他远程任务");
       }
       if (!duplicate && state.tasks.filter((item) => item.targetNodeId === nodeId && !terminal.includes(item.status)).length >= this.queueLimit) throw new ServiceError(409, "BAD_REQUEST", "节点任务队列已满");
       authorize();
@@ -88,7 +105,7 @@ export class RemoteTaskService {
       const now = new Date().toISOString();
       created = RemoteTaskRecordSchema.parse({
         protocolVersion: AGENT_PROTOCOL_VERSION, taskId: randomUUID(), type: input.type, targetNodeId: nodeId,
-        parameters: input.parameters, createdAt: now, expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
+        parameters: effectiveInput.parameters, createdAt: now, expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
         idempotencyKey: input.idempotencyKey, requester, traceId, requiredCapability: capability, attempt: 0,
         maxAttempts: singleAttemptTypes.has(input.type) ? 1 : 3,
         status: "queued", updatedAt: now, result: null, errorCode: null,
@@ -125,6 +142,7 @@ export class RemoteTaskService {
         if (dispatched.length >= 10) break;
         if (task.type === "sites.certificates.renew" && renewalActive) continue;
         if (!node.allowedCapabilities.includes(task.requiredCapability) || !node.declaredCapabilities.includes(task.requiredCapability)) { task.status = "cancelled"; task.errorCode = "CAPABILITY_REVOKED"; continue; }
+        task.parameters = parametersForNode(task.type, task.parameters, node);
         transitionTask(task, "dispatched"); task.attempt += 1; dispatched.push(structuredClone(task));
         if (task.type === "sites.certificates.renew") renewalActive = true;
         state.audits.push(audit({ requester: `agent:${nodeId}`, nodeId, taskId: task.taskId, event: "task.dispatched", taskType: task.type, parameters: null, fromStatus: "queued", toStatus: "dispatched", resultSummary: null, traceId }));
@@ -163,13 +181,13 @@ export class RemoteTaskService {
       if (task.status === input.status) { updated = task; return; }
       const previous = task.status; transitionTask(task, input.status, input.timestamp);
       task.result = input.result ?? null; task.errorCode = input.errorCode ?? null; task.nextAttemptAt = null;
-      const unknownRenewal = task.type === "sites.certificates.renew" && task.attempt > 0
+      const unknownIrreversible = irreversibleTypes.has(task.type) && task.attempt > 0
         && (input.status === "cancelled" || (input.status === "failed"
           && ["AGENT_RESTARTED_DURING_TASK", "TASK_CANCELLED_OR_TIMEOUT", "CERT_HELPER_TIMEOUT", "CERT_HELPER_CANCELLED", "RESULT_UNKNOWN"].includes(input.errorCode ?? "")));
-      if (unknownRenewal) {
+      if (unknownIrreversible) {
         task.status = "failed";
         task.errorCode = "RESULT_UNKNOWN";
-        task.result = { message: "Certificate renewal result is unknown; it will not be replayed", truncated: false };
+        task.result = { message: "Irreversible task result is unknown; it will not be replayed", truncated: false };
       }
       if (input.status === "failed" && task.retryable && task.attempt < task.maxAttempts && Date.parse(task.expiresAt) > Date.now()) {
         transitionTask(task, "queued"); task.nextAttemptAt = new Date(Date.now() + 1000 * (2 ** Math.max(task.attempt - 1, 0))).toISOString();
@@ -187,8 +205,8 @@ export class RemoteTaskService {
       const task = state.tasks.find((item) => item.taskId === taskId);
       if (!task) throw new ServiceError(404, "NOT_FOUND", "任务不存在");
       if (terminal.includes(task.status)) { updated = task; return; }
-      if (task.type === "sites.certificates.renew" && (task.status === "dispatched" || task.status === "running" || task.attempt > 0)) {
-        throw new ServiceError(409, "BAD_REQUEST", "证书续期开始执行后不能取消；结果未知时不会自动重放");
+      if (irreversibleTypes.has(task.type) && (task.status === "dispatched" || task.status === "running" || task.attempt > 0)) {
+        throw new ServiceError(409, "BAD_REQUEST", "不可逆任务开始执行后不能取消；结果未知时不会自动重放");
       }
       const previous = task.status; transitionTask(task, "cancelled"); task.errorCode = "CANCELLED_BY_REQUESTER";
       state.audits.push(audit({ requester, nodeId: task.targetNodeId, taskId, event: "task.cancelled", taskType: task.type, parameters: { reason }, fromStatus: previous, toStatus: "cancelled", resultSummary: null, traceId }));

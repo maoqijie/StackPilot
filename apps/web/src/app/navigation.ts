@@ -140,7 +140,7 @@ const navItems: NavItem[] = [
     children: [
       { id: "deploy-prod", label: "生产发布", meta: "发布队列" },
       { id: "deploy-staging", label: "预发环境", meta: "预发布" },
-      { id: "deploy-rollbacks", label: "回滚记录", meta: "近 30 天" },
+      { id: "deploy-rollbacks", label: "版本记录", meta: "发布历史" },
     ],
   },
   {
@@ -232,8 +232,9 @@ function desktopTopbarChrome(page: PageKey): TopbarChrome {
 function navItemsForPermissions(permissions: readonly Permission[]) {
   return navItems.reduce<NavItem[]>((visible, item) => {
     if (item.key === "files" && !permissions.includes("files:read")) return visible;
+    if (item.key === "systemd" && !permissions.includes("systemd:read")) return visible;
     if (item.key === "databases" && !permissions.includes("databases:read")) return visible;
-    if (item.key === "systemd" && !permissions.includes("services:read")) return visible;
+    if (item.key === "deploy" && !permissions.includes("sites:read")) return visible;
     if (item.key === "sites") {
       return [...visible, { ...item, children: item.children.filter((child) => child.id !== "sites-create" || permissions.includes("sites:deploy")) }];
     }

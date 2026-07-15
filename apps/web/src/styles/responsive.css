@@ -247,6 +247,63 @@
   .host-detail-section .resource-bars > p { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .auth-screen { padding: 14px; }
   .auth-form { padding: 24px 20px; border-radius: var(--radius-lg); }
-  .schedule-job-modal,
-  .delete-confirm { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); border-radius: var(--radius-lg); }
+  .schedule-job-modal {
+    inset: 8px;
+    width: auto;
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+    border-radius: var(--radius-lg);
+    transform: none;
+  }
+  .schedule-job-modal .drawer-head { padding: 12px 16px; }
+  .schedule-job-modal .drawer-body { padding: 16px; }
+  .schedule-job-modal .drawer-actions { padding: 12px 16px 16px; }
+  .schedule-job-modal .drawer-actions > button,
+  .schedule-delete-dialog > footer > button { flex: 1 1 0; }
+  .schedule-job-drawer {
+    inset: 8px;
+    width: auto;
+    height: calc(100dvh - 16px);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .schedule-job-drawer .drawer-head,
+  .schedule-job-drawer .drawer-body,
+  .schedule-job-drawer .drawer-actions { padding-inline: 16px; }
+  .module-page-schedule-calendar .schedule-calendar {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-x: visible;
+  }
+  .module-page-schedule-calendar .schedule-calendar > article,
+  .module-page-schedule-calendar .schedule-calendar > .module-empty-card { grid-column: 1; }
+  .schedule-form-section-head { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .schedule-form-section-head em { text-align: left; }
+  .schedule-modal-source { grid-template-columns: 20px minmax(0, 1fr); }
+  .schedule-modal-source > b { grid-column: 2; justify-self: start; }
+  .module-page-schedule .module-metrics,
+  .module-page-schedule-enabled .module-metrics,
+  .module-page-schedule-failed .module-metrics,
+  .module-page-schedule-calendar .module-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .module-page-schedule .table-actions,
+  .module-page-schedule-enabled .table-actions,
+  .module-page-schedule-failed .table-actions,
+  .module-page-schedule-calendar .table-actions { width: 100%; }
+  .module-page-schedule .table-actions > button,
+  .module-page-schedule-enabled .table-actions > button,
+  .module-page-schedule-failed .table-actions > button,
+  .module-page-schedule-calendar .table-actions > button { flex: 1 1 0; }
+  .module-page-schedule .module-row-link b,
+  .module-page-schedule-enabled .module-row-link b,
+  .module-page-schedule-failed .module-row-link b,
+  .module-page-schedule-calendar .module-row-link b { white-space: normal; overflow-wrap: anywhere; }
+  .schedule-load-error { grid-template-columns: 20px minmax(0, 1fr); }
+  .schedule-load-error .ghost { grid-column: 2; justify-self: start; }
+  .schedule-source-note { padding-top: 8px; }
+}
+
+@media (max-width: 480px) {
+  .module-page-schedule .module-metrics,
+  .module-page-schedule-enabled .module-metrics,
+  .module-page-schedule-failed .module-metrics,
+  .module-page-schedule-calendar .module-metrics { grid-template-columns: minmax(0, 1fr); }
 }

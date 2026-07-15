@@ -9,6 +9,7 @@ import {
   ExecuteTerminalSnippetRequestSchema, TerminalSnippetListResponseSchema,
   AgentSiteSnapshotSchema, CertificateRenewalTaskParametersSchema, CreateCertificateRenewalRequestSchema,
   CreateSitePlanRequestSchema, SiteDeploymentManifestSchema, SiteAccessLogRecordSchema,
+  CreateSiteRollbackRequestSchema, SiteRollbackPayloadSchema, SiteRollbackTaskParametersSchema, SiteRollbackTaskResultSchema, SitePlanSchema,
   CreateFileUploadRequestSchema, ResumableFileUploadRecordSchema,
   AgentDatabaseBackupPlanPollResponseSchema, AgentDatabaseOperationUpdateSchema, AgentDatabaseQueryUploadSchema, AgentDatabaseScheduledBackupResultsRequestSchema,
   BusinessDatabaseBackupsPayloadSchema, CreateBusinessDatabaseBackupPlanRequestSchema, CreateDatabaseOperationPlanRequestSchema, DatabaseOperationPlanSchema,
@@ -134,7 +135,9 @@ test("site management contracts accept declarative public deployments and reject
     repositoryRef: "main", certificateEmail: "operator@example.com",
     environmentVariables: [{ name: "API_MODE", value: "production" }], idempotencyKey: "site-plan-001",
   };
-  assert.equal(CreateSitePlanRequestSchema.safeParse(request).success, true);
+  assert.equal(CreateSitePlanRequestSchema.parse(request).deploymentEnvironment, "production");
+  assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, deploymentEnvironment: "staging" }).success, true);
+  assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, deploymentEnvironment: "development" }).success, false);
   assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, repositoryUrl: "ssh://github.com/example/project.git" }).success, false);
   assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, repositoryUrl: "https://user:secret@github.com/example/project.git" }).success, false);
   assert.equal(CreateSitePlanRequestSchema.safeParse({ ...request, repositoryUrl: "https://192.0.2.10/example/project.git" }).success, false);
@@ -148,6 +151,42 @@ test("site management contracts accept declarative public deployments and reject
   assert.equal(SiteAccessLogRecordSchema.safeParse(log).success, true);
   assert.equal(SiteAccessLogRecordSchema.safeParse({ ...log, path: "/callback?token=secret" }).success, false);
   assert.equal(SiteAccessLogRecordSchema.safeParse({ ...log, authorization: "secret" }).success, false);
+});
+
+test("site rollback contracts are strict and preserve backend-owned records", () => {
+  const request = { targetReleaseId: "release_target_001", expectedSiteVersion: 3, reason: "Restore stable release", idempotencyKey: "rollback-request-001" };
+  assert.equal(CreateSiteRollbackRequestSchema.safeParse(request).success, true);
+  assert.equal(CreateSiteRollbackRequestSchema.safeParse({ ...request, command: "ln -s release" }).success, false);
+  const operationId = crypto.randomUUID(); const siteId = "site-rollback-001";
+  assert.equal(SiteRollbackTaskParametersSchema.safeParse({ operationId, siteId, targetPlanId: crypto.randomUUID(), targetReleaseId: request.targetReleaseId, expectedVersion: 3 }).success, true);
+  assert.equal(SiteRollbackTaskResultSchema.safeParse({ operationId, siteId, releaseId: request.targetReleaseId, version: 4 }).success, true);
+  const now = new Date().toISOString();
+  const record = { id: "release_target_001", siteId, nodeId: "node-local", domain: "app.example.com", currentReleaseId: "release_current_001", targetReleaseId: request.targetReleaseId, targetPlanId: crypto.randomUUID(), repositoryRef: "main", status: "available", requestedBy: null, reason: null, createdAt: now, updatedAt: now, progressPercent: 0, errorCode: null, siteVersion: 3 };
+  assert.equal(SiteRollbackPayloadSchema.safeParse({ collectedAt: now, rollbacks: [record] }).success, true);
+  assert.equal(SiteRollbackPayloadSchema.safeParse({ collectedAt: now, rollbacks: [{ ...record, logs: ["invented"] }] }).success, false);
+});
+
+test("site plans require an explicit persisted deployment environment", () => {
+  const createdAt = "2026-07-15T00:00:00.000Z";
+  const plan = {
+    planId: "11111111-1111-4111-8111-111111111111", nodeId: "node-contract-01",
+    domains: ["app.example.com"], repositoryUrl: "https://github.com/example/project.git", repositoryRef: "main",
+    certificateEnvironment: "production", environmentVariableNames: [], operator: null, status: "queued",
+    digest: "a".repeat(64), version: 1, preview: null, operationId: "22222222-2222-4222-8222-222222222222",
+    createdAt, updatedAt: createdAt, expiresAt: "2026-07-15T00:30:00.000Z",
+  };
+  assert.equal(SitePlanSchema.safeParse(plan).success, false);
+  assert.equal(SitePlanSchema.safeParse({ ...plan, deploymentEnvironment: "staging" }).success, true);
+});
+
+test("deployment workbench contract keeps backend freshness and stable identities", async () => {
+  const { DeploymentPayloadSchema } = await import("@stackpilot/contracts");
+  const collectedAt = new Date().toISOString();
+  const deployment = { id: crypto.randomUUID(), planId: crypto.randomUUID(), operationId: crypto.randomUUID(), nodeId: "node-production-01", siteId: "site-production-01", domains: ["app.example.com"], repositoryUrl: "https://github.com/example/project.git", repositoryRef: "main", environment: "production", certificateEnvironment: "production", runtime: "node22", healthCheckPath: "/healthz", status: "succeeded", stage: "complete", progressPercent: 100, errorCode: null, releaseId: "release-example-01", operator: "Operator", createdAt: collectedAt, updatedAt: collectedAt };
+  const release = { releaseId: "release-example-01", siteId: "site-production-01", planId: deployment.planId, nodeId: deployment.nodeId, domains: deployment.domains, repositoryRef: "main", environment: "production", status: "active", createdAt: collectedAt, activatedAt: collectedAt };
+  assert.equal(DeploymentPayloadSchema.safeParse({ collectedAt, deployments: [deployment], releases: [release] }).success, true);
+  assert.equal(DeploymentPayloadSchema.safeParse({ collectedAt, deployments: [deployment, deployment], releases: [] }).success, false);
+  assert.equal(DeploymentPayloadSchema.safeParse({ collectedAt, clientCollectedAt: collectedAt, deployments: [], releases: [] }).success, false);
 });
 
 test("database slow-query contract preserves nullable historical statistics", () => {

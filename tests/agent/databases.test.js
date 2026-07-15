@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import test from "node:test";
-import { boundQueryUpload, DatabaseAgentRuntime } from "../../apps/agent/dist/databases/runtime.js";
+import { boundQueryUpload, DatabaseAgentRuntime, sleepWithAbort } from "../../apps/agent/dist/databases/runtime.js";
 import { MemoryDatabaseOperationOutbox } from "../../apps/agent/dist/databases/operationOutbox.js";
 import { DatabaseSnapshotCache, SystemdDatabaseCollector, parseSystemdDatabaseUnits } from "../../packages/host-telemetry/dist/index.js";
 
 const identity = { nodeId: "11111111-1111-4111-8111-111111111111", credentialId: "22222222-2222-4222-8222-222222222222", privateKey: "unused", publicKey: "unused", protocolVersion: "1.1", createdAt: new Date().toISOString() };
 const collection = { snapshot: { collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], instances: [] }, queryUpload: { collectedAt: new Date().toISOString(), collectionStatus: "complete", warnings: [], sessions: [], queries: [] } };
+
+test("database runtime sleep removes abort listeners after timers settle", async () => {
+  const controller = new AbortController();
+  for (let index = 0; index < 12; index += 1) await sleepWithAbort(0, controller.signal);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  await sleepWithAbort(10_000, AbortSignal.abort());
+});
 
 test("database collection is single-flight and uploads snapshot and SQL separately", async () => {
   const paths = []; let resolveHelper; let calls = 0;

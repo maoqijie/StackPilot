@@ -1,6 +1,6 @@
 import {
   SiteLifecycleTaskParametersSchema, SiteLogQueryTaskParametersSchema, SitePlanActivateTaskParametersSchema,
-  SitePlanPrepareTaskParametersSchema, type RemoteTaskResultSummary,
+  SitePlanPrepareTaskParametersSchema, SiteRollbackTaskParametersSchema, type RemoteTaskResultSummary,
 } from "@stackpilot/contracts";
 import { requestCertHelper } from "../../sites/helperClient.js";
 
@@ -10,14 +10,19 @@ async function execute(request: Parameters<typeof requestCertHelper>[0], signal:
   return { message: `Site ${expectedOperation} operation completed`, data: response.data, truncated: false };
 }
 
-export async function sitePlanPrepareHandler(parameters: unknown, signal: AbortSignal, nodeId: string, socketPath?: string) {
+export async function sitePlanPrepareHandler(parameters: unknown, signal: AbortSignal, nodeId: string, runtimeInstallAvailable: boolean, socketPath?: string) {
   const input = SitePlanPrepareTaskParametersSchema.parse(parameters);
-  return execute({ operation: "prepare", requestId: input.operationId, planId: input.planId, nodeId, domains: input.domains, repositoryUrl: input.repositoryUrl, repositoryRef: input.repositoryRef, certificateEmail: input.certificateContact, certificateEnvironment: input.certificateEnvironment, environmentVariables: input.environmentVariables, expectedPlanDigest: input.expectedPlanDigest }, signal, "prepare", socketPath);
+  return execute({ operation: "prepare", requestId: input.operationId, planId: input.planId, nodeId, domains: input.domains, repositoryUrl: input.repositoryUrl, repositoryRef: input.repositoryRef, certificateEmail: input.certificateContact, certificateEnvironment: input.certificateEnvironment, environmentVariables: input.environmentVariables, expectedPlanDigest: input.expectedPlanDigest, runtimeInstallAuthorized: input.runtimeInstallAuthorized && runtimeInstallAvailable }, signal, "prepare", socketPath);
 }
 
 export async function sitePlanActivateHandler(parameters: unknown, signal: AbortSignal, _nodeId?: string, socketPath?: string) {
   const input = SitePlanActivateTaskParametersSchema.parse(parameters);
   return execute({ operation: "activate", requestId: input.operationId, planId: input.planId, stagingId: input.stagingId, expectedPlanDigest: input.expectedPlanDigest }, signal, "activate", socketPath);
+}
+
+export async function siteRollbackHandler(parameters: unknown, signal: AbortSignal, _nodeId?: string, socketPath?: string) {
+  const input = SiteRollbackTaskParametersSchema.parse(parameters);
+  return execute({ operation: "rollback", requestId: input.operationId, siteId: input.siteId, targetPlanId: input.targetPlanId, targetReleaseId: input.targetReleaseId, expectedVersion: input.expectedVersion }, signal, "rollback", socketPath);
 }
 
 export async function siteLifecycleHandler(parameters: unknown, signal: AbortSignal, _nodeId?: string, socketPath?: string) {

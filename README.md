@@ -2,13 +2,13 @@
 
 StackPilot 是开源自托管多服务器总控台。当前仓库采用 npm workspaces，包含前端控制台、Node.js Controller API、非 root Agent、root-only 数据库 helper 和共享运行时契约。
 
-> **项目成熟度：预览版。** 当前版本为 `0.3.0-preview.4`，提供可重复的部署、迁移、回滚和发布验证流程，但尚未达到稳定生产发布条件，也不提供 SLA。正式支持范围和已验证边界见[兼容性矩阵](docs/compatibility.md)。
+> **项目成熟度：预览版。** 当前版本为 `0.3.0-preview.17`，提供可重复的部署、迁移、回滚和发布验证流程，但尚未达到稳定生产发布条件，也不提供 SLA。正式支持范围和已验证边界见[兼容性矩阵](docs/compatibility.md)。
 
 ## 当前前端范围
 
 - 总览：服务器健康摘要、服务器列表、待处理事项、最近审计。
 - 服务器：Agent 安装命令、节点状态、资源占用、常用操作入口。
-- 服务：systemd 服务列表、端口、健康状态、日志入口和 start/restart/stop 操作入口。
+- 服务：Agent 只读采集的 systemd 服务状态、资源指标和脱敏 journal 摘要。
 - 防火墙：ufw 规则查看、新增表单、表单校验、高风险标识和启停/删除入口。
 - 发布：GitHub/GitLab 项目发布列表、阶段进度、失败原因、日志、重试和回滚入口。
 - 审计日志：关键操作筛选、来源信息和详情追踪。
@@ -153,7 +153,7 @@ npm run dev:agent
 
 第二个 Agent 必须创建另一个 enrollment，并使用不同状态目录。所有 Agent 请求由节点私钥签名，覆盖请求方法、路径、时间、nonce 和 body digest；Controller 持久化 nonce 以拒绝重放。用户会话和 API Token 不能代替 Agent 身份，来源 IP 也不参与认证。
 
-主机页面使用 `/api/hosts` 每 10 秒静默读取 Controller 本机和授权范围内的 Agent 遥测。Agent 每 15 秒上报主机遥测，并每 60 秒通过本机 helper 互斥采集数据库快照和有界查询数据；数据库页面的 10 秒轮询只读取 Controller 已保存的快照。升级顺序固定为 Controller/Web、database-helper、Agent。
+主机页面使用 `/api/hosts` 每 10 秒静默读取 Controller 本机和授权范围内的 Agent 遥测。systemd 页面以同样节奏读取 Controller 保存的有界 Agent 快照；Agent 只执行固定 `systemctl` / `journalctl` 参数，上传前脱敏常见凭据，并限制服务、日志条目和消息长度。Agent 每 15 秒上报主机遥测，并每 60 秒通过本机 helper 互斥采集数据库快照和有界查询数据；数据库页面的 10 秒轮询只读取 Controller 已保存的快照。升级顺序固定为 Controller/Web、database-helper、Agent。
 
 需要轮换单个 Agent身份时，在该 Agent下一次启动前设置 `STACKPILOT_AGENT_ROTATE_CREDENTIAL=1`。Agent会先安全保存 pending 私钥，再用当前身份执行带 rotation ID 的幂等轮换；响应丢失时可继续同一轮换，成功后旧凭据立即撤销。管理员撤销节点后，旧身份和轮换恢复路径都会被拒绝。
 
@@ -206,7 +206,7 @@ npm run build
 npm run test:e2e
 npm audit --audit-level=high
 npm run release:build
-npm run release:verify -- output/release/0.3.0-preview.4/SHA256SUMS
+npm run release:verify -- output/release/0.3.0-preview.17/SHA256SUMS
 npm run release:scan
 ```
 
@@ -238,13 +238,13 @@ npm run test --workspace @stackpilot/agent
 
 ## 生产部署与发布
 
-正式支持的 Controller/Web 运行时为 Debian 12 或 Ubuntu 24.04 x86_64、Node.js 22.x 和 SQLite schema 7。Docker Compose 默认仅公开 HTTPS 443；Controller 8787 位于内部网络，Agent 9443 默认只绑定回环地址。原生 systemd 方案为 Controller、Agent、站点 helper 和 database-helper 建立独立权限边界，并通过 systemd credential 注入主密钥和 TLS 私钥。Agent/helper 的其他发行版能力只有通过固定镜像集成测试后才列入兼容性矩阵。
+正式支持的 Controller/Web 运行时为 Debian 12 或 Ubuntu 24.04 x86_64、Node.js 22.x 和 SQLite schema 8。Docker Compose 默认仅公开 HTTPS 443；Controller 8787 位于内部网络，Agent 9443 默认只绑定回环地址。原生 systemd 方案为 Controller、Agent、站点 helper 和 database-helper 建立独立权限边界，并通过 systemd credential 注入主密钥和 TLS 私钥。Agent/helper 的其他发行版能力只有通过固定镜像集成测试后才列入兼容性矩阵。
 
 - [Docker Compose 安装](docs/installation/docker-compose.md)
 - [systemd 安装](docs/installation/systemd.md)
 - [反向代理与安全加固](docs/security-hardening.md)
 - [Agent 证书生命周期](docs/operations/agent-certificates.md)
-- [升级说明](docs/upgrades/0.3.0-preview.1.md)
+- [升级说明](docs/upgrades/0.3.0-preview.15.md)
 - [备份与恢复](docs/backup-restore/README.md)
 - [生产排障](docs/troubleshooting/production.md)
 

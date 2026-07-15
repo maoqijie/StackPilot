@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { AGENT_PROTOCOL_VERSION } from "@stackpilot/contracts";
+import { AGENT_PROTOCOL_VERSION, ServiceStatusTaskParametersSchema } from "@stackpilot/contracts";
 import { TaskExecutor } from "../../apps/agent/dist/tasks/executor.js";
 import { taskRegistry } from "../../apps/agent/dist/tasks/registry.js";
 import { activeAgentCapabilities } from "../../apps/agent/dist/capabilities/index.js";
@@ -12,14 +12,20 @@ import { terminalCommandHandler, terminalCommandInvocation, terminalCommandsAvai
 const nodeId = "11111111-1111-4111-8111-111111111111";
 const task = (overrides = {}) => ({ protocolVersion: AGENT_PROTOCOL_VERSION, taskId: "22222222-2222-4222-8222-222222222222", type: "system.summary.read", targetNodeId: nodeId, parameters: { includeLoad: false }, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), idempotencyKey: "summary-once-123", requester: "test", traceId: "33333333-3333-4333-8333-333333333333", requiredCapability: "system.summary.read", attempt: 1, maxAttempts: 3, ...overrides });
 
+test("service status tasks reject systemctl option injection", () => {
+  assert.equal(ServiceStatusTaskParametersSchema.safeParse({ serviceName: "nginx.service" }).success, true);
+  for (const serviceName of ["-Hroot@example.com", "--host=example.com", "-Mcontainer"]) assert.equal(ServiceStatusTaskParametersSchema.safeParse({ serviceName }).success, false);
+});
+
 test("task registry exposes only structured handlers and keeps side effects non-retryable", () => {
-  assert.deepEqual(Object.keys(taskRegistry).sort(), ["service.status.read", "sites.certificates.renew", "sites.lifecycle.update", "sites.logs.read", "sites.plan.activate", "sites.plan.prepare", "system.summary.read", "terminal.command.execute"]);
+  assert.deepEqual(Object.keys(taskRegistry).sort(), ["service.status.read", "sites.certificates.renew", "sites.lifecycle.update", "sites.logs.read", "sites.plan.activate", "sites.plan.prepare", "sites.rollback", "system.summary.read", "terminal.command.execute"]);
   assert.ok(Object.values(taskRegistry).every((definition) => definition.maxOutputBytes <= 16_384));
   assert.ok(Object.keys(taskRegistry).every((name) => !/shell/i.test(name)));
   assert.equal(taskRegistry["system.summary.read"].timeoutMs, 6_000);
   assert.equal(taskRegistry["terminal.command.execute"].timeoutMs, 10_000); assert.equal(taskRegistry["terminal.command.execute"].maxOutputBytes, 1_024); assert.equal(taskRegistry["terminal.command.execute"].retryable, false); assert.equal(taskRegistry["terminal.command.execute"].cancellable, true); assert.deepEqual(taskRegistry["terminal.command.execute"].platforms, ["linux"]);
   assert.equal(taskRegistry["sites.certificates.renew"].retryable, false); assert.equal(taskRegistry["sites.certificates.renew"].cancellable, false); assert.deepEqual(taskRegistry["sites.certificates.renew"].platforms, ["linux"]); assert.equal(taskRegistry["sites.certificates.renew"].timeoutMs, 600_000);
   assert.equal(taskRegistry["sites.plan.prepare"].capability, "sites.deploy"); assert.equal(taskRegistry["sites.plan.prepare"].retryable, false);
+  assert.equal(taskRegistry["sites.rollback"].capability, "sites.deploy"); assert.equal(taskRegistry["sites.rollback"].retryable, false); assert.equal(taskRegistry["sites.rollback"].cancellable, false);
   assert.equal(taskRegistry["sites.lifecycle.update"].capability, "sites.lifecycle.manage"); assert.equal(taskRegistry["sites.lifecycle.update"].retryable, false);
   assert.equal(taskRegistry["sites.logs.read"].capability, "sites.logs.read"); assert.equal(taskRegistry["sites.logs.read"].retryable, false);
 });
@@ -65,6 +71,22 @@ test("executor validates target, expiry, capability and unknown types", async ()
     await assert.rejects(() => executor.execute(task({ expiresAt: new Date(Date.now() - 1).toISOString() })), /TASK_EXPIRED/);
     await assert.rejects(() => executor.execute(task({ requiredCapability: "service.status.read" })), /CAPABILITY_DENIED/);
     await assert.rejects(() => executor.execute(task({ type: "run-shell" })), (error) => error.name === "ZodError");
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("site prepare passes the Agent's current runtime capability to its handler", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "stackpilot-agent-test-")); const observed = [];
+  const registry = { ...taskRegistry, "sites.plan.prepare": { ...taskRegistry["sites.plan.prepare"], run: async (parameters, _signal, _nodeId, capabilities) => {
+    observed.push({ parameters, capabilities }); return { message: "prepared", truncated: false };
+  } } };
+  const parameters = { operationId: "77777777-7777-4777-8777-777777777777", planId: "88888888-8888-4888-8888-888888888888", domains: ["app.example.com"], repositoryUrl: "https://github.com/example/site.git", repositoryRef: "main", certificateContact: "ops@example.com", certificateEnvironment: "staging", environmentVariables: [], expectedPlanDigest: "a".repeat(64), runtimeInstallAuthorized: true };
+  const prepare = task({ taskId: "99999999-9999-4999-8999-999999999999", type: "sites.plan.prepare", parameters, requiredCapability: "sites.deploy", idempotencyKey: "prepare-runtime-denied" });
+  try {
+    const denied = new TaskExecutor(join(directory, "denied.json"), nodeId, "linux", ["sites.deploy"], registry); await denied.load(); await denied.execute(prepare);
+    assert.equal(observed[0].parameters.runtimeInstallAuthorized, true); assert.deepEqual(observed[0].capabilities, ["sites.deploy"]);
+    const allowed = new TaskExecutor(join(directory, "allowed.json"), nodeId, "linux", ["sites.deploy", "runtime.install"], registry); await allowed.load();
+    await allowed.execute({ ...prepare, taskId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", idempotencyKey: "prepare-runtime-allowed" });
+    assert.deepEqual(observed[1].capabilities, ["sites.deploy", "runtime.install"]);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 

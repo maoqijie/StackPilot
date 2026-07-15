@@ -56,7 +56,7 @@
 }
 
 .module-page-deploy-rollbacks .module-table {
-  min-width: 980px;
+  min-width: 1138px;
 }
 
 .module-page-deploy-rollbacks .module-table th,
@@ -76,21 +76,42 @@
   background: var(--surface-hover);
 }
 
-.module-page-deploy-rollbacks .module-table td[data-label="原因"] {
-  max-width: 260px;
+.module-page-deploy-rollbacks .rollback-domain,
+.module-page-deploy-rollbacks .rollback-id {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.module-page-deploy-rollbacks .module-table td[data-label="当前版本"],
-.module-page-deploy-rollbacks .module-table td[data-label="目标版本"] {
+.module-page-deploy-rollbacks .rollback-domain {
+  padding: 0;
+  border: 0;
+  color: var(--primary-hover);
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+}
+
+.module-page-deploy-rollbacks .rollback-id {
   font-family: var(--font-mono);
   font-size: 12px;
 }
 
 .module-page-deploy-rollbacks .table-actions {
   flex-wrap: nowrap;
+}
+
+.module-page-deploy-rollbacks .rollback-table-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 34px;
+  min-height: 34px;
 }
 
 .module-page-deploy-rollbacks .table-actions button,
@@ -120,6 +141,11 @@
   overflow-wrap: anywhere;
 }
 
+.module-page-deploy-rollbacks .module-card-meta em {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .module-page-deploy-rollbacks .module-card-footer {
   padding-top: 4px;
 }
@@ -138,7 +164,10 @@
 }
 
 .deploy-rollback-drawer {
-  width: min(520px, 100vw);
+  inset: 8px 0 8px auto;
+  width: min(520px, calc(100vw - 8px));
+  height: auto;
+  max-height: calc(100dvh - 16px);
   border: 0;
   box-shadow: var(--shadow-overlay);
 }
@@ -173,6 +202,102 @@
   background: var(--surface-soft);
 }
 
+.rollback-confirm-dialog .confirm-dialog-icon.warning {
+  border: 0;
+}
+
+.rollback-detail-section {
+  display: grid;
+  gap: 16px;
+}
+
+.rollback-detail-section > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.rollback-detail-section dl {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.rollback-detail-section dl > div {
+  min-width: 0;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.rollback-detail-section dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rollback-detail-section dd {
+  min-width: 0;
+  margin: 4px 0 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.rollback-detail-section code {
+  font: 12px/1.5 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.rollback-progress {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-soft);
+  overflow: hidden;
+}
+
+.rollback-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+}
+
+.rollback-confirm-field {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.rollback-confirm-field span {
+  color: var(--text-soft);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.rollback-confirm-field :is(input, textarea) {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  background: var(--surface);
+  font: 15px/1.5 var(--font-body);
+}
+
+.rollback-confirm-field :is(input, textarea):focus {
+  border-color: var(--primary);
+  outline: 3px solid rgb(14 165 233 / 12%);
+}
+
+.rollback-confirm-field textarea {
+  resize: vertical;
+}
+
+.rollback-error-state {
+  margin-bottom: 16px;
+}
+
 .deploy-create-drawer .drawer-body {
   gap: 24px;
 }
@@ -187,7 +312,9 @@
   }
 
   .deploy-rollback-drawer {
-    width: 100vw;
+    inset: 8px;
+    width: auto;
+    max-width: calc(100vw - 16px);
   }
 }
 

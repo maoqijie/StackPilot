@@ -28,18 +28,24 @@
   min-width: 0;
 }
 .systemd-content.logs-mode { grid-template-columns: minmax(0, 1fr); }
-.systemd-collection-note {
-  margin: 0;
+.systemd-freshness {
+  min-width: 0;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 12px;
+  gap: 12px;
+  color: var(--text);
+  background: var(--surface-soft);
+  box-shadow: var(--shadow-subtle);
 }
+.systemd-freshness > svg { flex: 0 0 auto; color: var(--primary); }
+.systemd-freshness > div { min-width: 0; display: grid; gap: 4px; }
+.systemd-freshness strong { font-size: 14px; }
+.systemd-freshness span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 
 .systemd-service-identity,
 .systemd-status,
-.systemd-row-actions,
 .systemd-log-head > span,
 .systemd-drawer-journal > header > span {
   min-width: 0;
@@ -58,6 +64,7 @@
   white-space: nowrap;
 }
 .systemd-hostname { display: block; color: var(--text-soft); font-size: 12px; }
+.systemd-description { min-width: 0; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .systemd-status {
   min-height: 24px;
@@ -73,30 +80,9 @@
 }
 .systemd-status > svg { flex: 0 0 auto; }
 .systemd-status.green { color: #16a34a; border-color: var(--success-line); background: var(--success-soft); }
+.systemd-status.orange { color: #ca8a04; border-color: var(--warning-line); background: var(--warning-soft); }
 .systemd-status.red { color: #dc2626; border-color: var(--danger-line); background: var(--danger-soft); }
 .systemd-status.gray { color: var(--muted); border-color: var(--line); background: var(--surface-soft); }
-
-.systemd-row-actions { gap: 4px; }
-.systemd-row-actions button {
-  width: var(--control-sm);
-  min-height: var(--control-sm);
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-md);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  color: var(--muted);
-  background: transparent;
-}
-.systemd-row-actions button:hover,
-.systemd-row-actions button:focus-visible {
-  border: 0;
-  color: var(--primary-hover);
-  background: var(--primary-soft);
-}
-.systemd-row-actions button > span { display: none; }
 
 .systemd-log-stream {
   min-width: 0;
@@ -161,6 +147,7 @@
 .systemd-journal p { min-width: 0; margin: 0; display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 8px; }
 .systemd-journal time { overflow: hidden; color: #94a3b8; text-overflow: ellipsis; white-space: nowrap; }
 .systemd-journal span { min-width: 0; overflow-wrap: anywhere; }
+.systemd-journal-empty { margin: 0; color: #94a3b8; font: 400 12px/1.5 var(--font-mono); }
 
 .detail-drawer.systemd-service-drawer {
   width: min(560px, 100vw);
@@ -186,9 +173,6 @@
   border: 0;
   background: var(--surface-soft);
 }
-.systemd-service-drawer .drawer-actions .systemd-row-actions { width: 100%; justify-content: flex-end; }
-.systemd-service-drawer .drawer-actions .systemd-row-actions button { width: auto; min-height: var(--control-md); padding: 0 16px; }
-.systemd-service-drawer .drawer-actions .systemd-row-actions button > span { display: inline; }
 .systemd-drawer-content { min-width: 0; display: grid; gap: 24px; }
 .systemd-detail-summary {
   min-width: 0;
@@ -201,7 +185,7 @@
 }
 .systemd-detail-summary.green { background: var(--success-soft); }
 .systemd-detail-summary.red { background: var(--danger-soft); }
-.systemd-detail-summary p { margin: 0; color: var(--text-soft); font-size: 14px; line-height: 1.5; }
+.systemd-detail-summary p { min-width: 0; margin: 0; color: var(--text-soft); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 .systemd-detail-grid { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .systemd-detail-grid > div { min-width: 0; padding: 12px; border: 0; border-radius: var(--radius-md); background: var(--surface-soft); }
 .systemd-detail-grid dt { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
@@ -214,32 +198,11 @@
 .systemd-drawer-journal > header time { color: var(--muted); font-size: 12px; }
 .systemd-drawer-journal > .systemd-journal { padding: 16px; border: 0; border-radius: var(--radius-md); background: var(--surface-dark); }
 
-.systemd-action-confirm,
-.systemd-action-confirm:is(:hover, :focus, :focus-visible, :focus-within, :active) {
-  width: min(480px, calc(100vw - 32px));
-  border: 0;
-  outline: 0;
-  box-shadow: var(--shadow-overlay);
-}
-.systemd-action-confirm-scrim { backdrop-filter: none; }
-.systemd-action-confirm .confirm-dialog-icon.warning { color: #ca8a04; background: var(--warning-soft); }
-.systemd-action-confirm > header .icon-action,
-.systemd-action-confirm > header .icon-action:hover,
-.systemd-action-confirm > header .icon-action:focus-visible { border: 0; }
-.systemd-action-confirm > footer :is(.ghost, .primary),
-.systemd-action-confirm > footer :is(.ghost, .primary):is(:hover, :focus, :focus-visible, :active) { border: 0; }
-.systemd-reauth-field { display: grid; gap: 8px; }
-.systemd-reauth-field > span { display: flex; align-items: center; gap: 8px; color: var(--text-soft); font-size: 14px; font-weight: 500; }
-.systemd-reauth-field input { width: 100%; height: var(--control-md); padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); }
-
 @media (max-width: 773px) {
   .systemd-page .module-card-row { min-width: 0; }
   .systemd-page .module-card-head { align-items: flex-start; flex-wrap: nowrap; }
   .systemd-page .module-card-head .systemd-service-name { white-space: normal; overflow-wrap: anywhere; }
   .systemd-page .module-card-code { min-width: 0; overflow-wrap: anywhere; }
-  .systemd-page .module-card-footer .systemd-row-actions { width: 100%; }
-  .systemd-page .module-card-footer .systemd-row-actions button { width: auto; min-height: var(--control-md); padding: 0 12px; flex: 1 1 0; }
-  .systemd-page .module-card-footer .systemd-row-actions button > span { display: inline; }
   .systemd-log-stream { max-height: none; }
   .systemd-log-head { align-items: flex-start; }
   .systemd-log-head > time { padding-top: 4px; }
@@ -253,11 +216,8 @@
 }
 
 @media (max-width: 480px) {
+  .systemd-log-head { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .systemd-log-head > time { white-space: normal; }
   .systemd-page .module-card-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
-  .systemd-page .module-card-footer .systemd-row-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .systemd-page .module-card-footer .systemd-row-actions button { width: 100%; }
-  .systemd-service-drawer .drawer-actions .systemd-row-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .systemd-service-drawer .drawer-actions .systemd-row-actions button { width: 100%; }
   .systemd-journal p { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .systemd-action-confirm { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
 }

@@ -3,10 +3,11 @@ import {
   OverviewCheckUpdatesResponseSchema, OverviewHealthRefreshResponseSchema, OverviewNodeMutationResponseSchema,
   OverviewRisksPayloadSchema, OverviewRisksScanResponseSchema, OverviewSummaryPayloadSchema,
   OverviewTasksPayloadSchema, OverviewTasksRefreshResponseSchema, PathIdSchema,
-  CreateCertificateRenewalRequestSchema, CertificateRenewalBatchSchema,
+  CreateCertificateRenewalRequestSchema, CertificateRenewalBatchSchema, DeploymentPayloadSchema,
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, HostMonitoringPayloadSchema, ReadinessResponseSchema,
   RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
+  SystemdServicesPayloadSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
 import { ApiNoticeSchema } from "@stackpilot/contracts";
@@ -49,6 +50,12 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     sendJson(response, 200, await services.databaseSlowQueries.getSlowQueries(), DatabaseSlowQueriesPayloadSchema);
     return;
   }
+  if (context.url.pathname === "/api/systemd/services" && method === "GET") {
+    context.identity?.require(context.principal, "systemd:read");
+    response.setHeader("Cache-Control", "no-store");
+    sendJson(response, 200, await services.systemd.list(context.principal?.nodeScope ?? []), SystemdServicesPayloadSchema);
+    return;
+  }
   if (context.url.searchParams.size > 0 && context.url.pathname !== "/api/files") throw new ApiError(400, "BAD_REQUEST", "查询参数无效：当前接口不接受查询参数");
 
   if (context.url.pathname === "/healthz" && method === "GET") {
@@ -69,7 +76,12 @@ export async function routeRequest(context: RequestContext): Promise<void> {
   if (parts[0] === "api" && parts[1] === "database-backups") { await routeDatabaseBackupRequest(context); return; }
   if (parts[0] === "api" && ["files", "file-trash", "file-uploads"].includes(parts[1] ?? "")) { await routeFileRequest(context); return; }
   if (parts[0] === "api" && parts[1] === "resumable-file-uploads") { await routeFileUploadRequest(context); return; }
-  if (parts[0] === "api" && ["site-plans", "site-operations"].includes(parts[1] ?? "")) { await routeSiteRequest(context); return; }
+  if (parts[0] === "api" && ["site-plans", "site-operations", "site-rollbacks"].includes(parts[1] ?? "")) { await routeSiteRequest(context); return; }
+  if (context.url.pathname === "/api/deployments" && method === "GET") {
+    context.identity?.require(context.principal, "sites:read");
+    response.setHeader("Cache-Control", "no-store");
+    sendJson(response, 200, services.deployments.list({ nodeScope: context.principal?.nodeScope ?? [] }), DeploymentPayloadSchema); return;
+  }
   if (context.url.pathname === "/api/hosts" && method === "GET") {
     context.identity?.require(context.principal, "overview:read");
     const nodeScope = context.principal?.nodeScope ?? [];

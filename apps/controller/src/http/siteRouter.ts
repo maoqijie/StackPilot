@@ -1,6 +1,7 @@
 import {
   ActivateSitePlanRequestSchema, CreateSiteCertificateRenewalRequestSchema, CreateSiteLogQueryRequestSchema,
-  CreateSitePlanRequestSchema, SiteOperationSchema, SitePlanSchema, SiteRuntimePayloadSchema,
+  CreateSitePlanRequestSchema, CreateSiteRollbackRequestSchema, SiteOperationSchema, SitePlanSchema,
+  SiteRollbackPayloadSchema, SiteRuntimePayloadSchema,
   UpdateSiteLifecycleRequestSchema,
 } from "@stackpilot/contracts";
 import type { Permission } from "@stackpilot/contracts";
@@ -31,6 +32,11 @@ function requester(context: RequestContext) { return `user:${context.principal?.
 export async function routeSiteRequest(context: RequestContext): Promise<void> {
   const { request, response, parts, services } = context;
   const method = request.method ?? "GET";
+  if (parts[1] === "site-rollbacks" && parts.length === 2 && method === "GET") {
+    requirePermission(context, "sites:read");
+    response.setHeader("Cache-Control", "no-store");
+    sendJson(response, 200, services.siteManagement.listRollbacks(access(context)), SiteRollbackPayloadSchema); return;
+  }
   if (parts[1] === "sites" && parts.length === 2 && method === "GET") {
     requirePermission(context, "sites:read");
     sendJson(response, 200, await services.siteManagement.getSites(access(context)), SiteRuntimePayloadSchema); return;
@@ -38,7 +44,7 @@ export async function routeSiteRequest(context: RequestContext): Promise<void> {
   if (parts[1] === "site-plans" && parts.length === 2 && method === "POST") {
     requirePermission(context, "sites:deploy", true);
     const input = parseSchema(CreateSitePlanRequestSchema, context.body, "站点部署计划");
-    sendJson(response, 202, await services.siteManagement.createPlan(input, access(context), requester(context)), SitePlanSchema); return;
+    sendJson(response, 202, await services.siteManagement.createPlan(input, access(context), requester(context), context.principal?.user.displayName ?? null), SitePlanSchema); return;
   }
   if (parts[1] === "site-plans" && parts[3] === "activate" && parts.length === 4 && method === "POST") {
     requirePermission(context, "sites:deploy", true);
@@ -49,6 +55,11 @@ export async function routeSiteRequest(context: RequestContext): Promise<void> {
     requirePermission(context, "sites:operate", true);
     const input = parseSchema(UpdateSiteLifecycleRequestSchema, context.body, "站点生命周期操作");
     sendJson(response, 202, await services.siteManagement.updateLifecycle(idAt(context, 2), input, access(context), requester(context)), SiteOperationSchema); return;
+  }
+  if (parts[1] === "sites" && parts[3] === "rollbacks" && parts.length === 4 && method === "POST") {
+    requirePermission(context, "sites:deploy", true);
+    const input = parseSchema(CreateSiteRollbackRequestSchema, context.body, "站点版本回滚");
+    sendJson(response, 202, await services.siteManagement.rollback(idAt(context, 2), input, access(context), requester(context), context.principal?.user.displayName ?? "unknown"), SiteOperationSchema); return;
   }
   if (parts[1] === "sites" && parts[3] === "certificate-renewals" && parts.length === 4 && method === "POST") {
     requirePermission(context, "sites:renew", true);
@@ -62,6 +73,7 @@ export async function routeSiteRequest(context: RequestContext): Promise<void> {
   }
   if (parts[1] === "site-operations" && parts.length === 3 && method === "GET") {
     requirePermission(context, "sites:read");
+    response.setHeader("Cache-Control", "no-store");
     sendJson(response, 200, await services.siteManagement.getOperation(idAt(context, 2), access(context)), SiteOperationSchema); return;
   }
   throw notFound("站点管理接口不存在");

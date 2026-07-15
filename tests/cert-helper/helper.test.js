@@ -12,6 +12,7 @@ import { updateLifecycle } from "../../apps/cert-helper/dist/lifecycle.js";
 import { fitLogBudget, parseAccessLine } from "../../apps/cert-helper/dist/logs.js";
 import { assertDomainsUnclaimed } from "../../apps/cert-helper/dist/nginx.js";
 import { prepareRepository } from "../../apps/cert-helper/dist/repository.js";
+import { rollbackRelease } from "../../apps/cert-helper/dist/rollback.js";
 import { siteId, SiteStateStore, stagingId } from "../../apps/cert-helper/dist/siteState.js";
 import { handleRequest, parseRequest } from "../../apps/cert-helper/dist/protocol.js";
 import { parseSystemdShow, redactSystemdMessage, runIdempotentSystemdAction, runSystemdAction } from "../../apps/cert-helper/dist/systemd.js";
@@ -20,7 +21,7 @@ const planId = "11111111-1111-4111-8111-111111111111";
 const requestId = "22222222-2222-4222-8222-222222222222";
 const nodeId = "33333333-3333-4333-8333-333333333333";
 const digest = "a".repeat(64);
-const prepareRequest = { operation: "prepare", requestId, planId, nodeId, domains: ["app.example.com"], repositoryUrl: "https://github.com/example/site.git", repositoryRef: "main", certificateEmail: "ops@example.com", certificateEnvironment: "staging", environmentVariables: [{ name: "PUBLIC_NAME", value: "example" }], expectedPlanDigest: digest };
+const prepareRequest = { operation: "prepare", requestId, planId, nodeId, domains: ["app.example.com"], repositoryUrl: "https://github.com/example/site.git", repositoryRef: "main", certificateEmail: "ops@example.com", certificateEnvironment: "staging", environmentVariables: [{ name: "PUBLIC_NAME", value: "example" }], expectedPlanDigest: digest, runtimeInstallAuthorized: false };
 
 function config(root, protectedDomains = new Set(["panel.example.com"])) {
   return { stateRoot: join(root, "state"), sitesRoot: join(root, "sites"), nginxRoot: join(root, "nginx"), environmentRoot: join(root, "env"), unitRoot: join(root, "units"), challengeRoot: join(root, "challenges"), runtimeRoot: join(root, "runtimes"), runtimeCatalogPath: join(root, "runtimes.json"), protectedDomains };
@@ -43,10 +44,12 @@ test("helper protocol accepts only fixed operation schemas and public GitHub HTT
     { ...prepareRequest, repositoryUrl: "https://github.com/example/site.git?token=x" },
     { ...prepareRequest, environmentVariables: [{ name: "SAFE", value: "line1\nline2" }] },
     { operation: "lifecycle", requestId, siteId: "/etc/passwd", action: "deleted", expectedVersion: 1 },
+    { operation: "rollback", requestId, siteId: `site-${"a".repeat(32)}`, targetPlanId: planId, targetReleaseId: "/etc/passwd", expectedVersion: 1 },
     { operation: "shell", command: "id" },
     { operation: "systemd-logs", unit: "../../etc/passwd", limit: 100 },
     { operation: "systemd-action", requestId, unit: "nginx.service", action: "enable" },
   ];
+  assert.deepEqual(parseRequest(JSON.stringify({ operation: "rollback", requestId, siteId: `site-${"a".repeat(32)}`, targetPlanId: planId, targetReleaseId: `release_${"b".repeat(32)}`, expectedVersion: 2 })), { operation: "rollback", requestId, siteId: `site-${"a".repeat(32)}`, targetPlanId: planId, targetReleaseId: `release_${"b".repeat(32)}`, expectedVersion: 2 });
   for (const value of invalid) assert.throws(() => parseRequest(JSON.stringify(value)));
 });
 
@@ -87,6 +90,25 @@ test("systemd inventory enumerates unit names before reading bounded properties"
   assert.equal(result.units.length, 1); assert.equal(result.units[0].name, "nginx.service"); assert.equal(calls[0][1][0], "list-units"); assert.ok(calls[1][1].includes("nginx.service")); assert.equal(calls[1][1].includes("invalid/path"), false);
 });
 
+test("rollback switches an installed release and restores the previous release when health fails", async () => {
+  const root = await mkdtemp(join(tmpdir(), "stackpilot-helper-")); const cfg = config(root); const store = new SiteStateStore(cfg);
+  const first = prepared(); const second = prepared({ planId: "44444444-4444-4444-8444-444444444444", releaseId: `release_${"d".repeat(32)}`, commitSha: "e".repeat(40) });
+  const id = siteId(nodeId, first.domains[0]); const releases = join(cfg.sitesRoot, id, "releases"); await mkdir(releases, { recursive: true });
+  for (const plan of [first, second]) { const release = join(releases, plan.releaseId); await mkdir(join(release, "public"), { recursive: true }); await writeFile(join(release, ".stackpilot-release.json"), JSON.stringify({ releaseId: plan.releaseId, commitSha: plan.commitSha })); await store.savePlan(plan); }
+  const site = { siteId: id, planId: first.planId, domains: first.domains, manifest: first.manifest, releaseId: first.releaseId, port: null, desiredState: "running", protected: false, version: 1, certificateName: first.domains[0], runtimePath: null, createdAt: first.preparedAt, updatedAt: first.preparedAt };
+  await store.saveSite(site); await mkdir(cfg.nginxRoot, { recursive: true }); await mkdir(cfg.environmentRoot, { recursive: true }); await mkdir(cfg.unitRoot, { recursive: true }); await symlink(`releases/${first.releaseId}`, join(cfg.sitesRoot, id, "current")); await writeFile(join(cfg.nginxRoot, `stackpilot-${id}.conf`), "previous-nginx"); await writeFile(join(cfg.environmentRoot, `${id}.env`), "OLD=1\n");
+  try {
+    const success = await rollbackRelease(id, second.planId, second.releaseId, 1, cfg, async () => ({ stdout: "", stderr: "" }));
+    assert.equal(success.releaseId, second.releaseId); assert.equal(await readlink(join(cfg.sitesRoot, id, "current")), `releases/${second.releaseId}`); assert.equal((await store.site(id)).version, 2);
+    await writeFile(join(releases, first.releaseId, ".stackpilot-release.json"), JSON.stringify({ releaseId: first.releaseId, commitSha: "f".repeat(40) }));
+    await assert.rejects(() => rollbackRelease(id, first.planId, first.releaseId, 2, cfg, async () => ({ stdout: "", stderr: "" })), /marker is invalid/);
+    await writeFile(join(releases, first.releaseId, ".stackpilot-release.json"), JSON.stringify({ releaseId: first.releaseId, commitSha: first.commitSha }));
+    let checks = 0; const failingRun = async (executable) => { if (executable === "/usr/bin/curl" && ++checks === 1) throw new Error("target unhealthy"); return { stdout: "", stderr: "" }; };
+    await assert.rejects(() => rollbackRelease(id, first.planId, first.releaseId, 2, cfg, failingRun), /target unhealthy/);
+    assert.equal(await readlink(join(cfg.sitesRoot, id, "current")), `releases/${second.releaseId}`); assert.equal((await store.site(id)).releaseId, second.releaseId);
+  } finally { await writableTree(root); await rm(root, { recursive: true, force: true }); }
+});
+
 test("prepare runs a fixed non-root Git clone and enforces strict prebuilt manifest", async () => {
   const root = await mkdtemp(join(tmpdir(), "stackpilot-helper-")); const cfg = config(root); const calls = [];
   const run = async (executable, args) => {
@@ -102,6 +124,27 @@ test("prepare runs a fixed non-root Git clone and enforces strict prebuilt manif
     assert.equal(result.manifest.runtime, "static"); assert.equal(result.runtimePath, null);
     assert.equal(await readFile(join(cfg.stateRoot, "workspaces", planId, "bundle", "public", "index.html"), "utf8"), "ok");
     const clone = calls[0].args.join(" "); assert.match(clone, /--uid=stackpilot-builder/); assert.match(clone, /http.followRedirects=false/); assert.match(clone, /GIT_TERMINAL_PROMPT=0/); assert.doesNotMatch(clone, /submodule|lfs/);
+  } finally { await writableTree(root); await rm(root, { recursive: true, force: true }); }
+});
+
+test("prepare cannot install a missing Node runtime without explicit authorization", async () => {
+  const root = await mkdtemp(join(tmpdir(), "stackpilot-helper-")); const cfg = config(root); const calls = [];
+  const run = async (executable, args) => {
+    calls.push({ executable, args });
+    if (args.includes("clone")) {
+      const repo = join(cfg.stateRoot, "workspaces", planId, "repository"); await mkdir(join(repo, ".stackpilot"), { recursive: true }); await mkdir(join(repo, "dist")); await mkdir(join(repo, ".git"));
+      await writeFile(join(repo, ".stackpilot", "site.json"), JSON.stringify({ schemaVersion: 1, runtime: "node22", workingDirectory: ".", buildScript: null, outputDirectory: "dist", startScript: "start", healthCheckPath: "/healthz" }));
+    }
+    return { stdout: args.includes("rev-parse") ? "b".repeat(40) : "", stderr: "" };
+  };
+  await mkdir(cfg.runtimeRoot, { recursive: true });
+  await writeFile(cfg.runtimeCatalogPath, JSON.stringify([
+    { runtime: "node20", version: "v20.19.0", url: "https://nodejs.org/dist/v20.19.0/node-v20.19.0-linux-x64.tar.xz", sha256: "1".repeat(64) },
+    { runtime: "node22", version: "v22.22.0", url: "https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-x64.tar.xz", sha256: "2".repeat(64) },
+  ]));
+  try {
+    await assert.rejects(() => prepareRepository(prepareRequest, cfg, { run }), (error) => error.code === "RUNTIME_INSTALL_FORBIDDEN");
+    assert.equal(calls.some((call) => call.executable === "/usr/bin/curl" || call.executable === "/usr/bin/tar"), false);
   } finally { await writableTree(root); await rm(root, { recursive: true, force: true }); }
 });
 

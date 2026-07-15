@@ -18,6 +18,7 @@ type Draft = {
   domains: string;
   repositoryUrl: string;
   repositoryRef: string;
+  deploymentEnvironment: "staging" | "production";
   certificateEmail: string;
   certificateEnvironment: "staging" | "production";
   environmentVariables: EnvironmentVariable[];
@@ -29,6 +30,7 @@ const initialDraft: Draft = {
   domains: "",
   repositoryUrl: "",
   repositoryRef: "main",
+  deploymentEnvironment: "production",
   certificateEmail: "",
   certificateEnvironment: "staging",
   environmentVariables: [],
@@ -84,13 +86,14 @@ function SiteDeploymentPage({ notify, canListNodes }: { notify: Notify; canListN
         domains: draft.domains.split(",").map((value) => value.trim()).filter(Boolean),
         repositoryUrl: draft.repositoryUrl,
         repositoryRef: draft.repositoryRef,
+        deploymentEnvironment: draft.deploymentEnvironment,
         certificateEmail: draft.certificateEmail,
         certificateEnvironment: draft.certificateEnvironment,
         environmentVariables: draft.environmentVariables.map(({ name, value }) => ({ name: name.trim(), value })),
         idempotencyKey: prepareKey.current,
       }, proof.proof);
       setPlan(created); setDraft((current) => ({ ...current, password: "" }));
-      watch({ operationId: created.operationId, taskId: null, type: "prepare", nodeId: created.nodeId, siteId: null, planId: created.planId, status: "queued", stage: "awaiting_executor", progressPercent: 0, result: null, errorCode: null, createdAt: created.createdAt, updatedAt: created.updatedAt });
+      watch({ operationId: created.operationId, taskId: null, type: "prepare", nodeId: created.nodeId, siteId: null, planId: created.planId, rollback: null, status: "queued", stage: "awaiting_executor", progressPercent: 0, result: null, errorCode: null, createdAt: created.createdAt, updatedAt: created.updatedAt });
     } catch (reason) {
       setFormError(reason instanceof Error ? reason.message : "部署计划创建失败");
     } finally { setSubmitting(false); }
@@ -120,7 +123,7 @@ function SiteDeploymentPage({ notify, canListNodes }: { notify: Notify; canListN
     prepareKey.current = crypto.randomUUID(); activationKey.current = crypto.randomUUID();
   };
 
-  return <ModulePageShell title={resolvePageMeta("sites-create").title} subtitle="先构建和预检，再确认摘要上线；失败时由节点恢复旧版本。" page="sites-create" viewContext={false}>
+  return <ModulePageShell title={resolvePageMeta("sites-create").title} subtitle="生产先预检再确认上线；预发仅构建和预检，不切换生产流量。" page="sites-create" viewContext={false}>
     <div className="site-deployment-layout">
       <form className="site-deployment-form" onSubmit={(event) => void submitPlan(event)}>
         <header><GitBranch size={18} /><span><strong>Git 部署计划</strong><small>仅接受公开 github.com HTTPS 仓库</small></span></header>
@@ -130,6 +133,7 @@ function SiteDeploymentPage({ notify, canListNodes }: { notify: Notify; canListN
         <FormLine label="域名" required value={draft.domains} disabled={submitting || Boolean(plan)} hint="多个普通域名使用英文逗号分隔，不支持通配符" onChange={(value) => setDraft((current) => ({ ...current, domains: value }))} />
         <FormLine label="仓库地址" required value={draft.repositoryUrl} disabled={submitting || Boolean(plan)} inputType="url" onChange={(value) => setDraft((current) => ({ ...current, repositoryUrl: value }))} />
         <FormLine label="Git ref" required value={draft.repositoryRef} disabled={submitting || Boolean(plan)} onChange={(value) => setDraft((current) => ({ ...current, repositoryRef: value }))} />
+        <FormSelectLine label="发布环境" required value={draft.deploymentEnvironment === "production" ? "生产" : "预发"} options={["生产", "预发"]} disabled={submitting || Boolean(plan)} onChange={(value) => setDraft((current) => ({ ...current, deploymentEnvironment: value === "预发" ? "staging" : "production" }))} />
         <FormLine label="证书邮箱" required value={draft.certificateEmail} disabled={submitting || Boolean(plan)} inputType="email" onChange={(value) => setDraft((current) => ({ ...current, certificateEmail: value }))} />
         <FormSelectLine label="ACME 环境" required value={draft.certificateEnvironment === "staging" ? "Staging" : "Production"} options={["Staging", "Production"]} disabled={submitting || Boolean(plan)} onChange={(value) => setDraft((current) => ({ ...current, certificateEnvironment: value === "Production" ? "production" : "staging" }))} />
         <EnvironmentEditor entries={draft.environmentVariables} disabled={submitting || Boolean(plan)} onAdd={() => setDraft((current) => ({ ...current, environmentVariables: [...current.environmentVariables, { id: crypto.randomUUID(), name: "", value: "" }] }))} onRemove={(id) => setDraft((current) => ({ ...current, environmentVariables: current.environmentVariables.filter((entry) => entry.id !== id) }))} onChange={updateEnvironment} />
@@ -166,6 +170,7 @@ function PlanSummary({ plan, operation, operationError, password, submitting, op
         <div><dt>状态</dt><dd>{planStatusLabel(plan.status)}</dd></div>
         <div><dt>域名</dt><dd>{plan.domains.join("、")}</dd></div>
         <div><dt>仓库 / ref</dt><dd>{plan.repositoryUrl} · {plan.repositoryRef}</dd></div>
+        <div><dt>发布环境</dt><dd>{plan.deploymentEnvironment === "production" ? "生产" : "预发"}</dd></div>
         <div><dt>目标节点</dt><dd>{plan.nodeId}</dd></div>
         <div><dt>计划到期</dt><dd>{formatBackendDateTime(plan.expiresAt)}</dd></div>
         <div><dt>运行时</dt><dd>{plan.preview?.runtime ?? "正在识别"}</dd></div>
@@ -174,7 +179,8 @@ function PlanSummary({ plan, operation, operationError, password, submitting, op
       </dl>
       {plan.preview && <div className="site-plan-changes">{plan.preview.changes.map((change) => <span key={change}><CheckCircle2 size={14} />{change}</span>)}</div>}
       {operation && <SiteOperationStatus operation={operation} error={operationError} />}
-      {plan.status === "ready" && <button className="primary" type="button" disabled={!password || submitting || operationActive} onClick={onActivate}>{submitting ? "激活中..." : "确认摘要并上线"}</button>}
+      {plan.status === "ready" && plan.deploymentEnvironment === "production" && <button className="primary" type="button" disabled={!password || submitting || operationActive} onClick={onActivate}>{submitting ? "激活中..." : "确认摘要并上线"}</button>}
+      {plan.status === "ready" && plan.deploymentEnvironment === "staging" && <p className="site-plan-staging-note" role="status">预发构建与预检已完成，不会切换生产流量。</p>}
     </>}
   </section>;
 }

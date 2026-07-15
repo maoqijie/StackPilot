@@ -18,8 +18,8 @@ export class TaskExecutor {
       const rows = z.array(ReceiptSchema).max(1000).parse(JSON.parse(await readFile(this.receiptPath, "utf8")));
       this.receipts = new Map(rows.map((row) => {
         if (row.status !== "running") return [row.taskId, row];
-        const renewal = row.taskType === "sites.certificates.renew" || row.idempotencyKey.startsWith("renew-");
-        const update: RemoteTaskStatusUpdate = { taskId: row.taskId, attempt: row.attempt ?? 1, status: "failed", timestamp: new Date().toISOString(), errorCode: renewal ? "RESULT_UNKNOWN" : "AGENT_RESTARTED_DURING_TASK", result: { message: renewal ? "Certificate renewal result is unknown after Agent restart; it will not be replayed" : "Agent restarted before task completion", truncated: false } };
+        const irreversible = row.taskType === "sites.certificates.renew" || row.taskType === "sites.rollback" || row.idempotencyKey.startsWith("renew-");
+        const update: RemoteTaskStatusUpdate = { taskId: row.taskId, attempt: row.attempt ?? 1, status: "failed", timestamp: new Date().toISOString(), errorCode: irreversible ? "RESULT_UNKNOWN" : "AGENT_RESTARTED_DURING_TASK", result: { message: irreversible ? "Irreversible task result is unknown after Agent restart; it will not be replayed" : "Agent restarted before task completion", truncated: false } };
         return [row.taskId, { ...row, attempt: row.attempt ?? 1, status: "failed" as const, updatedAt: update.timestamp, reported: false, update }];
       }));
       await this.persist();
@@ -65,7 +65,7 @@ export class TaskExecutor {
       }
       const timer = setTimeout(() => controller.abort(), definition.timeoutMs);
       let update: RemoteTaskStatusUpdate;
-      try { const result = await definition.run(parameters, controller.signal, this.nodeId); controller.signal.throwIfAborted(); update = { taskId: task.taskId, attempt: task.attempt, status: "succeeded", timestamp: new Date().toISOString(), result }; }
+      try { const result = await definition.run(parameters, controller.signal, this.nodeId, this.capabilities); controller.signal.throwIfAborted(); update = { taskId: task.taskId, attempt: task.attempt, status: "succeeded", timestamp: new Date().toISOString(), result }; }
       catch (error) { const aborted = controller.signal.aborted; const unknown = aborted && !definition.cancellable; const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" && /^[A-Z0-9_]{1,80}$/.test(error.code) ? error.code : error instanceof Error && /^[A-Z0-9_]{1,80}$/.test(error.name) ? error.name : "TASK_FAILED"; update = { taskId: task.taskId, attempt: task.attempt, status: aborted && definition.cancellable ? "cancelled" : "failed", timestamp: new Date().toISOString(), errorCode: unknown ? "RESULT_UNKNOWN" : aborted ? "TASK_CANCELLED_OR_TIMEOUT" : code, result: { message: unknown ? "Task result is unknown after timeout; it will not be replayed" : aborted ? "Task cancelled or timed out" : "Task failed", truncated: false } }; }
       finally { clearTimeout(timer); }
       this.receipts.set(task.taskId, { taskId: task.taskId, taskType: task.type, idempotencyKey: task.idempotencyKey, attempt: task.attempt, status: update.status, updatedAt: update.timestamp, reported: false, update }); await this.persist(); return update;

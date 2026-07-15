@@ -11,6 +11,7 @@ import type { HostMonitoringService } from "../modules/hosts/hostMonitoringServi
 import type { SiteMonitoringService } from "../modules/sites/siteMonitoringService.js";
 import type { CertificateRenewalService } from "../modules/sites/certificateRenewalService.js";
 import type { SiteManagementService } from "../modules/sites/siteManagementService.js";
+import type { DeploymentQueryService } from "../modules/deployments/deploymentQueryService.js";
 import type { DatabaseMonitoringService } from "../modules/databases/databaseMonitoringService.js";
 import type { DatabaseBackupService } from "../modules/databases/databaseBackupService.js";
 import type { RemoteTaskService } from "../modules/remote-tasks/remoteTaskService.js";
@@ -22,10 +23,10 @@ import type { DatabaseInventoryService } from "../modules/databases/databaseInve
 import type { DatabaseBackupWorkspaceService } from "../modules/databases/databaseBackupWorkspaceService.js";
 import type { DatabaseOperationService } from "../modules/databases/databaseOperationService.js";
 import type { DatabaseRetentionService } from "../modules/databases/databaseRetentionService.js";
+import type { SystemdService } from "../modules/systemd/systemdService.js";
 import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
-import type { SystemdBackend } from "../platform/systemdClient.js";
 
 export type Services = {
   overview: OverviewService;
@@ -38,6 +39,7 @@ export type Services = {
   databaseRetention?: DatabaseRetentionService;
   sites: SiteMonitoringService;
   siteManagement: SiteManagementService;
+  deployments: DeploymentQueryService;
   certificateRenewals: CertificateRenewalService;
   databaseBackups: DatabaseBackupService;
   files: FileService;
@@ -49,7 +51,7 @@ export type Services = {
   nodes: NodeService;
   remoteTasks: RemoteTaskService;
   terminalSnippets: TerminalSnippetService;
-  systemd: SystemdBackend;
+  systemd: SystemdService;
 };
 export type RequestContext = {
   request: IncomingMessage;

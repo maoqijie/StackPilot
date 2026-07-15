@@ -16,7 +16,7 @@ function useSiteOperation() {
   useEffect(() => {
     if (!watchedOperationId || terminal.has(operationRef.current?.status ?? "cancelled")) return;
     let timer: number | null = null; let disposed = false; let inFlight = false;
-    const schedule = () => { if (!disposed && !document.hidden && !terminal.has(operationRef.current?.status ?? "cancelled")) timer = window.setTimeout(run, 2_000); };
+    const schedule = () => { if (!disposed && !document.hidden && !terminal.has(operationRef.current?.status ?? "cancelled")) timer = window.setTimeout(run, 10_000); };
     const run = async () => {
       const current = operationRef.current;
       if (disposed || document.hidden || inFlight || !current || terminal.has(current.status)) return;

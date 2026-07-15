@@ -152,10 +152,11 @@ export const UpdateNodeCapabilitiesRequestSchema = z.object({
 });
 
 export const SitePlanStatusSchema = z.enum(["queued", "preparing", "ready", "activating", "activated", "failed", "expired"]);
-export const SiteOperationTypeSchema = z.enum(["prepare", "activate", "lifecycle", "certificate_renewal", "log_query"]);
+export const SiteOperationTypeSchema = z.enum(["prepare", "activate", "rollback", "lifecycle", "certificate_renewal", "log_query"]);
 export const SiteOperationStatusSchema = z.enum(["queued", "running", "succeeded", "failed", "cancelled"]);
 export const SiteLifecycleActionSchema = z.enum(["running", "stopped", "deleted", "restored"]);
 export const SitePlanRuntimeSchema = z.enum(["static", "node20", "node22"]);
+export const SiteDeploymentEnvironmentSchema = z.enum(["production", "staging"]);
 export const CertificateEnvironmentSchema = z.enum(["staging", "production"]);
 const RelativeSitePathSchema = z.string().min(1).max(256).refine((value) => !value.startsWith("/") && !value.split("/").includes("..") && !value.includes("\\"), "must be a safe relative path");
 
@@ -179,6 +180,7 @@ export const SiteEnvironmentVariableInputSchema = z.object({
 
 export const CreateSitePlanRequestSchema = z.object({
   nodeId: OpaqueIdSchema,
+  deploymentEnvironment: SiteDeploymentEnvironmentSchema.default("production"),
   domains: z.array(DomainNameSchema).min(1).max(20),
   repositoryUrl: PublicGithubRepositorySchema,
   repositoryRef: z.string().min(1).max(160).regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/).default("main"),
@@ -204,11 +206,13 @@ export const SitePlanPreviewSchema = z.object({
 export const SitePlanSchema = z.object({
   planId: z.string().uuid(),
   nodeId: OpaqueIdSchema,
+  deploymentEnvironment: SiteDeploymentEnvironmentSchema,
   domains: z.array(DomainNameSchema).min(1).max(20),
   repositoryUrl: PublicGithubRepositorySchema,
   repositoryRef: z.string().min(1).max(160),
   certificateEnvironment: CertificateEnvironmentSchema,
   environmentVariableNames: z.array(z.string().regex(/^[A-Z_][A-Z0-9_]*$/)).max(100),
+  operator: z.string().min(1).max(160).nullable().default(null),
   status: SitePlanStatusSchema,
   digest: z.string().regex(/^[a-f0-9]{64}$/),
   version: z.number().int().positive(),
@@ -243,6 +247,27 @@ export const CreateSiteLogQueryRequestSchema = z.object({
   idempotencyKey: IdempotencyKeySchema,
 }).strict();
 
+export const CreateSiteRollbackRequestSchema = z.object({
+  targetReleaseId: OpaqueIdSchema,
+  expectedSiteVersion: z.number().int().positive(),
+  reason: z.string().trim().min(1).max(240),
+  idempotencyKey: IdempotencyKeySchema,
+}).strict();
+
+export const SiteRollbackStatusSchema = z.enum(["available", "queued", "running", "succeeded", "failed", "cancelled"]);
+export const SiteRollbackRecordSchema = z.object({
+  id: OpaqueIdSchema, siteId: OpaqueIdSchema, nodeId: OpaqueIdSchema, domain: DomainNameSchema,
+  currentReleaseId: OpaqueIdSchema, targetReleaseId: OpaqueIdSchema,
+  targetPlanId: z.string().uuid(), repositoryRef: z.string().min(1).max(160), status: SiteRollbackStatusSchema,
+  requestedBy: z.string().min(1).max(160).nullable(), reason: z.string().min(1).max(240).nullable(),
+  createdAt: z.string().datetime(), updatedAt: z.string().datetime(),
+  progressPercent: z.number().int().min(0).max(100), errorCode: z.string().min(1).max(80).nullable(),
+  siteVersion: z.number().int().positive(),
+}).strict();
+export const SiteRollbackPayloadSchema = z.object({
+  collectedAt: z.string().datetime(), rollbacks: z.array(SiteRollbackRecordSchema).max(10_000),
+}).strict();
+
 export const SiteAccessLogRecordSchema = z.object({
   timestamp: z.string().datetime(),
   method: z.enum(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]),
@@ -258,6 +283,7 @@ export const SiteOperationResultSchema = z.object({
   releaseId: OpaqueIdSchema.nullable(),
   stagingId: OpaqueIdSchema.nullable().default(null),
   desiredState: SiteDesiredStateSchema.nullable().default(null),
+  siteVersion: z.number().int().positive().nullable().default(null),
   certificateRenewalBatchId: z.string().uuid().nullable(),
   planPreview: SitePlanPreviewSchema.nullable(),
   logs: z.array(SiteAccessLogRecordSchema).max(200),
@@ -270,6 +296,7 @@ export const SitePlanPrepareTaskParametersSchema = z.object({
   certificateContact: z.email().max(254), certificateEnvironment: CertificateEnvironmentSchema,
   environmentVariables: z.array(SiteEnvironmentVariableInputSchema).max(100),
   expectedPlanDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  runtimeInstallAuthorized: z.boolean().default(false),
 }).strict();
 
 export const SitePlanActivateTaskParametersSchema = z.object({
@@ -287,6 +314,11 @@ export const SiteLogQueryTaskParametersSchema = z.object({
   limit: z.number().int().min(1).max(200),
 }).strict();
 
+export const SiteRollbackTaskParametersSchema = z.object({
+  operationId: z.string().uuid(), siteId: OpaqueIdSchema, targetPlanId: z.string().uuid(), targetReleaseId: OpaqueIdSchema,
+  expectedVersion: z.number().int().positive(),
+}).strict();
+
 export const SitePlanPrepareTaskResultSchema = z.object({
   operationId: z.string().uuid(), stagingId: OpaqueIdSchema, planPreview: SitePlanPreviewSchema,
 }).strict();
@@ -300,6 +332,15 @@ export const SiteLogQueryTaskResultSchema = z.object({
   operationId: z.string().uuid(), siteId: OpaqueIdSchema,
   logs: z.array(SiteAccessLogRecordSchema).max(200),
 }).strict();
+export const SiteRollbackTaskResultSchema = z.object({
+  operationId: z.string().uuid(), siteId: OpaqueIdSchema, releaseId: OpaqueIdSchema,
+  version: z.number().int().positive(),
+}).strict();
+
+export const SiteOperationRollbackMetadataSchema = z.object({
+  fromReleaseId: OpaqueIdSchema, targetReleaseId: OpaqueIdSchema,
+  reason: z.string().min(1).max(240), requestedBy: z.string().min(1).max(160),
+}).strict();
 
 export const SiteOperationSchema = z.object({
   operationId: z.string().uuid(),
@@ -308,6 +349,7 @@ export const SiteOperationSchema = z.object({
   nodeId: OpaqueIdSchema,
   siteId: OpaqueIdSchema.nullable(),
   planId: z.string().uuid().nullable(),
+  rollback: SiteOperationRollbackMetadataSchema.nullable().default(null),
   status: SiteOperationStatusSchema,
   stage: z.string().min(1).max(80),
   progressPercent: z.number().int().min(0).max(100),
@@ -332,14 +374,20 @@ export type CreateSitePlanRequest = z.infer<typeof CreateSitePlanRequestSchema>;
 export type SitePlan = z.infer<typeof SitePlanSchema>;
 export type SitePlanPreview = z.infer<typeof SitePlanPreviewSchema>;
 export type SiteDeploymentManifest = z.infer<typeof SiteDeploymentManifestSchema>;
+export type SiteDeploymentEnvironment = z.infer<typeof SiteDeploymentEnvironmentSchema>;
 export type CertificateEnvironment = z.infer<typeof CertificateEnvironmentSchema>;
 export type ActivateSitePlanRequest = z.infer<typeof ActivateSitePlanRequestSchema>;
 export type UpdateSiteLifecycleRequest = z.infer<typeof UpdateSiteLifecycleRequestSchema>;
 export type CreateSiteCertificateRenewalRequest = z.infer<typeof CreateSiteCertificateRenewalRequestSchema>;
 export type CreateSiteLogQueryRequest = z.infer<typeof CreateSiteLogQueryRequestSchema>;
+export type CreateSiteRollbackRequest = z.infer<typeof CreateSiteRollbackRequestSchema>;
+export type SiteRollbackRecord = z.infer<typeof SiteRollbackRecordSchema>;
+export type SiteRollbackPayload = z.infer<typeof SiteRollbackPayloadSchema>;
 export type SiteOperation = z.infer<typeof SiteOperationSchema>;
 export type SiteOperationResult = z.infer<typeof SiteOperationResultSchema>;
 export type SitePlanPrepareTaskParameters = z.infer<typeof SitePlanPrepareTaskParametersSchema>;
 export type SitePlanActivateTaskParameters = z.infer<typeof SitePlanActivateTaskParametersSchema>;
 export type SiteLifecycleTaskParameters = z.infer<typeof SiteLifecycleTaskParametersSchema>;
 export type SiteLogQueryTaskParameters = z.infer<typeof SiteLogQueryTaskParametersSchema>;
+export type SiteRollbackTaskParameters = z.infer<typeof SiteRollbackTaskParametersSchema>;
+export type SiteRollbackTaskResult = z.infer<typeof SiteRollbackTaskResultSchema>;

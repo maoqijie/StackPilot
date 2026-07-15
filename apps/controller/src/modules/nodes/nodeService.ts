@@ -59,6 +59,7 @@ export class NodeService {
       if (heartbeat.telemetry) node.telemetry = heartbeat.telemetry;
       if (heartbeat.siteSnapshot) node.siteSnapshot = heartbeat.siteSnapshot;
       if (heartbeat.databaseSnapshot) node.databaseSnapshot = heartbeat.databaseSnapshot;
+      if (heartbeat.systemdSnapshot) node.systemdSnapshot = heartbeat.systemdSnapshot;
       const physicalHostIdentity = heartbeat.physicalHostId === undefined ? "legacy"
         : previousPhysicalHostId === heartbeat.physicalHostId
         ? "unchanged"

@@ -20,7 +20,7 @@ const nodeId = "node-example-01";
 
 function operation(overrides: Partial<SiteOperation> = {}): SiteOperation {
   return {
-    operationId, taskId: null, type: "prepare", nodeId, siteId: null, planId, status: "queued",
+    operationId, taskId: null, type: "prepare", nodeId, siteId: null, planId, rollback: null, status: "queued",
     stage: "awaiting_executor", progressPercent: 0, result: null, errorCode: null, createdAt: now, updatedAt: now,
     ...overrides,
   };
@@ -29,7 +29,7 @@ function operation(overrides: Partial<SiteOperation> = {}): SiteOperation {
 function plan(): SitePlan {
   return {
     planId, nodeId, domains: ["app.example.com"], repositoryUrl: "https://github.com/example/site.git",
-    repositoryRef: "main", certificateEnvironment: "staging", environmentVariableNames: [], status: "queued",
+    repositoryRef: "main", deploymentEnvironment: "production", certificateEnvironment: "staging", environmentVariableNames: [], operator: "管理员", status: "queued",
     digest: "a".repeat(64), version: 1, preview: null, operationId, createdAt: now, updatedAt: now,
     expiresAt: "2026-07-14T00:30:00.000Z",
   };
@@ -80,7 +80,7 @@ describe("site management UI", () => {
     vi.mocked(createSitePlan).mockResolvedValue(plan());
     vi.mocked(fetchSiteOperation).mockResolvedValue(operation({
       status: "succeeded", stage: "complete", progressPercent: 100,
-      result: { message: null, siteId: null, releaseId: null, stagingId: "staging-example-01", desiredState: null, certificateRenewalBatchId: null, planPreview: { runtime: "static", healthCheckPath: "/health", changes: ["repository", "nginx"] }, logs: [] },
+      result: { message: null, siteId: null, releaseId: null, stagingId: "staging-example-01", desiredState: null, siteVersion: null, certificateRenewalBatchId: null, planPreview: { runtime: "static", healthCheckPath: "/health", changes: ["repository", "nginx"] }, logs: [] },
     }));
 
     render(<SitesPage page="sites-create" notify={vi.fn()} permissions={["sites:read", "sites:deploy", "nodes:read"]} />);
@@ -91,11 +91,41 @@ describe("site management UI", () => {
     fireEvent.change(screen.getByLabelText("当前密码"), { target: { value: "correct-password" } });
     fireEvent.click(screen.getByRole("button", { name: "创建并预检" }));
     await act(async () => Promise.resolve());
-    await act(async () => { vi.advanceTimersByTime(2_000); await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
 
     expect(fetchSiteOperation).toHaveBeenCalledTimes(1);
     expect(screen.getByText("/health")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认摘要并上线" })).toBeDisabled();
+  });
+
+  it("keeps a staging plan on the real preparation path without exposing production activation", async () => {
+    vi.useFakeTimers();
+    vi.mocked(listAgentNodes).mockResolvedValue({ nodes: [{
+      nodeId, nodeName: "host-example-01", status: "online", agentVersion: "0.2.0", protocolVersion: "1.0",
+      platform: "linux", declaredCapabilities: ["sites.deploy"], allowedCapabilities: ["sites.deploy"],
+      enrolledAt: now, lastSeenAt: now, revokedAt: null,
+    }] });
+    vi.mocked(createSitePlan).mockImplementation(async (input) => ({ ...plan(), deploymentEnvironment: input.deploymentEnvironment }));
+    vi.mocked(fetchSiteOperation).mockResolvedValue(operation({
+      status: "succeeded", stage: "complete", progressPercent: 100,
+      result: { message: null, siteId: null, releaseId: null, stagingId: "staging-example-01", desiredState: null, siteVersion: null, certificateRenewalBatchId: null, planPreview: { runtime: "static", healthCheckPath: "/health", changes: ["repository", "nginx"] }, logs: [] },
+    }));
+
+    render(<SitesPage page="sites-create" notify={vi.fn()} permissions={["sites:read", "sites:deploy", "nodes:read"]} />);
+    await act(async () => Promise.resolve());
+    fireEvent.change(screen.getByLabelText("域名"), { target: { value: "app.example.com" } });
+    fireEvent.change(screen.getByLabelText("仓库地址"), { target: { value: "https://github.com/example/site.git" } });
+    fireEvent.click(screen.getByRole("combobox", { name: /发布环境/ }));
+    fireEvent.click(screen.getByRole("option", { name: "预发" }));
+    fireEvent.change(screen.getByLabelText("证书邮箱"), { target: { value: "ops@example.com" } });
+    fireEvent.change(screen.getByLabelText("当前密码"), { target: { value: "correct-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建并预检" }));
+    await act(async () => Promise.resolve());
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
+
+    expect(createSitePlan).toHaveBeenCalledWith(expect.objectContaining({ deploymentEnvironment: "staging" }), expect.any(String));
+    expect(screen.getByText("预发构建与预检已完成，不会切换生产流量。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认摘要并上线" })).not.toBeInTheDocument();
   });
 
   it("keeps environment values in memory and sends names only to the public summary", async () => {
@@ -127,14 +157,14 @@ describe("site management UI", () => {
     vi.mocked(querySiteLogs).mockResolvedValue(operation({ type: "log_query", planId: null, siteId: "site-example-01" }));
     vi.mocked(fetchSiteOperation).mockResolvedValue(operation({
       type: "log_query", planId: null, siteId: "site-example-01", status: "succeeded", stage: "complete", progressPercent: 100,
-      result: { message: null, siteId: "site-example-01", releaseId: null, stagingId: null, desiredState: null, certificateRenewalBatchId: null, planPreview: null, logs: [{ timestamp: now, method: "GET", path: "/health", status: 200, bytesSent: 12, clientAddressMasked: "client_abcdef123456" }] },
+      result: { message: null, siteId: "site-example-01", releaseId: null, stagingId: null, desiredState: null, siteVersion: null, certificateRenewalBatchId: null, planPreview: null, logs: [{ timestamp: now, method: "GET", path: "/health", status: 200, bytesSent: 12, clientAddressMasked: "client_abcdef123456" }] },
     }));
     render(<SitesPage page="sites-running" notify={vi.fn()} permissions={["sites:read", "sites:logs"]} />);
     await act(async () => Promise.resolve());
     fireEvent.click(screen.getByRole("button", { name: "查看 app.example.com 站点操作" }));
     fireEvent.click(screen.getByRole("button", { name: "日志" }));
     await act(async () => Promise.resolve());
-    await act(async () => { vi.advanceTimersByTime(2_000); await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
     expect(screen.getByText("GET /health")).toBeInTheDocument();
     expect(screen.getByText(/client_abcdef123456/)).toBeInTheDocument();
   });
@@ -144,14 +174,14 @@ describe("site management UI", () => {
     vi.mocked(querySiteLogs).mockResolvedValue(operation({ type: "log_query", planId: null, siteId: "site-example-01" }));
     vi.mocked(fetchSiteOperation).mockResolvedValue(operation({
       type: "log_query", planId: null, siteId: "site-example-01", status: "succeeded", stage: "complete", progressPercent: 100,
-      result: { message: null, siteId: "site-example-01", releaseId: null, stagingId: null, desiredState: null, certificateRenewalBatchId: null, planPreview: null, logs: [] },
+      result: { message: null, siteId: "site-example-01", releaseId: null, stagingId: null, desiredState: null, siteVersion: null, certificateRenewalBatchId: null, planPreview: null, logs: [] },
     }));
     render(<SitesPage page="sites-running" notify={vi.fn()} permissions={["sites:read", "sites:logs"]} />);
     await act(async () => Promise.resolve());
     fireEvent.click(screen.getByRole("button", { name: "查看 app.example.com 站点操作" }));
     fireEvent.click(screen.getByRole("button", { name: "日志" }));
     await act(async () => Promise.resolve());
-    await act(async () => { vi.advanceTimersByTime(2_000); await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
     expect(screen.getByText("当前查询范围内没有访问日志")).toBeInTheDocument();
   });
 
@@ -160,7 +190,7 @@ describe("site management UI", () => {
     vi.mocked(updateSiteLifecycle).mockResolvedValue(operation({ type: "lifecycle", planId: null, siteId: "site-example-01", stage: "lifecycle_stopped" }));
     vi.mocked(fetchSiteOperation).mockRejectedValueOnce(new Error("临时网络错误")).mockResolvedValueOnce(operation({
       type: "lifecycle", planId: null, siteId: "site-example-01", status: "succeeded", stage: "complete", progressPercent: 100,
-      result: { message: null, siteId: "site-example-01", releaseId: null, stagingId: null, desiredState: "stopped", certificateRenewalBatchId: null, planPreview: null, logs: [] },
+      result: { message: null, siteId: "site-example-01", releaseId: null, stagingId: null, desiredState: "stopped", siteVersion: null, certificateRenewalBatchId: null, planPreview: null, logs: [] },
     }));
     render(<SitesPage page="sites-running" notify={vi.fn()} permissions={["sites:read", "sites:operate"]} />);
     await act(async () => Promise.resolve());
@@ -171,12 +201,12 @@ describe("site management UI", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "停止" }));
     await act(async () => Promise.resolve());
     expect(fetchSites).toHaveBeenCalledTimes(1);
-    await act(async () => { vi.advanceTimersByTime(2_000); await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); });
     expect(screen.getByText("临时网络错误")).toBeInTheDocument();
-    expect(fetchSites).toHaveBeenCalledTimes(1);
-    await act(async () => { vi.advanceTimersByTime(2_000); await Promise.resolve(); await Promise.resolve(); });
-    expect(fetchSiteOperation).toHaveBeenCalledTimes(2);
     expect(fetchSites).toHaveBeenCalledTimes(2);
+    await act(async () => { vi.advanceTimersByTime(10_000); await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchSiteOperation).toHaveBeenCalledTimes(2);
+    expect(fetchSites).toHaveBeenCalledTimes(4);
   });
 
   it("pauses operation polling while hidden and refreshes immediately when visible", async () => {
@@ -191,7 +221,7 @@ describe("site management UI", () => {
     fireEvent.click(screen.getByRole("button", { name: "日志" }));
     await act(async () => Promise.resolve());
     hidden = true; fireEvent(document, new Event("visibilitychange"));
-    await act(async () => { vi.advanceTimersByTime(4_000); await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(20_000); await Promise.resolve(); });
     expect(fetchSiteOperation).not.toHaveBeenCalled();
     hidden = false; fireEvent(document, new Event("visibilitychange"));
     await act(async () => Promise.resolve());

@@ -5,6 +5,7 @@ import { helperReady, renewOpaqueCertificate } from "./certificates.js";
 import { loadConfig, type HelperConfig } from "./config.js";
 import { updateLifecycle } from "./lifecycle.js";
 import { queryLogs } from "./logs.js";
+import { rollbackRelease } from "./rollback.js";
 import { prepareRepository } from "./repository.js";
 import { SiteStateStore } from "./siteState.js";
 import { HelperError, type HelperRequest, type HelperResponse } from "./types.js";
@@ -17,6 +18,7 @@ export type Dependencies = {
   inventory?: typeof buildCertificateInventory;
   prepare?: typeof prepareRepository;
   activate?: typeof activatePlan;
+  rollback?: typeof rollbackRelease;
   lifecycle?: typeof updateLifecycle;
   logs?: typeof queryLogs;
   renew?: typeof renewOpaqueCertificate;
@@ -57,6 +59,10 @@ async function execute(request: HelperRequest, dependencies: Dependencies): Prom
     assertUnprotected(plan.domains, config);
     const result = await (dependencies.activate ?? activatePlan)(plan, config);
     return { ok: true, operation: "activate", data: { operationId: request.requestId, ...result } };
+  }
+  if (request.operation === "rollback") {
+    const result = await (dependencies.rollback ?? rollbackRelease)(request.siteId, request.targetPlanId, request.targetReleaseId, request.expectedVersion, config);
+    return { ok: true, operation: "rollback", data: { operationId: request.requestId, ...result } };
   }
   if (request.operation === "lifecycle") {
     const result = await (dependencies.lifecycle ?? updateLifecycle)(request.siteId, request.action, request.expectedVersion, config);

@@ -39,9 +39,10 @@ async function inspectTree(root: string) {
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
 }
 
-async function installRuntime(definition: RuntimeDefinition, config: HelperConfig, run: FixedCommandRunner) {
+async function installRuntime(definition: RuntimeDefinition, config: HelperConfig, run: FixedCommandRunner, authorized: boolean) {
   const target = within(config.runtimeRoot, `${definition.runtime}-${definition.version}`);
   try { if ((await stat(within(target, "bin", "node"))).isFile()) return target; } catch { /* Download below. */ }
+  if (!authorized) throw new HelperError("RUNTIME_INSTALL_FORBIDDEN", "Requested Node.js runtime is not installed and runtime installation is not authorized");
   await mkdir(config.runtimeRoot, { recursive: true, mode: 0o755 });
   const temporary = await mkdtemp(within(config.runtimeRoot, ".install-")); const archive = within(temporary, "runtime.tar.xz");
   try {
@@ -74,7 +75,7 @@ export async function prepareRepository(request: Extract<HelperRequest, { operat
   if (manifest.runtime !== "static") {
     const runtime = (await readRuntimeCatalog(config.runtimeCatalogPath)).get(manifest.runtime);
     if (!runtime) throw new HelperError("RUNTIME_UNAVAILABLE", "Requested Node.js runtime is not pinned");
-    runtimePath = await installRuntime(runtime, config, run); const path = `${within(runtimePath, "bin")}:/usr/bin:/bin`;
+    runtimePath = await installRuntime(runtime, config, run, request.runtimeInstallAuthorized); const path = `${within(runtimePath, "bin")}:/usr/bin:/bin`;
     await run("/usr/bin/systemd-run", builderArgs(project, within(runtimePath, "bin", "npm"), ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], path), 600_000);
     if (manifest.buildScript) await run("/usr/bin/systemd-run", builderArgs(project, within(runtimePath, "bin", "npm"), ["run", manifest.buildScript], path), 600_000);
   }

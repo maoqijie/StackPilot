@@ -5,6 +5,7 @@ import { HelperError } from "./types.js";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const OPAQUE_SITE_ID = /^site-[a-f0-9]{32}$/;
 const CERTIFICATE_ID = /^cert_[a-f0-9]{32}$/;
+const RELEASE_ID = /^release_[a-f0-9]{32}$/;
 const DOMAIN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
 const ENV_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/;
 const REF = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,159}$/;
@@ -75,18 +76,24 @@ export function parseRequest(raw: string): HelperRequest {
     return { operation: "renew", certificateId: value.certificateId };
   }
   if (value.operation === "prepare") {
-    exactKeys(value, ["operation", "requestId", "planId", "nodeId", "domains", "repositoryUrl", "repositoryRef", "certificateEmail", "certificateEnvironment", "environmentVariables", "expectedPlanDigest"]);
+    exactKeys(value, ["operation", "requestId", "planId", "nodeId", "domains", "repositoryUrl", "repositoryRef", "certificateEmail", "certificateEnvironment", "environmentVariables", "expectedPlanDigest", "runtimeInstallAuthorized"]);
     if (!Array.isArray(value.domains) || !value.domains.length || value.domains.length > 20) throw new HelperError("INVALID_DOMAIN", "Domain list is invalid");
     const domains = value.domains.map(validDomain); if (new Set(domains).size !== domains.length) throw new HelperError("INVALID_DOMAIN", "Domains must be unique");
     if (typeof value.repositoryRef !== "string" || !REF.test(value.repositoryRef) || value.repositoryRef.includes("..") || value.repositoryRef.includes("//") || value.repositoryRef.endsWith("/")) throw new HelperError("INVALID_REPOSITORY_REF", "Repository ref is unsafe");
     if (typeof value.certificateEmail !== "string" || value.certificateEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.certificateEmail)) throw new HelperError("INVALID_EMAIL", "Certificate email is invalid");
-    if (typeof value.nodeId !== "string" || !UUID.test(value.nodeId) || !["staging", "production"].includes(String(value.certificateEnvironment)) || typeof value.expectedPlanDigest !== "string" || !/^[a-f0-9]{64}$/.test(value.expectedPlanDigest)) throw new HelperError("INVALID_REQUEST", "Plan identity fields are invalid");
-    return { operation: "prepare", requestId: requestId(value.requestId), planId: planId(value.planId), nodeId: value.nodeId, domains, repositoryUrl: publicGithubUrl(value.repositoryUrl), repositoryRef: value.repositoryRef, certificateEmail: value.certificateEmail, certificateEnvironment: value.certificateEnvironment as "staging" | "production", environmentVariables: environment(value.environmentVariables), expectedPlanDigest: value.expectedPlanDigest };
+    if (typeof value.nodeId !== "string" || !UUID.test(value.nodeId) || !["staging", "production"].includes(String(value.certificateEnvironment)) || typeof value.expectedPlanDigest !== "string" || !/^[a-f0-9]{64}$/.test(value.expectedPlanDigest) || typeof value.runtimeInstallAuthorized !== "boolean") throw new HelperError("INVALID_REQUEST", "Plan identity fields are invalid");
+    return { operation: "prepare", requestId: requestId(value.requestId), planId: planId(value.planId), nodeId: value.nodeId, domains, repositoryUrl: publicGithubUrl(value.repositoryUrl), repositoryRef: value.repositoryRef, certificateEmail: value.certificateEmail, certificateEnvironment: value.certificateEnvironment as "staging" | "production", environmentVariables: environment(value.environmentVariables), expectedPlanDigest: value.expectedPlanDigest, runtimeInstallAuthorized: value.runtimeInstallAuthorized };
   }
   if (value.operation === "activate") {
     exactKeys(value, ["operation", "requestId", "planId", "stagingId", "expectedPlanDigest"]);
     if (typeof value.stagingId !== "string" || !/^staging_[a-f0-9]{32}$/.test(value.stagingId) || typeof value.expectedPlanDigest !== "string" || !/^[a-f0-9]{64}$/.test(value.expectedPlanDigest)) throw new HelperError("INVALID_REQUEST", "Activation identity fields are invalid");
     return { operation: "activate", requestId: requestId(value.requestId), planId: planId(value.planId), stagingId: value.stagingId, expectedPlanDigest: value.expectedPlanDigest };
+  }
+  if (value.operation === "rollback") {
+    exactKeys(value, ["operation", "requestId", "siteId", "targetPlanId", "targetReleaseId", "expectedVersion"]);
+    if (typeof value.siteId !== "string" || !OPAQUE_SITE_ID.test(value.siteId) || typeof value.targetPlanId !== "string" || !UUID.test(value.targetPlanId) || typeof value.targetReleaseId !== "string" || !RELEASE_ID.test(value.targetReleaseId)
+      || !Number.isInteger(value.expectedVersion) || Number(value.expectedVersion) < 1) throw new HelperError("INVALID_REQUEST", "Rollback request is invalid");
+    return { operation: "rollback", requestId: requestId(value.requestId), siteId: value.siteId, targetPlanId: planId(value.targetPlanId), targetReleaseId: value.targetReleaseId, expectedVersion: Number(value.expectedVersion) };
   }
   if (value.operation === "lifecycle") {
     exactKeys(value, ["operation", "requestId", "siteId", "action", "expectedVersion"]);

@@ -35,6 +35,10 @@ for component in controller agent; do
   install -d -m 0755 "$release/$(dirname "$entry")"
   printf '{"sentinel":"%s"}\n' "$component" > "$release/package.json"
   printf '// sentinel\n' > "$release/$entry"
+  if [ "$component" = "controller" ]; then
+    install -d -m 0755 "$release/apps/web/dist"
+    printf '<!doctype html>\n' > "$release/apps/web/dist/index.html"
+  fi
   ln -s "$release" "$current"
   printf '[Unit]\nDescription=stale-%s\n[Service]\nType=simple\nExecStart=/bin/sleep 300\n[Install]\nWantedBy=multi-user.target\n' "$component" > "$unit_target"
   systemctl daemon-reload
