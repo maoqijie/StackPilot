@@ -25,6 +25,7 @@ import type { DatabaseOperationService } from "../modules/databases/databaseOper
 import type { DatabaseRetentionService } from "../modules/databases/databaseRetentionService.js";
 import type { SystemdService } from "../modules/systemd/systemdService.js";
 import type { FirewallService } from "../modules/firewall/firewallService.js";
+import type { FirewallOpenPortService } from "../modules/firewall/firewallOpenPortService.js";
 import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
@@ -54,6 +55,7 @@ export type Services = {
   terminalSnippets: TerminalSnippetService;
   systemd: SystemdService;
   firewall: FirewallService;
+  firewallOpenPorts: FirewallOpenPortService;
 };
 export type RequestContext = {
   request: IncomingMessage;

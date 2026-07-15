@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { cleanCurrentRouteForPage, collectUrlParams, readPageFromHash } from "../app/routing";
+import { navItemsForPermissions } from "../app/navigation";
 
 describe("application routing", () => {
   beforeEach(() => {
@@ -30,5 +31,10 @@ describe("application routing", () => {
     window.history.replaceState(null, "", "/?dbFocus=orders#databases?quick=create-database");
     expect(collectUrlParams().get("quick")).toBe("create-database");
     expect(cleanCurrentRouteForPage("databases")).toBe("/?dbFocus=orders#databases");
+  });
+
+  it("hides schedule navigation without read permission", () => {
+    expect(navItemsForPermissions([]).some((item) => item.key === "schedule")).toBe(false);
+    expect(navItemsForPermissions(["schedules:read"]).some((item) => item.key === "schedule")).toBe(true);
   });
 });

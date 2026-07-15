@@ -1,6 +1,7 @@
 import {
   CreateFirewallRuleRequestSchema, DeleteFirewallRuleRequestSchema, FirewallMutationResponseSchema, FirewallRulesPayloadSchema,
-  type CreateFirewallRuleRequest, type DeleteFirewallRuleRequest, type FirewallMutationResponse, type FirewallRulesPayload,
+  FirewallOpenPortsPayloadSchema,
+  type CreateFirewallRuleRequest, type DeleteFirewallRuleRequest, type FirewallMutationResponse, type FirewallRulesPayload, type FirewallOpenPortsPayload,
 } from "@stackpilot/contracts";
 import { requestJson } from "./client";
 
@@ -14,4 +15,8 @@ export function deleteFirewallRule(id: string, input: DeleteFirewallRuleRequest,
   return requestJson<unknown>(`/firewall/rules/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "X-Reauth-Proof": reauthProof }, body: JSON.stringify(DeleteFirewallRuleRequestSchema.parse(input)) }).then(FirewallMutationResponseSchema.parse);
 }
 
-export type { FirewallRule, FirewallRulesPayload } from "@stackpilot/contracts";
+export function fetchFirewallOpenPorts(signal?: AbortSignal): Promise<FirewallOpenPortsPayload> {
+  return requestJson<unknown>("/firewall/open-ports", { signal }).then(FirewallOpenPortsPayloadSchema.parse);
+}
+
+export type { FirewallOpenPort, FirewallOpenPortsPayload, FirewallRule, FirewallRulesPayload } from "@stackpilot/contracts";

@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=stackpilot-controller
 Group=stackpilot-controller
-SupplementaryGroups=stackpilot-cert stackpilot-firewall
+SupplementaryGroups=stackpilot-cert stackpilot-firewall crontab
 WorkingDirectory=/opt/stackpilot/current
 Environment=NODE_ENV=production
 Environment=HOST=127.0.0.1
@@ -51,7 +51,7 @@ CapabilityBoundingSet=
 AmbientCapabilities=
 SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
-ReadWritePaths=/var/lib/stackpilot-controller
+ReadWritePaths=/var/lib/stackpilot-controller /var/spool/cron/crontabs
 
 [Install]
 WantedBy=multi-user.target

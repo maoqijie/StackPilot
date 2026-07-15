@@ -15,11 +15,12 @@ import { useFirewallRules } from "../features/firewall/useFirewallRules";
 import { firewallPagePreset, isValidFirewallSource } from "../features/firewall/validation";
 import type { Notify, PageKey } from "../types/app";
 import { formatBackendDateTime } from "../utils/time";
+import { FirewallOpenPortsPage } from "../features/firewall/FirewallOpenPortsPage";
 
 type Drawer = { type: "create" } | { type: "detail" | "delete"; ruleId: string } | null;
 type Props = { page: PageKey; notify: Notify; permissions?: Permission[] };
 
-function FirewallPage({ page, notify, permissions = [] }: Props) {
+function FirewallRulesPage({ page, notify, permissions = [] }: Props) {
   const preset = firewallPagePreset(page); const resource = useFirewallRules(); const rows = useMemo(() => resource.data?.rules ?? [], [resource.data]);
   const canOperate = permissions.includes("firewall:operate"); const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
   const [protocolByPage, setProtocolByPage] = useState<Record<string, string>>({}); const [sourceByPage, setSourceByPage] = useState<Record<string, string>>({});
@@ -80,6 +81,12 @@ function FirewallPage({ page, notify, permissions = [] }: Props) {
     <div className="firewall-freshness"><Clock3 size={18} /><div><strong>{resource.data?.host ?? "本机"} · 采集时间 {formatBackendDateTime(resource.data?.collectedAt)}</strong><span>{collectionMessage}</span></div></div>
     <DataTable pageSize={100} columns={[{ key: "name", label: "规则", width: "220px", render: (row) => <button className="module-row-link" type="button" aria-label={`查看防火墙规则 ${row.name}`} onClick={(event) => open({ type: "detail", ruleId: row.id }, event.currentTarget)}><StatusLight tone={resource.data?.active ? "green" : "gray"} /><b title={row.name}>{row.name}</b></button> }, { key: "port", label: "端口", render: (row) => row.port }, { key: "protocol", label: "协议", render: (row) => <span className="pill blue">{row.protocol?.toUpperCase() ?? "ANY"}</span> }, { key: "source", label: "来源", render: (row) => <code className="firewall-rule-value" title={row.source}>{row.source}</code> }, { key: "target", label: "主机", render: () => <span className="firewall-rule-value" title={resource.data?.host}>{resource.data?.host ?? "-"}</span> }, { key: "managed", label: "归属", render: (row) => <span className={`pill ${row.managed ? "green" : "blue"}`}>{row.managed ? "受管" : "外部"}</span> }, { key: "ops", label: "操作", width: "130px", render: (row) => <span className="table-actions firewall-rule-actions"><button type="button" onClick={(event) => open({ type: "detail", ruleId: row.id }, event.currentTarget)}>详情</button>{canOperate && <button className="firewall-rule-delete" type="button" disabled={!row.managed || !resource.data?.active} title={!row.managed ? "外部规则只能查看" : undefined} onClick={(event) => open({ type: "delete", ruleId: row.id }, event.currentTarget)}>删除</button>}</span> }]} rows={filteredRows} emptyText={resource.data?.collectionStatus === "unavailable" ? "UFW 数据暂不可用" : rows.length ? "没有匹配的防火墙规则" : "未发现 UFW 规则，系统将继续自动采集"} getRowKey={(row) => row.id} mobileCard={(row) => <><div className="module-card-head"><button className="module-row-link" type="button" onClick={(event) => open({ type: "detail", ruleId: row.id }, event.currentTarget)}><StatusLight tone={resource.data?.active ? "green" : "gray"} /><b>{row.name}</b></button><span className={`pill ${row.managed ? "green" : "blue"}`}>{row.managed ? "受管" : "外部"}</span></div><code className="module-card-code">{`${row.source} -> ${resource.data?.host ?? "本机"}`}</code><div className="module-card-meta"><span><b>端口</b><em>{row.port}</em></span><span><b>协议</b><em>{row.protocol?.toUpperCase() ?? "ANY"}</em></span><span><b>动作</b><em>{row.action.toUpperCase()}</em></span><span><b>IP</b><em>{row.ipVersion.toUpperCase()}</em></span></div><div className="module-card-footer"><div className="table-actions firewall-rule-actions"><button type="button" onClick={(event) => open({ type: "detail", ruleId: row.id }, event.currentTarget)}>详情</button>{canOperate && <button className="firewall-rule-delete" type="button" disabled={!row.managed || !resource.data?.active} onClick={(event) => open({ type: "delete", ruleId: row.id }, event.currentTarget)}>删除</button>}</div></div></>} />
   </ModulePageShell>;
+}
+
+function FirewallPage(props: Props) {
+  return props.page === "firewall-open"
+    ? <FirewallOpenPortsPage permissions={props.permissions ?? []} />
+    : <FirewallRulesPage {...props} />;
 }
 
 export { FirewallPage };

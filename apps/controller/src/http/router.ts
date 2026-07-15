@@ -8,6 +8,7 @@ import {
   RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
   SystemdServicesPayloadSchema,
+  FirewallOpenPortsPayloadSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
 import { ApiNoticeSchema } from "@stackpilot/contracts";
@@ -57,7 +58,13 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     sendJson(response, 200, await services.systemd.list(context.principal?.nodeScope ?? []), SystemdServicesPayloadSchema);
     return;
   }
-  if (context.url.searchParams.size > 0 && context.url.pathname !== "/api/files") throw new ApiError(400, "BAD_REQUEST", "查询参数无效：当前接口不接受查询参数");
+  if (context.url.pathname === "/api/firewall/open-ports" && method === "GET") {
+    context.identity?.require(context.principal, "firewall:read", context.platform.nodeId);
+    response.setHeader("Cache-Control", "no-store");
+    sendJson(response, 200, await services.firewallOpenPorts.list(), FirewallOpenPortsPayloadSchema);
+    return;
+  }
+  if (context.url.searchParams.size > 0 && !["/api/files", "/api/audit"].includes(context.url.pathname)) throw new ApiError(400, "BAD_REQUEST", "查询参数无效：当前接口不接受查询参数");
 
   if (context.url.pathname === "/healthz" && method === "GET") {
     sendJson(response, 200, { ok: true, service: "stackpilot-api", time: new Date().toLocaleString("zh-CN", { hour12: false }) }, HealthResponseSchema);
@@ -179,9 +186,12 @@ async function routeSchedules(context: RequestContext) {
   const { request, response, parts, services, config } = context; const method = request.method;
   context.identity?.require(context.principal,method === "GET" ? "schedules:read" : "schedules:write");
   if (parts.length === 3 && method === "GET") { sendJson(response, 200, await services.schedules.list(), SchedulePayloadSchema); return; }
-  if (["POST", "PATCH", "DELETE"].includes(method ?? "") && !config.crontabWriteEnabled) throw forbidden("crontab 写入与立即执行能力未开启");
-  if (parts.length === 3 && method === "POST") { const payload = parseSchema(CreateScheduleJobRequestSchema, context.body, "请求体"); const result = await services.schedules.create(payload); sendJson(response, 201, { ...result, message: `${result.job.name} 已写入当前用户 crontab`, tone: "success" }, ScheduleMutationResponseSchema); return; }
-  if (parts.length === 4 && method === "PATCH") { const id = idAt(context, 3); const run = RunScheduleJobRequestSchema.safeParse(context.body); const result = run.success ? await services.schedules.run(id) : await services.schedules.update(id, parseSchema(UpdateScheduleJobRequestSchema, context.body, "请求体")); sendJson(response, 200, { ...result, message: `${result.job.name} ${run.success ? "已立即执行" : "已保存到当前用户 crontab"}`, tone: result.job.result === "失败" ? "warning" : "success" }, ScheduleMutationResponseSchema); return; }
-  if (parts.length === 4 && method === "DELETE") { parseSchema(EmptyObjectSchema, context.body, "请求体"); const result = await services.schedules.delete(idAt(context, 3)); sendJson(response, 200, { ...result, message: `${result.job.name} 已从当前用户 crontab 删除`, tone: "warning" }, ScheduleMutationResponseSchema); return; }
+  const authorizeMutation = () => {
+    if (!config.crontabWriteEnabled) throw forbidden("crontab 写入与立即执行能力未开启");
+    context.identity?.consumeReauth(context.principal!, typeof request.headers["x-reauth-proof"] === "string" ? request.headers["x-reauth-proof"] : undefined);
+  };
+  if (parts.length === 3 && method === "POST") { const payload = parseSchema(CreateScheduleJobRequestSchema, context.body, "请求体"); authorizeMutation(); const result = await services.schedules.create(payload, context.principal!.userId); sendJson(response, 201, { ...result, message: `${result.job.name} 已写入当前用户 crontab`, tone: "success" }, ScheduleMutationResponseSchema); return; }
+  if (parts.length === 4 && method === "PATCH") { const id = idAt(context, 3); const run = RunScheduleJobRequestSchema.safeParse(context.body); const update = run.success ? null : parseSchema(UpdateScheduleJobRequestSchema, context.body, "请求体"); authorizeMutation(); const result = run.success ? await services.schedules.run(id, run.data.idempotencyKey, context.principal!.userId) : await services.schedules.update(id, update!); sendJson(response, 200, { ...result, message: `${result.job.name} ${run.success ? "已立即执行" : "已保存到当前用户 crontab"}`, tone: result.job.result === "失败" ? "warning" : "success" }, ScheduleMutationResponseSchema); return; }
+  if (parts.length === 4 && method === "DELETE") { parseSchema(EmptyObjectSchema, context.body, "请求体"); const id = idAt(context, 3); authorizeMutation(); const result = await services.schedules.delete(id); sendJson(response, 200, { ...result, message: `${result.job.name} 已从当前用户 crontab 删除`, tone: "warning" }, ScheduleMutationResponseSchema); return; }
   throw notFound("定时任务接口不存在");
 }

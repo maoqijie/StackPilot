@@ -2,18 +2,89 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.18 - 2026-07-15
+## 0.3.0-preview.23 - 2026-07-16
 
 ### Added
 
-- Connected the firewall rules workbench to the host's real UFW state through strict shared contracts, authenticated APIs and a dedicated root-only Unix socket helper.
-- Added backend collection timestamps, visibility-aware 10-second polling, explicit unavailable states and permission-aware create/delete workflows.
+- Connected the firewall rule workbench to the host's real UFW state through authenticated Controller APIs and a dedicated root-only Unix socket helper.
+- Added real backend freshness, visibility-aware 10-second polling and permission-aware rule creation and deletion while preserving the existing real listening-port workbench.
 
 ### Security
 
-- Firewall mutations require CSRF, `firewall:operate`, one-time reauthentication, an idempotency key and optimistic rule versions.
-- The helper accepts only fixed UFW list/create/delete operations; StackPilot can delete only rules carrying its opaque managed comment, while externally managed rules remain read-only.
-- UFW activation and default-policy changes remain outside the API, preventing a page visit or mutation from unexpectedly changing host connectivity.
+- Required Controller node scope, `firewall:operate`, CSRF, one-time reauthentication, stable idempotency keys and optimistic rule versions for every UFW mutation.
+- Kept external UFW rules read-only, rechecked rule identity immediately before numbered deletion, and excluded UFW activation and default-policy changes from the API.
+
+## 0.3.0-preview.22 - 2026-07-15
+
+### Fixed
+
+- Made the native Controller installer verify the distribution `cron` package contract before synchronizing units, and reapplied Controller sysusers membership during same-version unit updates.
+- Extended production preflight to reject enabled crontab writes when the executable, system group, or spool directory is unavailable, while keeping the optional capability non-blocking when disabled.
+- Restored complete registry resolution and integrity metadata in the workspace lockfile so clean release installs remain reproducible after concurrent version merges.
+
+### Security
+
+- Added user-scoped idempotency keys to schedule creation and immediate execution so a retried confirmation cannot duplicate a managed job or execute its command twice after a lost response.
+- Added bounded replay caching and payload-conflict rejection for completed schedule side effects while preserving session, CSRF, permission, and one-time reauthentication checks.
+
+## 0.3.0-preview.21 - 2026-07-15
+
+### Changed
+
+- Connected the global and failed-audit views to the authenticated Controller audit repository, with backend collection timestamps, visibility-aware 10-second polling, stable event details and real CSV export.
+- Removed the Web audit fixture fallback and centralized the audit response and bounded read-filter schemas in the shared contracts package.
+
+### Security
+
+- Preserved the explicitly global `audit:read` enforcement on the API, hid audit navigation and search actions from principals without that permission, and applied failed-result and action-prefix filters before the SQLite limit.
+
+## 0.3.0-preview.20 - 2026-07-15
+
+### Fixed
+
+- Classified the complete IPv4 `127.0.0.0/8` loopback range, including interface-scoped systemd-resolved listeners, as local-only instead of a specific-address binding.
+
+## 0.3.0-preview.19 - 2026-07-15
+
+### Added
+
+- Added an authenticated Controller API that reports real TCP and UDP listening sockets with stable identifiers, bind scope and backend collection time.
+- Connected the firewall open-port workbench to the real API with strict shared contracts, explicit permission handling and visibility-aware 10-second polling.
+
+### Fixed
+
+- Allowed the hardened native Controller service to read and write its own crontab by granting only the operating system `crontab` supplementary group while retaining `NoNewPrivileges` and an empty capability set.
+- Restored reproducible clean installs by synchronizing the lockfile with the committed CycloneDX dependency graph.
+
+### Changed
+
+- Exposed the server-side crontab mutation capability in the schedule read model and rendered the real schedule inventory as read-only when the dangerous write switch is disabled.
+- Applied `schedules:read` and `schedules:write` permissions to schedule navigation and mutation controls while preserving the backend authorization checks.
+- Replaced the `#firewall-open` fixture rule view with actual Controller host listeners while keeping the separate rule-management and deny-record workbenches unchanged.
+
+### Security
+
+- Required a user session and one-time reauthentication proof for every crontab mutation or immediate command execution; API tokens remain read-only for schedules.
+- Serialized schedule read-modify-write operations and switched task identifiers to UUIDs so concurrent mutations cannot overwrite or alias managed jobs.
+- Open-port collection runs through a fixed `/usr/bin/ss -H -lntu` invocation without a shell, requires `firewall:read`, and exposes no process identity or arbitrary command input.
+- The Web surface states that a listening socket does not prove upstream network reachability and does not offer unsafe UFW mutations on hosts where UFW is inactive.
+
+## 0.3.0-preview.18 - 2026-07-15
+
+### Fixed
+
+- Granted the hardened Controller service the existing system `crontab` group and the narrow cron-spool write path required for the real managed schedule backend.
+- Repaired the workspace lockfile so clean `npm ci` installations include every optional release-scanning dependency.
+
+### Security
+
+- Kept schedule writes behind the existing `STACKPILOT_ENABLE_CRONTAB_WRITE=1`, session, CSRF and `schedules:write` permission boundaries while limiting filesystem access to the Controller state and user-crontab spool.
+
+### Changed
+
+- Rebuilt access-control, audit and settings workbenches with stable shared page framing, semantic user and permission states, complete detail surfaces and responsive long-value handling.
+- Added guarded user access updates, clearer system-backup permission states and a confirmed audit-export workflow based on current filters.
+- Split access, ACL, audit and settings CloudPulse styling into dedicated modules and expanded page-level test coverage.
 
 ## 0.3.0-preview.17 - 2026-07-15
 

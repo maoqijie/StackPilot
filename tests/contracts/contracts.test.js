@@ -17,6 +17,7 @@ import {
   CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
   CreateFirewallRuleRequestSchema, FirewallRulesPayloadSchema,
+  FirewallOpenPortsPayloadSchema,
   CreateDirectoryRequestSchema,
   UpdateNodeCapabilitiesRequestSchema,
 } from "@stackpilot/contracts";
@@ -34,6 +35,13 @@ test("firewall contracts accept bounded UFW rules and reject shell-shaped input"
   assert.equal(CreateFirewallRuleRequestSchema.safeParse({ name: "HTTPS", port: 443, protocol: "tcp", source: "0.0.0.0/0", idempotencyKey: crypto.randomUUID() }).success, true);
   assert.equal(CreateFirewallRuleRequestSchema.safeParse({ name: "bad", port: "443; reboot", protocol: "tcp", source: "any", idempotencyKey: crypto.randomUUID(), command: "ufw allow" }).success, false);
   assert.equal(PermissionSchema.safeParse("firewall:read").success, true); assert.equal(PermissionSchema.safeParse("firewall:operate").success, true);
+});
+
+test("firewall open-port payload stays strict and backend-owned", () => {
+  const collectedAt = new Date().toISOString();
+  const port = { id: `port_${"a".repeat(24)}`, protocol: "TCP", port: 443, address: "0.0.0.0", source: "0.0.0.0/0", exposure: "public", host: "controller-1" };
+  assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ collectedAt, collectionStatus: "complete", backend: "ss", warnings: [], ports: [port] }).success, true);
+  assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ collectedAt, collectionStatus: "complete", backend: "ss", warnings: [], ports: [{ ...port, port: 0 }] }).success, false);
 });
 
 test("node capability updates accept the complete shared Agent capability set", () => {

@@ -12,17 +12,17 @@ function ruleId(context: RequestContext) {
 export async function routeFirewallRequest(context: RequestContext) {
   const method = context.request.method ?? "GET";
   if (context.parts.length === 3 && method === "GET") {
-    context.identity?.require(context.principal, "firewall:read"); context.response.setHeader("Cache-Control", "no-store");
+    context.identity?.require(context.principal, "firewall:read", context.platform.nodeId); context.response.setHeader("Cache-Control", "no-store");
     sendJson(context.response, 200, await context.services.firewall.list(), FirewallRulesPayloadSchema); return;
   }
   if (context.parts.length === 3 && method === "POST") {
-    context.identity?.require(context.principal, "firewall:operate");
+    context.identity?.require(context.principal, "firewall:operate", context.platform.nodeId);
     const input = parseSchema(CreateFirewallRuleRequestSchema, context.body, "防火墙规则");
     context.identity?.consumeReauth(context.principal!, typeof context.request.headers["x-reauth-proof"] === "string" ? context.request.headers["x-reauth-proof"] : undefined);
     sendJson(context.response, 201, await context.services.firewall.create(input), FirewallMutationResponseSchema); return;
   }
   if (context.parts.length === 4 && method === "DELETE") {
-    context.identity?.require(context.principal, "firewall:operate");
+    context.identity?.require(context.principal, "firewall:operate", context.platform.nodeId);
     const input = parseSchema(DeleteFirewallRuleRequestSchema, context.body, "删除防火墙规则");
     context.identity?.consumeReauth(context.principal!, typeof context.request.headers["x-reauth-proof"] === "string" ? context.request.headers["x-reauth-proof"] : undefined);
     sendJson(context.response, 200, await context.services.firewall.delete(ruleId(context), input), FirewallMutationResponseSchema); return;

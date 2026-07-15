@@ -91,6 +91,8 @@ export async function deleteFirewallRule(input: DeleteInput, stateRoot: string, 
     if (!rule.managed) throw new HelperError("FIREWALL_RULE_FORBIDDEN", "Only StackPilot-managed firewall rules can be deleted");
     if (rule.version !== input.version) throw new HelperError("FIREWALL_RULE_CHANGED", "Firewall rule changed since it was collected");
     const result = await run("/usr/sbin/ufw", ["status", "numbered"], 10_000, { env: { PATH: "/usr/sbin:/usr/bin", LC_ALL: "C", LANG: "C" } });
+    const current = parseUfwStatus(result.stdout).rules.find((item) => item.id === input.ruleId);
+    if (!current?.managed || current.version !== input.version) throw new HelperError("FIREWALL_RULE_CHANGED", "Firewall rule changed before deletion");
     const numbered = result.stdout.split(/\r?\n/).find((line) => line.includes(`# StackPilot:${input.ruleId.split(":")[1]}`) && (input.ruleId.endsWith(":ipv6") ? /\(v6\)/i.test(line) : !/\(v6\)/i.test(line)));
     const number = numbered?.match(/^\[\s*(\d+)\]/)?.[1]; if (!number) throw new HelperError("FIREWALL_RULE_CHANGED", "Firewall rule number changed before deletion");
     await run("/usr/sbin/ufw", ["--force", "delete", number], 20_000, { env: { PATH: "/usr/sbin:/usr/bin", LC_ALL: "C", LANG: "C" } });

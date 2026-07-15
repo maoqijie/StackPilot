@@ -37,3 +37,14 @@ test("firewall mutations use fixed ufw arguments and refuse external deletion", 
     await assert.rejects(() => deleteFirewallRule({ requestId: "33333333-3333-4333-8333-333333333333", ruleId: parseUfwStatus(status).rules[0].id, version: parseUfwStatus(status).rules[0].version }, root, run), /Only StackPilot-managed/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test("firewall deletion rechecks the rule version before using a numbered rule", async () => {
+  const root = await mkdtemp(join(tmpdir(), "stackpilot-firewall-version-"));
+  const changed = status.replace("443/tcp                    ALLOW", "8443/tcp                   ALLOW");
+  let calls = 0;
+  const run = async () => ({ stdout: calls++ === 0 ? status : changed, stderr: "" });
+  const rule = parseUfwStatus(status).rules[1];
+  try {
+    await assert.rejects(() => deleteFirewallRule({ requestId: "44444444-4444-4444-8444-444444444444", ruleId: rule.id, version: rule.version }, root, run), /changed before deletion/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

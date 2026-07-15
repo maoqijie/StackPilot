@@ -17,6 +17,7 @@ function DetailDrawer({
   modal,
   autoFocus = true,
   closeLabel = "关闭详情",
+  scrimCloseLabel,
   restoreFocusTarget,
 }: {
   title: string;
@@ -28,6 +29,7 @@ function DetailDrawer({
   modal?: boolean;
   autoFocus?: boolean;
   closeLabel?: string;
+  scrimCloseLabel?: string;
   restoreFocusTarget?: HTMLElement | null;
 }) {
   const drawerRef = useRef<HTMLElement>(null);
@@ -124,7 +126,7 @@ function DetailDrawer({
 
   return createPortal(
     <>
-      <button className={scrimClassName} data-closing={closing || undefined} type="button" aria-label={closeLabel} onClick={requestClose} tabIndex={-1} disabled={closing} />
+      <button className={scrimClassName} data-closing={closing || undefined} type="button" aria-label={scrimCloseLabel ?? closeLabel} onClick={requestClose} tabIndex={-1} disabled={closing} />
       <aside
         ref={drawerRef}
         className={drawerClassName}
