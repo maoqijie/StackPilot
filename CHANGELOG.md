@@ -2,6 +2,23 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.19 - 2026-07-15
+
+### Fixed
+
+- Allowed the hardened native Controller service to read and write its own crontab by granting only the operating system `crontab` supplementary group while retaining `NoNewPrivileges` and an empty capability set.
+- Restored reproducible clean installs by synchronizing the lockfile with the committed CycloneDX dependency graph.
+
+### Changed
+
+- Exposed the server-side crontab mutation capability in the schedule read model and rendered the real schedule inventory as read-only when the dangerous write switch is disabled.
+- Applied `schedules:read` and `schedules:write` permissions to schedule navigation and mutation controls while preserving the backend authorization checks.
+
+### Security
+
+- Required a user session and one-time reauthentication proof for every crontab mutation or immediate command execution; API tokens remain read-only for schedules.
+- Serialized schedule read-modify-write operations and switched task identifiers to UUIDs so concurrent mutations cannot overwrite or alias managed jobs.
+
 ## 0.3.0-preview.17 - 2026-07-15
 
 ### Changed

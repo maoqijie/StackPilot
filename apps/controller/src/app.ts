@@ -115,7 +115,7 @@ export function createControllerServices(
     databaseBackups: new DatabaseBackupService(database, isAbsolute(config.databasePath) ? config.databasePath : resolve(repoRoot, config.databasePath), config, repoRoot),
     tasks: new TaskService(overview, state, exports),
     risks: new RiskService(overview, exports),
-    schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform),
+    schedules: new ScheduleService(new CrontabScheduleRepository(platform), platform, config.crontabWriteEnabled),
     enrollments: new EnrollmentService(repository),
     nodes,
     remoteTasks,

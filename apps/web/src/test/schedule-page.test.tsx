@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchScheduleJobs, createScheduleJob, deleteScheduleJob, runScheduleJob, updateScheduleJob } from "../api/scheduleApi";
 import type { SchedulePayload } from "../api/scheduleApi";
 import { SchedulePage } from "../pages/SchedulePage";
+import { reauthenticate } from "../api/identityApi";
 
 vi.mock("../api/scheduleApi", () => ({
   fetchScheduleJobs: vi.fn(),
@@ -11,6 +12,7 @@ vi.mock("../api/scheduleApi", () => ({
   runScheduleJob: vi.fn(),
   updateScheduleJob: vi.fn(),
 }));
+vi.mock("../api/identityApi", () => ({ reauthenticate: vi.fn() }));
 
 const failedJob = {
   id: "job-failed",
@@ -31,7 +33,7 @@ const successfulJob = {
 };
 
 function payload(jobs = [failedJob, successfulJob]): SchedulePayload {
-  return { jobs, scannedAt: "2026-07-15T02:00:00.000Z" };
+  return { jobs, scannedAt: "2026-07-15T02:00:00.000Z", writeEnabled: true };
 }
 
 describe("schedule failed page", () => {
@@ -44,6 +46,7 @@ describe("schedule failed page", () => {
     vi.mocked(runScheduleJob).mockReset();
     vi.mocked(updateScheduleJob).mockReset();
     vi.mocked(fetchScheduleJobs).mockReset();
+    vi.mocked(reauthenticate).mockReset();
   });
 
   afterEach(() => {
@@ -108,7 +111,7 @@ describe("schedule failed page", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "删除" })[0]);
     const deleteDialog = screen.getByRole("alertdialog", { name: "删除定时任务" });
     expect(deleteDialog.parentElement).toBe(document.body);
-    expect(deleteDialog).toHaveClass("schedule-delete-dialog");
+    expect(deleteDialog).toHaveClass("schedule-mutation-dialog");
 
     fireEvent.click(within(deleteDialog).getByRole("button", { name: "关闭确认弹窗" }));
     act(() => vi.advanceTimersByTime(180));
@@ -116,5 +119,44 @@ describe("schedule failed page", () => {
     const modal = screen.getByRole("dialog", { name: "新建计划任务" });
     expect(modal).toHaveClass("schedule-job-modal");
     expect(modal).toHaveAttribute("data-motion-surface", "modal");
+  });
+
+  it("keeps the real schedule inventory read-only when the server capability is disabled", async () => {
+    vi.mocked(fetchScheduleJobs).mockResolvedValue({ ...payload([failedJob]), writeEnabled: false });
+    render(<SchedulePage page="schedule-enabled" notify={notify} permissions={["schedules:read", "schedules:write"]} />);
+    await act(async () => undefined);
+
+    expect(screen.getByText("当前为只读模式")).toBeInTheDocument();
+    expect(screen.getByText("服务器未开启 crontab 写入与立即执行能力。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
+  });
+
+  it("hides mutations when the current user lacks schedule write permission", async () => {
+    vi.mocked(fetchScheduleJobs).mockResolvedValue(payload([failedJob]));
+    render(<SchedulePage page="schedule-enabled" notify={notify} permissions={["schedules:read"]} />);
+    await act(async () => undefined);
+
+    expect(screen.getByText("当前账号没有修改定时任务的权限。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "执行" })).not.toBeInTheDocument();
+  });
+
+  it("reauthenticates before a schedule mutation and passes the one-time proof", async () => {
+    vi.mocked(fetchScheduleJobs).mockResolvedValue(payload([failedJob]));
+    vi.mocked(reauthenticate).mockResolvedValue({ proof: "proof-1", expiresAt: "2026-07-15T03:00:00.000Z" });
+    vi.mocked(updateScheduleJob).mockResolvedValue({ job: { ...failedJob, enabled: false }, jobs: [{ ...failedJob, enabled: false }], message: "已停用", tone: "success" });
+    render(<SchedulePage page="schedule-enabled" notify={notify} />);
+    await act(async () => undefined);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "停用" })[0]);
+    const dialog = screen.getByRole("alertdialog", { name: "确认停用定时任务" });
+    fireEvent.change(within(dialog).getByLabelText("当前密码"), { target: { value: "correct horse battery staple" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认停用" }));
+    await act(async () => undefined);
+
+    expect(reauthenticate).toHaveBeenCalledWith("correct horse battery staple");
+    expect(updateScheduleJob).toHaveBeenCalledWith(failedJob.id, { enabled: false }, "proof-1");
   });
 });
