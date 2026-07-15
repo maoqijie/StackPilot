@@ -2,17 +2,40 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.25 - 2026-07-16
+## 0.3.0-preview.27 - 2026-07-16
 
 ### Added
 
 - Connected the firewall rule workbench to the host's real UFW state through authenticated Controller APIs and a dedicated root-only Unix socket helper.
-- Added real backend freshness, visibility-aware 10-second polling and permission-aware rule creation and deletion while preserving the existing real listening-port workbench.
+- Added real backend freshness, visibility-aware 10-second polling and permission-aware rule creation and deletion while preserving the real listening-port and deny-record workbenches.
 
 ### Security
 
 - Required Controller node scope, `firewall:operate`, CSRF, one-time reauthentication, stable idempotency keys and optimistic rule versions for every UFW mutation.
 - Kept external UFW rules read-only, rechecked rule identity immediately before numbered deletion, and excluded UFW activation and default-policy changes from the API.
+
+## 0.3.0-preview.26 - 2026-07-16
+
+### Fixed
+
+- Isolated the database authorization HTTP test from host systemd database discovery so Linux release gates remain deterministic on production-like hosts without changing Controller-local database collection behavior.
+
+## 0.3.0-preview.25 - 2026-07-16
+
+### Added
+
+- Added bounded Controller-side execution records for automatic cron and immediate schedule runs, including source, timestamps, command revision, exit code, duration, stdout and stderr.
+- Connected the failed-schedule workbench and task detail drawer to backend-recorded executions instead of inferring failure from browser state.
+
+### Fixed
+
+- Bound execution records to the SHA-256 revision of the scheduled command so late results from deleted or edited jobs cannot be attributed to a new command.
+- Killed the complete derived process group when a scheduled command times out, preventing timed-out shell children from continuing side effects in the background.
+- Preserved concurrent schedule edits and deletes when immediate execution completes, rejected overlapping runs of the same task, and retained user-scoped replay idempotency.
+
+### Security
+
+- Managed crontab rows invoke only the fixed StackPilot runner with encoded bounded input; execution records use private atomic files with bounded retention and invalid runner parameters are rejected before command execution.
 
 ## 0.3.0-preview.24 - 2026-07-15
 

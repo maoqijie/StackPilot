@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  API_CLIENT_PREFIX, API_ROOT_SEGMENTS, ApiErrorResponseSchema, CreateScheduleJobRequestSchema,
-  OverviewSummaryPayloadSchema, PathIdSchema, WRITE_METHODS,
+  API_CLIENT_PREFIX, API_ROOT_SEGMENTS, ApiErrorResponseSchema, CreateScheduleJobRequestSchema, ScheduleExecutionSchema,
+  OverviewSummaryPayloadSchema, PathIdSchema, SchedulePayloadSchema, WRITE_METHODS,
   AGENT_PROTOCOL_VERSION, AgentDatabaseSnapshotSchema, AgentHeartbeatSchema, AgentTelemetrySnapshotSchema, HostMonitoringRecordSchema, PhysicalHostIdSchema,
   CreateRemoteTaskRequestSchema, RemoteTaskListResponseSchema, isAgentProtocolCompatible,
   SiteRuntimePayloadSchema,
@@ -66,11 +66,19 @@ test("schedule side effects require bounded idempotency keys", () => {
   assert.equal(CreateScheduleJobRequestSchema.safeParse({ ...request, idempotencyKey: "invalid key" }).success, false);
 });
 
+test("schedule execution records are command-versioned and bounded", () => {
+  const execution = { id: crypto.randomUUID(), commandDigest: "a".repeat(64), source: "cron", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), status: "失败", exitCode: 17, durationMs: 5, output: "partial", error: "failed" };
+  assert.equal(ScheduleExecutionSchema.safeParse(execution).success, true);
+  assert.equal(ScheduleExecutionSchema.safeParse({ ...execution, commandDigest: "old" }).success, false);
+  assert.equal(ScheduleExecutionSchema.safeParse({ ...execution, output: "x".repeat(16_001) }).success, false);
+});
+
 test("firewall open-port payload stays strict and backend-owned", () => {
-  const collectedAt = new Date().toISOString();
-  const port = { id: `port_${"a".repeat(24)}`, protocol: "TCP", port: 443, address: "0.0.0.0", source: "0.0.0.0/0", exposure: "public", host: "controller-1" };
-  assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ collectedAt, collectionStatus: "complete", backend: "ss", warnings: [], ports: [port] }).success, true);
-  assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ collectedAt, collectionStatus: "complete", backend: "ss", warnings: [], ports: [{ ...port, port: 0 }] }).success, false);
+  const payload = { collectedAt: new Date().toISOString(), collectionStatus: "complete", backend: "ss", warnings: [], ports: [{ id: `port_${"a".repeat(24)}`, protocol: "TCP", port: 443, address: "0.0.0.0", source: "0.0.0.0/0", exposure: "public", host: "controller-1" }] };
+  assert.equal(FirewallOpenPortsPayloadSchema.safeParse(payload).success, true);
+  assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, ports: [{ ...payload.ports[0], port: 0 }] }).success, false);
+  assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, ports: [{ ...payload.ports[0], protocol: "SCTP" }] }).success, false);
+  assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, clientCollectedAt: payload.collectedAt }).success, false);
 });
 
 test("node capability updates accept the complete shared Agent capability set", () => {

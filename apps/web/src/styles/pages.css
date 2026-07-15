@@ -816,6 +816,12 @@
 .schedule-job-drawer .drawer-actions { padding: 12px 24px 24px; }
 .schedule-job-drawer .detail-kv p,
 .schedule-job-drawer .terminal-log { border: 0; }
+.schedule-job-drawer .terminal-log pre {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 14px/1.5 var(--font-mono);
+}
 
 .schedule-load-error {
   min-width: 0;

@@ -97,7 +97,7 @@ function SchedulePage({ page, notify, permissions = defaultPermissions }: { page
     const query = search.trim().toLowerCase();
     const matchSearch = !query || `${row.name} ${row.cron} ${row.command}`.toLowerCase().includes(query);
     const matchState = stateFilter === "全部" || (stateFilter === "已启用" ? row.enabled : !row.enabled);
-    const matchFailed = page === "schedule-failed" ? row.result === "失败" : true;
+    const matchFailed = page === "schedule-failed" ? row.lastExecution?.status === "失败" : true;
     return matchSearch && matchState && matchFailed;
   });
   const selectedVisibleJob = selectedJob;
@@ -293,10 +293,14 @@ function SchedulePage({ page, notify, permissions = defaultPermissions }: { page
         <p><span>下次执行</span><b>{selectedVisibleJob.nextRun}</b></p>
         <p><span>最近执行</span><b>{selectedVisibleJob.lastRun}</b></p>
         <p><span>结果</span><b>{selectedVisibleJob.result}</b></p>
+        <p><span>执行来源</span><b>{selectedVisibleJob.lastExecution?.source === "cron" ? "cron 自动调度" : selectedVisibleJob.lastExecution?.source === "manual" ? "StackPilot 手动执行" : "尚无执行记录"}</b></p>
+        <p><span>退出码</span><b>{selectedVisibleJob.lastExecution?.exitCode ?? "不可用"}</b></p>
+        <p><span>耗时</span><b>{selectedVisibleJob.lastExecution ? `${selectedVisibleJob.lastExecution.durationMs}ms` : "不可用"}</b></p>
       </div>
       <div className="terminal-log compact-log">
         <p>$ {selectedVisibleJob.command}</p>
-        <p>{selectedVisibleJob.result === "失败" ? "最近一次立即执行失败" : selectedVisibleJob.result === "成功" ? "最近一次立即执行成功" : "等待 crontab 调度或手动执行"}</p>
+        <pre>{selectedVisibleJob.lastExecution?.output || "无标准输出"}</pre>
+        <pre>{selectedVisibleJob.lastExecution?.error || "无错误输出"}</pre>
       </div>
     </DetailDrawer>
   ) : null;
@@ -310,7 +314,7 @@ function SchedulePage({ page, notify, permissions = defaultPermissions }: { page
       page={page}
       actions={page === "schedule-failed" || !canWrite ? undefined : <button className="primary" type="button" onClick={openScheduleCreateFromQuick}><Plus size={15} /> 新建任务</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索任务、cron 或命令" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={stateFilter} options={["全部", "已启用", "已停用"]} onChange={(value) => setStateByPage((current) => ({ ...current, [page]: value }))} /></>}
-      metrics={<><MetricTile icon={CalendarDays} label="任务数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.result === "失败").length}`} tone="red" /><MetricTile icon={TerminalSquare} label="来源" value="cron" tone="orange" /></>}
+      metrics={<><MetricTile icon={CalendarDays} label={page === "schedule-failed" ? "失败任务" : "任务数"} value={`${page === "schedule-failed" ? filteredRows.length : rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.lastExecution?.status === "失败").length}`} tone="red" /><MetricTile icon={TerminalSquare} label="来源" value="cron" tone="orange" /></>}
     >
       {scheduleDialog}
       {confirmation && <ScheduleMutationDialog confirmation={confirmation} onClose={() => setConfirmation(null)} />}
@@ -347,12 +351,12 @@ function SchedulePage({ page, notify, permissions = defaultPermissions }: { page
           { key: "cron", label: "cron", width: "70px", render: (row) => <code title={row.cron}>{row.cron}</code> },
           { key: "command", label: "命令", width: "120px", render: (row) => <span title={row.command}>{row.command}</span> },
           { key: "enabled", label: "启用", width: "66px", render: (row) => <span className={`pill ${row.enabled ? "green" : "blue"}`}>{row.enabled ? "启用" : "停用"}</span> },
-          { key: "last", label: "最近执行", width: "90px", render: (row) => row.lastRun },
+          { key: "last", label: "最近执行", width: "90px", render: (row) => formatBackendDateTime(row.lastExecution?.startedAt, row.lastRun) },
           { key: "result", label: "结果", width: "62px", render: (row) => <span className={`pill ${row.result === "成功" ? "green" : row.result === "失败" ? "red" : "blue"}`}>{row.result}</span> },
           { key: "ops", label: "操作", width: "230px", render: (row) => <span className="table-actions">{scheduleActionButtons(row)}</span> },
         ]}
         rows={filteredRows}
-        emptyText="没有匹配的定时任务"
+        emptyText={loading ? "正在读取定时任务" : "没有匹配的定时任务"}
         getRowKey={(row) => row.id}
         mobileCard={(row) => (
           <>
