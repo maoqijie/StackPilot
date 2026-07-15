@@ -1,4 +1,4 @@
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle, Info, X } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { drawerFocusableElements, drawerRestoreFallback, restoreFocusAfterUnmount } from "../../utils/focus";
@@ -24,7 +24,7 @@ function ConfirmDialog({
   confirmLabel: string;
   onConfirm: () => void;
   onClose: () => void;
-  tone?: "danger" | "warning";
+  tone?: "danger" | "warning" | "info";
   className?: string;
   busy?: boolean;
   confirmDisabled?: boolean;
@@ -94,7 +94,7 @@ function ConfirmDialog({
         ref={dialogRef}
         className={["confirm-dialog", className].filter(Boolean).join(" ")}
         data-closing={closing || undefined}
-        role="alertdialog"
+        role={tone === "info" ? "dialog" : "alertdialog"}
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
@@ -102,7 +102,7 @@ function ConfirmDialog({
         tabIndex={-1}
       >
         <header>
-          <span className={`confirm-dialog-icon ${tone}`}><AlertTriangle size={20} /></span>
+          <span className={`confirm-dialog-icon ${tone}`}>{tone === "info" ? <Info size={20} /> : <AlertTriangle size={20} />}</span>
           <strong id={titleId}>{title}</strong>
           <button className="icon-action" type="button" aria-label="关闭确认弹窗" disabled={closing} onClick={requestClose}><X size={16} /></button>
         </header>

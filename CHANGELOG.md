@@ -13,6 +13,12 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 
 - Kept schedule writes behind the existing `STACKPILOT_ENABLE_CRONTAB_WRITE=1`, session, CSRF and `schedules:write` permission boundaries while limiting filesystem access to the Controller state and user-crontab spool.
 
+### Changed
+
+- Rebuilt access-control, audit and settings workbenches with stable shared page framing, semantic user and permission states, complete detail surfaces and responsive long-value handling.
+- Added guarded user access updates, clearer system-backup permission states and a confirmed audit-export workflow based on current filters.
+- Split access, ACL, audit and settings CloudPulse styling into dedicated modules and expanded page-level test coverage.
+
 ## 0.3.0-preview.17 - 2026-07-15
 
 ### Changed
