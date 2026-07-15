@@ -15,10 +15,6 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 - Added user-scoped idempotency keys to schedule creation and immediate execution so a retried confirmation cannot duplicate a managed job or execute its command twice after a lost response.
 - Added bounded replay caching and payload-conflict rejection for completed schedule side effects while preserving session, CSRF, permission, and one-time reauthentication checks.
 
-### Changed
-
-- Declared the Debian and Ubuntu `cron` package as an explicit native Controller dependency and installed it in the systemd CI gate before unit verification.
-
 ## 0.3.0-preview.20 - 2026-07-15
 
 ### Fixed

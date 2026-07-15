@@ -106,8 +106,6 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
       - name: Validate Compose and systemd definitions
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes cron
           mkdir -p output/ci-secrets
           openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
             -addext subjectAltName=DNS:localhost,IP:127.0.0.1 \
