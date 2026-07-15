@@ -160,7 +160,7 @@ const navItems: NavItem[] = [
     children: [
       { id: "audit-all", label: "全部日志", meta: "只读" },
       { id: "audit-failed", label: "失败操作", meta: "失败记录" },
-      { id: "audit-export", label: "导出记录", meta: "CSV / JSON" },
+      { id: "audit-export", label: "导出审计", meta: "实时 CSV" },
     ],
   },
   {
@@ -235,6 +235,7 @@ function navItemsForPermissions(permissions: readonly Permission[]) {
     if (item.key === "systemd" && !permissions.includes("systemd:read")) return visible;
     if (item.key === "schedule" && !permissions.includes("schedules:read")) return visible;
     if (item.key === "firewall" && !permissions.includes("firewall:read")) return visible;
+    if (item.key === "audit" && !permissions.includes("audit:read")) return visible;
     if (item.key === "databases" && !permissions.includes("databases:read")) return visible;
     if (item.key === "deploy" && !permissions.includes("sites:read")) return visible;
     if (item.key === "audit" && !permissions.includes("audit:read")) return visible;
@@ -266,7 +267,7 @@ function topbarSearchResults(query: string, permissions: readonly Permission[] =
     { id: "quick-create-host", label: "新增主机", detail: "打开主机新增页", page: "hosts", kind: "动作" },
     { id: "quick-open-terminal", label: "开启终端", detail: "进入终端会话", page: "terminal", kind: "动作" },
     { id: "quick-create-rule", label: "新增防火墙规则", detail: "打开防火墙规则列表", page: "firewall", kind: "动作" },
-    ...(permissions.includes("audit:read") ? [{ id: "quick-audit-export", label: "导出审计日志", detail: "进入审计导出记录", page: "audit-export", kind: "动作" } satisfies TopbarSearchResult] : []),
+    ...(permissions.includes("audit:read") ? [{ id: "quick-audit-export", label: "导出审计日志", detail: "导出当前真实审计结果", page: "audit-export" as PageKey, kind: "动作" }] : []),
   ];
   const allEntries = [...entries, ...quickActions];
   if (!normalized) return allEntries.slice(0, 6);

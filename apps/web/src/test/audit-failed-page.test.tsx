@@ -22,7 +22,7 @@ describe("failed audit page", () => {
     expect(fetchAuditEvents).toHaveBeenCalledWith(expect.objectContaining({ result: "failed", actionPrefix: undefined }));
     expect((await screen.findAllByText("database.backup.scheduled")).length).toBeGreaterThan(0);
     expect(screen.queryByText("auth.login")).not.toBeInTheDocument();
-    expect(screen.getByText(/后端采集于/)).toHaveTextContent("2026");
+    expect(screen.getByText(/后端查询时间/)).toHaveTextContent("2026");
     expect(screen.getAllByText("失败").length).toBeGreaterThan(0);
   });
 

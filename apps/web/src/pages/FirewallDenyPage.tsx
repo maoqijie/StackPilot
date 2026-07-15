@@ -90,6 +90,7 @@ function FirewallDenyPage({ page }: { page: PageKey }) {
       rows={filteredRows}
       emptyText={emptyText}
       getRowKey={(record) => record.id}
+      pageSize={50}
       mobileCard={(record) => <><div className="module-card-head"><span className="module-card-title firewall-deny-mobile-source is-denied"><ShieldAlert size={18} /><b>{record.sourceAddress}</b></span><span className="pill red">拒绝</span></div><code className="module-card-code">{`${record.sourceAddress} -> ${record.nodeName} · ${portAndProtocol(record)}`}</code><div className="module-card-meta"><span><b>目标</b><em>{target(record)}</em></span><span><b>规则</b><em>{record.rule}</em></span><span><b>时间</b><em>{formatBackendDateTime(record.occurredAt)}</em></span><span><b>采集</b><em>{formatBackendDateTime(record.sourceCollectedAt)}</em></span></div><div className="module-card-footer"><button className="ghost" type="button" aria-label={`查看拦截记录 ${record.sourceAddress} 详情`} onClick={(event) => openDetail(record, event.currentTarget)}><Eye size={15} />详情</button></div></>}
     /></>}
   </ModulePageShell>;

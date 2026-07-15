@@ -53,6 +53,26 @@ test("firewall deny service reports source freshness, drops expired events, and 
   assert.ok(payload.warnings.every((warning) => [...warning].length <= 256));
 });
 
+test("firewall deny service rejects timestamps beyond the allowed clock skew", async () => {
+  const repository = new MemoryAgentControlRepository();
+  const now = Date.parse("2026-07-15T12:00:00.000Z");
+  const futureSnapshot = node(allowedId, "future-snapshot", "a");
+  futureSnapshot.lastSeenAt = "2026-07-15T12:00:00.000Z";
+  futureSnapshot.firewallDenySnapshot = { ...futureSnapshot.firewallDenySnapshot, collectedAt: "2099-01-01T00:00:00.000Z", events: [{ ...event("a"), occurredAt: "2099-01-01T00:00:00.000Z" }] };
+  const futureEvent = node(hiddenId, "future-event", "b");
+  futureEvent.lastSeenAt = "2026-07-15T12:00:00.000Z";
+  futureEvent.firewallDenySnapshot = { ...futureEvent.firewallDenySnapshot, collectedAt: "2026-07-15T12:00:00.000Z", events: [{ ...event("b"), occurredAt: "2099-01-01T00:00:00.000Z" }] };
+  await repository.update((state) => state.nodes.push(futureSnapshot, futureEvent));
+
+  const payload = await new FirewallDenyService(repository, 90_000, () => now).list("all");
+
+  assert.equal(payload.collectedAt, futureEvent.firewallDenySnapshot.collectedAt);
+  assert.equal(payload.collectionStatus, "partial");
+  assert.deepEqual(payload.records, []);
+  assert.ok(payload.warnings.some((warning) => warning.includes("snapshot timestamp is in the future")));
+  assert.ok(payload.warnings.some((warning) => warning.includes("future firewall deny events were ignored")));
+});
+
 test("firewall deny service uses no synthetic collection timestamp while awaiting snapshots", async () => {
   const repository = new MemoryAgentControlRepository(); const awaiting = node(allowedId, "awaiting-host", "a");
   delete awaiting.firewallDenySnapshot; await repository.update((state) => state.nodes.push(awaiting));

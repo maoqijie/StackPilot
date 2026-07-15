@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AUDIT_FAILURE_OUTCOMES } from "@stackpilot/contracts";
 import type Database from "better-sqlite3";
 import { hmac } from "../security/crypto.js";
+import type { AuditQuery } from "@stackpilot/contracts";
 
 const sensitive = /authorization|cookie|password|token|secret|private|key|environment|stdout|stderr/i;
 function redact(value: unknown): unknown {
@@ -10,7 +11,6 @@ function redact(value: unknown): unknown {
   return typeof value === "string" && value.length > 2048 ? `${value.slice(0, 2048)}[TRUNCATED]` : value;
 }
 export type AuditInput = { actorType: string; actorId?: string | null; sessionId?: string | null; source: string; targetType?: string | null; targetId?: string | null; action: string; parameters?: unknown; outcome: string; authorization: string; requestId: string; traceId?: string };
-export type AuditListOptions = { limit?: number; result?: "all" | "failed"; actionPrefix?: string };
 
 export class AuditRepository {
   constructor(private readonly database: Database.Database, private readonly key: Buffer) {}
@@ -30,7 +30,7 @@ export class AuditRepository {
     }
     return { valid: true, count: rows.length };
   }
-  list(options: AuditListOptions = {}) {
+  list(options: AuditQuery = { limit: 200, result: "all" }) {
     const clauses: string[] = [];
     const parameters: Array<string | number> = [];
     if (options.result === "failed") {
@@ -40,7 +40,7 @@ export class AuditRepository {
     if (options.actionPrefix) { clauses.push("action LIKE ? ESCAPE '\\'"); parameters.push(`${escapeLike(options.actionPrefix)}%`); }
     const where = clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "";
     const sql = `SELECT sequence,event_id AS eventId,occurred_at AS occurredAt,actor_type AS actorType,actor_id AS actorId,source,target_type AS targetType,target_id AS targetId,action,parameters,outcome,authorization,request_id AS requestId,trace_id AS traceId,event_hash AS eventHash FROM audit_events${where} ORDER BY sequence DESC LIMIT ?`;
-    return this.database.prepare(sql).all(...parameters, Math.min(options.limit ?? 200, 1000));
+    return this.database.prepare(sql).all(...parameters, options.limit);
   }
 }
 

@@ -159,6 +159,26 @@ describe("firewall rule flow", () => {
     expect(fetchFirewallDenyRecords).toHaveBeenCalledTimes(1);
   });
 
+  it("paginates large deny result sets instead of rendering every row at once", async () => {
+    const user = userEvent.setup();
+    const records = Array.from({ length: 51 }, (_, index) => ({
+      ...denyPayload.records[0],
+      id: `11111111-1111-4111-8111-111111111111:fw_${index.toString(16).padStart(64, "0")}`,
+      sourceAddress: `198.51.100.${index + 1}`,
+    }));
+    vi.mocked(fetchFirewallDenyRecords).mockResolvedValueOnce({ ...denyPayload, records });
+    render(<FirewallPage page="firewall-deny" notify={vi.fn()} />);
+
+    expect(await screen.findByText("第 1 / 2 页 · 共 51 条")).toBeInTheDocument();
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByRole("button", { name: /查看拦截记录/ })).toHaveLength(50);
+    expect(within(table).queryByText("198.51.100.51")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    expect(within(table).getByText("198.51.100.51")).toBeInTheDocument();
+    expect(within(table).getAllByRole("button", { name: /查看拦截记录/ })).toHaveLength(1);
+  });
+
   it("isolates initial loading and errors from successful empty-state content", async () => {
     vi.mocked(fetchFirewallDenyRecords).mockRejectedValueOnce(new Error("权限不足"));
     render(<FirewallPage page="firewall-deny" notify={vi.fn()} />);
