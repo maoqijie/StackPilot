@@ -7,7 +7,10 @@ import test from "node:test";
 import { DatabaseProvisioner } from "../../apps/database-helper/dist/operations/provisioner.js";
 import { DatabaseRegistry } from "../../apps/database-helper/dist/state/registry.js";
 
-const identity = { uid: process.getuid?.() ?? 501, gid: process.getgid?.() ?? 20 };
+const identity = {
+  uid: (process.getuid?.() ?? 501) || 999,
+  gid: (process.getgid?.() ?? 20) || 999,
+};
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "stackpilot-provisioner-"));

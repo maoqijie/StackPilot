@@ -2,6 +2,12 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.27 - 2026-07-16
+
+### Fixed
+
+- Made the database provisioner fixture use a non-root synthetic database identity when release tests run as root, preserving the production rejection of privileged database service users while keeping Linux release gates deterministic.
+
 ## 0.3.0-preview.26 - 2026-07-16
 
 ### Fixed
