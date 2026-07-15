@@ -320,6 +320,12 @@ test("shared schemas validate external request and error contracts at runtime", 
   assert.equal(PathIdSchema.safeParse("node-local").success, true);
   assert.equal(PathIdSchema.safeParse("../node").success, false);
   assert.equal(CreateScheduleJobRequestSchema.safeParse({ name: "backup", cron: "0 4 * * *", command: "true", extra: true }).success, false);
+  assert.equal(SchedulePayloadSchema.safeParse({ jobs: [], scannedAt: new Date().toISOString(), writeEnabled: false }).success, true);
+  assert.equal(SchedulePayloadSchema.safeParse({ jobs: [], scannedAt: new Date().toISOString() }).success, false);
+  const execution = { id: crypto.randomUUID(), commandDigest: "a".repeat(64), source: "cron", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), status: "成功", exitCode: 0, durationMs: 5, output: "done", error: "" };
+  assert.equal(SchedulePayloadSchema.safeParse({ jobs: [{ id: "backup", name: "backup", cron: "0 4 * * *", command: "true", enabled: true, nextRun: "2026-07-16T04:00:00.000Z", nextRunAt: "2026-07-16T04:00:00.000Z", lastRun: execution.startedAt, result: "成功", lastExecution: execution }], scannedAt: new Date().toISOString(), writeEnabled: false }).success, true);
+  assert.equal(SchedulePayloadSchema.safeParse({ jobs: [{ id: "backup", name: "backup", cron: "0 4 * * *", command: "true", enabled: false, nextRun: "停用", nextRunAt: "2026-07-16T04:00:00.000Z", lastRun: "未运行", result: "未运行", lastExecution: null }], scannedAt: new Date().toISOString(), writeEnabled: false }).success, false);
+  assert.equal(SchedulePayloadSchema.safeParse({ jobs: [{ id: "backup", name: "backup", cron: "0 4 * * *", command: "true", enabled: true, nextRun: "时间暂不可用", lastRun: "未运行", result: "未运行", lastExecution: null }], scannedAt: new Date().toISOString(), writeEnabled: false }).success, false);
   assert.equal(ApiErrorResponseSchema.safeParse({ code: "BAD_REQUEST", error: "invalid", requestId: "request-1" }).success, true);
   assert.equal(ApiErrorResponseSchema.safeParse({ code: "REAUTHENTICATION_FAILED", error: "重新认证失败", requestId: "request-2" }).success, true);
   assert.equal(OverviewSummaryPayloadSchema.safeParse({}).success, false);

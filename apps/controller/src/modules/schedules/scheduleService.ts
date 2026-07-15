@@ -34,10 +34,10 @@ export class ScheduleService {
     return job;
   }
 
-  private async jobs(stored: StoredScheduleJob[]): Promise<ScheduleJob[]> {
+  private async jobs(stored: StoredScheduleJob[], currentDate = new Date()): Promise<ScheduleJob[]> {
     return Promise.all(stored.map(async (job) => {
       const execution = await this.executions.latest(job.id, scheduleCommandDigest(job.command));
-      return { ...toScheduleJob(job), ...(execution ? { lastRun: execution.startedAt, result: execution.status, lastExecution: execution } : { lastExecution: null }) };
+      return { ...toScheduleJob(job, currentDate), ...(execution ? { lastRun: execution.startedAt, result: execution.status, lastExecution: execution } : { lastExecution: null }) };
     }));
   }
 
@@ -57,8 +57,8 @@ export class ScheduleService {
   }
 
   async list() {
-    const state = await this.repository.read();
-    return SchedulePayloadSchema.parse({ jobs: await this.jobs(state.jobs), scannedAt: now(), writeEnabled: this.writeEnabled });
+    const state = await this.repository.read(); const scannedAt = new Date();
+    return SchedulePayloadSchema.parse({ jobs: await this.jobs(state.jobs, scannedAt), scannedAt: scannedAt.toISOString(), writeEnabled: this.writeEnabled });
   }
 
   create(payload: CreateScheduleJobRequest, userId = "system") {

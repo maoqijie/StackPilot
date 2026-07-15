@@ -21,12 +21,12 @@ export const ScheduleExecutionSchema = z.object({
 }).strict();
 export const ScheduleJobSchema = z.object({
   id: z.string(), name: z.string(), cron: z.string(), command: z.string(), enabled: z.boolean(),
-  nextRun: z.string(), lastRun: z.string(), result: z.enum(["成功", "失败", "未运行", "运行中"]),
+  nextRun: z.string(), nextRunAt: z.string().datetime().nullable(), lastRun: z.string(), result: z.enum(["成功", "失败", "未运行", "运行中"]),
   lastExecution: ScheduleExecutionSchema.nullable().optional(),
-});
+}).refine((job) => job.enabled || job.nextRunAt === null, { path: ["nextRunAt"], message: "停用任务不能包含下次执行时间" });
 export const SchedulePayloadSchema = z.object({
   jobs: z.array(ScheduleJobSchema),
-  scannedAt: z.string().optional(),
+  scannedAt: z.string().datetime().optional(),
   writeEnabled: z.boolean(),
 });
 export const CreateScheduleJobRequestSchema = z.object({
