@@ -60,6 +60,7 @@ import { DatabaseRetentionService } from "./modules/databases/databaseRetentionS
 import type { AuditRepository } from "./audit/auditRepository.js";
 import { SystemdDatabaseCollector } from "@stackpilot/host-telemetry";
 import { SystemdService } from "./modules/systemd/systemdService.js";
+import { FirewallDenyService } from "./modules/firewall/firewallDenyService.js";
 
 export type AppOptions = {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -121,6 +122,7 @@ export function createControllerServices(
     remoteTasks,
     terminalSnippets: new TerminalSnippetService(terminalRepository, remoteTasks),
     systemd: new SystemdService(repository),
+    firewallDeny: new FirewallDenyService(repository),
     ...(databaseRepository ? {
       databaseInventory: new DatabaseInventoryService(databaseRepository),
       databaseWorkspace: new DatabaseBackupWorkspaceService(databaseRepository, audit),

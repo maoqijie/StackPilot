@@ -60,6 +60,7 @@ export class NodeService {
       if (heartbeat.siteSnapshot) node.siteSnapshot = heartbeat.siteSnapshot;
       if (heartbeat.databaseSnapshot) node.databaseSnapshot = heartbeat.databaseSnapshot;
       if (heartbeat.systemdSnapshot) node.systemdSnapshot = heartbeat.systemdSnapshot;
+      if (heartbeat.firewallDenySnapshot) node.firewallDenySnapshot = heartbeat.firewallDenySnapshot;
       const physicalHostIdentity = heartbeat.physicalHostId === undefined ? "legacy"
         : previousPhysicalHostId === heartbeat.physicalHostId
         ? "unchanged"

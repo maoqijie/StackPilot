@@ -18,12 +18,24 @@ import {
   PermissionSchema,
   CreateDirectoryRequestSchema,
   UpdateNodeCapabilitiesRequestSchema,
+  AgentFirewallDenySnapshotSchema, FirewallDenyRecordsPayloadSchema,
 } from "@stackpilot/contracts";
 
 test("shared API constants preserve the existing HTTP contract", () => {
   assert.equal(API_CLIENT_PREFIX, "/api");
   assert.deepEqual(API_ROOT_SEGMENTS, ["api", "overview"]);
   assert.deepEqual(WRITE_METHODS, ["POST", "PATCH", "DELETE"]);
+});
+
+test("firewall deny snapshots and records are bounded, unique and typed", () => {
+  const collectedAt = new Date().toISOString();
+  const event = { id: `fw_${"a".repeat(64)}`, occurredAt: collectedAt, sourceAddress: "198.51.100.24", destinationAddress: "192.0.2.10", destinationPort: 22, protocol: "TCP", interfaceName: "eth0", rule: "UFW BLOCK", reason: "Host firewall rejected this packet" };
+  assert.equal(AgentFirewallDenySnapshotSchema.safeParse({ collectedAt, collectionStatus: "complete", warnings: [], events: [event] }).success, true);
+  assert.equal(AgentFirewallDenySnapshotSchema.safeParse({ collectedAt, collectionStatus: "complete", warnings: [], events: [event, event] }).success, false);
+  assert.equal(AgentFirewallDenySnapshotSchema.safeParse({ collectedAt, collectionStatus: "complete", warnings: [], events: [{ ...event, sourceAddress: "not-an-ip" }] }).success, false);
+  const record = { ...event, id: `${crypto.randomUUID()}:${event.id}`, nodeId: crypto.randomUUID(), nodeName: "firewall-node", sourceCollectedAt: collectedAt };
+  assert.equal(FirewallDenyRecordsPayloadSchema.safeParse({ collectedAt, collectionStatus: "complete", warnings: [], records: [record] }).success, true);
+  assert.equal(PermissionSchema.safeParse("firewall:read").success, true);
 });
 
 test("node capability updates accept the complete shared Agent capability set", () => {

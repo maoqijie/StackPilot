@@ -12,6 +12,7 @@ test("web API clients consume the public contracts package", async () => {
     readFile(new URL("../../apps/web/src/api/databasesApi.ts", import.meta.url), "utf8"),
     readFile(new URL("../../apps/web/src/api/filesApi.ts", import.meta.url), "utf8"),
     readFile(new URL("../../apps/web/src/api/systemdApi.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../apps/web/src/api/firewallApi.ts", import.meta.url), "utf8"),
   ]);
   assert.ok(sources.every((source) => source.includes("@stackpilot/contracts")));
 });
