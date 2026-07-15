@@ -202,6 +202,10 @@
   background: var(--surface-soft);
 }
 
+.rollback-confirm-dialog .confirm-dialog-icon.warning {
+  border: 0;
+}
+
 .rollback-detail-section {
   display: grid;
   gap: 16px;

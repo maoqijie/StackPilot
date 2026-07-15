@@ -269,21 +269,6 @@
 .drawer-warning { padding: 12px; border: 1px solid var(--primary-line); border-radius: var(--radius-md); color: var(--text-soft); background: var(--primary-soft); }
 .drawer-warning { border-color: var(--warning-line); background: var(--warning-soft); }
 
-.schedule-job-modal,
-.delete-confirm {
-  position: fixed;
-  inset: 50% auto auto 50%;
-  z-index: 210;
-  width: min(620px, calc(100vw - 32px));
-  max-height: min(760px, calc(100dvh - 32px));
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
-  color: var(--text);
-  background: var(--surface);
-  box-shadow: var(--shadow-overlay);
-  transform: translate(-50%, -50%);
-  overflow: auto;
-}
 .progress-score,
 .storage-bar,
 .bar-cell { position: relative; overflow: hidden; border-radius: 999px; background: var(--line); }

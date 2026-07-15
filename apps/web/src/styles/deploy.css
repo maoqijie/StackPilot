@@ -7,6 +7,11 @@
   box-shadow: none;
 }
 
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-view-context em {
+  border: 0;
+  background: var(--surface);
+}
+
 :is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-filter-line {
   padding: 0;
   border: 0;
@@ -16,14 +21,23 @@
 
 :is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-metrics article,
 :is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-table-wrap,
-:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-row {
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-row,
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-empty,
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-sort {
   border: 0;
   box-shadow: var(--shadow-subtle);
 }
 
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-empty,
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-sort {
+  box-shadow: none;
+}
+
 :is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-metrics article:is(:hover, :focus, :focus-within),
 :is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-table-wrap:is(:hover, :focus, :focus-within),
-:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-row:is(:hover, :focus, :focus-within) {
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-row:is(:hover, :focus, :focus-within),
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-empty:is(:hover, :focus, :focus-visible, :focus-within, :active),
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-sort:is(:hover, :focus, :focus-visible, :focus-within, :active) {
   border: 0;
   outline: 0;
 }
@@ -47,6 +61,12 @@
 :is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .table-actions button:is(:hover, :focus-visible, :active) {
   color: var(--primary-hover);
   background: var(--primary-soft);
+}
+
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-sort button,
+:is(.module-page-deploy-prod, .module-page-deploy-staging, .module-page-deploy-rollbacks) .module-card-sort button:is(:hover, :focus-visible, :active) {
+  border: 0;
+  box-shadow: none;
 }
 
 .deploy-tabs {

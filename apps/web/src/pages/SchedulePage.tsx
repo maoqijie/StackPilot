@@ -1,24 +1,29 @@
 import { createScheduleJob, deleteScheduleJob, fetchScheduleJobs, runScheduleJob, updateScheduleJob } from "../api/scheduleApi";
 import type { ScheduleJob } from "../api/scheduleApi";
-import { CalendarDays, CheckCircle2, Plus, Shield, TerminalSquare } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, Plus, RotateCcw, Shield, TerminalSquare } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { resolvePageMeta } from "../app/navigation";
 import { useQuickIntent } from "../app/routing";
 import { ModulePageShell } from "../components/layout/ModulePageShell";
-import { MetricTile, ModuleSearch, PanelCard } from "../components/ui/Cards";
+import { MetricTile, ModuleSearch } from "../components/ui/Cards";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { DataTable } from "../components/ui/DataTable";
 import { DetailDrawer } from "../components/ui/DetailDrawer";
 import { FieldSelect, FormLine, ToggleLine } from "../components/ui/FormControls";
-import { StatusLight } from "../components/ui/StatusVisuals";
 import { createScheduleDraft, describeCronExpression, isLikelyCronExpression, scheduleCronPresets, scheduleCrontabPreview, schedulePagePreset } from "../features/schedule/model";
 import type { ScheduleDraft } from "../features/schedule/model";
 import { reportApiError } from "../features/overview/model";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import type { Notify, PageKey } from "../types/app";
 import { activateOnKeyboard } from "../utils/focus";
+import { formatBackendDateTime } from "../utils/time";
 
 function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState<ScheduleJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [scannedAt, setScannedAt] = useState<string | undefined>();
+  const [retryKey, setRetryKey] = useState(0);
   const schedulePreset = schedulePagePreset(page);
   const [searchByPage, setSearchByPage] = useState<Record<string, string>>({});
   const [stateByPage, setStateByPage] = useState<Record<string, string>>({});
@@ -31,6 +36,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
   >(null);
   const [draft, setDraft] = useState<ScheduleDraft>(() => createScheduleDraft());
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const cronInputRef = useRef<HTMLInputElement>(null);
   const search = searchByPage[page] ?? schedulePreset.search;
   const stateFilter = stateByPage[page] ?? schedulePreset.state;
@@ -44,20 +50,40 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
   }, []);
 
   useQuickIntent("schedule-enabled", "create-schedule", openScheduleCreateFromQuick);
+  const loadSchedules = useCallback(async (signal: AbortSignal, silent: boolean) => {
+    try {
+      const payload = await fetchScheduleJobs(signal);
+      if (signal.aborted) return;
+      setRows(payload.jobs);
+      setScannedAt(payload.scannedAt);
+      setLoadError(null);
+      setDrawer((current) => {
+        if ((current?.type === "detail" || current?.type === "delete") && !payload.jobs.some((row) => row.id === current.id)) return null;
+        return current;
+      });
+    } catch (error) {
+      if (signal.aborted) return;
+      if (!silent) {
+        const message = error instanceof Error ? error.message : "定时任务后端加载失败";
+        setLoadError(message);
+        reportApiError(error, notify, "定时任务后端加载失败");
+      }
+    } finally {
+      if (!silent && !signal.aborted) setLoading(false);
+    }
+  }, [notify]);
+
   useEffect(() => {
     const controller = new AbortController();
-    fetchScheduleJobs(controller.signal)
-      .then((payload) => {
-        setRows(payload.jobs);
-        setLoading(false);
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        setLoading(false);
-        reportApiError(error, notify, "定时任务后端加载失败");
-      });
+    void Promise.resolve().then(() => loadSchedules(controller.signal, false));
     return () => controller.abort();
-  }, [notify]);
+  }, [loadSchedules, retryKey]);
+
+  useAutoRefresh(
+    (signal) => loadSchedules(signal, true),
+    10_000,
+    !loading && !loadError,
+  );
 
   const filteredRows = rows.filter((row) => {
     const query = search.trim().toLowerCase();
@@ -66,10 +92,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
     const matchFailed = page === "schedule-failed" ? row.result === "失败" : true;
     return matchSearch && matchState && matchFailed;
   });
-  const selectedJobVisible = selectedJob
-    ? filteredRows.some((row) => row.id === selectedJob.id)
-    : true;
-  const selectedVisibleJob = selectedJobVisible ? selectedJob : null;
+  const selectedVisibleJob = selectedJob;
 
   const applySchedulePayload = (jobs: ScheduleJob[], selectedId?: string) => {
     setRows(jobs);
@@ -111,6 +134,8 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
   };
   const requestDeleteJob = (row: ScheduleJob) => setDrawer({ type: "delete", id: row.id });
   const deleteJob = async (row: ScheduleJob) => {
+    if (deleting) return;
+    setDeleting(true);
     try {
       const payload = await deleteScheduleJob(row.id);
       setRows(payload.jobs);
@@ -118,6 +143,8 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       notify(payload.message, payload.tone ?? "warning");
     } catch (error) {
       reportApiError(error, notify, "删除定时任务失败");
+    } finally {
+      setDeleting(false);
     }
   };
   const runJobNow = async (row: ScheduleJob) => {
@@ -232,7 +259,7 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       </div>
     </DetailDrawer>
   ) : drawer?.type === "detail" && selectedVisibleJob ? (
-    <DetailDrawer title="任务详情" subtitle={selectedVisibleJob.name} onClose={() => setDrawer(null)} className="schedule-job-modal" modal actions={<><button className="ghost" type="button" onClick={() => editJob(selectedVisibleJob)}>编辑</button><button className="primary" type="button" disabled={!selectedVisibleJob.enabled} onClick={() => runJobNow(selectedVisibleJob)}>立即执行</button></>}>
+    <DetailDrawer title="任务详情" subtitle={selectedVisibleJob.name} onClose={() => setDrawer(null)} className="schedule-job-drawer" actions={<><button className="ghost" type="button" onClick={() => editJob(selectedVisibleJob)}>编辑</button><button className="primary" type="button" disabled={!selectedVisibleJob.enabled} onClick={() => runJobNow(selectedVisibleJob)}>立即执行</button></>}>
       <div className="detail-kv">
         <p><span>cron</span><b>{selectedVisibleJob.cron}</b></p>
         <p><span>命令</span><b>{selectedVisibleJob.command}</b></p>
@@ -247,40 +274,57 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
       </div>
     </DetailDrawer>
   ) : drawer?.type === "delete" && selectedVisibleJob ? (
-    <DetailDrawer title="删除定时任务" subtitle={selectedVisibleJob.name} onClose={() => setDrawer(null)} className="schedule-job-modal" modal actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="danger-soft" type="button" onClick={() => deleteJob(selectedVisibleJob)}>确认删除</button></>}>
-      <div className="delete-confirm">
-        <StatusLight tone="red" />
-        <p>删除后会从 StackPilot 托管的当前用户 crontab 中移除。</p>
-        <code>{selectedVisibleJob.cron} · {selectedVisibleJob.command}</code>
-      </div>
-    </DetailDrawer>
+    <ConfirmDialog
+      title="删除定时任务"
+      message="删除后会从 StackPilot 托管的当前用户 crontab 中移除。"
+      detail={`${selectedVisibleJob.cron} · ${selectedVisibleJob.command}`}
+      confirmLabel="确认删除"
+      onConfirm={() => void deleteJob(selectedVisibleJob)}
+      onClose={() => setDrawer(null)}
+      className="schedule-delete-dialog"
+      busy={deleting}
+    />
   ) : null;
+
+  const freshness = scannedAt ? `最近采集：${formatBackendDateTime(scannedAt)}` : loading ? "正在读取当前用户 crontab。" : "采集时间不可用";
 
   return (
     <ModulePageShell
       title={resolvePageMeta(page).title}
-      subtitle={loading ? "正在读取当前用户 crontab。" : schedulePreset.subtitle}
+      subtitle={`${schedulePreset.subtitle} ${freshness}`}
       page={page}
       actions={page === "schedule-failed" ? undefined : <button className="primary" type="button" onClick={openScheduleCreateFromQuick}><Plus size={15} /> 新建任务</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索任务、cron 或命令" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={stateFilter} options={["全部", "已启用", "已停用"]} onChange={(value) => setStateByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={CalendarDays} label="任务数" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.result === "失败").length}`} tone="red" /><MetricTile icon={TerminalSquare} label="来源" value="cron" tone="orange" /></>}
     >
       {scheduleDialog}
+      {loadError && (
+        <section className="schedule-load-error" role="alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>定时任务采集失败</strong>
+            <p>{loadError}</p>
+          </div>
+          <button className="ghost" type="button" onClick={() => { setLoading(true); setLoadError(null); setRetryKey((current) => current + 1); }}>
+            <RotateCcw size={14} /> 重试
+          </button>
+        </section>
+      )}
       {schedulePreset.mode === "calendar" && (
-        <div className="schedule-calendar">
+        <div className={`schedule-calendar ${filteredRows.length === 0 ? "is-empty" : ""}`}>
           {filteredRows.map((row) => <article key={row.id} role="button" tabIndex={0} onClick={() => setDrawer({ type: "detail", id: row.id })} onKeyDown={(event) => activateOnKeyboard(event, () => setDrawer({ type: "detail", id: row.id }))}><span>{row.nextRun}</span><strong>{row.name}</strong><em>{row.cron}</em><b className={row.result === "失败" ? "red-text" : row.result === "成功" ? "green-text" : "orange-text"}>{row.enabled ? row.result : "已停用"}</b></article>)}
           {filteredRows.length === 0 && <p className="module-empty-card">当前筛选没有日历任务</p>}
         </div>
       )}
       <DataTable
         columns={[
-          { key: "name", label: "任务", width: "190px", render: (row) => <button className="module-row-link" type="button" onClick={() => setDrawer({ type: "detail", id: row.id })}><CalendarDays size={15} /><b>{row.name}</b></button> },
-          { key: "cron", label: "cron", render: (row) => <code>{row.cron}</code> },
-          { key: "command", label: "命令", render: (row) => row.command },
-          { key: "enabled", label: "启用", render: (row) => <span className={`pill ${row.enabled ? "green" : "blue"}`}>{row.enabled ? "启用" : "停用"}</span> },
-          { key: "last", label: "最近执行", render: (row) => row.lastRun },
-          { key: "result", label: "结果", render: (row) => <span className={`pill ${row.result === "成功" ? "green" : row.result === "失败" ? "red" : "blue"}`}>{row.result}</span> },
-          { key: "ops", label: "操作", width: "370px", render: (row) => <span className="table-actions">{scheduleActionButtons(row)}</span> },
+          { key: "name", label: "任务", width: "132px", render: (row) => <button className="module-row-link" title={row.name} type="button" onClick={() => setDrawer({ type: "detail", id: row.id })}><CalendarDays size={15} /><b>{row.name}</b></button> },
+          { key: "cron", label: "cron", width: "70px", render: (row) => <code title={row.cron}>{row.cron}</code> },
+          { key: "command", label: "命令", width: "120px", render: (row) => <span title={row.command}>{row.command}</span> },
+          { key: "enabled", label: "启用", width: "66px", render: (row) => <span className={`pill ${row.enabled ? "green" : "blue"}`}>{row.enabled ? "启用" : "停用"}</span> },
+          { key: "last", label: "最近执行", width: "90px", render: (row) => row.lastRun },
+          { key: "result", label: "结果", width: "62px", render: (row) => <span className={`pill ${row.result === "成功" ? "green" : row.result === "失败" ? "red" : "blue"}`}>{row.result}</span> },
+          { key: "ops", label: "操作", width: "230px", render: (row) => <span className="table-actions">{scheduleActionButtons(row)}</span> },
         ]}
         rows={filteredRows}
         emptyText="没有匹配的定时任务"
@@ -306,12 +350,12 @@ function SchedulePage({ page, notify }: { page: PageKey; notify: Notify }) {
           </>
         )}
       />
-      <section className="schedule-deleted-panel">
-        <PanelCard title="真实来源">
-          <div className="restore-mini-list">
-            <p><TerminalSquare size={14} /><span>当前用户 crontab</span><em>仅管理 StackPilot 标记块，保留其他 crontab 行</em></p>
-          </div>
-        </PanelCard>
+      <section className="schedule-source-note" aria-label="真实来源">
+        <TerminalSquare size={18} />
+        <div>
+          <strong>真实来源：当前用户 crontab</strong>
+          <span>仅管理 StackPilot 标记块，保留当前用户 crontab 的其他行。</span>
+        </div>
       </section>
     </ModulePageShell>
   );

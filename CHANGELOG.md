@@ -2,6 +2,14 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.16 - 2026-07-15
+
+### Changed
+
+- Added visibility-aware 10-second refresh, backend freshness display and explicit retry handling to the schedule workflow while preserving filters and open task details.
+- Replaced schedule deletion with an accessible confirmation dialog and refined task details, empty states and source context for desktop and narrow layouts.
+- Consolidated deployment and firewall surface overrides to retain CloudPulse hierarchy without decorative borders or unused action space.
+
 ## 0.3.0-preview.15 - 2026-07-15
 
 ### Fixed
