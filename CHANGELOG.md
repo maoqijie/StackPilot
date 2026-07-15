@@ -2,7 +2,7 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
-## 0.3.0-preview.23 - 2026-07-16
+## 0.3.0-preview.25 - 2026-07-16
 
 ### Added
 
@@ -18,6 +18,31 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 ### Security
 
 - Managed crontab rows invoke only the fixed StackPilot runner with encoded bounded input; execution records use private atomic files with bounded retention and invalid runner parameters are rejected before command execution.
+
+## 0.3.0-preview.24 - 2026-07-15
+
+### Added
+
+- Added a bounded Agent firewall-deny snapshot collected from fixed read-only Linux kernel journal queries, negotiated through the Controller feature header and persisted with the existing signed heartbeat state.
+- Added the authenticated `GET /api/firewall/deny-records` endpoint with dedicated `firewall:read` RBAC and node-scope filtering.
+- Connected the firewall deny workbench to the real Controller API with visibility-aware 10-second polling, backend freshness, stable details, explicit unavailable states and responsive long-value handling.
+
+### Security
+
+- Removed demo deny records and browser-only allow, promote and export actions that previously reported success without a backend effect.
+- Kept firewall collection read-only, bounded and free of raw kernel log output; the browser receives normalized event fields only.
+
+## 0.3.0-preview.23 - 2026-07-15
+
+### Changed
+
+- Unified global, failed, database and export audit views on the authenticated Controller repository, with backend collection timestamps, visibility-aware 10-second polling, stable details and confirmed CSV downloads of current real results.
+- Preserved the `0.3.0-preview.22` schedule idempotency and native cron deployment hardening while removing simulated audit export tasks and fixture fallback paths.
+
+### Security
+
+- Enforced strict shared audit event and query contracts, rejected duplicate or unknown query parameters, applied failed-result and action-prefix filters before the SQLite limit, and kept `audit:read` protection on API, navigation and direct rendering.
+- Preserved backend parameter redaction and represented non-terminal outcomes such as `queued` as recorded rather than successful.
 
 ## 0.3.0-preview.22 - 2026-07-15
 
@@ -48,6 +73,22 @@ All notable changes follow Semantic Versioning. The project is currently prerele
 ### Fixed
 
 - Classified the complete IPv4 `127.0.0.0/8` loopback range, including interface-scoped systemd-resolved listeners, as local-only instead of a specific-address binding.
+
+### Added
+
+- Added strict shared audit event/query contracts, backend collection timestamps and bounded action-prefix filtering before result limiting.
+- Added desktop and mobile real-backend E2E coverage for authenticated audit loading, silent 10-second polling, detail inspection and CSV download.
+
+### Changed
+
+- Replaced the global, failed-operation and database audit fixtures with the authenticated Controller audit API while preserving filters and stable detail state.
+- Replaced simulated export history and browser-only task mutations with a confirmed CSV download of the current real query result.
+- Hid audit navigation and direct page rendering unless the signed-in user holds `audit:read`.
+
+### Security
+
+- Audit responses remain protected by session/RBAC, disable caching, preserve server-side sensitive-parameter redaction and strictly reject invalid or repeated query parameters.
+- Non-terminal outcomes such as `queued` are shown as recorded states instead of being misrepresented as successful operations.
 
 ## 0.3.0-preview.19 - 2026-07-15
 

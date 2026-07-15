@@ -1,7 +1,7 @@
 import { createHash, randomBytes, sign } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { request } from "node:https";
-import { AGENT_FEATURE_DATABASE_INVENTORY, AGENT_FEATURE_PHYSICAL_HOST_IDENTITY, AGENT_FEATURE_SYSTEMD_SNAPSHOT, AGENT_PROTOCOL_VERSION, agentSignaturePayload, type AgentEnrollmentRequest } from "@stackpilot/contracts";
+import { AGENT_FEATURE_DATABASE_INVENTORY, AGENT_FEATURE_FIREWALL_DENY_SNAPSHOT, AGENT_FEATURE_PHYSICAL_HOST_IDENTITY, AGENT_FEATURE_SYSTEMD_SNAPSHOT, AGENT_PROTOCOL_VERSION, agentSignaturePayload, type AgentEnrollmentRequest } from "@stackpilot/contracts";
 import type { AgentIdentity } from "../identity/identityStore.js";
 
 class ControllerRequestError extends Error {
@@ -44,5 +44,6 @@ export class ControllerClient {
   supportsDatabaseInventory() { return this.agentFeatures.has(AGENT_FEATURE_DATABASE_INVENTORY); }
   supportsPhysicalHostIdentity() { return this.agentFeatures.has(AGENT_FEATURE_PHYSICAL_HOST_IDENTITY); }
   supportsSystemdSnapshot() { return this.agentFeatures.has(AGENT_FEATURE_SYSTEMD_SNAPSHOT); }
+  supportsFirewallDenySnapshot() { return this.agentFeatures.has(AGENT_FEATURE_FIREWALL_DENY_SNAPSHOT); }
   enroll(input: AgentEnrollmentRequest) { return this.json("/api/agent/enroll", input); }
 }

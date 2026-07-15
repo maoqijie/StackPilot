@@ -5,6 +5,7 @@ import { ProtocolVersionSchema } from "../versioning/index.js";
 import { AgentCapabilitiesSchema, AgentPlatformSchema } from "./capabilities.js";
 import { PhysicalHostIdSchema } from "./physicalIdentity.js";
 import { AgentSystemdSnapshotSchema } from "../systemd/index.js";
+import { AgentFirewallDenySnapshotSchema } from "../firewall/index.js";
 const PercentSchema = z.number().finite().min(0).max(100);
 const BytesSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const AGENT_TELEMETRY_MAX_CPU_CORES = 512;
@@ -72,6 +73,7 @@ export const AgentHeartbeatSchema = z.object({
   siteSnapshot: AgentSiteSnapshotSchema.optional(),
   databaseSnapshot: AgentHeartbeatDatabaseSnapshotSchema.optional(),
   systemdSnapshot: AgentSystemdSnapshotSchema.optional(),
+  firewallDenySnapshot: AgentFirewallDenySnapshotSchema.optional(),
 }).strict();
 
 export const AgentHeartbeatResponseSchema = z.object({

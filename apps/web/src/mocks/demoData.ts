@@ -1,7 +1,6 @@
 import type { TopbarNotification } from "../components/layout/types";
 import type { AclPolicy, AclRole, AclUser } from "../features/access/types";
-import type { AuditExportRecord } from "../features/audit/types";
-import type { FirewallDenyRecord, FirewallRule } from "../features/firewall/types";
+import type { FirewallRule } from "../features/firewall/types";
 import type { HostRecord } from "../features/hosts/types";
 import type { ProxyEndpoint, ProxyRouteRule, SettingsChangeRow, TokenRow } from "../features/settings/types";
 import type { SiteRecord } from "../features/sites/types";
@@ -87,20 +86,6 @@ const initialFirewallRules: FirewallRule[] = [
   { id: "fw-4", name: "UDP 探测", port: "9100", protocol: "UDP", source: "监控网段", target: "全部主机", enabled: false },
 ];
 
-const initialFirewallDenyRecords: FirewallDenyRecord[] = [
-  { id: "deny-1", time: "刚刚", source: "198.51.100.24", target: "panel-hk-03", port: "22", protocol: "TCP", rule: "SSH 运维入口", result: "拒绝", status: "待处理", reason: "来源不在运维白名单" },
-  { id: "deny-2", time: "8 分钟前", source: "203.0.113.18", target: "全部主机", port: "9100", protocol: "UDP", rule: "UDP 探测", result: "拒绝", status: "待处理", reason: "探测流量超过阈值" },
-  { id: "deny-3", time: "24 分钟前", source: "10.0.12.0/24", target: "数据库", port: "3306", protocol: "TCP", rule: "MySQL 内网", result: "放行", status: "已生效", reason: "已加入内网放行规则" },
-];
-
-
-const initialAuditExports: AuditExportRecord[] = [
-  { id: "exp-1", name: "今日操作审计 CSV", format: "CSV", range: "今天 00:00 - 现在", status: "可下载", rows: 482, size: "318 KB", creator: "管理员", createdAt: "今天 10:24", expiresAt: "7 天后", traceId: "EXP-20260619-001" },
-  { id: "exp-2", name: "失败操作 JSON", format: "JSON", range: "近 24 小时", status: "可下载", rows: 17, size: "42 KB", creator: "王工", createdAt: "今天 09:16", expiresAt: "6 天后", traceId: "EXP-20260619-002" },
-  { id: "exp-3", name: "合规审计归档包", format: "ZIP", range: "近 30 天", status: "生成中", rows: 18642, size: "生成中", creator: "系统任务", createdAt: "今天 08:30", expiresAt: "永久归档", traceId: "EXP-20260619-003" },
-  { id: "exp-4", name: "昨日配置变更 CSV", format: "CSV", range: "昨天", status: "失败", rows: 0, size: "-", creator: "管理员", createdAt: "昨天 18:33", expiresAt: "-", traceId: "EXP-20260618-017" },
-];
-
 const permissionOptions = ["主机读写", "网站发布", "数据库管理", "文件管理", "终端访问", "防火墙管理", "审计查看", "权限管理"];
 
 const initialAclUsers: AclUser[] = [
@@ -128,4 +113,4 @@ const initialAclPolicies: AclPolicy[] = [
   { id: "pol-8", name: "权限管理", module: "权限", risk: "高", desc: "允许变更用户、角色和权限项绑定。", roles: ["管理员"], lastUpdated: "今天 10:02" },
 ];
 
-export { topbarNotifications, topbarHelpLinks, initialProxyEndpoints, initialProxyRules, initialSettingsChanges, initialTokenRows, initialHostRecords, initialSiteRecords, initialTerminalSessions, initialTerminalSnippets, initialTerminalHistory, initialFirewallRules, initialFirewallDenyRecords, initialAuditExports, permissionOptions, initialAclUsers, initialAclRoles, initialAclPolicies };
+export { topbarNotifications, topbarHelpLinks, initialProxyEndpoints, initialProxyRules, initialSettingsChanges, initialTokenRows, initialHostRecords, initialSiteRecords, initialTerminalSessions, initialTerminalSnippets, initialTerminalHistory, initialFirewallRules, permissionOptions, initialAclUsers, initialAclRoles, initialAclPolicies };

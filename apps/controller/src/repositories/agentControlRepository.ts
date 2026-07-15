@@ -1,18 +1,19 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { AgentCapability, AgentDatabaseSnapshot, AgentHeartbeat, AgentNodeRecord, AgentSiteSnapshot, AgentSystemdSnapshot, AgentTelemetrySnapshot, PhysicalHostId, RemoteTaskRecord } from "@stackpilot/contracts";
-import { AgentHeartbeatDatabaseSnapshotSchema, AgentHealthSchema, AgentNodeRecordSchema, AgentSiteSnapshotSchema, AgentSystemdSnapshotSchema, AgentTelemetrySnapshotSchema, PhysicalHostIdSchema, RemoteTaskRecordSchema } from "@stackpilot/contracts";
+import type { AgentCapability, AgentDatabaseSnapshot, AgentFirewallDenySnapshot, AgentHeartbeat, AgentNodeRecord, AgentSiteSnapshot, AgentSystemdSnapshot, AgentTelemetrySnapshot, PhysicalHostId, RemoteTaskRecord } from "@stackpilot/contracts";
+import { AgentFirewallDenySnapshotSchema, AgentHeartbeatDatabaseSnapshotSchema, AgentHealthSchema, AgentNodeRecordSchema, AgentSiteSnapshotSchema, AgentSystemdSnapshotSchema, AgentTelemetrySnapshotSchema, PhysicalHostIdSchema, RemoteTaskRecordSchema } from "@stackpilot/contracts";
 import { z } from "zod";
 
 export type EnrollmentState = { enrollmentId: string; tokenDigest: string; nodeName: string; expiresAt: string; usedAt: string | null; revokedAt: string | null };
 export type AgentCredentialState = { credentialId: string; nodeId: string; publicKey: string; createdAt: string; revokedAt: string | null; replacedBy: string | null; rotationId: string | null };
-export type AgentNodeState = AgentNodeRecord & { physicalHostId?: PhysicalHostId; telemetry?: AgentTelemetrySnapshot; siteSnapshot?: AgentSiteSnapshot; databaseSnapshot?: AgentDatabaseSnapshot; systemdSnapshot?: AgentSystemdSnapshot; heartbeatHealthStatus?: AgentHeartbeat["health"]["status"] };
+export type AgentNodeState = AgentNodeRecord & { physicalHostId?: PhysicalHostId; telemetry?: AgentTelemetrySnapshot; siteSnapshot?: AgentSiteSnapshot; databaseSnapshot?: AgentDatabaseSnapshot; systemdSnapshot?: AgentSystemdSnapshot; firewallDenySnapshot?: AgentFirewallDenySnapshot; heartbeatHealthStatus?: AgentHeartbeat["health"]["status"] };
 export const AgentNodeStateSchema = AgentNodeRecordSchema.extend({
   physicalHostId: PhysicalHostIdSchema.optional(),
   telemetry: AgentTelemetrySnapshotSchema.optional(),
   siteSnapshot: AgentSiteSnapshotSchema.optional(),
   databaseSnapshot: AgentHeartbeatDatabaseSnapshotSchema.optional(),
   systemdSnapshot: AgentSystemdSnapshotSchema.optional(),
+  firewallDenySnapshot: AgentFirewallDenySnapshotSchema.optional(),
   heartbeatHealthStatus: AgentHealthSchema.shape.status.optional(),
 });
 export type AgentNonceConsumption = "accepted" | "replayed" | "unauthorized";

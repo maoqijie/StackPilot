@@ -14,10 +14,11 @@ import {
   AgentDatabaseBackupPlanPollResponseSchema, AgentDatabaseOperationUpdateSchema, AgentDatabaseQueryUploadSchema, AgentDatabaseScheduledBackupResultsRequestSchema,
   BusinessDatabaseBackupsPayloadSchema, CreateBusinessDatabaseBackupPlanRequestSchema, CreateDatabaseOperationPlanRequestSchema, DatabaseOperationPlanSchema,
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, ExecuteDatabaseOperationPlanRequestSchema,
-  AuditQuerySchema, CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
+  AuditEventsResponseSchema, AuditQuerySchema, CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
   CreateDirectoryRequestSchema,
   UpdateNodeCapabilitiesRequestSchema,
+  AgentFirewallDenySnapshotSchema, FirewallDenyRecordsPayloadSchema,
   FirewallOpenPortsPayloadSchema,
 } from "@stackpilot/contracts";
 
@@ -25,6 +26,27 @@ test("shared API constants preserve the existing HTTP contract", () => {
   assert.equal(API_CLIENT_PREFIX, "/api");
   assert.deepEqual(API_ROOT_SEGMENTS, ["api", "overview"]);
   assert.deepEqual(WRITE_METHODS, ["POST", "PATCH", "DELETE"]);
+});
+
+test("audit contracts bound queries and expose backend collection time", () => {
+  const collectedAt = new Date().toISOString();
+  const event = { sequence: 1, eventId: crypto.randomUUID(), occurredAt: collectedAt, actorType: "user", actorId: "operator", source: "controller", targetType: "file", targetId: "/tmp/a", action: "file.trash", parameters: '{"token":"[REDACTED]"}', outcome: "success", authorization: "allowed", requestId: crypto.randomUUID(), traceId: crypto.randomUUID(), eventHash: "a".repeat(64) };
+  assert.equal(AuditEventsResponseSchema.safeParse({ events: [event], collectedAt }).success, true);
+  assert.equal(AuditEventsResponseSchema.safeParse({ events: [event], collectedAt, clientTime: collectedAt }).success, false);
+  assert.deepEqual(AuditQuerySchema.parse({}), { limit: 200, result: "all" });
+  assert.deepEqual(AuditQuerySchema.parse({ limit: "50", result: "failed", actionPrefix: "database." }), { limit: 50, result: "failed", actionPrefix: "database." });
+  for (const query of [{ limit: 0 }, { limit: 1001 }, { actionPrefix: "database%" }, { unknown: "value" }]) assert.equal(AuditQuerySchema.safeParse(query).success, false);
+});
+
+test("firewall deny snapshots and records are bounded, unique and typed", () => {
+  const collectedAt = new Date().toISOString();
+  const event = { id: `fw_${"a".repeat(64)}`, occurredAt: collectedAt, sourceAddress: "198.51.100.24", destinationAddress: "192.0.2.10", destinationPort: 22, protocol: "TCP", interfaceName: "eth0", rule: "UFW BLOCK", reason: "Host firewall rejected this packet" };
+  assert.equal(AgentFirewallDenySnapshotSchema.safeParse({ collectedAt, collectionStatus: "complete", warnings: [], events: [event] }).success, true);
+  assert.equal(AgentFirewallDenySnapshotSchema.safeParse({ collectedAt, collectionStatus: "complete", warnings: [], events: [event, event] }).success, false);
+  assert.equal(AgentFirewallDenySnapshotSchema.safeParse({ collectedAt, collectionStatus: "complete", warnings: [], events: [{ ...event, sourceAddress: "not-an-ip" }] }).success, false);
+  const record = { ...event, id: `${crypto.randomUUID()}:${event.id}`, nodeId: crypto.randomUUID(), nodeName: "firewall-node", sourceCollectedAt: collectedAt };
+  assert.equal(FirewallDenyRecordsPayloadSchema.safeParse({ collectedAt, collectionStatus: "complete", warnings: [], records: [record] }).success, true);
+  assert.equal(PermissionSchema.safeParse("firewall:read").success, true);
 });
 
 test("schedule side effects require bounded idempotency keys", () => {

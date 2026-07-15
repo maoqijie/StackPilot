@@ -8,6 +8,7 @@ import {
   RunOverviewTaskRequestSchema, RunScheduleJobRequestSchema,
   ScheduleMutationResponseSchema, SchedulePayloadSchema, UpdateScheduleJobRequestSchema,
   SystemdServicesPayloadSchema,
+  FirewallDenyRecordsPayloadSchema,
   FirewallOpenPortsPayloadSchema,
 } from "@stackpilot/contracts";
 import type { RequestContext } from "./types.js";
@@ -55,6 +56,12 @@ export async function routeRequest(context: RequestContext): Promise<void> {
     context.identity?.require(context.principal, "systemd:read");
     response.setHeader("Cache-Control", "no-store");
     sendJson(response, 200, await services.systemd.list(context.principal?.nodeScope ?? []), SystemdServicesPayloadSchema);
+    return;
+  }
+  if (context.url.pathname === "/api/firewall/deny-records" && method === "GET") {
+    context.identity?.require(context.principal, "firewall:read");
+    response.setHeader("Cache-Control", "no-store");
+    sendJson(response, 200, await services.firewallDeny.list(context.principal?.nodeScope ?? []), FirewallDenyRecordsPayloadSchema);
     return;
   }
   if (context.url.pathname === "/api/firewall/open-ports" && method === "GET") {

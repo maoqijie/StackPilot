@@ -24,6 +24,7 @@ import type { DatabaseBackupWorkspaceService } from "../modules/databases/databa
 import type { DatabaseOperationService } from "../modules/databases/databaseOperationService.js";
 import type { DatabaseRetentionService } from "../modules/databases/databaseRetentionService.js";
 import type { SystemdService } from "../modules/systemd/systemdService.js";
+import type { FirewallDenyService } from "../modules/firewall/firewallDenyService.js";
 import type { FirewallOpenPortService } from "../modules/firewall/firewallOpenPortService.js";
 import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
@@ -53,6 +54,7 @@ export type Services = {
   remoteTasks: RemoteTaskService;
   terminalSnippets: TerminalSnippetService;
   systemd: SystemdService;
+  firewallDeny: FirewallDenyService;
   firewallOpenPorts: FirewallOpenPortService;
 };
 export type RequestContext = {
