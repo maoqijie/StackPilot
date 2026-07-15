@@ -1,6 +1,5 @@
 import type { TopbarNotification } from "../components/layout/types";
 import type { AclPolicy, AclRole, AclUser } from "../features/access/types";
-import type { AuditExportRecord, AuditRecord } from "../features/audit/types";
 import type { FirewallDenyRecord, FirewallRule } from "../features/firewall/types";
 import type { HostRecord } from "../features/hosts/types";
 import type { ProxyEndpoint, ProxyRouteRule, SettingsChangeRow, TokenRow } from "../features/settings/types";
@@ -14,16 +13,6 @@ const topbarHelpLinks = [
   { id: "help-2", title: "防火墙规则说明", detail: "端口、协议、来源的填写规范" },
   { id: "help-3", title: "部署回滚指南", detail: "失败后如何查看日志并回滚" },
 ] as const;
-
-const auditRows = [
-  ["05-22 10:24:31", "10.0.0.55", "李敏", "部署应用", "/api (sg-web-02)", "成功", "a1b2c3d4e5f6"],
-  ["05-22 10:23:11", "10.0.1.100", "王工", "更新防火墙", "panel-bj-02", "成功", "b2c3d4e5f6g7"],
-  ["05-22 10:22:05", "10.0.0.11", "系统", "备份数据库", "shop_db", "成功", "c3d4e5f6g7h8"],
-  ["05-22 10:18:42", "10.0.2.77", "王强", "重启服务", "nginx", "成功", "d4e5f6g7h8i9"],
-  ["05-22 10:15:19", "10.0.0.55", "系统", "上传文件", "/var/www/html", "成功", "e5f6g7h8i9j0"],
-  ["05-22 10:12:08", "10.0.1.23", "赵磊", "修改配置", "php.ini", "成功", "f6g7h8i9j0k1"],
-  ["05-22 10:08:33", "10.0.2.88", "陈晨", "删除文件", "/tmp/old.log", "失败", "h8i9j0k1l2m3"],
-];
 
 const initialProxyEndpoints: ProxyEndpoint[] = [
   { id: "px-1", name: "公司出口代理", protocol: "HTTP", url: "http://proxy.internal:7890", scope: "全局", enabled: true, latency: "42ms", status: "可用", lastCheck: "刚刚" },
@@ -104,25 +93,6 @@ const initialFirewallDenyRecords: FirewallDenyRecord[] = [
 ];
 
 
-const initialAuditRecords: AuditRecord[] = auditRows.map((row) => ({
-  id: row[6],
-  time: row[0],
-  ip: row[1],
-  user: row[2],
-  action: row[3],
-  object: row[4],
-  result: row[5] as "成功" | "失败",
-  traceId: row[6],
-  summary: `${row[2]} 对 ${row[4]} 执行 ${row[3]}，结果为 ${row[5]}`,
-}));
-
-const initialAuditExports: AuditExportRecord[] = [
-  { id: "exp-1", name: "今日操作审计 CSV", format: "CSV", range: "今天 00:00 - 现在", status: "可下载", rows: 482, size: "318 KB", creator: "管理员", createdAt: "今天 10:24", expiresAt: "7 天后", traceId: "EXP-20260619-001" },
-  { id: "exp-2", name: "失败操作 JSON", format: "JSON", range: "近 24 小时", status: "可下载", rows: 17, size: "42 KB", creator: "王工", createdAt: "今天 09:16", expiresAt: "6 天后", traceId: "EXP-20260619-002" },
-  { id: "exp-3", name: "合规审计归档包", format: "ZIP", range: "近 30 天", status: "生成中", rows: 18642, size: "生成中", creator: "系统任务", createdAt: "今天 08:30", expiresAt: "永久归档", traceId: "EXP-20260619-003" },
-  { id: "exp-4", name: "昨日配置变更 CSV", format: "CSV", range: "昨天", status: "失败", rows: 0, size: "-", creator: "管理员", createdAt: "昨天 18:33", expiresAt: "-", traceId: "EXP-20260618-017" },
-];
-
 const permissionOptions = ["主机读写", "网站发布", "数据库管理", "文件管理", "终端访问", "防火墙管理", "审计查看", "权限管理"];
 
 const initialAclUsers: AclUser[] = [
@@ -150,4 +120,4 @@ const initialAclPolicies: AclPolicy[] = [
   { id: "pol-8", name: "权限管理", module: "权限", risk: "高", desc: "允许变更用户、角色和权限项绑定。", roles: ["管理员"], lastUpdated: "今天 10:02" },
 ];
 
-export { topbarNotifications, topbarHelpLinks, auditRows, initialProxyEndpoints, initialProxyRules, initialSettingsChanges, initialTokenRows, initialHostRecords, initialSiteRecords, initialTerminalSessions, initialTerminalSnippets, initialTerminalHistory, initialFirewallRules, initialFirewallDenyRecords, initialAuditRecords, initialAuditExports, permissionOptions, initialAclUsers, initialAclRoles, initialAclPolicies };
+export { topbarNotifications, topbarHelpLinks, initialProxyEndpoints, initialProxyRules, initialSettingsChanges, initialTokenRows, initialHostRecords, initialSiteRecords, initialTerminalSessions, initialTerminalSnippets, initialTerminalHistory, initialFirewallRules, initialFirewallDenyRecords, permissionOptions, initialAclUsers, initialAclRoles, initialAclPolicies };

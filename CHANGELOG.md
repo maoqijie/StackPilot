@@ -2,6 +2,24 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.20 - 2026-07-15
+
+### Added
+
+- Added strict shared audit event/query contracts, backend collection timestamps and bounded action-prefix filtering before result limiting.
+- Added desktop and mobile real-backend E2E coverage for authenticated audit loading, silent 10-second polling, detail inspection and CSV download.
+
+### Changed
+
+- Replaced the global, failed-operation and database audit fixtures with the authenticated Controller audit API while preserving filters and stable detail state.
+- Replaced simulated export history and browser-only task mutations with a confirmed CSV download of the current real query result.
+- Hid audit navigation and direct page rendering unless the signed-in user holds `audit:read`.
+
+### Security
+
+- Audit responses remain protected by session/RBAC, disable caching, preserve server-side sensitive-parameter redaction and strictly reject invalid or repeated query parameters.
+- Non-terminal outcomes such as `queued` are shown as recorded states instead of being misrepresented as successful operations.
+
 ## 0.3.0-preview.19 - 2026-07-15
 
 ### Added

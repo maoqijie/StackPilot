@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { hmac } from "../security/crypto.js";
+import type { AuditQuery } from "@stackpilot/contracts";
 
 const sensitive = /authorization|cookie|password|token|secret|private|key|environment|stdout|stderr/i;
 function redact(value: unknown): unknown {
@@ -28,6 +29,12 @@ export class AuditRepository {
     }
     return { valid: true, count: rows.length };
   }
-  list(limit = 200) { return this.database.prepare("SELECT sequence,event_id AS eventId,occurred_at AS occurredAt,actor_type AS actorType,actor_id AS actorId,source,target_type AS targetType,target_id AS targetId,action,parameters,outcome,authorization,request_id AS requestId,trace_id AS traceId,event_hash AS eventHash FROM audit_events ORDER BY sequence DESC LIMIT ?").all(Math.min(limit, 1000)); }
+  list(query: AuditQuery = { limit: 200 }) {
+    const columns = "sequence,event_id AS eventId,occurred_at AS occurredAt,actor_type AS actorType,actor_id AS actorId,source,target_type AS targetType,target_id AS targetId,action,parameters,outcome,authorization,request_id AS requestId,trace_id AS traceId,event_hash AS eventHash";
+    if (query.actionPrefix) {
+      const prefix = query.actionPrefix.replaceAll("_", "\\_");
+      return this.database.prepare(`SELECT ${columns} FROM audit_events WHERE action LIKE ? ESCAPE '\\' ORDER BY sequence DESC LIMIT ?`).all(`${prefix}%`, query.limit);
+    }
+    return this.database.prepare(`SELECT ${columns} FROM audit_events ORDER BY sequence DESC LIMIT ?`).all(query.limit);
+  }
 }
-
