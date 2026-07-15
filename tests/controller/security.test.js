@@ -242,6 +242,7 @@ test("CORS preflight advertises Authorization only for allowlisted origins", asy
 test("all crontab mutations and immediate execution stay disabled by default", async () => {
   await withServer({}, async (baseUrl, { platform, apiToken }) => {
     const list = await jsonResponse(await fetch(`${baseUrl}/api/overview/current-user-crontab`, { headers: authHeaders(apiToken) }));
+    assert.equal(list.headers.get("cache-control"), "no-store");
     assert.equal(list.status, 200);
     assert.equal(list.body.writeEnabled, false);
     const cases = [

@@ -14,17 +14,17 @@ export const PERMISSIONS: ReadonlyArray<[Permission, "low" | "medium" | "high", 
   ["services:read","low","读取本机 systemd 服务与结构化日志"],["services:operate","high","启动、停止或重启受控 systemd 服务"],
   ["terminal:read","low","读取受控命令片段"],["terminal:execute","high","执行受控命令片段"],
   ["systemd:read","medium","读取授权节点的 systemd 服务状态与脱敏日志"],
-  ["firewall:read","medium","读取本机监听端口与授权节点的防火墙拒绝事件"],
   ["databases:read","low","读取授权节点的数据库实例、运行状态与脱敏慢查询"],
   ["databases:sql:read","high","读取数据库完整 SQL 文本"],["databases:backup","high","管理和执行数据库备份计划"],
   ["databases:operate","high","执行数据库会话和查询治理操作"],["databases:install","high","安装和创建数据库实例"],["databases:restore","high","执行数据库原地恢复"],
   ["files:read","low","读取受管文件"],["files:write","high","修改和上传受管文件"],["files:delete","high","永久删除受管文件"],
+  ["firewall:read","medium","读取本机监听端口、UFW 规则与授权节点的防火墙拒绝事件"],["firewall:operate","high","创建或删除本机 StackPilot 受管 UFW 规则"],
   ["audit:read","low","读取全局审计日志"],["users:read","low","读取用户"],["users:manage","high","管理用户"],["roles:read","low","读取角色"],["roles:manage","high","管理角色"],["tokens:manage","high","管理 API Token"],["system:backup","high","备份与恢复数据库"],
 ];
 const roleDefinitions = [
   ["administrator","管理员",PERMISSIONS.map(([key]) => key)],
-  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","services:read","services:operate","sites:read","sites:logs","sites:deploy","sites:operate","sites:renew","files:read","files:write","tasks:read","tasks:create","tasks:cancel","terminal:read","terminal:execute","systemd:read","firewall:read"]],
-  ["audit-reader","只读审计员",["overview:read","nodes:read","services:read","systemd:read","firewall:read","sites:read","files:read","tasks:read","audit:read"]],
+  ["operator","运维人员",["overview:read","overview:operate","schedules:read","schedules:write","nodes:read","services:read","services:operate","sites:read","sites:logs","sites:deploy","sites:operate","sites:renew","files:read","files:write","firewall:read","firewall:operate","tasks:read","tasks:create","tasks:cancel","terminal:read","terminal:execute","systemd:read"]],
+  ["audit-reader","只读审计员",["overview:read","nodes:read","services:read","systemd:read","sites:read","files:read","firewall:read","tasks:read","audit:read"]],
 ] as const;
 
 type UserRow = { id: string; username: string; display_name: string; password_hash: string; disabled_at: string | null };

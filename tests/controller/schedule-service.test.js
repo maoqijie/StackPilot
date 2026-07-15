@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ScheduleService } from "../../apps/controller/dist/modules/schedules/scheduleService.js";
 import { scheduleCommandDigest } from "../../apps/controller/dist/modules/schedules/scheduleExecutionRepository.js";
-import { CrontabScheduleRepository } from "../../apps/controller/dist/repositories/scheduleRepository.js";
+import { CrontabScheduleRepository, nextScheduleRun, toScheduleJob } from "../../apps/controller/dist/repositories/scheduleRepository.js";
 import { FakePlatformAdapter } from "./support/fakePlatform.js";
 
 class MemoryScheduleRepository {
@@ -33,6 +33,24 @@ test("schedule service persists command-versioned execution records", async () =
   assert.equal(run.job.lastExecution.exitCode, 0);
   await schedules.delete(created.job.id);
   assert.equal((await schedules.list()).jobs.length, 0);
+});
+
+test("schedule jobs expose real next-run timestamps without losing execution records", async () => {
+  const currentDate = new Date("2026-07-16T01:02:00.000Z");
+  assert.equal(nextScheduleRun("*/5 * * * *", currentDate, "UTC"), "2026-07-16T01:05:00.000Z");
+  assert.equal(nextScheduleRun("not-a-cron", currentDate, "UTC"), null);
+  const stored = { id: "job", name: "backup", cron: "0 2 * * *", command: "true", enabled: true, lastRun: "未运行", result: "未运行", createdAt: currentDate.toISOString(), updatedAt: currentDate.toISOString() };
+  assert.deepEqual(toScheduleJob(stored, currentDate, "UTC"), { id: "job", name: "backup", cron: "0 2 * * *", command: "true", enabled: true, nextRun: "2026-07-16T02:00:00.000Z", nextRunAt: "2026-07-16T02:00:00.000Z", lastRun: "未运行", result: "未运行" });
+  assert.equal(toScheduleJob({ ...stored, enabled: false }, currentDate, "UTC").nextRunAt, null);
+
+  const executions = new MemoryScheduleExecutionRepository();
+  const schedules = new ScheduleService(new MemoryScheduleRepository(), new FakePlatformAdapter(), executions, true);
+  const created = await schedules.create({ name: "next", cron: "*/5 * * * *", command: "true", enabled: true, idempotencyKey: "create-next-run-1" });
+  await executions.write(created.job.id, { id: crypto.randomUUID(), commandDigest: scheduleCommandDigest("true"), source: "cron", startedAt: "2026-07-16T01:00:00.000Z", finishedAt: "2026-07-16T01:00:01.000Z", status: "成功", exitCode: 0, durationMs: 1000, output: "done", error: "" });
+  const listed = await schedules.list();
+  assert.match(listed.scannedAt, /Z$/);
+  assert.match(listed.jobs[0].nextRunAt, /Z$/);
+  assert.equal(listed.jobs[0].lastExecution.output, "done");
 });
 
 test("schedule mutations serialize and retries do not repeat side effects", async () => {

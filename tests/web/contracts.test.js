@@ -14,8 +14,11 @@ test("web API clients consume the public contracts package", async () => {
     readFile(new URL("../../apps/web/src/api/systemdApi.ts", import.meta.url), "utf8"),
     readFile(new URL("../../apps/web/src/api/firewallApi.ts", import.meta.url), "utf8"),
     readFile(new URL("../../apps/web/src/api/auditApi.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../apps/web/src/api/firewallApi.ts", import.meta.url), "utf8"),
   ]);
   assert.ok(sources.every((source) => source.includes("@stackpilot/contracts")));
+  assert.match(sources[1], /SchedulePayloadSchema\.parse/);
+  assert.match(sources[1], /ScheduleMutationResponseSchema\.parse/);
 });
 
 test("Web authentication uses Cookie credentials and memory-only CSRF/reauth values", async () => {

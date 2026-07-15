@@ -7,9 +7,10 @@ export type CommandOutput = { stdout: string; stderr: string };
 export type FixedCommandRunner = (executable: string, args: readonly string[], timeoutMs: number, options?: { cwd?: string; env?: NodeJS.ProcessEnv }) => Promise<CommandOutput>;
 
 const ALLOWED = new Set(["/usr/bin/git", "/usr/bin/systemd-run", "/usr/bin/systemctl", "/usr/bin/journalctl", "/usr/sbin/nginx", "/usr/bin/certbot", "/usr/bin/curl", "/usr/bin/tar"]);
+const FIREWALL_ALLOWED = new Set(["/usr/sbin/ufw"]);
 
-export const runFixedCommand: FixedCommandRunner = async (executable, args, timeoutMs, options = {}) => {
-  if (!ALLOWED.has(executable)) throw new HelperError("EXECUTABLE_FORBIDDEN", "Executable is not in the helper allowlist");
+async function runAllowedCommand(allowed: ReadonlySet<string>, executable: string, args: readonly string[], timeoutMs: number, options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
+  if (!allowed.has(executable)) throw new HelperError("EXECUTABLE_FORBIDDEN", "Executable is not in the helper allowlist");
   try {
     const result = await execute(executable, [...args], { timeout: timeoutMs, maxBuffer: 256 * 1024, windowsHide: true, cwd: options.cwd, env: options.env });
     return { stdout: result.stdout.slice(0, 256 * 1024), stderr: result.stderr.slice(0, 64 * 1024) };
@@ -17,7 +18,10 @@ export const runFixedCommand: FixedCommandRunner = async (executable, args, time
     const code = (error as NodeJS.ErrnoException).code;
     throw new HelperError(code === "ETIMEDOUT" ? "COMMAND_TIMEOUT" : "COMMAND_FAILED", "A fixed helper command failed");
   }
-};
+}
+
+export const runFixedCommand: FixedCommandRunner = (executable, args, timeoutMs, options) => runAllowedCommand(ALLOWED, executable, args, timeoutMs, options);
+export const runFirewallCommand: FixedCommandRunner = (executable, args, timeoutMs, options) => runAllowedCommand(FIREWALL_ALLOWED, executable, args, timeoutMs, options);
 
 export function builderArgs(workDirectory: string, command: string, args: readonly string[], path?: string) {
   const properties = [

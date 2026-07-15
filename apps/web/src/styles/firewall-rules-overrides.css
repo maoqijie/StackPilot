@@ -330,7 +330,8 @@
 }
 
 .module-page-firewall-rules .module-table-wrap {
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .module-page-firewall-rules .module-table :is(th, td) { border-bottom: 0; }

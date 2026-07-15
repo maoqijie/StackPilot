@@ -1,5 +1,5 @@
 import { isIP } from "node:net";
-import type { EnvironmentVariable, HelperRequest } from "./types.js";
+import type { EnvironmentVariable, FirewallHelperRequest, HelperRequest } from "./types.js";
 import { HelperError } from "./types.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -10,6 +10,7 @@ const DOMAIN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9
 const ENV_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/;
 const REF = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,159}$/;
 const SYSTEMD_UNIT = /^[A-Za-z0-9][A-Za-z0-9_.@:-]*\.(?:service|timer|socket|target)$/;
+const FIREWALL_RULE_ID = /^firewall:[A-Za-z0-9._:-]{1,90}$/;
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new HelperError("INVALID_REQUEST", "Request must be an object");
@@ -107,6 +108,23 @@ export function parseRequest(raw: string): HelperRequest {
     return { operation: "logs", requestId: requestId(value.requestId), siteId: value.siteId, since: value.since as string | null, limit: Number(value.limit) };
   }
   throw new HelperError("INVALID_REQUEST", "Operation is not in the fixed helper protocol");
+}
+
+export function parseFirewallRequest(raw: string): FirewallHelperRequest {
+  let parsed: unknown; try { parsed = JSON.parse(raw); } catch { throw new HelperError("INVALID_REQUEST", "Request must be valid JSON"); }
+  const value = record(parsed);
+  if (value.operation === "firewall-list") { exactKeys(value, ["operation"]); return { operation: "firewall-list" }; }
+  if (value.operation === "firewall-create") {
+    exactKeys(value, ["operation", "requestId", "name", "port", "protocol", "source"]);
+    if (typeof value.name !== "string" || value.name.trim().length < 1 || value.name.trim().length > 80 || /[\0\r\n]/.test(value.name) || !Number.isInteger(value.port) || Number(value.port) < 1 || Number(value.port) > 65_535 || !["tcp", "udp"].includes(String(value.protocol)) || typeof value.source !== "string" || value.source.length > 128) throw new HelperError("INVALID_REQUEST", "Firewall create request is invalid");
+    return { operation: "firewall-create", requestId: requestId(value.requestId), name: value.name.trim(), port: Number(value.port), protocol: value.protocol as "tcp" | "udp", source: value.source };
+  }
+  if (value.operation === "firewall-delete") {
+    exactKeys(value, ["operation", "requestId", "ruleId", "version"]);
+    if (typeof value.ruleId !== "string" || !FIREWALL_RULE_ID.test(value.ruleId) || typeof value.version !== "string" || !/^[a-f0-9]{64}$/.test(value.version)) throw new HelperError("INVALID_REQUEST", "Firewall delete request is invalid");
+    return { operation: "firewall-delete", requestId: requestId(value.requestId), ruleId: value.ruleId, version: value.version };
+  }
+  throw new HelperError("INVALID_REQUEST", "Operation is not in the fixed firewall helper protocol");
 }
 
 export function safeRelativePath(value: unknown, field: string): string {

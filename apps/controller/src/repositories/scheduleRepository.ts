@@ -1,11 +1,16 @@
-import { ScheduleJobSchema, type ScheduleJob } from "@stackpilot/contracts";
+import type { ScheduleJob } from "@stackpilot/contracts";
+import { CronExpressionParser } from "cron-parser";
 import { z } from "zod";
 import type { PlatformAdapter } from "../platform/types.js";
 
 type CronCommandFactory = { cronCommand(jobId: string, command: string): string };
 
-export type StoredScheduleJob = Omit<ScheduleJob, "nextRun"> & { createdAt: string; updatedAt: string };
-const StoredScheduleJobSchema = ScheduleJobSchema.omit({ nextRun: true }).extend({ createdAt: z.string(), updatedAt: z.string() });
+export type StoredScheduleJob = Omit<ScheduleJob, "nextRun" | "nextRunAt" | "lastExecution"> & { createdAt: string; updatedAt: string };
+const StoredScheduleJobSchema: z.ZodType<StoredScheduleJob> = z.object({
+  id: z.string(), name: z.string(), cron: z.string(), command: z.string(), enabled: z.boolean(),
+  lastRun: z.string(), result: z.enum(["成功", "失败", "未运行", "运行中"]),
+  createdAt: z.string(), updatedAt: z.string(),
+});
 const blockStart = "# >>> STACKPILOT MANAGED CRON JOBS";
 const blockEnd = "# <<< STACKPILOT MANAGED CRON JOBS";
 const metaPrefix = "# stackpilot:job=";
@@ -56,6 +61,15 @@ export class CrontabScheduleRepository implements ScheduleRepository {
   }
 }
 
-export function toScheduleJob(job: StoredScheduleJob): ScheduleJob {
-  return { id: job.id, name: job.name, cron: job.cron, command: job.command, enabled: job.enabled, nextRun: job.enabled ? "已写入 crontab" : "停用", lastRun: job.lastRun, result: job.result };
+export function nextScheduleRun(cron: string, currentDate = new Date(), timeZone?: string) {
+  try {
+    return CronExpressionParser.parse(cron, { currentDate, ...(timeZone ? { tz: timeZone } : {}) }).next().toDate().toISOString();
+  } catch {
+    return null;
+  }
+}
+
+export function toScheduleJob(job: StoredScheduleJob, currentDate = new Date(), timeZone?: string): ScheduleJob {
+  const nextRunAt = job.enabled ? nextScheduleRun(job.cron, currentDate, timeZone) : null;
+  return { id: job.id, name: job.name, cron: job.cron, command: job.command, enabled: job.enabled, nextRun: job.enabled ? nextRunAt ?? "时间暂不可用" : "停用", nextRunAt, lastRun: job.lastRun, result: job.result };
 }
