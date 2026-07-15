@@ -1,7 +1,5 @@
 import { Globe2, Plus, RefreshCw, Shield, TerminalSquare } from "lucide-react";
 import { useState } from "react";
-import { resolvePageMeta } from "../../app/navigation";
-import { ModulePageShell } from "../../components/layout/ModulePageShell";
 import { MetricTile, ModuleSearch, PanelCard } from "../../components/ui/Cards";
 import { DataTable } from "../../components/ui/DataTable";
 import { DetailDrawer } from "../../components/ui/DetailDrawer";
@@ -10,8 +8,7 @@ import { StatusLight } from "../../components/ui/StatusVisuals";
 import { latencyValue } from "../../utils/data";
 import type { ProxyEndpoint, ProxyRouteRule } from "./types";
 import { initialProxyEndpoints, initialProxyRules } from "../../mocks/demoData";
-import { settingsPagePreset } from "../../app/pagePresets";
-import { SettingsTabs } from "./SettingsTabs";
+import { SettingsPageFrame } from "./SettingsPageFrame";
 import type { Notify, PageKey, SetPage, SettingsReadOnlyState, Tone } from "../../types/app";
 
 function SettingsProxyPage({
@@ -39,7 +36,6 @@ function SettingsProxyPage({
   const [draft, setDraft] = useState({ name: "临时调试代理", protocol: "HTTP", url: "http://proxy.local:7890", scope: "部署" });
   const healthyEndpoints = endpoints.filter((endpoint) => endpoint.enabled && endpoint.status === "可用");
   const selectedDrawerEndpoint = drawer?.type === "test" ? endpoints.find((endpoint) => endpoint.id === drawer.endpointId) ?? null : null;
-  const warningEndpoints = endpoints.filter((endpoint) => endpoint.status === "告警");
   const filteredEndpoints = endpoints.filter((endpoint) => {
     const keyword = search.trim().toLowerCase();
     const matchSearch = !keyword || `${endpoint.name} ${endpoint.url} ${endpoint.scope}`.toLowerCase().includes(keyword);
@@ -158,28 +154,21 @@ function SettingsProxyPage({
   ].join("\n");
 
   return (
-    <ModulePageShell
-      title={resolvePageMeta(page).title}
-      subtitle="管理代理节点、路由规则和运行时环境变量。"
+    <SettingsPageFrame
       page={page}
-      viewContext={{
-        eyebrow: "设置 / 代理设置",
-        title: "代理设置",
-        chips: [`可用 ${healthyEndpoints.length}`, `告警 ${warningEndpoints.length}`, `规则 ${rules.length}`],
-      }}
-      tabs={<SettingsTabs activeTab={settingsPagePreset(page)} setPage={setPage} />}
-      actions={<><button className="ghost" type="button" disabled={readOnly} onClick={() => { if (!guardProxyWrite("批量刷新代理")) return; setEndpoints((current) => current.map((endpoint) => endpoint.enabled ? { ...endpoint, latency: endpoint.latency === "-" || endpoint.latency === "未探测" ? "54ms" : endpoint.latency, lastCheck: "刚刚" } : endpoint)); notify("已批量刷新代理检查时间"); }}><RefreshCw size={15} /> 批量刷新</button><button className="primary" type="button" disabled={readOnly} onClick={() => { if (!guardProxyWrite("新增代理")) return; setDrawer({ type: "create" }); }}><Plus size={15} /> 新增代理</button></>}
+      setPage={setPage}
+      actions={<><button className="ghost" type="button" disabled={readOnly} onClick={() => { if (!guardProxyWrite("批量检查代理")) return; setEndpoints((current) => current.map((endpoint) => endpoint.enabled ? { ...endpoint, latency: endpoint.latency === "-" || endpoint.latency === "未探测" ? "54ms" : endpoint.latency, lastCheck: "刚刚" } : endpoint)); notify("代理节点检查时间已更新"); }}><RefreshCw size={15} /> 批量检查</button><button className="primary" type="button" disabled={readOnly} onClick={() => { if (!guardProxyWrite("新增代理")) return; setDrawer({ type: "create" }); }}><Plus size={15} /> 新增代理</button></>}
       filters={<><ModuleSearch value={search} placeholder="搜索代理名称、地址或用途" onChange={setSearch} /><FieldSelect label="用途" value={scopeFilter} options={["全部", "全局", "部署", "终端", "仓库"]} onChange={setScopeFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "可用", "告警", "未验证", "停用"]} onChange={setStatusFilter} /></>}
       metrics={<><MetricTile icon={Shield} label="可用节点" value={`${healthyEndpoints.length}`} tone="green" /><MetricTile icon={TerminalSquare} label="终端代理" value={terminalProxyState} tone={terminalProxyTone} /><MetricTile icon={Globe2} label="部署代理" value={deployProxy ? "启用" : "停用"} tone={deployProxy ? "blue" : "gray"} /></>}
       side={drawer?.type === "create" ? (
-        <DetailDrawer title="新增代理" subtitle="保存后加入代理节点池" onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" disabled={readOnly} onClick={addEndpoint}>保存代理</button></>}>
+        <DetailDrawer title="新增代理" subtitle="保存后加入代理节点池" modal onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" disabled={readOnly} onClick={addEndpoint}>保存代理</button></>}>
           <FormLine label="代理名称" required value={draft.name} disabled={readOnly} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
           <FormSelectLine label="协议" required value={draft.protocol} options={["HTTP", "HTTPS", "SOCKS5"]} disabled={readOnly} onChange={(value) => setDraft((current) => ({ ...current, protocol: value }))} />
           <FormLine label="代理地址" required value={draft.url} disabled={readOnly} onChange={(value) => setDraft((current) => ({ ...current, url: value }))} />
           <FormSelectLine label="用途" required value={draft.scope} options={["全局", "部署", "终端", "仓库"]} disabled={readOnly} onChange={(value) => setDraft((current) => ({ ...current, scope: value }))} />
         </DetailDrawer>
       ) : selectedDrawerEndpoint ? (
-        <DetailDrawer title="代理状态" subtitle={selectedDrawerEndpoint.name} onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => copyProxyText(diagnosticForEndpoint(selectedDrawerEndpoint), `${selectedDrawerEndpoint.name} curl 诊断已复制`)}>复制诊断</button><button className="primary" type="button" disabled={readOnly} onClick={() => runProbe(selectedDrawerEndpoint)}>刷新状态</button></>}>
+        <DetailDrawer title="代理状态" subtitle={selectedDrawerEndpoint.name} modal onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => copyProxyText(diagnosticForEndpoint(selectedDrawerEndpoint), `${selectedDrawerEndpoint.name} curl 诊断已复制`)}>复制诊断</button><button className="primary" type="button" disabled={readOnly} onClick={() => runProbe(selectedDrawerEndpoint)}>检查状态</button></>}>
           <div className="proxy-test-panel">
             <p><span>协议</span><b>{selectedDrawerEndpoint.protocol}</b></p>
             <p><span>地址</span><b>{selectedDrawerEndpoint.url}</b></p>
@@ -190,6 +179,7 @@ function SettingsProxyPage({
           </div>
         </DetailDrawer>
       ) : null}
+      sideModal={Boolean(drawer)}
     >
       <div className="proxy-settings-content">
         <DataTable
@@ -273,7 +263,7 @@ function SettingsProxyPage({
           </PanelCard>
         </section>
       </div>
-    </ModulePageShell>
+    </SettingsPageFrame>
   );
 }
 
