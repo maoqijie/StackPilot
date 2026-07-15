@@ -234,6 +234,7 @@ function navItemsForPermissions(permissions: readonly Permission[]) {
     if (item.key === "files" && !permissions.includes("files:read")) return visible;
     if (item.key === "systemd" && !permissions.includes("systemd:read")) return visible;
     if (item.key === "schedule" && !permissions.includes("schedules:read")) return visible;
+    if (item.key === "firewall" && !permissions.includes("firewall:read")) return visible;
     if (item.key === "databases" && !permissions.includes("databases:read")) return visible;
     if (item.key === "deploy" && !permissions.includes("sites:read")) return visible;
     if (item.key === "sites") {

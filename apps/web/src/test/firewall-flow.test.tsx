@@ -4,14 +4,14 @@ import { describe, expect, it, vi } from "vitest";
 import { FirewallPage } from "../pages/FirewallPage";
 
 describe("firewall rule flow", () => {
-  it("uses the rule modal and drawer surfaces on the open-port view", async () => {
+  it("uses the rule modal and drawer surfaces on the rule view", async () => {
     const user = userEvent.setup();
-    render(<FirewallPage page="firewall-open" notify={vi.fn()} />);
+    render(<FirewallPage page="firewall" notify={vi.fn()} />);
 
-    const page = screen.getByRole("heading", { name: "开放端口" }).closest(".module-page");
-    expect(page).toHaveClass("module-page-firewall-open");
+    const page = screen.getByRole("heading", { name: "防火墙" }).closest(".module-page");
+    expect(page).toHaveClass("module-page-firewall");
     expect(screen.getAllByText("HTTPS 公网访问")).toHaveLength(2);
-    expect(screen.queryByText("SSH 运维入口")).not.toBeInTheDocument();
+    expect(screen.getAllByText("SSH 运维入口").length).toBeGreaterThan(0);
 
     const createButton = screen.getByRole("button", { name: "新增规则" });
     await user.click(createButton);
@@ -98,7 +98,7 @@ describe("firewall rule flow", () => {
 
   it("restores focus to the delete action after cancelling", async () => {
     const user = userEvent.setup();
-    render(<FirewallPage page="firewall-open" notify={vi.fn()} />);
+    render(<FirewallPage page="firewall" notify={vi.fn()} />);
     const table = screen.getByRole("table");
     const deleteButton = within(table).getByRole("button", { name: "删除防火墙规则 HTTPS 公网访问" });
 

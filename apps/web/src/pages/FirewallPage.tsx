@@ -12,6 +12,8 @@ import type { FirewallDenyRecord, FirewallRule } from "../features/firewall/type
 import { firewallPagePreset, isValidFirewallSource } from "../features/firewall/validation";
 import { initialFirewallDenyRecords, initialFirewallRules } from "../mocks/demoData";
 import type { Notify, PageKey } from "../types/app";
+import type { Permission } from "@stackpilot/contracts";
+import { FirewallOpenPortsPage } from "../features/firewall/FirewallOpenPortsPage";
 
 type FirewallDrawer =
   | { type: "create" }
@@ -20,7 +22,7 @@ type FirewallDrawer =
   | { type: "deny-detail"; recordId: string }
   | null;
 
-function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
+function FirewallRulesPage({ page, notify }: { page: PageKey; notify: Notify }) {
   const [rows, setRows] = useState(initialFirewallRules);
   const [denyRows, setDenyRows] = useState(initialFirewallDenyRecords);
   const firewallPreset = firewallPagePreset(page);
@@ -287,6 +289,12 @@ function FirewallPage({ page, notify }: { page: PageKey; notify: Notify }) {
       />
     </ModulePageShell>
   );
+}
+
+function FirewallPage({ page, notify, permissions = [] }: { page: PageKey; notify: Notify; permissions?: Permission[] }) {
+  return page === "firewall-open"
+    ? <FirewallOpenPortsPage permissions={permissions} />
+    : <FirewallRulesPage page={page} notify={notify} />;
 }
 
 export { FirewallPage };
