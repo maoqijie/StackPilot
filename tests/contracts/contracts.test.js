@@ -14,7 +14,7 @@ import {
   AgentDatabaseBackupPlanPollResponseSchema, AgentDatabaseOperationUpdateSchema, AgentDatabaseQueryUploadSchema, AgentDatabaseScheduledBackupResultsRequestSchema,
   BusinessDatabaseBackupsPayloadSchema, CreateBusinessDatabaseBackupPlanRequestSchema, CreateDatabaseOperationPlanRequestSchema, DatabaseOperationPlanSchema,
   DatabaseInstancesPayloadSchema, DatabaseSlowQueriesPayloadSchema, ExecuteDatabaseOperationPlanRequestSchema,
-  CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
+  AuditQuerySchema, CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
   CreateDirectoryRequestSchema,
   UpdateNodeCapabilitiesRequestSchema,
@@ -247,6 +247,13 @@ test("identity schemas reject privilege fields and invalid node scopes", () => {
   assert.equal(PermissionSchema.safeParse("files:delete").success, true);
   assert.equal(PermissionSchema.safeParse("terminal:read").success, true);
   assert.equal(PermissionSchema.safeParse("terminal:execute").success, true);
+});
+
+test("audit query contract accepts only bounded read filters", () => {
+  assert.deepEqual(AuditQuerySchema.parse({ result: "failed", limit: "25", actionPrefix: "database." }), { result: "failed", limit: 25, actionPrefix: "database." });
+  assert.equal(AuditQuerySchema.safeParse({ result: "failed", limit: "1001" }).success, false);
+  assert.equal(AuditQuerySchema.safeParse({ result: "invented" }).success, false);
+  assert.equal(AuditQuerySchema.safeParse({ result: "failed", nodeId: crypto.randomUUID() }).success, false);
 });
 
 test("file upload contracts reject paths and inconsistent progress", () => {
