@@ -2,14 +2,14 @@
 
 StackPilot 是开源自托管多服务器总控台。当前仓库采用 npm workspaces，包含前端控制台、Node.js Controller API、非 root Agent、root-only 数据库 helper 和共享运行时契约。
 
-> **项目成熟度：预览版。** 当前版本为 `0.3.0-preview.29`，提供可重复的部署、迁移、回滚和发布验证流程，但尚未达到稳定生产发布条件，也不提供 SLA。正式支持范围和已验证边界见[兼容性矩阵](docs/compatibility.md)。
+> **项目成熟度：预览版。** 当前版本为 `0.3.0-preview.30`，提供可重复的部署、迁移、回滚和发布验证流程，但尚未达到稳定生产发布条件，也不提供 SLA。正式支持范围和已验证边界见[兼容性矩阵](docs/compatibility.md)。
 
 ## 当前前端范围
 
 - 总览：服务器健康摘要、服务器列表、待处理事项、最近审计。
 - 服务器：Agent 安装命令、节点状态、资源占用、常用操作入口。
 - 服务：Agent 只读采集的 systemd 服务状态、资源指标和脱敏 journal 摘要。
-- 防火墙：Controller 主机真实监听端口、绑定范围和采集时间；规则管理与拦截记录保留为独立工作台。
+- 防火墙：Controller 主机真实 UFW 状态、规则和监听端口；Agent 上报的真实拦截记录；规则变更仅允许操作 StackPilot 受管规则。
 - 发布：GitHub/GitLab 项目发布列表、阶段进度、失败原因、日志、重试和回滚入口。
 - 审计日志：关键操作筛选、来源信息和详情追踪。
 - 设置：中心地址、token 策略、主题偏好、通知偏好、安全配置和保存反馈。
@@ -21,6 +21,7 @@ apps/
   web/          React、Vite 和 TypeScript 前端
   controller/   严格 TypeScript Controller API（HTTP、业务、存储与平台适配分层）
   agent/        独立非 root Agent，负责节点采集和签名任务投递
+  cert-helper/  root-only 证书与防火墙操作边界，仅接受固定协议
   database-helper/ root-only 本机数据库操作边界，仅接受严格枚举参数
 packages/
   contracts/    前后端共享 API、错误和领域契约
@@ -206,7 +207,7 @@ npm run build
 npm run test:e2e
 npm audit --audit-level=high
 npm run release:build
-npm run release:verify -- output/release/0.3.0-preview.29/SHA256SUMS
+npm run release:verify -- output/release/0.3.0-preview.30/SHA256SUMS
 npm run release:scan
 ```
 

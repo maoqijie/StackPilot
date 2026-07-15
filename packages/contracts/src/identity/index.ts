@@ -5,7 +5,7 @@ export const PermissionSchema = z.enum([
   "services:read", "services:operate",
   "terminal:read", "terminal:execute",
   "systemd:read",
-  "firewall:read",
+  "firewall:read", "firewall:operate",
   "sites:read", "sites:logs", "sites:deploy", "sites:operate", "sites:renew",
   "files:read", "files:write", "files:delete", "databases:read", "databases:sql:read", "databases:backup",
   "databases:operate", "databases:install", "databases:restore",

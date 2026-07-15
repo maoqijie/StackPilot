@@ -30,4 +30,6 @@ Object.defineProperty(window, "matchMedia", {
   }),
 });
 
+Object.defineProperty(document, "hidden", { configurable: true, value: false });
+
 afterEach(() => cleanup());

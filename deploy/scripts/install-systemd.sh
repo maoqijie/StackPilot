@@ -10,7 +10,7 @@ version=$(node -p "require('$root/package.json').version")
 case "$component" in
   controller) prefix=/opt/stackpilot; units="stackpilot-controller.service"; entry=apps/controller/dist/server.js; workspace=@stackpilot/controller ;;
   agent) prefix=/opt/stackpilot-agent; units="stackpilot-agent.service"; entry=apps/agent/dist/main.js; workspace=@stackpilot/agent ;;
-  cert-helper) prefix=/opt/stackpilot-cert-helper; units="stackpilot-cert-helper.socket stackpilot-cert-helper@.service"; entry=apps/cert-helper/dist/main.js; workspace=@stackpilot/cert-helper ;;
+  cert-helper) prefix=/opt/stackpilot-cert-helper; units="stackpilot-cert-helper.socket stackpilot-cert-helper@.service stackpilot-firewall-helper.socket stackpilot-firewall-helper@.service"; entry=apps/cert-helper/dist/main.js; workspace=@stackpilot/cert-helper ;;
 esac
 release="$prefix/releases/$version"
 staging="$release.installing.$$"
@@ -110,7 +110,7 @@ if [ "$component" = "cert-helper" ]; then
   if [ ! -f /etc/stackpilot-site-helper/helper.env ]; then
     install -m 0600 "$root/deploy/examples/site-helper.env.example" /etc/stackpilot-site-helper/helper.env
   fi
-  echo "Installed $component $version. Enable the local-only socket: systemctl enable --now stackpilot-cert-helper.socket"
+  echo "Installed $component $version. Enable the local-only sockets: systemctl enable --now stackpilot-cert-helper.socket stackpilot-firewall-helper.socket"
 else
   echo "Installed $component $version. Configure /etc before running: systemctl enable --now stackpilot-$component.service"
 fi

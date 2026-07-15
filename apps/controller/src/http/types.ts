@@ -26,6 +26,7 @@ import type { DatabaseRetentionService } from "../modules/databases/databaseRete
 import type { SystemdService } from "../modules/systemd/systemdService.js";
 import type { FirewallDenyService } from "../modules/firewall/firewallDenyService.js";
 import type { FirewallOpenPortService } from "../modules/firewall/firewallOpenPortService.js";
+import type { FirewallService } from "../modules/firewall/firewallService.js";
 import type { PlatformAdapter } from "../platform/types.js";
 import type { IdentityService } from "../identity/identityService.js";
 import type { Principal } from "../identity/types.js";
@@ -56,6 +57,7 @@ export type Services = {
   systemd: SystemdService;
   firewallDeny: FirewallDenyService;
   firewallOpenPorts: FirewallOpenPortService;
+  firewall: FirewallService;
 };
 export type RequestContext = {
   request: IncomingMessage;

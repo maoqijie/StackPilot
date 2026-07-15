@@ -1,3 +1,4 @@
 g stackpilot-cert -
+g stackpilot-firewall -
 u stackpilot-builder - "StackPilot site builder" /var/lib/stackpilot-site-helper /usr/sbin/nologin
 u stackpilot-runtime - "StackPilot site runtime" /srv/stackpilot/sites /usr/sbin/nologin

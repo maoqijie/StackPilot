@@ -63,6 +63,7 @@ import { SystemdService } from "./modules/systemd/systemdService.js";
 import { FirewallDenyService } from "./modules/firewall/firewallDenyService.js";
 import { FirewallOpenPortService } from "./modules/firewall/firewallOpenPortService.js";
 import { FileScheduleExecutionRepository } from "./modules/schedules/scheduleExecutionRepository.js";
+import { FirewallService } from "./modules/firewall/firewallService.js";
 
 export type AppOptions = {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -133,6 +134,7 @@ export function createControllerServices(
     systemd: new SystemdService(repository),
     firewallDeny: new FirewallDenyService(repository),
     firewallOpenPorts: new FirewallOpenPortService(),
+    firewall: new FirewallService(),
     ...(databaseRepository ? {
       databaseInventory: new DatabaseInventoryService(databaseRepository),
       databaseWorkspace: new DatabaseBackupWorkspaceService(databaseRepository, audit),

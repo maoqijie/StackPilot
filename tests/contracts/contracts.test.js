@@ -17,6 +17,7 @@ import {
   AuditEventsResponseSchema, AuditQuerySchema, CreateApiTokenRequestSchema, LoginRequestSchema, UpdateUserAccessRequestSchema,
   PermissionSchema,
   CreateDirectoryRequestSchema,
+  CreateFirewallRuleRequestSchema, FirewallPayloadSchema,
   UpdateNodeCapabilitiesRequestSchema,
   AgentFirewallDenySnapshotSchema, FirewallDenyRecordsPayloadSchema,
   FirewallOpenPortsPayloadSchema,
@@ -69,6 +70,17 @@ test("firewall open-port payload stays strict and backend-owned", () => {
   assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, ports: [{ ...payload.ports[0], port: 0 }] }).success, false);
   assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, ports: [{ ...payload.ports[0], protocol: "SCTP" }] }).success, false);
   assert.equal(FirewallOpenPortsPayloadSchema.safeParse({ ...payload, clientCollectedAt: payload.collectedAt }).success, false);
+});
+
+test("firewall contracts reject executable input and require backend freshness", () => {
+  const collectedAt = new Date().toISOString(); const id = `fw_${"a".repeat(64)}`;
+  const payload = { collectedAt, collectionStatus: "complete", backend: "ufw", backendStatus: "active", host: "host-a", warnings: [], rules: [{ id, name: "HTTPS", port: "443", protocol: "TCP", source: "0.0.0.0/0", action: "ALLOW", direction: "IN", target: "host-a", ipv6: false, managed: true }] };
+  assert.equal(FirewallPayloadSchema.safeParse(payload).success, true);
+  assert.equal(FirewallPayloadSchema.safeParse({ ...payload, clientCollectedAt: collectedAt }).success, false);
+  const request = { name: "HTTPS", port: 443, protocol: "TCP", source: "192.0.2.0/24", idempotencyKey: crypto.randomUUID() };
+  assert.equal(CreateFirewallRuleRequestSchema.safeParse(request).success, true);
+  assert.equal(CreateFirewallRuleRequestSchema.safeParse({ ...request, command: "ufw disable" }).success, false);
+  assert.equal(CreateFirewallRuleRequestSchema.safeParse({ ...request, source: "999.0.0.1" }).success, false);
 });
 
 test("node capability updates accept the complete shared Agent capability set", () => {

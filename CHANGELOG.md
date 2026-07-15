@@ -2,6 +2,20 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.30 - 2026-07-16
+
+### Added
+
+- Connected the firewall rule workbench to the Controller host's real UFW status and rules through a fixed root-only Unix socket helper, while keeping native rules read-only and limiting deletion to StackPilot-marked rules.
+- Added authenticated, read-only `GET /api/firewall` and `GET /api/firewall/open-ports` data paths with backend collection timestamps, 10-second visibility-aware polling, stable filters, explicit unavailable states and responsive layouts.
+- Added `firewall:operate` as a separate high-risk permission; rule mutations require both read and operate access, a user session, CSRF protection, one-time reauthentication and bounded idempotency keys.
+
+### Security
+
+- Kept UFW enablement and disablement outside StackPilot, removed browser fixture rule mutations, and preserved the Agent-backed firewall deny workbench as the only normalized deny-event source.
+- Isolated UFW access behind a Controller-only group, strict systemd sandbox, exact `/run/ufw.lock` write access, bounded socket connections and runtime, and fixed executable arguments without shell input.
+- Deleted managed rules by their complete marker-bearing UFW rule instead of a stale numeric position, preventing concurrent external rule changes from redirecting a deletion to a native rule.
+
 ## 0.3.0-preview.29 - 2026-07-16
 
 ### Fixed

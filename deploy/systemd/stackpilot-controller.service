@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=stackpilot-controller
 Group=stackpilot-controller
-SupplementaryGroups=stackpilot-cert crontab
+SupplementaryGroups=stackpilot-cert crontab stackpilot-firewall
 WorkingDirectory=/opt/stackpilot/current
 Environment=NODE_ENV=production
 Environment=HOST=127.0.0.1

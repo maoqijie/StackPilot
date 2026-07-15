@@ -43,4 +43,31 @@ describe("firewall open-port page", () => {
     expect(screen.getByText(/没有 firewall:read 权限/)).toBeInTheDocument();
     expect(fetchFirewallOpenPorts).not.toHaveBeenCalled();
   });
+
+  it("does not render a successful empty state while loading or after an initial failure", async () => {
+    vi.mocked(fetchFirewallOpenPorts).mockReturnValueOnce(new Promise(() => undefined));
+    const view = render(<FirewallPage page="firewall-open" notify={vi.fn()} permissions={["firewall:read"]} />);
+    expect(screen.getAllByText("正在读取真实监听端口").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("暂不可用")).toHaveLength(3);
+    expect(screen.queryByText("没有匹配的真实监听端口")).not.toBeInTheDocument();
+    await act(async () => { await Promise.resolve(); });
+    expect(fetchFirewallOpenPorts).toHaveBeenCalledTimes(1);
+    view.unmount();
+
+    vi.mocked(fetchFirewallOpenPorts).mockRejectedValueOnce(new Error("监听探针暂不可用"));
+    render(<FirewallPage page="firewall-open" notify={vi.fn()} permissions={["firewall:read"]} />);
+    expect(await screen.findByText("监听探针暂不可用")).toBeInTheDocument();
+    expect(screen.getAllByText("暂不可用")).toHaveLength(3);
+    expect(screen.getAllByText("真实监听端口读取失败").length).toBeGreaterThan(0);
+    expect(screen.queryByText("没有匹配的真实监听端口")).not.toBeInTheDocument();
+  });
+
+  it("groups more than three backend warnings", async () => {
+    vi.mocked(fetchFirewallOpenPorts).mockResolvedValueOnce({ ...payload, warnings: ["提示一", "提示二", "提示三", "提示四"] });
+    render(<FirewallPage page="firewall-open" notify={vi.fn()} permissions={["firewall:read"]} />);
+    expect(await screen.findByText("提示一")).toBeInTheDocument();
+    expect(screen.getByText("提示二")).toBeInTheDocument();
+    expect(screen.getByText("另有 2 条监听端口提示")).toBeInTheDocument();
+    expect(screen.queryByText("提示三")).not.toBeInTheDocument();
+  });
 });

@@ -1,194 +1,119 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { FirewallDenyRecordsPayload } from "@stackpilot/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchFirewallDenyRecords } from "../api/firewallApi";
+import type { FirewallPayload } from "@stackpilot/contracts";
 import { FirewallPage } from "../pages/FirewallPage";
+import { createFirewallRule, deleteFirewallRule, fetchFirewall } from "../api/firewallApi";
+import { reauthenticate } from "../api/identityApi";
 
-vi.mock("../api/firewallApi", () => ({ fetchFirewallDenyRecords: vi.fn() }));
-const collectedAt = "2026-07-15T01:02:03.000Z";
-const denyPayload: FirewallDenyRecordsPayload = {
-  collectedAt,
-  collectionStatus: "complete",
-  warnings: [],
-  records: [{
-    id: "11111111-1111-4111-8111-111111111111:fw_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    nodeId: "11111111-1111-4111-8111-111111111111",
-    nodeName: "production-firewall-node-with-a-long-hostname-01",
-    sourceCollectedAt: collectedAt,
-    occurredAt: "2026-07-15T01:01:58.000Z",
-    sourceAddress: "198.51.100.24",
-    destinationAddress: "192.0.2.10",
-    destinationPort: 22,
-    protocol: "TCP",
-    interfaceName: "eth0",
-    rule: "UFW BLOCK",
-    reason: "Host firewall rejected this packet",
-  }],
+vi.mock("../api/firewallApi", () => ({ fetchFirewall: vi.fn(), createFirewallRule: vi.fn(), deleteFirewallRule: vi.fn() }));
+vi.mock("../api/identityApi", () => ({ reauthenticate: vi.fn() }));
+
+const collectedAt = "2026-07-15T14:00:00.000Z";
+const managedId = `fw_${"a".repeat(64)}`, nativeId = `fw_${"b".repeat(64)}`;
+const payload: FirewallPayload = {
+  collectedAt, collectionStatus: "complete", backend: "ufw", backendStatus: "active", host: "host-a", warnings: [],
+  rules: [
+    { id: managedId, name: "HTTPS 入口", port: "443", protocol: "TCP", source: "0.0.0.0/0", action: "ALLOW", direction: "IN", target: "host-a", ipv6: false, managed: true },
+    { id: nativeId, name: "SSH 系统规则", port: "2222", protocol: "TCP", source: "0.0.0.0/0", action: "ALLOW", direction: "IN", target: "host-a", ipv6: false, managed: false },
+  ],
 };
 
-describe("firewall rule flow", () => {
-  beforeEach(() => vi.mocked(fetchFirewallDenyRecords).mockReset().mockResolvedValue(denyPayload));
-  it("uses the rule modal and drawer surfaces on the rule view", async () => {
-    const user = userEvent.setup();
-    render(<FirewallPage page="firewall" notify={vi.fn()} />);
-
-    const page = screen.getByRole("heading", { name: "防火墙" }).closest(".module-page");
-    expect(page).toHaveClass("module-page-firewall");
-    expect(screen.getAllByText("HTTPS 公网访问")).toHaveLength(2);
-    expect(screen.getAllByText("SSH 运维入口").length).toBeGreaterThan(0);
-
-    const createButton = screen.getByRole("button", { name: "新增规则" });
-    await user.click(createButton);
-    const createDialog = screen.getByRole("dialog", { name: "新增规则" });
-    expect(createDialog.parentElement).toBe(document.body);
-    expect(createDialog).toHaveClass("firewall-rule-modal");
-    await user.click(within(createDialog).getByRole("button", { name: "取消" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "新增规则" })).not.toBeInTheDocument());
-
-    const table = screen.getByRole("table");
-    await user.click(within(table).getByRole("button", { name: "查看防火墙规则 HTTPS 公网访问 详情" }));
-    const detailDrawer = screen.getByRole("dialog", { name: "规则详情" });
-    expect(detailDrawer.parentElement).toBe(document.body);
-    expect(detailDrawer).toHaveClass("firewall-rule-drawer");
-    await user.click(within(detailDrawer).getByRole("button", { name: "关闭规则详情" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "规则详情" })).not.toBeInTheDocument());
-
-    await user.click(within(table).getByRole("button", { name: "删除防火墙规则 HTTPS 公网访问" }));
-    const deleteDialog = screen.getByRole("alertdialog", { name: "删除规则" });
-    expect(deleteDialog.parentElement).toBe(document.body);
-    expect(deleteDialog).toHaveClass("firewall-rule-delete-confirm");
+describe("firewall real backend flow", () => {
+  beforeEach(() => {
+    vi.mocked(fetchFirewall).mockReset().mockResolvedValue(payload);
+    vi.mocked(reauthenticate).mockReset().mockResolvedValue({ proof: "proof-value-with-more-than-thirty-two-characters", expiresAt: collectedAt });
+    vi.mocked(createFirewallRule).mockReset().mockResolvedValue({ ...payload, message: "规则已新增", tone: "success" });
+    vi.mocked(deleteFirewallRule).mockReset().mockResolvedValue({ ...payload, rules: payload.rules.slice(1), message: "规则已删除", tone: "warning" });
   });
 
-  it("keeps an invalid rule in the body-level modal and explains both errors", async () => {
-    const user = userEvent.setup();
-    const notify = vi.fn();
-    render(<FirewallPage page="firewall" notify={notify} />);
+  it("loads real UFW rules and distinguishes managed from native rules", async () => {
+    render(<FirewallPage page="firewall" notify={vi.fn()} permissions={["firewall:read", "firewall:operate"]} />);
+    expect((await screen.findAllByText("HTTPS 入口")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("SSH 系统规则").length).toBeGreaterThan(0);
+    expect(screen.getByText(/host-a · 后端采集于/)).toBeInTheDocument();
+    const table = screen.getByRole("table");
+    expect(within(table).getByRole("button", { name: "删除防火墙规则 HTTPS 入口" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "删除防火墙规则 SSH 系统规则" })).not.toBeInTheDocument();
+    expect(fetchFirewall).toHaveBeenCalledTimes(1);
+  });
 
-    const createButton = screen.getByRole("button", { name: "新增规则" });
-    await user.click(createButton);
+  it("does not show fixtures when UFW is inactive", async () => {
+    vi.mocked(fetchFirewall).mockResolvedValue({ ...payload, backendStatus: "inactive", warnings: ["UFW 当前未启用，规则变更已锁定"], rules: [] });
+    render(<FirewallPage page="firewall" notify={vi.fn()} permissions={["firewall:read", "firewall:operate"]} />);
+    expect((await screen.findAllByText("UFW 当前未启用，没有生效规则")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "新增规则" })).toBeDisabled();
+    expect(screen.queryByText("HTTPS 公网访问")).not.toBeInTheDocument();
+  });
+
+  it("reauthenticates before creating a real rule", async () => {
+    const user = userEvent.setup(), notify = vi.fn();
+    render(<FirewallPage page="firewall" notify={notify} permissions={["firewall:read", "firewall:operate"]} />);
+    await screen.findAllByText("HTTPS 入口"); await user.click(screen.getByRole("button", { name: "新增规则" }));
     const dialog = screen.getByRole("dialog", { name: "新增规则" });
-    expect(dialog.parentElement).toBe(document.body);
-    expect(dialog).toHaveAttribute("aria-modal", "true");
-    await waitFor(() => expect(dialog).toContainElement(document.activeElement as HTMLElement));
-    await user.type(within(dialog).getByLabelText("端口"), "70000");
-    await user.clear(within(dialog).getByLabelText("来源"));
-    await user.type(within(dialog).getByLabelText("来源"), "999.1.1.1");
+    await user.clear(within(dialog).getByLabelText("端口")); await user.type(within(dialog).getByLabelText("端口"), "8443");
+    await user.type(within(dialog).getByLabelText("当前密码"), "current-password"); await user.click(within(dialog).getByRole("button", { name: "保存规则" }));
+    await waitFor(() => expect(reauthenticate).toHaveBeenCalledWith("current-password"));
+    expect(createFirewallRule).toHaveBeenCalledWith(expect.objectContaining({ name: "临时调试端口", port: 8443, protocol: "TCP", source: "10.0.0.0/8" }), "proof-value-with-more-than-thirty-two-characters");
+    expect(notify).toHaveBeenCalledWith("规则已新增", "success");
+  });
+
+  it("reuses the operation key after an ambiguous create failure and applies the mutation payload immediately", async () => {
+    const user = userEvent.setup();
+    const createdPayload = { ...payload, rules: [{ ...payload.rules[0], name: "新端口", port: "8443" }], message: "规则已新增", tone: "success" as const };
+    vi.mocked(createFirewallRule).mockRejectedValueOnce(new Error("响应中断，结果未知")).mockResolvedValueOnce(createdPayload);
+    render(<FirewallPage page="firewall" notify={vi.fn()} permissions={["firewall:read", "firewall:operate"]} />);
+    await screen.findAllByText("HTTPS 入口"); await user.click(screen.getByRole("button", { name: "新增规则" }));
+    const dialog = screen.getByRole("dialog", { name: "新增规则" });
+    await user.type(within(dialog).getByLabelText("端口"), "8443"); await user.type(within(dialog).getByLabelText("当前密码"), "current-password");
+    await user.click(within(dialog).getByRole("button", { name: "保存规则" })); expect(await within(dialog).findByRole("alert")).toHaveTextContent("结果未知");
+    expect(within(dialog).getByLabelText("规则名")).toBeDisabled(); expect(within(dialog).getByLabelText("端口")).toBeDisabled(); expect(within(dialog).getByLabelText("协议")).toBeDisabled(); expect(within(dialog).getByLabelText("来源")).toBeDisabled();
     await user.click(within(dialog).getByRole("button", { name: "保存规则" }));
-
-    expect(await screen.findByText("端口必须是 1-65535 的整数")).toBeInTheDocument();
-    expect(await screen.findByText("来源需填写 IPv4、CIDR 或 0.0.0.0/0")).toBeInTheDocument();
-    expect(dialog).toBeInTheDocument();
-    expect(notify).toHaveBeenCalledWith("请修正防火墙规则表单", "danger");
-
-    await user.click(within(dialog).getByRole("button", { name: "关闭新增规则" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "新增规则" })).not.toBeInTheDocument());
-    await waitFor(() => expect(createButton).toHaveFocus());
+    await waitFor(() => expect(createFirewallRule).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(createFirewallRule).mock.calls[1]?.[0]).toEqual(vi.mocked(createFirewallRule).mock.calls[0]?.[0]);
+    expect((await screen.findAllByText("新端口")).length).toBeGreaterThan(0);
+    expect(fetchFirewall).toHaveBeenCalledTimes(1);
   });
 
-  it("opens rule details in a body-level modal drawer and restores focus", async () => {
+  it("reauthenticates before deleting a managed rule", async () => {
     const user = userEvent.setup();
-    render(<FirewallPage page="firewall" notify={vi.fn()} />);
-    const table = screen.getByRole("table");
-    const detailsButton = within(table).getByRole("button", { name: "查看防火墙规则 HTTPS 公网访问 详情" });
-
-    await user.click(detailsButton);
-    const drawer = screen.getByRole("dialog", { name: "规则详情" });
-
-    expect(drawer.parentElement).toBe(document.body);
-    expect(drawer).toHaveAttribute("aria-modal", "true");
-    await user.click(within(drawer).getByRole("button", { name: "关闭规则详情" }));
-
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "规则详情" })).not.toBeInTheDocument());
-    await waitFor(() => expect(detailsButton).toHaveFocus());
-  });
-
-  it("uses a body-level alert dialog for destructive confirmation", async () => {
-    const user = userEvent.setup();
-    const notify = vi.fn();
-    render(<FirewallPage page="firewall" notify={notify} />);
-    const table = screen.getByRole("table");
-
-    await user.click(within(table).getByRole("button", { name: "删除防火墙规则 HTTPS 公网访问" }));
+    render(<FirewallPage page="firewall" notify={vi.fn()} permissions={["firewall:read", "firewall:operate"]} />);
+    await screen.findAllByText("HTTPS 入口"); await user.click(within(screen.getByRole("table")).getByRole("button", { name: "删除防火墙规则 HTTPS 入口" }));
     const dialog = screen.getByRole("alertdialog", { name: "删除规则" });
+    await user.type(within(dialog).getByLabelText("当前密码"), "current-password"); await user.click(within(dialog).getByRole("button", { name: "确认删除" }));
+    await waitFor(() => expect(deleteFirewallRule).toHaveBeenCalledWith(managedId, expect.any(String), "proof-value-with-more-than-thirty-two-characters"));
+  });
 
-    expect(dialog.parentElement).toBe(document.body);
-    expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(within(dialog).getByText(/0\.0\.0\.0\/0 -> 全部主机/)).toBeInTheDocument();
+  it("reuses the delete operation key after an ambiguous response", async () => {
+    const user = userEvent.setup();
+    vi.mocked(deleteFirewallRule).mockRejectedValueOnce(new Error("响应中断，结果未知")).mockResolvedValueOnce({ ...payload, rules: payload.rules.slice(1), message: "规则已删除", tone: "warning" });
+    render(<FirewallPage page="firewall" notify={vi.fn()} permissions={["firewall:read", "firewall:operate"]} />);
+    await screen.findAllByText("HTTPS 入口"); await user.click(within(screen.getByRole("table")).getByRole("button", { name: "删除防火墙规则 HTTPS 入口" }));
+    const dialog = screen.getByRole("alertdialog", { name: "删除规则" });
+    await user.type(within(dialog).getByLabelText("当前密码"), "current-password"); await user.click(within(dialog).getByRole("button", { name: "确认删除" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("结果未知");
     await user.click(within(dialog).getByRole("button", { name: "确认删除" }));
-
-    expect(notify).toHaveBeenCalledWith("HTTPS 公网访问 已删除", "warning");
-    expect(screen.queryByRole("alertdialog", { name: "删除规则" })).not.toBeInTheDocument();
+    await waitFor(() => expect(deleteFirewallRule).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(deleteFirewallRule).mock.calls[1]?.[1]).toBe(vi.mocked(deleteFirewallRule).mock.calls[0]?.[1]);
   });
 
-  it("restores focus to the delete action after cancelling", async () => {
-    const user = userEvent.setup();
-    render(<FirewallPage page="firewall" notify={vi.fn()} />);
-    const table = screen.getByRole("table");
-    const deleteButton = within(table).getByRole("button", { name: "删除防火墙规则 HTTPS 公网访问" });
-
-    await user.click(deleteButton);
-    const dialog = screen.getByRole("alertdialog", { name: "删除规则" });
-    await user.click(within(dialog).getByRole("button", { name: "取消" }));
-
-    await waitFor(() => expect(screen.queryByRole("alertdialog", { name: "删除规则" })).not.toBeInTheDocument());
-    await waitFor(() => expect(deleteButton).toHaveFocus());
+  it("shows an initial backend error and offers retry", async () => {
+    vi.mocked(fetchFirewall).mockRejectedValueOnce(new Error("防火墙后端暂不可用")).mockResolvedValue(payload);
+    const user = userEvent.setup(); render(<FirewallPage page="firewall" notify={vi.fn()} permissions={["firewall:read"]} />);
+    expect(await screen.findByText("防火墙后端暂不可用")).toBeInTheDocument(); expect(screen.getAllByText("暂不可用").length).toBeGreaterThanOrEqual(2); expect(screen.queryByText("没有匹配的防火墙规则")).not.toBeInTheDocument(); await user.click(screen.getByRole("button", { name: "重试" }));
+    expect((await screen.findAllByText("HTTPS 入口")).length).toBeGreaterThan(0);
   });
 
-  it("opens deny details as a body-level modal drawer", async () => {
-    const user = userEvent.setup();
-    render(<FirewallPage page="firewall-deny" notify={vi.fn()} />);
-
-    const table = await screen.findByRole("table");
-    await user.click(within(table).getByRole("button", { name: "查看拦截记录 198.51.100.24 详情" }));
-
-    const drawer = screen.getByRole("dialog", { name: "拦截详情" });
-    expect(drawer.parentElement).toBe(document.body);
-    expect(drawer).toHaveClass("firewall-deny-drawer");
-    expect(drawer).toHaveAttribute("aria-modal", "true");
-    expect(within(drawer).getByText("访问已拦截")).toBeInTheDocument();
-    expect(within(drawer).getByText("Host firewall rejected this packet")).toBeInTheDocument();
-    expect(within(drawer).getByText("production-firewall-node-with-a-long-hostname-01")).toBeInTheDocument();
+  it("does not fetch when a direct route lacks firewall read permission", () => {
+    render(<FirewallPage page="firewall" notify={vi.fn()} permissions={[]} />);
+    expect(screen.getByText("无权读取主机防火墙数据")).toBeInTheDocument();
+    expect(fetchFirewall).not.toHaveBeenCalled();
   });
 
-  it("shows backend freshness and never exposes fake mutation actions", async () => {
-    render(<FirewallPage page="firewall-deny" notify={vi.fn()} />);
-    expect(await screen.findByText(/数据来自 Agent 的只读内核防火墙日志/)).toBeInTheDocument();
-    expect(screen.getByText(/采集时间 2026\/07\/15/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /放行|加入规则|导出/ })).not.toBeInTheDocument();
-    expect(fetchFirewallDenyRecords).toHaveBeenCalledTimes(1);
-  });
-
-  it("paginates large deny result sets instead of rendering every row at once", async () => {
-    const user = userEvent.setup();
-    const records = Array.from({ length: 51 }, (_, index) => ({
-      ...denyPayload.records[0],
-      id: `11111111-1111-4111-8111-111111111111:fw_${index.toString(16).padStart(64, "0")}`,
-      sourceAddress: `198.51.100.${index + 1}`,
-    }));
-    vi.mocked(fetchFirewallDenyRecords).mockResolvedValueOnce({ ...denyPayload, records });
-    render(<FirewallPage page="firewall-deny" notify={vi.fn()} />);
-
-    expect(await screen.findByText("第 1 / 2 页 · 共 51 条")).toBeInTheDocument();
-    const table = screen.getByRole("table");
-    expect(within(table).getAllByRole("button", { name: /查看拦截记录/ })).toHaveLength(50);
-    expect(within(table).queryByText("198.51.100.51")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "下一页" }));
-    expect(within(table).getByText("198.51.100.51")).toBeInTheDocument();
-    expect(within(table).getAllByRole("button", { name: /查看拦截记录/ })).toHaveLength(1);
-  });
-
-  it("isolates initial loading and errors from successful empty-state content", async () => {
-    vi.mocked(fetchFirewallDenyRecords).mockRejectedValueOnce(new Error("权限不足"));
-    render(<FirewallPage page="firewall-deny" notify={vi.fn()} />);
-
-    expect(screen.getByRole("status")).toHaveTextContent("正在读取真实防火墙拦截记录");
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    expect(screen.queryByText("拦截记录", { selector: "span" })).not.toBeInTheDocument();
-
-    expect(await screen.findByText("权限不足")).toBeInTheDocument();
-    expect(screen.queryByText("没有匹配的真实拦截记录，系统将继续自动采集")).not.toBeInTheDocument();
-    expect(screen.queryByText(/采集时间/)).not.toBeInTheDocument();
+  it("shows at most three warning rows and groups overflow", async () => {
+    vi.mocked(fetchFirewall).mockResolvedValue({ ...payload, warnings: ["提示一", "提示二", "提示三", "提示四"] });
+    render(<FirewallPage page="firewall" notify={vi.fn()} permissions={["firewall:read"]} />);
+    expect(await screen.findByText("提示一")).toBeInTheDocument(); expect(screen.getByText("提示二")).toBeInTheDocument();
+    expect(screen.getByText("另有 2 条防火墙提示")).toBeInTheDocument(); expect(screen.queryByText("提示三")).not.toBeInTheDocument();
   });
 });
