@@ -2,6 +2,17 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.18 - 2026-07-15
+
+### Fixed
+
+- Granted the hardened Controller service the existing system `crontab` group and the narrow cron-spool write path required for the real managed schedule backend.
+- Repaired the workspace lockfile so clean `npm ci` installations include every optional release-scanning dependency.
+
+### Security
+
+- Kept schedule writes behind the existing `STACKPILOT_ENABLE_CRONTAB_WRITE=1`, session, CSRF and `schedules:write` permission boundaries while limiting filesystem access to the Controller state and user-crontab spool.
+
 ## 0.3.0-preview.17 - 2026-07-15
 
 ### Changed
