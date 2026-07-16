@@ -1,6 +1,6 @@
 import { Globe2, Plus, RefreshCw, Shield, TerminalSquare } from "lucide-react";
 import { useState } from "react";
-import { MetricTile, ModuleSearch, PanelCard } from "../../components/ui/Cards";
+import { ModuleSearch } from "../../components/ui/Cards";
 import { DataTable } from "../../components/ui/DataTable";
 import { DetailDrawer } from "../../components/ui/DetailDrawer";
 import { FieldSelect, FormLine, FormSelectLine, ToggleLine } from "../../components/ui/FormControls";
@@ -158,8 +158,6 @@ function SettingsProxyPage({
       page={page}
       setPage={setPage}
       actions={<><button className="ghost" type="button" disabled={readOnly} onClick={() => { if (!guardProxyWrite("批量检查代理")) return; setEndpoints((current) => current.map((endpoint) => endpoint.enabled ? { ...endpoint, latency: endpoint.latency === "-" || endpoint.latency === "未探测" ? "54ms" : endpoint.latency, lastCheck: "刚刚" } : endpoint)); notify("代理节点检查时间已更新"); }}><RefreshCw size={15} /> 批量检查</button><button className="primary" type="button" disabled={readOnly} onClick={() => { if (!guardProxyWrite("新增代理")) return; setDrawer({ type: "create" }); }}><Plus size={15} /> 新增代理</button></>}
-      filters={<><ModuleSearch value={search} placeholder="搜索代理名称、地址或用途" onChange={setSearch} /><FieldSelect label="用途" value={scopeFilter} options={["全部", "全局", "部署", "终端", "仓库"]} onChange={setScopeFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "可用", "告警", "未验证", "停用"]} onChange={setStatusFilter} /></>}
-      metrics={<><MetricTile icon={Shield} label="可用节点" value={`${healthyEndpoints.length}`} tone="green" /><MetricTile icon={TerminalSquare} label="终端代理" value={terminalProxyState} tone={terminalProxyTone} /><MetricTile icon={Globe2} label="部署代理" value={deployProxy ? "启用" : "停用"} tone={deployProxy ? "blue" : "gray"} /></>}
       side={drawer?.type === "create" ? (
         <DetailDrawer title="新增代理" subtitle="保存后加入代理节点池" modal onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => setDrawer(null)}>取消</button><button className="primary" type="button" disabled={readOnly} onClick={addEndpoint}>保存代理</button></>}>
           <FormLine label="代理名称" required value={draft.name} disabled={readOnly} onChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
@@ -168,7 +166,7 @@ function SettingsProxyPage({
           <FormSelectLine label="用途" required value={draft.scope} options={["全局", "部署", "终端", "仓库"]} disabled={readOnly} onChange={(value) => setDraft((current) => ({ ...current, scope: value }))} />
         </DetailDrawer>
       ) : selectedDrawerEndpoint ? (
-        <DetailDrawer title="代理状态" subtitle={selectedDrawerEndpoint.name} modal onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => copyProxyText(diagnosticForEndpoint(selectedDrawerEndpoint), `${selectedDrawerEndpoint.name} curl 诊断已复制`)}>复制诊断</button><button className="primary" type="button" disabled={readOnly} onClick={() => runProbe(selectedDrawerEndpoint)}>检查状态</button></>}>
+        <DetailDrawer className="proxy-detail-drawer" title="代理状态" subtitle={selectedDrawerEndpoint.name} modal onClose={() => setDrawer(null)} actions={<><button className="ghost" type="button" onClick={() => copyProxyText(diagnosticForEndpoint(selectedDrawerEndpoint), `${selectedDrawerEndpoint.name} curl 诊断已复制`)}>复制诊断</button><button className="primary" type="button" disabled={readOnly} onClick={() => runProbe(selectedDrawerEndpoint)}>检查状态</button></>}>
           <div className="proxy-test-panel">
             <p><span>协议</span><b>{selectedDrawerEndpoint.protocol}</b></p>
             <p><span>地址</span><b>{selectedDrawerEndpoint.url}</b></p>
@@ -181,8 +179,34 @@ function SettingsProxyPage({
       ) : null}
       sideModal={Boolean(drawer)}
     >
-      <div className="proxy-settings-content">
-        <DataTable
+      <section className="proxy-settings-workspace" aria-labelledby="proxy-workspace-title">
+        <header className="proxy-workspace-head">
+          <div>
+            <span className="proxy-workspace-overline">代理网络</span>
+            <h2 id="proxy-workspace-title">代理节点与路由</h2>
+            <p>集中维护出口节点、目标路由与任务运行时环境。</p>
+          </div>
+          <div className="proxy-workspace-summary" aria-label="代理状态概览">
+            <span><Shield className="green" size={18} /><em>可用节点</em><b>{healthyEndpoints.length}</b></span>
+            <span><TerminalSquare className={terminalProxyTone} size={18} /><em>终端代理</em><b>{terminalProxyState}</b></span>
+            <span><Globe2 className={deployProxy ? "blue" : "gray"} size={18} /><em>部署代理</em><b>{deployProxy ? "启用" : "停用"}</b></span>
+          </div>
+        </header>
+
+        <div className="proxy-filter-bar" aria-label="代理节点筛选">
+          <ModuleSearch value={search} placeholder="搜索代理名称、地址或用途" onChange={setSearch} />
+          <FieldSelect label="用途" value={scopeFilter} options={["全部", "全局", "部署", "终端", "仓库"]} onChange={setScopeFilter} />
+          <FieldSelect label="状态" value={statusFilter} options={["全部", "可用", "告警", "未验证", "停用"]} onChange={setStatusFilter} />
+        </div>
+
+        <section className="proxy-node-workbench" aria-labelledby="proxy-node-list-title">
+          <header className="proxy-section-head">
+            <div>
+              <h3 id="proxy-node-list-title">代理节点</h3>
+              <p>当前筛选显示 {filteredEndpoints.length} 个节点</p>
+            </div>
+          </header>
+          <DataTable
           columns={[
             { key: "name", label: "代理节点", width: "220px", render: (endpoint) => <button className="module-row-link" type="button" aria-label={`查看代理 ${endpoint.name}`} onClick={() => setDrawer({ type: "test", endpointId: endpoint.id })}><StatusLight tone={proxyStatusTone(endpoint)} /><b>{endpoint.name}</b></button> },
             { key: "protocol", label: "协议", width: "86px", render: (endpoint) => <span className="pill blue">{endpoint.protocol}</span> },
@@ -220,9 +244,17 @@ function SettingsProxyPage({
               </div>
             </>
           )}
-        />
+          />
+        </section>
         <section className="proxy-lower-grid">
-          <PanelCard title="代理路由规则" action={readOnly ? undefined : "新增规则"} onAction={addRouteRule}>
+          <section className="proxy-rule-workbench" aria-labelledby="proxy-rule-list-title">
+            <header className="proxy-section-head">
+              <div>
+                <h3 id="proxy-rule-list-title">代理路由规则</h3>
+                <p>按目标决定直连或代理出口</p>
+              </div>
+              {!readOnly && <button className="proxy-section-action" type="button" onClick={addRouteRule}><Plus size={14} /> 新增规则</button>}
+            </header>
             <div className="proxy-rule-list">
               {rules.map((rule) => {
                 const endpoint = proxyEndpointForRule(rule);
@@ -237,16 +269,22 @@ function SettingsProxyPage({
                       : "需处理";
                 return (
                   <article key={rule.id}>
-                    <span><StatusLight tone={tone} /><b>{rule.target}</b></span>
-                    <em>{rule.note}</em>
-                    <strong>{rule.type} · {endpointName} · {ruleState}</strong>
-                    <button type="button" disabled={readOnly} aria-label={`${rule.enabled ? "禁用" : "启用"}规则 ${rule.target}`} onClick={() => toggleRouteRule(rule)}>{rule.enabled ? "禁用" : "启用"}</button>
+                    <span className="proxy-rule-target"><StatusLight tone={tone} /><b>{rule.target}</b></span>
+                    <em className="proxy-rule-note">{rule.note}</em>
+                    <strong className="proxy-rule-route">{rule.type} · {endpointName} · {ruleState}</strong>
+                    <button className="proxy-rule-action" type="button" disabled={readOnly} aria-label={`${rule.enabled ? "禁用" : "启用"}规则 ${rule.target}`} onClick={() => toggleRouteRule(rule)}>{rule.enabled ? "禁用" : "启用"}</button>
                   </article>
                 );
               })}
             </div>
-          </PanelCard>
-          <PanelCard title="运行时策略">
+          </section>
+          <section className="proxy-policy-workbench" aria-labelledby="proxy-policy-title">
+            <header className="proxy-section-head">
+              <div>
+                <h3 id="proxy-policy-title">运行时策略</h3>
+                <p>控制任务和终端会话的代理环境</p>
+              </div>
+            </header>
             <div className="proxy-policy-panel">
               <ToggleLine label="部署任务使用代理" active={deployProxy} disabled={readOnly} onToggle={setDeployProxy} hint="用于 npm、composer、镜像拉取和远端发布任务" />
               <ToggleLine label="终端会话使用 SOCKS5" active={terminalProxy} disabled={readOnly} onToggle={setTerminalProxy} hint="仅影响新开的终端会话" />
@@ -260,9 +298,9 @@ function SettingsProxyPage({
                 <button className="ghost" type="button" onClick={() => copyProxyText(envPreview.join("\n"), "环境变量已复制")}>复制环境变量</button>
               </div>
             </div>
-          </PanelCard>
+          </section>
         </section>
-      </div>
+      </section>
     </SettingsPageFrame>
   );
 }

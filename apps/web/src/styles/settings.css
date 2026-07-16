@@ -27,8 +27,17 @@
 }
 
 .settings-page .module-view-context {
+  border: 0;
+  outline: 0;
   background: var(--primary-soft);
   box-shadow: none;
+}
+
+.settings-page .module-view-context:is(:hover, :focus, :focus-within),
+.settings-page .module-view-context em,
+.settings-page .module-view-context em:is(:hover, :focus, :focus-visible, :active) {
+  border: 0;
+  outline: 0;
 }
 
 .settings-mode-indicator {
@@ -158,6 +167,92 @@
 .settings-page-content .settings-form > .save-button {
   position: static;
   justify-self: end;
+}
+
+.settings-page-content .identity-save-meta {
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-page-content .identity-save-meta b {
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+.settings-page-content .settings-destructive {
+  min-height: var(--control-md);
+  padding: 10px 20px;
+  border: 0;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #fff;
+  background: var(--danger);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-page-content .settings-destructive:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.settings-page-content .settings-destructive:active:not(:disabled) {
+  background: var(--danger);
+  transform: scale(0.98);
+}
+
+.settings-page-content .form-line-hint-button {
+  min-height: var(--control-sm);
+  padding: 0 12px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-page-content .form-line-hint-button:hover:not(:disabled) {
+  color: var(--primary-hover);
+  border-color: var(--primary-hover);
+  background: var(--primary-soft);
+}
+
+.settings-page-content .form-line-hint-button:active:not(:disabled) {
+  color: #fff;
+  border-color: var(--primary-active);
+  background: var(--primary-active);
+  transform: scale(0.98);
+}
+
+.settings-page-content .form-line.has-hint-action > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-page-content .form-line.has-hint-action input {
+  width: 100%;
+  grid-column: 1;
+}
+
+.settings-page-content .form-line.has-hint-action .form-line-hint-button {
+  grid-column: 2;
+}
+
+.settings-page-content .form-line.has-hint-action :is(em, small, .form-error) {
+  grid-column: 1 / -1;
 }
 
 .settings-page-content .form-line {
@@ -434,6 +529,133 @@
 .notice-delivery-list p small { min-width: 0; color: var(--muted); font-size: 12px; font-style: normal; overflow-wrap: anywhere; }
 .notice-delivery-list p small { text-align: right; }
 
+/* Notification settings mirrors the audit workbench: complete responsive
+   surfaces, clear hierarchy, and borders reserved for actual controls. */
+.module-page-settings-notice .module-main {
+  gap: 24px;
+}
+
+.module-page-settings-notice .settings-tabs,
+.module-page-settings-notice .settings-tabs:is(:hover, :focus-within) {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.settings-layout-notice {
+  grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.7fr);
+  gap: 24px;
+}
+
+.settings-layout-notice > :is(.notice-config-panel, .notice-delivery-panel),
+.settings-layout-notice > :is(.notice-config-panel, .notice-delivery-panel):is(:hover, :focus-within, :active) {
+  border: 0;
+  outline: 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-subtle);
+}
+
+.settings-layout-notice > :is(.notice-config-panel, .notice-delivery-panel) > header {
+  min-height: 56px;
+  padding: 16px 24px 8px;
+  border: 0;
+  background: transparent;
+}
+
+.settings-layout-notice .right-settings {
+  padding: 16px 24px 24px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.settings-layout-notice .notice-event-row {
+  padding: 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.settings-layout-notice .notice-event-row button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.settings-layout-notice .notice-event-row button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--line);
+  background: var(--surface-hover);
+}
+
+.settings-layout-notice .notice-event-row button.checked,
+.settings-layout-notice .notice-event-row button.checked:is(:hover, :focus-visible, :active) {
+  border-color: transparent;
+  color: #fff;
+  background: var(--primary);
+}
+
+.settings-layout-notice .notice-policy-summary,
+.settings-layout-notice .notice-status-grid {
+  border: 0;
+  background: var(--surface-soft);
+  box-shadow: none;
+}
+
+.settings-layout-notice .notice-policy-summary p,
+.settings-layout-notice .notice-status-grid p {
+  border: 0;
+  background: transparent;
+}
+
+.settings-layout-notice .notice-policy-summary p:hover {
+  background: var(--surface-hover);
+}
+
+.settings-layout-notice .notice-delivery-panel .notice-status-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.settings-layout-notice .notice-delivery-list {
+  padding: 16px 24px 24px;
+}
+
+.settings-layout-notice .notice-delivery-list p,
+.settings-layout-notice .notice-delivery-list p:is(:hover, :focus-within) {
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  border: 0;
+  outline: 0;
+  background: var(--surface-soft);
+  box-shadow: none;
+}
+
+.settings-layout-notice .notice-delivery-list p em { grid-column: 2; }
+.settings-layout-notice .notice-delivery-list p .status-light { grid-column: 3; grid-row: 1; }
+.settings-layout-notice .notice-delivery-list p small { grid-column: 3; grid-row: 2; }
+
+.settings-layout-notice .notice-delivery-list > div button {
+  border: 0;
+  color: var(--primary-hover);
+  background: var(--primary-soft);
+}
+
+.settings-layout-notice .notice-actions .ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.settings-layout-notice .notice-actions .ghost:hover:not(:disabled) {
+  color: var(--text);
+  border-color: transparent;
+  background: var(--surface-hover);
+}
+
 .settings-audit-section .panel-card {
   overflow: hidden;
 }
@@ -462,7 +684,39 @@
 .changes-table td:nth-child(4),
 .changes-table td:nth-child(6) { white-space: nowrap; }
 
+.settings-page-content .mini-table :is(th, td),
+.settings-page-content .mini-table tr:is(:hover, :focus-within) :is(th, td) {
+  border-inline: 0;
+  border-bottom: 0;
+}
+
 .settings-change-card-list { display: none; }
+
+.module-page-settings-audit :is(.module-view-context, .settings-tabs),
+.module-page-settings-audit :is(.module-view-context, .settings-tabs):is(:hover, :focus, :focus-within),
+.module-page-settings-audit .settings-audit-section .panel-card,
+.module-page-settings-audit .settings-audit-section .panel-card:is(:hover, :focus, :focus-within),
+.module-page-settings-audit .changes-table-wrap,
+.module-page-settings-audit .settings-change-card-list article,
+.module-page-settings-audit .settings-change-card-list article:is(:hover, :focus, :focus-within) {
+  border: 0;
+  outline: 0;
+}
+
+.module-page-settings-audit :is(.module-view-context, .settings-tabs) {
+  box-shadow: none;
+}
+
+.module-page-settings-audit .settings-audit-section .panel-card,
+.module-page-settings-audit .settings-change-card-list article {
+  box-shadow: var(--shadow-subtle);
+}
+
+.module-page-settings-audit .settings-audit-section .panel-card > header,
+.module-page-settings-audit .changes-table :is(th, td),
+.module-page-settings-audit .changes-table tr:is(:hover, :focus-within) :is(th, td) {
+  border: 0;
+}
 
 .system-backups-panel {
   padding: 24px;
@@ -614,6 +868,14 @@
 
   .notice-status-grid,
   .system-backup-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .settings-layout-notice {
+    gap: 24px;
+  }
+
+  .settings-layout-notice .notice-delivery-panel .notice-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 773px) {
@@ -656,6 +918,31 @@
   }
 
   .settings-page-content .form-line > :is(label, span) { padding-top: 0; }
+
+  .module-page-settings-notice .module-main {
+    gap: 16px;
+  }
+
+  .module-page-settings-notice .settings-tabs {
+    width: 100%;
+  }
+
+  .settings-layout-notice {
+    gap: 16px;
+  }
+
+  .settings-layout-notice > :is(.notice-config-panel, .notice-delivery-panel) > header {
+    padding: 16px 16px 8px;
+  }
+
+  .settings-layout-notice .right-settings,
+  .settings-layout-notice .notice-delivery-list {
+    padding: 16px;
+  }
+
+  .settings-layout-notice .notice-delivery-panel .notice-status-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
   .settings-page-content .identity-summary,
   .notice-status-grid,
@@ -714,6 +1001,26 @@
   .settings-change-card-list article p { margin: 0; color: var(--text-soft); font-size: 13px; overflow-wrap: anywhere; }
   .settings-change-card-list article em { color: var(--muted); font-size: 11px; font-style: normal; overflow-wrap: anywhere; }
 
+  .module-page-settings-audit .settings-tabs {
+    width: 100%;
+  }
+
+  .module-page-settings-audit .settings-audit-section .panel-card {
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .module-page-settings-audit .settings-audit-section .panel-card > header {
+    min-height: auto;
+    padding: 0 0 16px;
+    background: transparent;
+  }
+
+  .module-page-settings-audit .changes-table-wrap {
+    padding: 0;
+  }
+
   .notice-delivery-list p {
     grid-template-columns: 56px minmax(0, 1fr) auto;
     gap: 8px 12px;
@@ -742,4 +1049,161 @@
   .settings-buttons button { width: 100%; }
   .token-card-meta { grid-template-columns: minmax(0, 1fr); }
   .notice-status-grid { padding: 8px; }
+}
+
+/* Base settings follows the audit surface model: retain complete component
+   layout and elevation, and remove only decorative line framing. */
+:is(.module-page-settings, .module-page-settings-general) .settings-tabs,
+:is(.module-page-settings, .module-page-settings-general) .settings-tabs:is(:hover, :focus-within),
+:is(.module-page-settings, .module-page-settings-general) .settings-layout-general .panel-card,
+:is(.module-page-settings, .module-page-settings-general) .settings-layout-general .panel-card:is(:hover, :focus-within, :active),
+:is(.module-page-settings, .module-page-settings-general) .settings-layout-general .panel-card > header,
+:is(.module-page-settings, .module-page-settings-general) .settings-layout-general :is(.token-table-wrap, .changes-table-wrap),
+:is(.module-page-settings, .module-page-settings-general) .settings-layout-general :is(.token-table, .changes-table) :is(th, td),
+:is(.module-page-settings, .module-page-settings-general) .settings-layout-general .token-card,
+:is(.module-page-settings, .module-page-settings-general) .settings-layout-general .settings-change-card-list article {
+  border: 0;
+  outline: 0;
+}
+
+:is(.module-page-settings, .module-page-settings-general) .settings-layout-general .panel-card {
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-subtle);
+  overflow: hidden;
+}
+
+:is(.module-page-settings, .module-page-settings-general) .settings-layout-general .panel-card > header {
+  border-bottom: 0;
+}
+
+:is(.module-page-settings, .module-page-settings-general) .settings-layout-general .table-icon-actions button,
+:is(.module-page-settings, .module-page-settings-general) .settings-layout-general .table-icon-actions button:is(:hover, :focus-visible, :active) {
+  border: 0;
+  box-shadow: none;
+}
+
+:is(.module-page-settings, .module-page-settings-general) .settings-layout-general .table-icon-actions button {
+  color: var(--muted);
+  background: transparent;
+}
+
+:is(.module-page-settings, .module-page-settings-general) .settings-layout-general .table-icon-actions button:is(:hover, :focus-visible, :active) {
+  color: var(--primary-hover);
+  background: var(--primary-soft);
+}
+
+:is(.module-page-settings, .module-page-settings-general) .module-view-context {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+:is(.module-page-settings, .module-page-settings-general) .settings-tabs,
+:is(.module-page-settings, .module-page-settings-general) .settings-layout-general :is(.identity-summary, .token-card, .settings-change-card-list article) {
+  border-radius: var(--radius-md);
+}
+
+/* Backup keeps the audit workspace hierarchy while preserving complete
+   component surfaces and controls. */
+.module-page-settings-backup .settings-tabs,
+.module-page-settings-backup .settings-tabs:is(:hover, :focus, :focus-within, :active) {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.module-page-settings-backup .settings-layout-backup,
+.module-page-settings-backup .settings-layout-backup > .settings-card-wide {
+  min-width: 0;
+}
+
+.module-page-settings-backup .settings-layout-backup .system-backups-panel {
+  padding: 24px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  gap: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow-subtle);
+}
+
+.module-page-settings-backup .settings-layout-backup .system-backup-summary {
+  padding: 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  gap: 8px;
+  background: var(--surface-soft);
+  box-shadow: none;
+}
+
+.module-page-settings-backup .settings-layout-backup .system-backup-summary p {
+  min-height: 72px;
+  padding: 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.module-page-settings-backup .settings-layout-backup .module-table-wrap {
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.module-page-settings-backup .settings-layout-backup .mini-table :is(th, td),
+.module-page-settings-backup .settings-layout-backup .mini-table tr:is(:hover, :focus-within) :is(th, td) {
+  border-inline: 0;
+}
+
+.module-page-settings-backup .settings-layout-backup .module-card-sort,
+.module-page-settings-backup .settings-layout-backup .module-card-row,
+.module-page-settings-backup .settings-layout-backup .module-card-empty {
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  box-shadow: none;
+}
+
+.module-page-settings-backup .settings-layout-backup .module-card-row:is(:hover, :focus-within) {
+  border: 0;
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-subtle);
+  transform: none;
+}
+
+.settings-detail-drawer .backup-drawer-body dl {
+  gap: 8px;
+}
+
+.settings-detail-drawer .backup-drawer-body dl div {
+  padding: 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-subtle);
+}
+
+@media (max-width: 773px) {
+  .module-page-settings-backup .module-main,
+  .module-page-settings-backup .settings-layout-backup {
+    gap: 16px;
+  }
+
+  .module-page-settings-backup .settings-tabs {
+    width: 100%;
+  }
+
+  .module-page-settings-backup .settings-layout-backup .system-backups-panel {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .module-page-settings-backup .settings-layout-backup .system-backup-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .module-page-settings-backup .settings-layout-backup .module-card-row {
+    padding: 16px;
+    gap: 16px;
+  }
 }

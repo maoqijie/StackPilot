@@ -59,7 +59,7 @@ function SettingsPageFrame({
       subtitle={copy.subtitle}
       page={page}
       className="settings-page"
-      viewContext={{
+      viewContext={page === "settings-notice" || page === "settings-proxy" ? false : {
         eyebrow: `设置 / ${resolvePageMeta(page).title}`,
         title: resolvePageMeta(page).title,
         chips: copy.chips,

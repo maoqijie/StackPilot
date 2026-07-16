@@ -115,6 +115,9 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
 
   const selectedRole = roles.find((role) => role.id === roleId) ?? roles[0] ?? null;
   const rolePermissions = selectedRole ? drafts[selectedRole.id] ?? selectedRole.permissions : [];
+  const visibleRolePermissions = selectedRole?.builtin
+    ? permissions.filter((permission) => rolePermissions.includes(permission.key))
+    : permissions;
   const dirtyRoleIds = roles.filter((role) => {
     const draft = drafts[role.id] ?? role.permissions;
     return draft.length !== role.permissions.length || draft.some((permission) => !role.permissions.includes(permission));
@@ -225,9 +228,9 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
               </div>
             </PanelCard>
             {selectedRole && <PanelCard title={`${selectedRole.name} 权限项`} action={!selectedRole.builtin && dirtyRoleIdSet.has(selectedRole.id) ? "保存当前角色" : undefined} onAction={() => openSave(selectedRole.id)}>
-              {selectedRole.builtin && <p className="acl-readonly-note"><Lock size={16} aria-hidden="true" />内置角色由 Controller 管理，仅供查看。</p>}
+              {selectedRole.builtin && <p className="acl-readonly-note"><Lock size={16} aria-hidden="true" />内置角色由 Controller 管理，仅显示已授予权限。</p>}
               <div className="permission-grid">
-                {permissions.map((permission) => {
+                {visibleRolePermissions.map((permission) => {
                   const checked = rolePermissions.includes(permission.key);
                   return <button key={permission.key} className={checked ? "checked" : ""} type="button" aria-pressed={checked} disabled={selectedRole.builtin} onClick={() => toggleRolePermission(selectedRole, permission.key)}><span className="permission-copy"><b>{permission.name}</b><small>{permission.description}</small></span><i>{checked ? <><Check size={14} aria-hidden="true" />已允许</> : <><X size={14} aria-hidden="true" />未允许</>}</i></button>;
                 })}

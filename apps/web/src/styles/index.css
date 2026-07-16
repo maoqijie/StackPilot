@@ -33,3 +33,5 @@
 @import "./audit-export.css";
 @import "./firewall-rules-overrides.css";
 @import "./audit.css";
+@import "./settings-proxy.css";
+@import "./settings-security.css";

@@ -1,16 +1,16 @@
-.module-page-acl-users .module-filter-line,
-.module-page-acl-users .identity-management,
-.module-page-acl-users .identity-summary,
-.module-page-acl-users .identity-user-list,
-.module-page-acl-users .identity-user-list-head {
+:is(.module-page-acl, .module-page-acl-users) .module-filter-line,
+:is(.module-page-acl, .module-page-acl-users) .identity-management,
+:is(.module-page-acl, .module-page-acl-users) .identity-summary,
+:is(.module-page-acl, .module-page-acl-users) .identity-user-list,
+:is(.module-page-acl, .module-page-acl-users) .identity-user-list-head {
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
 
-.module-page-acl-users .module-filter-line { padding: 0; }
-.module-page-acl-users .deploy-tabs {
+:is(.module-page-acl, .module-page-acl-users) .module-filter-line { padding: 0; }
+:is(.module-page-acl, .module-page-acl-users) .deploy-tabs {
   padding: 0;
   margin: 0;
   border: 0;
@@ -64,7 +64,7 @@
 .identity-form-error svg { flex: 0 0 auto; margin-top: 0; }
 .identity-form-error { margin: 0; font-size: 13px; }
 
-.module-page-acl-users .identity-summary {
+:is(.module-page-acl, .module-page-acl-users) .identity-summary {
   padding: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -215,7 +215,7 @@
 @media (max-width: 773px) {
   .identity-management-head { display: grid; gap: 12px; }
   .identity-management-actions { justify-content: flex-start; }
-  .module-page-acl-users .identity-summary { grid-template-columns: minmax(0, 1fr); }
+  :is(.module-page-acl, .module-page-acl-users) .identity-summary { grid-template-columns: minmax(0, 1fr); }
   .identity-summary > div { min-height: 64px; }
   .identity-user-list-head { display: none; }
   .identity-user-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; }

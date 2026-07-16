@@ -2,6 +2,14 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.36 - 2026-07-16
+
+### Changed
+
+- Refined ACL role surfaces so built-in roles show only granted permissions while custom roles retain complete editable permission coverage.
+- Rebuilt proxy and security settings into route-scoped CloudPulse workbenches with stable summaries, focused sections and responsive detail drawers.
+- Improved form hint actions and expanded ACL, settings and browser-level responsive coverage.
+
 ## 0.3.0-preview.35 - 2026-07-16
 
 ### Fixed

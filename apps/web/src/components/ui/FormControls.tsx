@@ -185,12 +185,12 @@ function FormLine({
   const describedBy = [hintId, errorId].filter(Boolean).join(" ") || undefined;
 
   return (
-    <div className="form-line">
+    <div className={`form-line ${hintButton ? "has-hint-action" : ""}`}>
       <label id={labelId} htmlFor={inputId}>{label}{required && <b>*</b>}</label>
       <div>
         <input id={inputId} ref={inputRef} type={inputType} value={value} readOnly={!onChange} disabled={disabled} required={required} aria-label={label} aria-required={required ? "true" : undefined} aria-labelledby={labelId} aria-describedby={describedBy} aria-invalid={error ? "true" : undefined} onChange={(event) => onChange?.(event.target.value)} />
         {hint && <em id={hintId}>{hint}</em>}
-        {hintButton && <button type="button" disabled={disabled} onClick={hintAction}>{hintButton}</button>}
+        {hintButton && <button className="form-line-hint-button" type="button" disabled={disabled} onClick={hintAction}>{hintButton}</button>}
         {success && <small><CheckCircle2 size={12} /> {success}</small>}
         {error && <strong id={errorId} className="form-error">{error}</strong>}
       </div>

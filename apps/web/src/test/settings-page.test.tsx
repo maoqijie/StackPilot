@@ -50,9 +50,13 @@ describe("settings workbench", () => {
   });
 
   it("renders notification delivery status with text in addition to status lights", () => {
-    renderSettings("settings-notice");
+    const { container } = renderSettings("settings-notice");
 
     const delivery = screen.getByText("最近投递").closest(".notice-delivery-list");
+    expect(container.querySelector(".settings-layout-notice > .notice-config-panel")).toBeInTheDocument();
+    expect(container.querySelector(".settings-layout-notice > .notice-delivery-panel")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "测试" })).toHaveClass("form-line-hint-button");
+    expect(screen.getByRole("button", { name: "测试" }).closest(".form-line")).toHaveClass("has-hint-action");
     expect(delivery).not.toBeNull();
     expect(within(delivery as HTMLElement).getAllByText(/成功/).length).toBeGreaterThan(0);
     expect(within(delivery as HTMLElement).getByText(/重试中/)).toBeInTheDocument();

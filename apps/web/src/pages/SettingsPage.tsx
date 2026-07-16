@@ -234,7 +234,7 @@ function SettingsPage({
           <TokenTable rows={tokenRows} readOnly={readOnly} onView={viewToken} onUpdateStatus={updateTokenStatus} onDelete={deleteToken} onBulkDisable={bulkDisableTokens} />
         </PanelCard>}
         {activeTab === "备份" && <div className="settings-card-wide"><SystemBackupsPanel notify={notify} permissions={permissions} readOnly={readOnly} /></div>}
-        {activeTab === "安全" && <PanelCard title="安全设置">
+        {activeTab === "安全" && <PanelCard title="安全设置" className="security-policy-panel">
           <div className="right-settings">
             <ToggleLine label="强制启用两步验证（2FA）" active={twoFactor} disabled={readOnly} onToggle={(active) => {
               setTwoFactor(active);
@@ -257,14 +257,14 @@ function SettingsPage({
             <div className="settings-buttons security-actions"><button className="primary" type="button" disabled={readOnly} onClick={saveSecurityPolicy}>保存安全策略</button><button className="ghost" type="button" disabled={readOnly} onClick={runSecurityReview}>立即复核</button></div>
           </div>
         </PanelCard>}
-        {activeTab === "安全" && <PanelCard title="安全验证">
+        {activeTab === "安全" && <PanelCard title="安全验证" className="security-review-panel">
           <div className="verify-box">
             <p className={twoFactor ? "ok-line" : "warn-line"}><CheckCircle2 size={15} /> MFA 覆盖率：{twoFactor ? "100%" : "未强制"}</p>
             <p className={securityReviewTone === "ok" ? "ok-line" : "warn-line"}>{securityReview} <button type="button" disabled={readOnly} onClick={runSecurityReview}>复核</button></p>
             <p className={securityReviewTone === "ok" ? "ok-line" : "warn-line"}><CheckCircle2 size={15} /> 登录策略：{securityReviewTone === "ok" ? "校验通过" : "等待复核"}</p>
           </div>
         </PanelCard>}
-        {activeTab === "通知" && <PanelCard title="通知设置">
+        {activeTab === "通知" && <PanelCard title="通知设置" className="notice-config-panel">
           <div className="right-settings">
             <FormLine label="Webhook 通知" value={noticeDraft.webhook} disabled={readOnly} onChange={(value) => updateNoticeDraft("webhook", value)} error={noticeErrors.webhook} hintButton="测试" hintAction={testNoticeConnection} inputRef={noticeWebhookInputRef} />
             <ToggleLine label="关键事件邮件通知" active={mailNotice} disabled={readOnly} onToggle={(active) => {
@@ -295,7 +295,7 @@ function SettingsPage({
             <div className="settings-buttons notice-actions"><button className="primary" type="button" disabled={readOnly} onClick={saveNoticeSettings}>保存通知设置</button><button className="ghost" type="button" disabled={readOnly} onClick={testNoticeConnection}>检查配置</button><button className="ghost" type="button" disabled={readOnly} onClick={sendNoticePreview}>发送预览</button></div>
           </div>
         </PanelCard>}
-        {activeTab === "通知" && <PanelCard title="投递状态" className="settings-card-wide">
+        {activeTab === "通知" && <PanelCard title="投递状态" className="notice-delivery-panel">
           <div className="notice-status-grid">
             <p><span>最近保存</span><b>{noticeSavedAt}</b><em>投递面板显示已保存配置</em></p>
             <p><span>收件人</span><b>{savedNotice.mailEnabled ? savedNotice.recipients : "Webhook-only"}</b><em>{savedNotice.mailEnabled ? "邮件启用" : "邮件关闭"}</em></p>

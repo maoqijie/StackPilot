@@ -453,6 +453,7 @@
 }
 
 .module-page-acl-roles .role-list {
+  padding: 8px 16px 16px;
   gap: 8px;
 }
 
@@ -518,6 +519,7 @@
 }
 
 .module-page-acl-roles .permission-grid {
+  padding: 8px 16px 16px;
   gap: 8px;
 }
 
@@ -609,7 +611,7 @@
 .acl-readonly-note {
   min-height: 48px;
   padding: 12px 24px;
-  margin: 0;
+  margin: 8px 16px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -724,9 +726,9 @@
 
   .acl-readonly-note { padding-inline: 16px; }
 
-  .acl-role-create-modal {
+  .detail-drawer.acl-role-create-modal {
     inset: 8px;
-    width: auto;
+    width: calc(100vw - 16px);
     height: calc(100dvh - 16px);
     transform: none;
   }
@@ -735,4 +737,93 @@
   .acl-role-create-modal .drawer-body { padding: 16px; }
   .acl-role-create-modal .drawer-actions { padding: 12px 16px 16px; }
   .acl-role-create-permissions { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Match the Audit workbench: unframed controls, discrete elevated surfaces. */
+:is(.module-page-acl, .module-page-acl-users, .module-page-acl-roles, .module-page-acl-policies) {
+  min-width: 0;
+}
+
+:is(.module-page-acl, .module-page-acl-users, .module-page-acl-roles, .module-page-acl-policies) .module-filter-line {
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:is(.module-page-acl-roles, .module-page-acl-policies) .module-metrics article,
+:is(.module-page-acl, .module-page-acl-users) .identity-user-row,
+.module-page-acl-roles .acl-role-layout .panel-card,
+.module-page-acl-policies .acl-policy-detail-panel {
+  border: 0;
+  outline: 0;
+  box-shadow: var(--shadow-subtle);
+}
+
+:is(.module-page-acl-roles, .module-page-acl-policies) .module-metrics article {
+  min-height: 88px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+:is(.module-page-acl-roles, .module-page-acl-policies) .module-metrics article:is(:hover, :focus, :focus-within),
+:is(.module-page-acl, .module-page-acl-users) .identity-user-row:is(:hover, :focus, :focus-within),
+.module-page-acl-roles .acl-role-layout .panel-card:is(:hover, :focus, :focus-within),
+.module-page-acl-policies .acl-policy-detail-panel:is(:hover, :focus, :focus-within) {
+  border: 0;
+  outline: 0;
+}
+
+:is(.module-page-acl, .module-page-acl-users, .module-page-acl-roles, .module-page-acl-policies)
+  :is(.role-list button, .permission-grid > button, .policy-catalog > button, .policy-role-list > button),
+:is(.module-page-acl, .module-page-acl-users, .module-page-acl-roles, .module-page-acl-policies)
+  :is(.role-list button, .permission-grid > button, .policy-catalog > button, .policy-role-list > button):is(:hover, :focus-visible, :active) {
+  border: 0;
+}
+
+.module-page-acl-policies .acl-policy-layout {
+  grid-template-columns: minmax(400px, 0.9fr) minmax(0, 1.1fr);
+}
+
+.module-page-acl-policies .policy-catalog > button b,
+.module-page-acl-policies .policy-catalog > button small,
+.module-page-acl-policies .policy-catalog > button i {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 960px) {
+  .module-page-acl-policies .acl-policy-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 773px) {
+  :is(.module-page-acl, .module-page-acl-users) .identity-summary,
+  :is(.module-page-acl-roles, .module-page-acl-policies) .module-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  :is(.module-page-acl, .module-page-acl-users) .identity-summary > div {
+    min-height: 72px;
+    padding: 8px;
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: 0 8px;
+  }
+
+  :is(.module-page-acl-roles, .module-page-acl-policies) .module-metrics article {
+    min-height: 72px;
+    padding: 8px;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 0 8px;
+  }
+
+  :is(.module-page-acl-roles, .module-page-acl-policies) .module-metrics article > svg {
+    width: 24px;
+    height: 24px;
+    padding: 4px;
+  }
 }

@@ -6,6 +6,7 @@ import { AclPage } from "../pages/AclPage";
 
 const roles = [
   { id: "administrator", name: "管理员", description: "内置管理员", builtin: true, permissions: ["overview:read", "roles:read", "roles:manage"] },
+  { id: "audit-reader", name: "只读审计员", description: "只读审计角色", builtin: true, permissions: ["overview:read", "nodes:read", "systemd:read", "sites:read", "files:read", "firewall:read", "tasks:read", "audit:read", "roles:read"] },
   { id: "release-manager", name: "发布经理", description: "自定义发布角色", builtin: false, permissions: ["overview:read", "sites:read"] },
 ];
 
@@ -34,11 +35,15 @@ describe("ACL workbench", () => {
   });
 
   it("loads Controller roles and keeps built-in roles read-only", async () => {
+    const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ roles })));
     renderAcl("acl-roles");
 
     await screen.findByRole("button", { name: /管理员/ });
-    expect(screen.getByText("内置角色由 Controller 管理，仅供查看。")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /只读审计员/ }));
+    expect(screen.getByText("内置角色由 Controller 管理，仅显示已授予权限。")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /已允许/ })).toHaveLength(9);
+    expect(screen.queryByRole("button", { name: /总览操作/ })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /总览查看/ })[0]).toBeDisabled();
   });
 
