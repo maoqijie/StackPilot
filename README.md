@@ -2,7 +2,7 @@
 
 StackPilot 是开源自托管多服务器总控台。当前仓库采用 npm workspaces，包含前端控制台、Node.js Controller API、非 root Agent、root-only 数据库 helper 和共享运行时契约。
 
-> **项目成熟度：预览版。** 当前版本为 `0.3.0-preview.36`，提供可重复的部署、迁移、回滚和发布验证流程，但尚未达到稳定生产发布条件，也不提供 SLA。正式支持范围和已验证边界见[兼容性矩阵](docs/compatibility.md)。
+> **项目成熟度：预览版。** 当前版本为 `0.3.0-preview.37`，提供可重复的部署、迁移、回滚和发布验证流程，但尚未达到稳定生产发布条件，也不提供 SLA。正式支持范围和已验证边界见[兼容性矩阵](docs/compatibility.md)。
 
 ## 当前前端范围
 
@@ -207,7 +207,7 @@ npm run build
 npm run test:e2e
 npm audit --audit-level=high
 npm run release:build
-npm run release:verify -- output/release/0.3.0-preview.36/SHA256SUMS
+npm run release:verify -- output/release/0.3.0-preview.37/SHA256SUMS
 npm run release:scan
 ```
 
@@ -245,7 +245,7 @@ npm run test --workspace @stackpilot/agent
 - [systemd 安装](docs/installation/systemd.md)
 - [反向代理与安全加固](docs/security-hardening.md)
 - [Agent 证书生命周期](docs/operations/agent-certificates.md)
-- [升级说明](docs/upgrades/0.3.0-preview.35.md)
+- [升级说明](docs/upgrades/0.3.0-preview.37.md)
 - [备份与恢复](docs/backup-restore/README.md)
 - [生产排障](docs/troubleshooting/production.md)
 

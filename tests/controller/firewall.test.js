@@ -87,7 +87,9 @@ test("firewall deny HTTP endpoint requires firewall read and preserves node scop
   await identity.createInitialAdministrator("admin", "Administrator", "correct horse battery staple");
   const admin = (await identity.login("admin", "correct horse battery staple", "test", "ua")).principal;
   const repository = new MemoryAgentControlRepository();
-  await repository.update((state) => state.nodes.push(node(allowedId, "allowed-host", "a"), node(hiddenId, "hidden-host", "b")));
+  const collectedAt = new Date().toISOString();
+  const recentNode = (nodeId, name, marker) => ({ ...node(nodeId, name, marker), lastSeenAt: collectedAt, firewallDenySnapshot: { collectedAt, collectionStatus: "complete", warnings: [], events: [{ ...event(marker), occurredAt: collectedAt }] } });
+  await repository.update((state) => state.nodes.push(recentNode(allowedId, "allowed-host", "a"), recentNode(hiddenId, "hidden-host", "b")));
   const services = createControllerServices(new FakePlatformAdapter(), process.cwd(), loadControllerConfig({}), repository, database);
   const scoped = identity.createApiToken(admin, { name: "firewall-scoped", permissions: ["firewall:read"], nodeScope: [allowedId], expiresAt: null }).token;
   const forbidden = identity.createApiToken(admin, { name: "nodes-only", permissions: ["nodes:read"], nodeScope: "all", expiresAt: null }).token;

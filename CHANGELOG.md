@@ -2,6 +2,17 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.37 - 2026-07-16
+
+### Fixed
+
+- Restored the complete npm lock graph required by strict `npm ci`, including CycloneDX optional dependencies used by release generation.
+- Added the missing versioned upgrade notes required by the signed release workflow and linked the current release documentation.
+
+### Changed
+
+- Preserved the ACL, proxy and security settings refinements introduced in `0.3.0-preview.36` under a release that passes the repository deployment gates.
+
 ## 0.3.0-preview.36 - 2026-07-16
 
 ### Changed
