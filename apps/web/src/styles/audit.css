@@ -103,10 +103,20 @@
 }
 
 .audit-detail-drawer {
+  inset: 8px 8px 8px auto;
   width: min(520px, 100vw);
+  height: calc(100dvh - 16px);
   border: 0;
   outline: 0;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-overlay);
+}
+
+@media (max-width: 760px) {
+  .audit-detail-drawer {
+    left: 8px;
+    width: auto;
+  }
 }
 
 .audit-detail-drawer .drawer-head,

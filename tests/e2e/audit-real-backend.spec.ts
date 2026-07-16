@@ -28,6 +28,12 @@ test("audit page renders real Controller data and completes silent polling", asy
   await expect(details).toBeVisible();
   await expect(details.getByText("Request ID")).toBeVisible();
   await expect(details.getByText("事件哈希")).toBeVisible();
+  const detailBox = await details.boundingBox();
+  expect(detailBox).not.toBeNull();
+  expect(detailBox!.x).toBeGreaterThanOrEqual(0);
+  expect(detailBox!.y).toBeGreaterThanOrEqual(0);
+  expect(detailBox!.x + detailBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(detailBox!.y + detailBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await details.getByRole("button", { name: "关闭审计详情" }).click();
 
   await page.getByRole("button", { name: "导出全部匹配" }).click();

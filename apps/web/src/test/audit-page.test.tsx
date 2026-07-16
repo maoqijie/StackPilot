@@ -77,6 +77,7 @@ describe("audit real backend", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "详情" })[0]!);
     const drawer = screen.getByRole("dialog", { name: "审计详情" });
     expect(drawer.parentElement).toBe(document.body);
+    expect(drawer).toHaveClass("audit-detail-drawer");
     expect(within(drawer).getByText("request-success")).toBeInTheDocument();
     expect(within(drawer).getByText("a".repeat(64))).toBeInTheDocument();
     expect(within(drawer).getByText(/backup/)).toBeInTheDocument();

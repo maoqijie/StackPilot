@@ -2,6 +2,12 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.35 - 2026-07-16
+
+### Fixed
+
+- Kept the real audit detail drawer fully inside desktop and mobile dynamic viewports, including its bottom edge, while preserving body-level portal stacking and scrollable detail content.
+
 ## 0.3.0-preview.34 - 2026-07-16
 
 ### Added
