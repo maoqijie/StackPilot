@@ -14,7 +14,7 @@ import {
 } from "../features/hosts/HostViews";
 import {
   hostHasStaleBackup, hostHealthOptions, hostHighestResource, hostMatchesHealth, hostPagePreset,
-  hostPressureScore, hostViewContext, isCleanUpdate,
+  hostPressureScore, isCleanUpdate,
 } from "../features/hosts/model";
 import { formatTimestamp, toHostView } from "../features/hosts/viewModel";
 import type { HostView } from "../features/hosts/viewModel";
@@ -121,10 +121,10 @@ function HostsPage({ page, notify }: { page: PageKey; notify: Notify }) {
     { key: "ops", label: "操作", width: "64px", render: detailAction },
   ];
 
-  return <ModulePageShell title={resolvePageMeta(page).title} subtitle={loading ? "正在采集主机、服务与资源状态" : `${preset.subtitle} · 聚合于 ${collectedAt}`} hideHeading={hidesPageControls} page={page} viewContext={hidesPageControls ? false : hostViewContext(preset.mode, rows, filteredRows)} filters={hidesPageControls ? null : <><ModuleSearch value={search} placeholder="搜索主机名、IP、服务或版本" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="环境" value={envFilter} options={["全部", ...envOptions]} onChange={(value) => setEnvByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="健康" value={healthFilter} options={hostHealthOptions(preset.mode)} onChange={(value) => setHealthByPage((current) => ({ ...current, [page]: value }))} /></>} metrics={<HostMetrics mode={preset.mode} rows={rows} filteredRows={filteredRows} />}>
+  return <ModulePageShell title={resolvePageMeta(page).title} subtitle={loading ? "正在采集主机、服务与资源状态" : `${preset.subtitle} · 聚合于 ${collectedAt}`} hideHeading page={page} viewContext={false} filters={hidesPageControls ? null : <><ModuleSearch value={search} placeholder="搜索主机名、IP、服务或版本" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="环境" value={envFilter} options={["全部", ...envOptions]} onChange={(value) => setEnvByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="健康" value={healthFilter} options={hostHealthOptions(preset.mode)} onChange={(value) => setHealthByPage((current) => ({ ...current, [page]: value }))} /></>} metrics={<HostMetrics mode={preset.mode} rows={rows} filteredRows={filteredRows} />}>
     {loading && <span className="sr-only" role="status" aria-live="polite">正在从 /api/hosts 实时采集主机状态</span>}
     {error && <div className="overview-error-state hosts-error-state"><Shield size={18} /><span>{error}</span><button type="button" disabled={loading} onClick={() => void loadHosts()}>重试</button></div>}
-    <HostFocusPanel mode={preset.mode} rows={rows} filteredRows={filteredRows} collectedAt={collectedAt} onOpen={(row) => setSelectedHostId(row.id)} />
+    {preset.mode !== "inventory" && <HostFocusPanel mode={preset.mode} rows={rows} filteredRows={filteredRows} collectedAt={collectedAt} onOpen={(row) => setSelectedHostId(row.id)} />}
     <DataTable columns={columns} rows={filteredRows} emptyText={error ? "实时采集失败，未显示示例主机" : loading ? "正在采集主机状态" : "没有匹配的主机，系统将继续自动采集"} getRowKey={(row) => row.id} mobileCard={(row) => <><div className="module-card-head host-mobile-head"><button className="module-row-link host-mobile-name" type="button" title={row.name} aria-label={`查看主机 ${row.name}`} onClick={() => setSelectedHostId(row.id)}><HostName row={row} /></button><HostStatus row={row} /></div><code className="module-card-code">{row.ip}</code>{preset.mode === "alerts" && <HostRiskTags row={row} />}<div className="module-card-meta"><span><b>环境</b><em>{row.env}</em></span><span><b>版本</b><em>{row.version}</em></span><span><b>高水位</b><em>{hostHighestResource(row)}</em></span><span><b>采集</b><em>{formatTimestamp(row.collectedAt)}</em></span></div><div className="module-card-footer"><span className="host-neutral-text">{row.backup}</span><button className="ghost small" type="button" onClick={() => setSelectedHostId(row.id)}><Eye size={14} /> 查看详情</button></div></>} />
     {selectedHost && <DetailDrawer title={selectedHost.name} subtitle={`${selectedHost.ip} · ${selectedHost.env}`} onClose={() => setSelectedHostId(null)} className="host-detail-drawer" modal><HostDetailContent host={selectedHost} /></DetailDrawer>}
   </ModulePageShell>;

@@ -215,6 +215,7 @@ function AclPage({ page, setPage, notify }: { page: PageKey; setPage: SetPage; n
         title={resolvePageMeta(page).title}
         subtitle={aclPreset.subtitle}
         page={page}
+        hideHeading
         viewContext={false}
         actions={tab === "roles" ? <button className="primary" type="button" onClick={() => { setError(""); setCreateOpen(true); }}><Plus size={16} aria-hidden="true" />创建角色</button> : undefined}
         filters={<><nav className="deploy-tabs" aria-label="权限视图"><button className={tab === "users" ? "active" : ""} type="button" aria-current={tab === "users" ? "page" : undefined} onClick={() => setAclTab("users")}>用户</button><button className={tab === "roles" ? "active" : ""} type="button" aria-current={tab === "roles" ? "page" : undefined} onClick={() => setAclTab("roles")}>角色</button><button className={tab === "policies" ? "active" : ""} type="button" aria-current={tab === "policies" ? "page" : undefined} onClick={() => setAclTab("policies")}>权限项</button></nav>{tab === "users" && <ModuleSearch value={userSearch} placeholder="搜索用户、邮箱或角色" onChange={setUserSearch} />}{tab === "policies" && <><ModuleSearch value={policySearch} placeholder="搜索权限项、权限键或角色" onChange={setPolicySearch} /><FieldSelect label="模块" value={policyModule} options={policyModules} onChange={setPolicyModule} /><FieldSelect label="风险" value={policyRisk} options={["全部", "高", "中", "低"]} onChange={setPolicyRisk} /></>}</>}

@@ -54,7 +54,7 @@ describe("deploy rollbacks live workspace", () => {
 
   it("renders only backend rollback fields and keeps execution behind sites:deploy", async () => {
     vi.mocked(fetchSiteRollbacks).mockResolvedValue(payload([rollback()]));
-    render(<DeployPage page="deploy-rollbacks" notify={notify} permissions={["sites:read"]} />);
+    const { container } = render(<DeployPage page="deploy-rollbacks" notify={notify} permissions={["sites:read"]} />);
 
     expect((await screen.findAllByText("api.example.com")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("v2026.07.14").length).toBeGreaterThan(0);
@@ -62,6 +62,9 @@ describe("deploy rollbacks live workspace", () => {
     expect(screen.queryByText("生产")).not.toBeInTheDocument();
     expect(screen.queryByText("上一健康版本")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "执行" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "版本记录" })).toHaveClass("sr-only");
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-freshness-note")).toHaveTextContent("采集于");
   });
 
   it("submits one rollback after confirmation and one-time reauthentication", async () => {

@@ -15,7 +15,7 @@ describe("failed audit page", () => {
   });
 
   it("renders only failed records from the real audit response", async () => {
-    render(<AuditPage page="audit-failed" notify={vi.fn()} permissions={["audit:read"]} />);
+    const { container } = render(<AuditPage page="audit-failed" notify={vi.fn()} permissions={["audit:read"]} />);
 
     await waitFor(() => expect(fetchAuditEvents).toHaveBeenCalledTimes(1));
     expect(fetchAuditEvents).toHaveBeenCalledWith({ result: "failure" }, expect.any(AbortSignal));
@@ -23,6 +23,8 @@ describe("failed audit page", () => {
     expect(screen.queryByText("auth.login")).not.toBeInTheDocument();
     expect(screen.getByText(/后端采集于/)).toHaveTextContent("2026");
     expect(screen.getAllByText("失败").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "失败操作" })).toHaveClass("sr-only");
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
   });
 
   it("closes stale details after the next real polling response removes the event", async () => {

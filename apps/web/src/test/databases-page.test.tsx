@@ -29,6 +29,22 @@ describe("database instances live page", () => {
   beforeEach(() => { vi.mocked(fetchDatabases).mockReset(); vi.mocked(fetchDatabaseDetail).mockReset(); vi.mocked(fetchDatabases).mockResolvedValue(payload([database()])); vi.mocked(fetchDatabaseDetail).mockResolvedValue(detail()); Object.defineProperty(document, "hidden", { configurable: true, value: false }); });
   afterEach(() => { vi.useRealTimers(); Object.defineProperty(document, "hidden", { configurable: true, value: false }); });
 
+  it.each([
+    ["databases", "数据库管理"],
+    ["databases-instances", "实例列表"],
+  ] as const)("removes the visible heading and summary from %s", async (page, title) => {
+    const { container } = render(<DatabasesPage page={page} setPage={setPage} notify={notify} permissions={["databases:install"]} />);
+
+    expect((await screen.findAllByTitle("postgresql-16-main")).length).toBeGreaterThan(0);
+
+    expect(container.querySelector(".module-page-databases > .page-head h1:not(.sr-only)")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: title })).toHaveClass("sr-only");
+    expect(screen.queryByText("数据库实例")).not.toBeInTheDocument();
+    expect(screen.getByText(/后端采集于/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "创建数据库实例" })).toBeInTheDocument();
+  });
+
   it("loads backend data without exposing mock write actions", async () => {
     const { container } = render(<DatabasesPage page="databases-instances" setPage={setPage} notify={notify} />);
     expect((await screen.findAllByTitle("postgresql-16-main")).length).toBeGreaterThan(0);
@@ -43,9 +59,9 @@ describe("database instances live page", () => {
 
   it("treats stale running snapshots as expired alerts", async () => {
     vi.mocked(fetchDatabases).mockResolvedValue(payload([database({ freshness: "stale" })], { collectionStatus: "partial" }));
-    render(<DatabasesPage page="databases" setPage={setPage} notify={notify} />);
+    const { container } = render(<DatabasesPage page="databases" setPage={setPage} notify={notify} />);
     expect((await screen.findAllByText("数据已过期")).length).toBeGreaterThan(0);
-    expect(screen.getByText("告警 1")).toBeInTheDocument();
+    expect(container.querySelector(".module-metrics article:nth-child(4)")).toHaveTextContent("告警1");
     fireEvent.click(screen.getByRole("combobox", { name: "状态 全部" }));
     fireEvent.click(screen.getByRole("option", { name: "正常" }));
     expect(screen.getAllByText("没有匹配的真实数据库实例，系统将继续自动采集")).toHaveLength(2);

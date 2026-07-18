@@ -16,13 +16,15 @@ describe("firewall open-port page", () => {
   afterEach(() => vi.useRealTimers());
 
   it("renders only real backend listeners and collection freshness", async () => {
-    render(<FirewallPage page="firewall-open" notify={vi.fn()} permissions={["firewall:read"]} />);
+    const { container } = render(<FirewallPage page="firewall-open" notify={vi.fn()} permissions={["firewall:read"]} />);
     const table = await screen.findByRole("table");
     expect(within(table).getByText("0.0.0.0:443")).toBeInTheDocument();
     expect(within(table).getByText("127.0.0.1:18787")).toBeInTheDocument();
     expect(screen.getByText(/监听不等于上游网络已经放行/)).toBeInTheDocument();
     expect(screen.queryByText("HTTPS 公网访问")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /新增规则|刷新|重新采集/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "开放端口" })).toHaveClass("sr-only");
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
   });
 
   it("keeps filters while silently polling every ten seconds", async () => {

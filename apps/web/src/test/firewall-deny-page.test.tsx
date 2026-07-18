@@ -43,11 +43,13 @@ describe("firewall Agent deny page", () => {
   });
 
   it("shows backend freshness and never exposes fake mutation actions", async () => {
-    render(<FirewallPage page="firewall-deny" notify={vi.fn()} permissions={["firewall:read"]} />);
+    const { container } = render(<FirewallPage page="firewall-deny" notify={vi.fn()} permissions={["firewall:read"]} />);
     expect(await screen.findByText(/数据来自 Agent 的只读内核防火墙日志/)).toBeInTheDocument();
     expect(screen.getByText(/采集时间 2026\/07\/15/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /放行|加入规则|导出/ })).not.toBeInTheDocument();
     expect(fetchFirewallDenyRecords).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("heading", { name: "拦截记录" })).toHaveClass("sr-only");
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
   });
 
   it("paginates large real result sets", async () => {

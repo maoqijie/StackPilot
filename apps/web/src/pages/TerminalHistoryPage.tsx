@@ -29,12 +29,13 @@ function TerminalHistoryPage({ notify }: { notify: Notify }) {
   return <ModulePageShell
     title={resolvePageMeta("terminal-history").title}
     subtitle={loading ? "正在读取 Controller 保存的受控任务记录" : `真实远程任务执行历史 · ${freshness}`}
-    page="terminal-history" className="terminal-history-page terminal-page"
+    hideHeading page="terminal-history" className="terminal-history-page terminal-page" viewContext={false}
     filters={<><ModuleSearch value={search} placeholder="搜索动作、节点、结果或 trace id" onChange={setSearch} /><FieldSelect label="结果" value={status} options={["全部", "等待", "运行中", "成功", "失败", "取消", "过期"]} onChange={setStatus} /></>}
     metrics={<><MetricTile icon={TerminalSquare} label="任务记录" value={`${rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="成功" value={`${successful}`} tone="green" /><MetricTile icon={Shield} label="失败或终止" value={`${failed}`} tone="orange" /></>}
   >
     {loading && <span className="sr-only" role="status" aria-live="polite">正在从 /api/remote-tasks 读取真实任务历史</span>}
     {error && <div className="overview-error-state terminal-history-error"><Shield size={18} /><span>{error}</span><button type="button" disabled={loading} onClick={() => void retry()}>重试</button></div>}
+    {!loading && !error && <p className="module-freshness-note"><Clock3 size={14} />{freshness}</p>}
     <div className="terminal-history-list terminal-history-live-list">
       {filtered.map((row) => <article key={row.id}>
         <header><span className={`terminal-history-status ${row.tone}`}>{row.status === "成功" ? <CheckCircle2 size={16} /> : row.status === "失败" ? <XCircle size={16} /> : <Clock3 size={16} />}{row.status}</span><time>{formatBackendDateTime(row.updatedAt)}</time></header>

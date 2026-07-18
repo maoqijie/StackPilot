@@ -1,6 +1,6 @@
 import { createScheduleJob, deleteScheduleJob, fetchScheduleJobs, runScheduleJob, updateScheduleJob } from "../api/scheduleApi";
 import type { ScheduleJob } from "../api/scheduleApi";
-import { AlertTriangle, CalendarDays, CheckCircle2, Plus, RotateCcw, Shield, TerminalSquare } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, Clock3, Plus, RotateCcw, Shield, TerminalSquare } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { resolvePageMeta } from "../app/navigation";
 import { useQuickIntent } from "../app/routing";
@@ -313,10 +313,13 @@ function SchedulePage({ page, notify, permissions = defaultPermissions }: { page
       title={resolvePageMeta(page).title}
       subtitle={`${schedulePreset.subtitle} ${freshness}`}
       page={page}
+      hideHeading
+      viewContext={false}
       actions={page === "schedule-failed" || !canWrite ? undefined : <button className="primary" type="button" onClick={openScheduleCreateFromQuick}><Plus size={15} /> 新建任务</button>}
       filters={<><ModuleSearch value={search} placeholder="搜索任务、cron 或命令" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={stateFilter} options={["全部", "已启用", "已停用"]} onChange={(value) => setStateByPage((current) => ({ ...current, [page]: value }))} /></>}
       metrics={<><MetricTile icon={CalendarDays} label={page === "schedule-failed" ? "失败任务" : "任务数"} value={`${page === "schedule-failed" ? filteredRows.length : rows.length}`} tone="blue" /><MetricTile icon={CheckCircle2} label="启用" value={`${rows.filter((row) => row.enabled).length}`} tone="green" /><MetricTile icon={Shield} label="失败" value={`${rows.filter((row) => row.lastExecution?.status === "失败").length}`} tone="red" /><MetricTile icon={TerminalSquare} label="来源" value="cron" tone="orange" /></>}
     >
+      <p className="module-freshness-note"><Clock3 size={15} />{freshness}</p>
       {scheduleDialog}
       {confirmation && <ScheduleMutationDialog confirmation={confirmation} onClose={() => setConfirmation(null)} />}
       {loadError && (

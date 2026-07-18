@@ -77,7 +77,7 @@ function SystemdPage({ page, initialPayload = null }: SystemdPageProps) {
   }, [drawerId]);
 
   const collectionMessage = backgroundError ? `后台刷新失败，保留上次数据：${backgroundError}` : payload?.warnings[0] ?? (payload?.collectionStatus === "complete" ? "数据来自 Agent 的只读 systemd 快照" : "等待 Agent 采集 systemd 数据");
-  return <ModulePageShell title={resolvePageMeta(page).title} subtitle={servicePreset.subtitle} page={page} className="systemd-page" sideModal
+  return <ModulePageShell title={resolvePageMeta(page).title} subtitle={servicePreset.subtitle} hideHeading page={page} className="systemd-page" viewContext={false} sideModal
     filters={<><ModuleSearch value={search} placeholder="搜索服务、说明或主机" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="状态" value={statusFilter} options={["全部", "active", "failed", "inactive"]} onChange={(value) => setStatusByPage((current) => ({ ...current, [page]: value }))} /></>}
     metrics={<><MetricTile icon={CheckCircle2} label="运行中" value={`${rows.filter((row) => displayStatus(row) === "active").length}`} tone="green" /><MetricTile icon={TriangleAlert} label="故障" value={`${rows.filter((row) => displayStatus(row) === "failed").length}`} tone="red" /><MetricTile icon={CircleOff} label="未运行" value={`${rows.filter((row) => displayStatus(row) === "inactive").length}`} tone="gray" /></>}
     side={drawer && <DetailDrawer title={servicePreset.mode === "logs" ? "服务日志详情" : drawer.unit} subtitle={`${drawer.unit} · ${drawer.host} · ${statusMeta(drawer).label}`} className={`systemd-service-drawer ${servicePreset.mode === "logs" ? "systemd-log-drawer" : ""}`} modal onClose={() => setDrawerId(null)}>

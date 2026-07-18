@@ -14,7 +14,7 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-function renderAcl(page: "acl-users" | "acl-roles" | "acl-policies") {
+function renderAcl(page: "acl" | "acl-users" | "acl-roles" | "acl-policies") {
   const notify = vi.fn();
   const setPage = vi.fn();
   const result = render(<AclPage page={page} setPage={setPage} notify={notify} />);
@@ -27,6 +27,18 @@ afterEach(() => {
 });
 
 describe("ACL workbench", () => {
+  it.each([
+    ["acl", "权限"],
+    ["acl-users", "用户"],
+    ["acl-roles", "角色"],
+    ["acl-policies", "权限项"],
+  ] as const)("removes the visible heading and context on %s", (page, title) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ users: [], roles })));
+    const { container } = renderAcl(page);
+    expect(screen.getByRole("heading", { name: title })).toHaveClass("sr-only");
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+  });
+
   it("keeps the server-backed user directory on one content track", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ users: [], roles })));
     const { container } = renderAcl("acl-users");

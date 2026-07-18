@@ -10,7 +10,7 @@ import type { TableColumn } from "../../components/ui/DataTable";
 import { DetailDrawer } from "../../components/ui/DetailDrawer";
 import { FieldSelect } from "../../components/ui/FormControls";
 import { StatusDot, StatusLight } from "../../components/ui/StatusVisuals";
-import type { PageKey, ViewContext } from "../../types/app";
+import type { PageKey } from "../../types/app";
 import { uniqueSorted } from "../../utils/data";
 import { formatBackendDateTime } from "../../utils/time";
 import {
@@ -51,11 +51,6 @@ function SitesMonitoringView({ page, canReadLogs, canOperate }: { page: PageKey;
   const certDataAvailable = rows.some((row) => row.certDays !== null);
   const initialError = Boolean(error && !payload);
 
-  const context: ViewContext = mode === "runtime"
-    ? { eyebrow: "网站 / 服务分组", title: "服务容量视图", chips: [`分组 ${runtimeGroups.length} 个`, `站点 ${filteredRows.length} 个`, `待采集 ${filteredRows.filter((row) => row.status === "待采集").length} 个`] }
-    : mode === "running"
-      ? { eyebrow: "网站 / 运行中站点", title: "运行态监控", chips: [`运行中 ${filteredRows.filter((row) => row.status === "运行中").length} 个`, `告警 ${filteredRows.filter((row) => row.status === "告警").length} 个`, `待采集 ${rows.filter((row) => row.status === "待采集").length} 个`] }
-      : { eyebrow: "网站 / 默认视图", title: "站点资产清单", chips: [`总数 ${rows.length} 个`, `运行中 ${rows.filter((row) => row.status === "运行中").length} 个`, `证书风险 ${rows.filter(isSiteCertDue).length} 个`] };
   const metrics = mode === "runtime"
     ? <><MetricTile icon={Code2} label="服务组" value={`${runtimeGroups.length}`} tone="blue" /><MetricTile icon={Globe2} label="覆盖站点" value={`${filteredRows.length}`} tone="green" /><MetricTile icon={Shield} label="证书风险" value={certDataAvailable ? `${filteredRows.filter(isSiteCertDue).length}` : "暂不可用"} tone="orange" /></>
     : mode === "running"
@@ -66,9 +61,9 @@ function SitesMonitoringView({ page, canReadLogs, canOperate }: { page: PageKey;
   return <ModulePageShell
     title={resolvePageMeta(page).title}
     subtitle={loading ? "正在加载已保存的站点快照" : `${preset.subtitle} · 后端采集于 ${formatBackendDateTime(payload?.collectedAt)}`}
-    hideHeading={mode === "runtime"}
+    hideHeading
     page={page}
-    viewContext={initialError || mode === "runtime" ? false : context}
+    viewContext={false}
     filters={initialError ? undefined : <><ModuleSearch value={search} placeholder="搜索域名、上游、主机或数据源" onChange={setSearch} /><FieldSelect label="状态" value={statusFilter} options={mode === "running" ? ["活跃", "运行中", "告警", "待采集"] : ["全部", "运行中", "告警", "已停止", "待采集"]} onChange={setStatusFilter} /><FieldSelect label="服务" value={runtimeFilter} options={["全部", ...uniqueSorted(rows.map((row) => row.runtime))]} onChange={setRuntimeFilter} /></>}
     metrics={initialError ? undefined : metrics}
     side={selectedGroup ? <RuntimeDetail group={selectedGroup} onClose={() => setSelectedRuntime(null)} /> : selectedSite ? <SiteOperationsDrawer site={selectedSite} onClose={() => setSelectedSiteId(null)} onChanged={() => retry(undefined, true)} canReadLogs={canReadLogs} canOperate={canOperate} /> : null}

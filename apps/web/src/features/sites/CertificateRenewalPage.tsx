@@ -8,7 +8,7 @@ import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { DataTable } from "../../components/ui/DataTable";
 import type { TableColumn } from "../../components/ui/DataTable";
 import { FieldSelect } from "../../components/ui/FormControls";
-import type { Notify, ViewContext } from "../../types/app";
+import type { Notify } from "../../types/app";
 import { uniqueSorted } from "../../utils/data";
 import { formatBackendDateTime } from "../../utils/time";
 import {
@@ -49,10 +49,6 @@ function CertificateRenewalPage({ notify, canRenew }: { notify: Notify; canRenew
       || (riskFilter === "不可用" && row.certificate.status === "unavailable");
     return matchesSearch && matchesRuntime && matchesRisk;
   }), [riskFilter, rows, runtimeFilter, search]);
-  const context: ViewContext = {
-    eyebrow: "网站 / 证书续期", title: "证书风险监控",
-    chips: [`风险 ${riskRows.length} 个`, `可续期 ${executableRows.length} 个`, `不可用 ${rows.filter((row) => row.certificate.status === "unavailable").length} 个`],
-  };
   const batchSelection: CertificateRenewalSelection = {
     siteIds: executableRows.map((row) => row.id), mode: "batch",
     executeCount: executableRows.length, skipCount: riskRows.length - executableRows.length,
@@ -61,8 +57,9 @@ function CertificateRenewalPage({ notify, canRenew }: { notify: Notify; canRenew
   return <ModulePageShell
     title={resolvePageMeta("sites-cert").title}
     subtitle={loading ? "正在加载已保存的证书快照" : `证书有效期、签发方与续期任务均来自后端 · 采集于 ${formatBackendDateTime(payload?.collectedAt)}`}
+    hideHeading
     page="sites-cert"
-    viewContext={initialError ? false : context}
+    viewContext={false}
     actions={initialError || !canRenew ? undefined : <button className="primary" type="button" disabled={!batchSelection.executeCount || loading} onClick={() => renewal.open(batchSelection)}><RefreshCw size={15} /> 批量续期</button>}
     filters={initialError ? undefined : <><ModuleSearch value={search} placeholder="搜索域名、节点、主机或签发方" onChange={setSearch} /><FieldSelect label="风险" value={riskFilter} options={riskOptions} onChange={setRiskFilter} /><FieldSelect label="运行时" value={runtimeFilter} options={["全部", ...uniqueSorted(rows.map((row) => row.runtime))]} onChange={setRuntimeFilter} /></>}
     metrics={initialError ? undefined : <><MetricTile icon={Shield} label="证书总数" value={`${rows.length}`} tone="blue" /><MetricTile icon={ShieldAlert} label="7 天内或过期" value={`${riskRows.filter((row) => ["expired", "critical"].includes(row.certificate.status)).length}`} tone="red" /><MetricTile icon={TriangleAlert} label="8-13 天" value={`${riskRows.filter((row) => row.certificate.status === "expiring").length}`} tone="orange" /></>}

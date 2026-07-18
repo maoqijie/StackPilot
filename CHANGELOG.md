@@ -2,6 +2,14 @@
 
 All notable changes follow Semantic Versioning. The project is currently prerelease software.
 
+## 0.3.0-preview.38 - 2026-07-18
+
+### Changed
+
+- Standardized backend freshness notes across host, site, database, deployment, firewall, schedule, systemd, file, terminal, access and audit workbenches.
+- Removed redundant page context blocks while preserving route identity, operational state and responsive layout behavior.
+- Expanded unit and browser coverage for freshness semantics, route transitions and mobile operational flows.
+
 ## 0.3.0-preview.37 - 2026-07-16
 
 ### Fixed

@@ -1,4 +1,4 @@
-import { ChevronRight, FileBox, Folder, Pencil, Plus, Shield, Trash2 } from "lucide-react";
+import { ChevronRight, Clock3, FileBox, Folder, Pencil, Plus, Shield, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { createDirectory, renameFile, trashFile } from "../../api/filesApi";
 import { resolvePageMeta } from "../../app/navigation";
@@ -12,6 +12,7 @@ import { fileSizeSortValue, filesPagePreset } from "../../features/files/model";
 import { useFileBrowser } from "../../features/files/useFileBrowser";
 import type { Notify, PageKey } from "../../types/app";
 import type { FileRecord } from "../../features/files/types";
+import { formatBackendDateTime } from "../../utils/time";
 
 export function FilesPage({ page, notify, canWrite }: { page: PageKey; notify: Notify; canWrite: boolean }) {
   const preset = filesPagePreset(page); const [path, setPath] = useState("/"); const [search, setSearch] = useState(""); const [type, setType] = useState("全部"); const [draft, setDraft] = useState(""); const [busy, setBusy] = useState(false);
@@ -26,9 +27,10 @@ export function FilesPage({ page, notify, canWrite }: { page: PageKey; notify: N
     { key: "type", label: "类型", width: "86px", render: (row) => <span className="pill blue">{row.type}</span> }, { key: "size", label: "大小", sortValue: fileSizeSortValue, render: (row) => row.size }, { key: "modified", label: "修改时间", render: (row) => row.modified }, { key: "owner", label: "所有者", render: (row) => row.owner },
   ];
   if (canWrite) columns.push({ key: "ops", label: "操作", width: "170px", render: (row) => <span className="table-actions file-row-actions"><button type="button" aria-label={`重命名 ${row.name}`} onClick={() => openNameDrawer("rename", row.id)}><Pencil size={14} /> 重命名</button><button type="button" aria-label={`删除 ${row.name} 到回收站`} onClick={() => setDrawer({ type: "delete", id: row.id })}><Trash2 size={14} /> 删除</button></span> });
-  return <ModulePageShell title={resolvePageMeta(page).title} subtitle={loading ? "正在读取真实文件目录" : `${preset.subtitle} · 后端采集于 ${collectedAt || "等待采集"}`} page={page} actions={actions} filters={<><ModuleSearch value={search} placeholder="搜索文件名" onChange={setSearch} /><FieldSelect label="类型" value={type} options={["全部", "文件夹", "文件"]} onChange={setType} /></>} side={drawer ? <FileEditorDrawer drawer={drawer.type} name={selected?.name ?? draft} draft={draft} busy={busy} onDraft={setDraft} onClose={() => setDrawer(null)} onSubmit={() => void mutate(() => drawer.type === "folder" ? createDirectory(path, draft) : drawer.type === "rename" && selected ? renameFile(selected.path, draft) : selected ? trashFile(selected.path) : Promise.reject(new Error("文件项已不存在")))} /> : null} sideModal={Boolean(drawer)}>
+  return <ModulePageShell title={resolvePageMeta(page).title} subtitle={loading ? "正在读取真实文件目录" : `${preset.subtitle} · 后端采集于 ${collectedAt || "等待采集"}`} hideHeading page={page} viewContext={false} actions={actions} filters={<><ModuleSearch value={search} placeholder="搜索文件名" onChange={setSearch} /><FieldSelect label="类型" value={type} options={["全部", "文件夹", "文件"]} onChange={setType} /></>} side={drawer ? <FileEditorDrawer drawer={drawer.type} name={selected?.name ?? draft} draft={draft} busy={busy} onDraft={setDraft} onClose={() => setDrawer(null)} onSubmit={() => void mutate(() => drawer.type === "folder" ? createDirectory(path, draft) : drawer.type === "rename" && selected ? renameFile(selected.path, draft) : selected ? trashFile(selected.path) : Promise.reject(new Error("文件项已不存在")))} /> : null} sideModal={Boolean(drawer)}>
     {loading && <span className="sr-only" role="status">正在从 /api/files 读取文件目录</span>}
     {error && <div className="overview-error-state"><Shield size={18} /><span>{error}</span><button type="button" onClick={() => void reload()}>重试</button></div>}
+    {!loading && !error && <p className="module-freshness-note"><Clock3 size={14} />后端采集于 {formatBackendDateTime(collectedAt)}</p>}
     <div className="file-breadcrumbs"><button className="file-parent-button" type="button" disabled={path === "/"} onClick={() => setPath(parent)}>上级</button><span><ChevronRight size={14} /></span><button type="button" className={path === "/" ? "active" : ""} onClick={() => setPath("/")}>root</button>{crumbs.map((crumb, index) => { const next = `/${crumbs.slice(0, index + 1).join("/")}`; return <span className="file-breadcrumb-item" key={next}><ChevronRight size={14} /><button type="button" className={next === path ? "active" : ""} onClick={() => setPath(next)}>{crumb}</button></span>; })}</div>
     <DataTable columns={columns} rows={rows} emptyText={error ? "真实目录加载失败" : loading ? "正在读取文件目录" : "当前目录没有匹配文件"} getRowKey={(row) => row.id} />
   </ModulePageShell>;

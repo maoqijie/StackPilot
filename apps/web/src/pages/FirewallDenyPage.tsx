@@ -59,6 +59,8 @@ function FirewallDenyPage({ page }: { page: PageKey }) {
     title={resolvePageMeta(page).title}
     subtitle="查看授权节点最近 24 小时内核防火墙实际拒绝的访问事件。"
     page={page}
+    hideHeading
+    viewContext={false}
     sideModal
     filters={data ? <><ModuleSearch value={search} placeholder="搜索来源、目标、节点、规则或原因" onChange={setSearch} /><FieldSelect label="协议" value={protocol} options={protocols} onChange={setProtocol} /><FieldSelect label="来源" value={source} options={sources} onChange={setSource} /></> : null}
     metrics={data ? <><MetricTile icon={ShieldAlert} label="拦截记录" value={`${rows.length}`} tone="red" /><MetricTile icon={Network} label="来源地址" value={`${new Set(rows.map((record) => record.sourceAddress)).size}`} tone="orange" /><MetricTile icon={Server} label="涉及节点" value={`${new Set(rows.map((record) => record.nodeId)).size}`} tone="green" /></> : null}

@@ -49,12 +49,22 @@ describe("audit real backend", () => {
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
   });
 
+  it.each([
+    ["audit", "审计日志"],
+    ["audit-all", "全部日志"],
+  ])("removes the visible heading and context on %s", async (page, title) => {
+    const { container } = render(<AuditPage page={page} notify={vi.fn()} permissions={["audit:read"]} />);
+    await screen.findAllByText("file.upload");
+    expect(screen.getByRole("heading", { name: title })).toHaveClass("sr-only");
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+  });
+
   it("loads real audit rows without demo records", async () => {
     render(<AuditPage page="audit-all" notify={vi.fn()} />);
     await waitFor(() => expect(fetchAuditEvents).toHaveBeenCalledWith({}, expect.any(AbortSignal)));
     expect((await screen.findAllByText("file.upload")).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("auth.login")).length).toBeGreaterThan(0);
-    expect(screen.getByText("匹配 42")).toBeInTheDocument();
+    expect(screen.queryByText("匹配 42")).not.toBeInTheDocument();
     expect(screen.queryByText("部署应用")).not.toBeInTheDocument();
   });
 

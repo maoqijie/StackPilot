@@ -1,5 +1,5 @@
 import type { Permission } from "@stackpilot/contracts";
-import { Activity, CheckCircle2, RotateCcw, ShieldAlert } from "lucide-react";
+import { Activity, CheckCircle2, Clock3, RotateCcw, ShieldAlert } from "lucide-react";
 import { useMemo, useState } from "react";
 import { createSiteRollback } from "../../api/deploymentsApi";
 import type { SiteRollbackRecord } from "../../api/deploymentsApi";
@@ -70,7 +70,9 @@ function SiteRollbacksWorkspace({ notify, permissions }: { notify: Notify; permi
   };
 
   if (!canRead) {
-    return <section className="module-page module-page-deploy-rollbacks"><h1>{resolvePageMeta("deploy-rollbacks").title}</h1><div className="overview-error-state" role="alert"><ShieldAlert size={18} /><span>当前账号没有站点读取权限</span></div></section>;
+    return <ModulePageShell title={resolvePageMeta("deploy-rollbacks").title} page="deploy-rollbacks" hideHeading viewContext={false}>
+      <div className="overview-error-state" role="alert"><ShieldAlert size={18} /><span>当前账号没有站点读取权限</span></div>
+    </ModulePageShell>;
   }
 
   const emptyText = error
@@ -84,9 +86,12 @@ function SiteRollbacksWorkspace({ notify, permissions }: { notify: Notify; permi
       title={resolvePageMeta("deploy-rollbacks").title}
       subtitle={loading ? "正在加载受管站点历史 Release" : `受管站点历史 Release · 采集于 ${formatBackendDateTime(collectedAt)}`}
       page="deploy-rollbacks"
+      hideHeading
+      viewContext={false}
       filters={<nav className="deploy-tabs" aria-label="回滚状态筛选">{filters.map((item) => <button key={item} className={filter === item ? "active" : ""} aria-pressed={filter === item} type="button" onClick={() => setFilter(item)}>{item}</button>)}</nav>}
       metrics={<><MetricTile icon={RotateCcw} label="可回滚" value={`${rows.filter((row) => row.status === "available").length}`} tone="blue" /><MetricTile icon={Activity} label="执行中" value={`${activeCount}`} tone="orange" /><MetricTile icon={CheckCircle2} label="已回滚" value={`${succeededCount}`} tone="green" /></>}
     >
+      <p className="module-freshness-note"><Clock3 size={15} />{loading ? "正在加载受管站点历史 Release" : `采集于 ${formatBackendDateTime(collectedAt)}`}</p>
       {loading && <span className="sr-only" role="status" aria-live="polite">正在从 /api/site-rollbacks 加载真实回滚记录</span>}
       {error && <div className="overview-error-state rollback-error-state" role="alert"><ShieldAlert size={18} /><span>{error}</span><button type="button" disabled={loading} onClick={() => void refresh()}>重试</button></div>}
       <RollbackTable rows={filteredRows} emptyText={emptyText} canExecute={canExecute} busyId={busyId} onOpen={setSelectedId} onExecute={prepare} />

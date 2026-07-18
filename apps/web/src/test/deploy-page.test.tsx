@@ -28,6 +28,18 @@ describe("real deployment page", () => {
   });
   afterEach(() => vi.useRealTimers());
 
+  it.each([
+    ["deploy", "部署"],
+    ["deploy-prod", "生产发布"],
+    ["deploy-staging", "预发环境"],
+  ])("removes the visible heading and preserves freshness on %s", async (page, title) => {
+    const { container } = render(<DeployPage page={page} permissions={["sites:read"]} />);
+    await screen.findByText(/后端采集于/);
+    expect(screen.getByRole("heading", { name: title })).toHaveClass("sr-only");
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-freshness-note")).toHaveTextContent("后端采集于");
+  });
+
   it("renders backend deployments and opens stable-id details without mock actions", async () => {
     render(<DeployPage page="deploy-prod" permissions={["sites:read", "sites:deploy"]} />);
     expect((await screen.findAllByText("stackpilot.example.com")).length).toBeGreaterThan(0);

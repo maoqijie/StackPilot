@@ -1,5 +1,5 @@
 import type { DeploymentRecord, Permission } from "@stackpilot/contracts";
-import { Activity, CheckCircle2, CircleAlert, CloudOff, CloudUpload, Eye, GitBranch } from "lucide-react";
+import { Activity, CheckCircle2, CircleAlert, Clock3, CloudOff, CloudUpload, Eye, GitBranch } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { resolvePageMeta } from "../app/navigation";
 import { deployPagePreset } from "../app/pagePresets";
@@ -32,14 +32,15 @@ function DeploymentsWorkspace({ page, permissions }: { page: PageKey; permission
   useEffect(() => { if (selectedDeploymentId && data && !selectedDeployment) queueMicrotask(() => setSelectedDeploymentId(null)); }, [data, selectedDeployment, selectedDeploymentId]);
   useEffect(() => { queueMicrotask(() => setEnvironment(initialEnvironment)); }, [initialEnvironment]);
 
-  if (!canRead) return <section className="module-page module-page-deploy-prod"><h1>部署</h1><div className="overview-error-state" role="alert"><CircleAlert size={18} /><span>当前账号没有站点读取权限</span></div></section>;
+  if (!canRead) return <section className="module-page module-page-deploy-prod"><h1 className="sr-only">部署</h1><div className="overview-error-state" role="alert"><CircleAlert size={18} /><span>当前账号没有站点读取权限</span></div></section>;
   const freshness = backgroundError ? `后台刷新失败，保留上次数据：${backgroundError}` : `后端采集于 ${formatBackendDateTime(data?.collectedAt)}`;
   const envOptions: EnvironmentFilter[] = [...environmentValues];
 
-  return <><ModulePageShell title={resolvePageMeta(page).title} subtitle={`${preset.subtitle} · ${freshness}`} page={page}
+  return <><ModulePageShell title={resolvePageMeta(page).title} subtitle={`${preset.subtitle} · ${freshness}`} page={page} hideHeading viewContext={false}
     actions={canDeploy ? <button className="primary" type="button" onClick={() => pushPageRoute("sites-create")}><CloudUpload size={15} /> 创建部署计划</button> : undefined}
     filters={<div className="deploy-tabs" aria-label="部署环境">{envOptions.map((item) => <button key={item} className={item === environment ? "active" : ""} type="button" onClick={() => setEnvironment(item)}>{environmentLabel(item)}</button>)}</div>}
     metrics={<><MetricTile icon={CloudUpload} label="发布任务" value={`${filteredDeployments.length}`} tone="blue" /><MetricTile icon={Activity} label="进行中" value={`${filteredDeployments.filter((row) => ["queued", "preparing", "deploying"].includes(row.status)).length}`} tone="orange" /><MetricTile icon={CheckCircle2} label="成功" value={`${filteredDeployments.filter((row) => row.status === "succeeded").length}`} tone="green" /></>}>
+    <p className="module-freshness-note"><Clock3 size={15} />{freshness}</p>
     {loading && !data && <span className="sr-only" role="status">正在读取真实发布队列</span>}
     {error && !data && <div className="overview-error-state"><CloudOff size={18} /><span>{error}</span><button type="button" onClick={() => void retry()}>重试</button></div>}
     <DeploymentTable rows={filteredDeployments} loading={loading} onOpen={setSelectedDeploymentId} />

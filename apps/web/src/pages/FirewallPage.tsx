@@ -143,7 +143,7 @@ function FirewallRulesPage({ page, notify, permissions = [] }: Props) {
   };
 
   if (!canRead) {
-    return <ModulePageShell title={resolvePageMeta(page).title} subtitle="当前账号没有防火墙读取权限" page={page}>
+    return <ModulePageShell title={resolvePageMeta(page).title} subtitle="当前账号没有防火墙读取权限" page={page} hideHeading viewContext={false}>
       <div className="overview-error-state"><Lock size={18} /><span>无权读取主机防火墙数据</span></div>
     </ModulePageShell>;
   }
@@ -153,7 +153,7 @@ function FirewallRulesPage({ page, notify, permissions = [] }: Props) {
   const sourceOptions = [...new Set(["全部", ...(sourceFilter !== "全部" ? [sourceFilter] : []), ...rows.map((row) => row.source)])];
   const protocolLabel = (rule: FirewallRule) => rule.protocol?.toUpperCase() ?? "ANY";
 
-  return <ModulePageShell title={resolvePageMeta(page).title} subtitle={preset.subtitle} page={page} sideModal
+  return <ModulePageShell title={resolvePageMeta(page).title} subtitle={preset.subtitle} page={page} hideHeading viewContext={false} sideModal
     actions={canOperate ? <button className="primary" type="button" disabled={!canChange} title={!canChange ? "UFW 未启用，规则变更已锁定" : undefined} onClick={(event) => { setDraftErrors({}); open({ type: "create" }, event.currentTarget); }}><Plus size={15} />新增规则</button> : null}
     filters={<><ModuleSearch value={search} placeholder="搜索规则、端口、来源或主机" onChange={(value) => setSearchByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="协议" value={protocolFilter} options={["全部", "TCP", "UDP", "ANY"]} onChange={(value) => setProtocolByPage((current) => ({ ...current, [page]: value }))} /><FieldSelect label="来源" value={sourceFilter} options={sourceOptions} onChange={(value) => setSourceByPage((current) => ({ ...current, [page]: value }))} /></>}
     metrics={<><MetricTile icon={Shield} label="规则数" value={resource.data ? `${rows.length}` : "暂不可用"} tone="blue" /><MetricTile icon={CheckCircle2} label="受管规则" value={resource.data ? `${rows.filter((row) => row.managed).length}` : "暂不可用"} tone="green" /><MetricTile icon={Lock} label="UFW 状态" value={resource.data ? resource.data.active ? "已启用" : "未启用" : "不可用"} tone={resource.data?.active ? "green" : "orange"} /></>}

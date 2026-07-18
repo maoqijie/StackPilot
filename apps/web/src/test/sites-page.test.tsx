@@ -69,6 +69,38 @@ describe("sites live monitoring page", () => {
     Object.defineProperty(document, "hidden", { configurable: true, value: false });
   });
 
+  it.each([
+    ["sites-running", "运行中站点"],
+    ["sites-runtime", "服务分组"],
+  ] as const)("removes the visible heading and summary from %s", async (page, title) => {
+    vi.mocked(fetchSites).mockResolvedValue(payload([site()]));
+    const { container } = render(<SitesPage page={page} notify={notify} />);
+
+    if (page === "sites-runtime") {
+      await screen.findByRole("button", { name: "查看 反向代理 服务详情" });
+    } else {
+      await screen.findAllByTitle("api.example.com");
+    }
+
+    expect(container.querySelector(".page-head")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: title })).toHaveClass("sr-only");
+    expect(screen.queryByText("正在加载已保存的站点快照")).not.toBeInTheDocument();
+  });
+
+  it("removes the certificate heading and summary while retaining its action", async () => {
+    vi.mocked(fetchSites).mockResolvedValue(payload([site()]));
+    const { container } = render(<SitesPage page="sites-cert" notify={notify} />);
+
+    await screen.findAllByTitle("api.example.com");
+
+    expect(container.querySelector(".module-head > div:first-child")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "证书续期" })).toHaveClass("sr-only");
+    expect(screen.queryByText("正在加载已保存的证书快照")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "批量续期" })).toBeInTheDocument();
+  });
+
   it("shows an initial error and retries without falling back to demo sites", async () => {
     vi.mocked(fetchSites)
       .mockRejectedValueOnce(new Error("站点采集不可用"))

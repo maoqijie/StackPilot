@@ -13,6 +13,17 @@ const payload: SystemdServicesPayload = { collectedAt: time, collectionStatus: "
 describe("systemd service page", () => {
   beforeEach(() => { vi.mocked(fetchSystemdServices).mockReset(); vi.mocked(fetchSystemdServices).mockResolvedValue(payload); });
   afterEach(() => vi.useRealTimers());
+  it.each([
+    ["systemd", "systemd 服务"],
+    ["systemd-active", "Active 服务"],
+    ["systemd-failed", "Failed 服务"],
+  ] as const)("removes the visible heading and summary from %s", async (page, title) => {
+    const { container } = render(<SystemdPage page={page} notify={vi.fn()} />);
+    await screen.findByText(/采集时间/);
+    expect(container.querySelector(".page-head")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: title })).toHaveClass("sr-only");
+  });
   it("renders real read-only rows and opens a complete portaled drawer", async () => {
     const user = userEvent.setup(); render(<SystemdPage page="systemd" notify={vi.fn()} canOperate />); const table = await screen.findByRole("table");
     expect(within(table).getByText("A real web server")).toBeInTheDocument(); expect(screen.queryByRole("button", { name: /启动服务|停止服务|重启服务|标记服务/ })).not.toBeInTheDocument();

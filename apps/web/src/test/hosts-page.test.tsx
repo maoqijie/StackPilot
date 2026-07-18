@@ -32,6 +32,18 @@ describe("hosts live monitoring page", () => {
   beforeEach(() => { notify.mockClear(); vi.mocked(fetchHosts).mockReset(); });
   afterEach(() => vi.useRealTimers());
 
+  it("removes the visible heading and summary from the hosts page", async () => {
+    vi.mocked(fetchHosts).mockResolvedValue({ collectedAt: "2026-07-12T04:30:02.000Z", hosts: [host()] });
+    const { container } = render(<HostsPage page="hosts" notify={notify} />);
+
+    await screen.findAllByTitle(longHostname);
+
+    expect(container.querySelector(".page-head")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "主机", level: 1 })).toHaveClass("sr-only");
+    expect(screen.queryByText("正在采集主机、服务与资源状态")).not.toBeInTheDocument();
+  });
+
   it("shows a retryable initial error without fixture hosts", async () => {
     vi.mocked(fetchHosts).mockRejectedValue(new Error("Controller 暂不可用"));
     render(<HostsPage page="hosts" notify={notify} />);

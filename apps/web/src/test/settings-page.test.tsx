@@ -19,6 +19,19 @@ function renderSettings(page: string, options: { readOnly?: boolean; permissions
 }
 
 describe("settings workbench", () => {
+  it.each([
+    ["settings", "面板设置"],
+    ["settings-general", "基础设置"],
+    ["settings-security", "安全策略"],
+    ["settings-backup", "备份策略"],
+    ["settings-notice", "通知设置"],
+    ["settings-audit", "设置审计"],
+  ])("removes the visible heading and context on %s", (page, title) => {
+    const { container } = renderSettings(page);
+    expect(screen.getByRole("heading", { name: title })).toHaveClass("sr-only");
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+  });
+
   it("uses the shared settings frame and keeps settings as the general route", () => {
     const { container, setPage } = renderSettings("settings");
 

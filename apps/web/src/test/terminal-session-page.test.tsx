@@ -12,6 +12,18 @@ vi.mock("../api/terminalApi", () => ({ createTerminalTask: vi.fn(), fetchTermina
 describe("terminal session page", () => {
   beforeEach(resetTerminalApiMocks);
 
+  it.each([
+    ["terminal", "终端"],
+    ["terminal-sessions", "会话列表"],
+  ] as const)("removes the visible heading and summary from %s", async (page, title) => {
+    const { container } = render(<TerminalPage page={page} notify={vi.fn()} />);
+    await screen.findByText("real-agent-01");
+    expect(container.querySelector(".page-head")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: title })).toHaveClass("sr-only");
+    expect(screen.getByText(/后端更新于/)).toBeInTheDocument();
+  });
+
   it("opens complete Agent details and closes them with Escape", async () => {
     const user = userEvent.setup();
     render(<TerminalPage page="terminal" notify={vi.fn()} />);

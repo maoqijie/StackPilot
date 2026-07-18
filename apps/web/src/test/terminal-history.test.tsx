@@ -29,6 +29,16 @@ describe("terminal live history page", () => {
   });
   afterEach(() => vi.useRealTimers());
 
+  it("removes the visible heading and summary while retaining freshness", async () => {
+    vi.mocked(listRemoteTasks).mockResolvedValue({ tasks: [task], collectedAt: now });
+    const { container } = render(<TerminalHistoryPage notify={notify} />);
+    await screen.findByText("读取服务状态 · nginx.service");
+    expect(container.querySelector(".page-head")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "执行历史" })).toHaveClass("sr-only");
+    expect(screen.getByText(/后端采集于/)).toBeInTheDocument();
+  });
+
   it("renders Controller task records and opens details by stable task id", async () => {
     const user = userEvent.setup();
     vi.mocked(listRemoteTasks).mockResolvedValue({ tasks: [task], collectedAt: now });
@@ -67,7 +77,7 @@ describe("terminal live history page", () => {
     expect(response.collectedAt).toBeUndefined();
     vi.mocked(listRemoteTasks).mockResolvedValue(response);
     render(<TerminalHistoryPage notify={notify} />);
-    expect(await screen.findByText("真实远程任务执行历史 · 等待后端时间")).toBeInTheDocument();
+    expect(await screen.findByText("等待后端时间")).toBeInTheDocument();
   });
 
   it("polls every ten seconds silently and preserves an open detail by stable id", async () => {

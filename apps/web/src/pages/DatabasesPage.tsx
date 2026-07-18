@@ -132,9 +132,10 @@ function DatabasesPage({ page, setPage, notify, permissions = [] }: { page: Page
     <ModulePageShell
       title={resolvePageMeta(page).title}
       subtitle={loading ? "正在从后端采集数据库服务清单" : `${preset.subtitle} · 后端采集于 ${collectedAt}`}
+      hideHeading
       page={page}
       className="module-page-databases"
-      viewContext={{ eyebrow: "数据库 / 实例列表", title: "数据库实例", chips: [`筛选 ${filteredRows.length}/${rows.length}`, `告警 ${alertCount}`, knownSlowRows.length ? `慢查询 ${slowQueryCount}` : "慢查询待采集"] }}
+      viewContext={false}
       actions={permissions.includes("databases:install") ? <button className="primary" type="button" onClick={() => setCreating(true)}><Plus size={15} /> 创建数据库实例</button> : undefined}
       filters={<><ModuleSearch value={search} placeholder="搜索数据库、主机、节点或权限" onChange={setSearch} /><FieldSelect label="类型" value={typeFilter} options={["全部", "PostgreSQL", "MySQL", "MariaDB"]} onChange={setTypeFilter} /><FieldSelect label="状态" value={statusFilter} options={["全部", "正常", "告警"]} onChange={setStatusFilter} /><FieldSelect label="主机" value={hostFilter} options={hostOptions} onChange={setHostFilter} /></>}
       metrics={<><MetricTile icon={Database} label="PostgreSQL" value={`${postgresCount}`} tone="blue" /><MetricTile icon={Database} label="MySQL / MariaDB" value={`${mysqlCount}`} tone="blue" /><MetricTile icon={Activity} label="运行中" value={`${healthyCount}`} tone="green" /><MetricTile icon={Shield} label="告警" value={`${alertCount}`} tone={alertCount ? "orange" : "green"} /><BackupRateMetric value={backupSuccessRate} /><MetricTile icon={CircleAlert} label="慢查询" value={knownSlowRows.length ? `${slowQueryCount}` : "待采集"} tone={slowQueryCount ? "orange" : knownSlowRows.length ? "green" : "gray"} /></>}
@@ -143,7 +144,7 @@ function DatabasesPage({ page, setPage, notify, permissions = [] }: { page: Page
     >
       {loading && <span className="sr-only" role="status" aria-live="polite">正在从 /api/databases 采集数据库实例</span>}
       {error && <div className="overview-error-state database-error-state"><Shield size={18} /><span>{error}</span><button type="button" disabled={loading} onClick={() => void loadDatabases()}>重试</button></div>}
-      {!loading && !error && <p className="database-collection-note"><CircleHelp size={15} aria-hidden="true" />{collectionNote}</p>}
+      {!loading && !error && <p className="database-collection-note"><CircleHelp size={15} aria-hidden="true" /><span>后端采集于 {collectedAt}</span><span>{collectionNote}</span></p>}
       <div className="database-instance-content">
         <DataTable
           columns={[

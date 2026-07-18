@@ -32,6 +32,8 @@ function AuditExportPage({ page, notify, allowed }: { page: PageKey; notify: Not
     title={resolvePageMeta(page).title}
     subtitle={auditPagePreset(page).subtitle}
     page={page}
+    hideHeading
+    viewContext={false}
     actions={allowed ? <AuditExportActions resource={resource} notify={notify} /> : undefined}
     filters={allowed ? <AuditExportFilters search={search} format={format} status={status} onSearch={setSearch} onFormat={setFormat} onStatus={setStatus} /> : undefined}
     metrics={allowed ? <AuditExportMetrics resource={resource} /> : undefined}
@@ -183,7 +185,6 @@ function AuditLogPage({ page, notify }: { page: PageKey; notify: Notify }) {
     setSelectedId(null);
     notify("已返回全部审计日志", "info");
   };
-  const pageTitle = auditSource === "database" ? "数据库审计" : page === "audit-failed" ? "失败审计" : page === "audit-export" ? "审计导出" : "只读审计";
   const emptyText = audit.loading && !audit.data ? "正在读取真实审计日志" : "没有匹配的真实审计日志，系统将继续自动查询";
   const freshness = audit.backgroundError ? `后台刷新失败，保留上次数据：${audit.backgroundError}` : "数据来自 Controller 追加式审计表，每 10 秒自动查询";
 
@@ -192,11 +193,8 @@ function AuditLogPage({ page, notify }: { page: PageKey; notify: Notify }) {
       title={resolvePageMeta(page).title}
       subtitle={auditSource === "database" ? "数据库审计视图，只展示数据库相关操作。" : preset.subtitle}
       page={page}
-      viewContext={{
-        eyebrow: auditSource === "database" ? "审计日志 / 数据库" : page === "audit-failed" ? "审计日志 / 失败操作" : page === "audit-export" ? "审计日志 / 导出" : "审计日志 / 全部",
-        title: pageTitle,
-        chips: [`已加载 ${records.length}`, `匹配 ${audit.data?.total ?? 0}`, `结果 ${resultFilter}`, `操作者 ${userFilter}`],
-      }}
+      hideHeading
+      viewContext={false}
       actions={<>
         <button className="ghost" type="button" disabled={!audit.data || exporting} onClick={() => setExportOpen(true)}><Download size={15} /> {exporting ? "正在导出" : "导出全部匹配"}</button>
         {auditSource === "database" && <button className="ghost" type="button" onClick={returnToGlobalAudit}>全部审计</button>}

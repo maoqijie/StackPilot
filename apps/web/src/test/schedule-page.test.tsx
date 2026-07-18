@@ -67,6 +67,20 @@ describe("schedule failed page", () => {
     vi.useRealTimers();
   });
 
+  it.each([
+    ["schedule", "定时任务"],
+    ["schedule-enabled", "启用任务"],
+    ["schedule-failed", "失败任务"],
+    ["schedule-calendar", "执行日历"],
+  ])("removes the visible heading and preserves freshness on %s", async (page, title) => {
+    vi.mocked(fetchScheduleJobs).mockResolvedValue(payload());
+    const { container } = render(<SchedulePage page={page} notify={notify} />);
+    await act(async () => undefined);
+    expect(screen.getByRole("heading", { name: title })).toHaveClass("sr-only");
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-freshness-note")).toHaveTextContent("最近采集");
+  });
+
   it("keeps only failed jobs and refreshes silently every ten seconds", async () => {
     vi.useFakeTimers();
     vi.mocked(fetchScheduleJobs)

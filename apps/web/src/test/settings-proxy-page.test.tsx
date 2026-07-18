@@ -14,6 +14,8 @@ describe("settings proxy layout", () => {
     );
 
     expect(container.querySelector(".module-page-settings-proxy.settings-page")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "代理设置" })).toHaveClass("sr-only");
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "代理节点与路由" })).toBeInTheDocument();
     expect(screen.getByLabelText("代理状态概览")).toHaveTextContent("可用节点");
     expect(screen.getByLabelText("代理节点筛选")).toBeInTheDocument();

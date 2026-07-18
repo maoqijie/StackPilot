@@ -6,6 +6,16 @@ import { FileUploadQueuePage } from "../pages/FilesPages";
 const empty = { uploads: [], collectedAt: "2026-07-14T00:00:00.000Z", maxUploadBytes: 1024 };
 describe("files upload page", () => {
   afterEach(() => vi.unstubAllGlobals());
+  it("removes the visible heading while retaining upload action and freshness", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(empty), { status: 200 })));
+    const { container } = render(<FileUploadQueuePage page="files-upload" notify={vi.fn()} canWrite />);
+    await screen.findAllByText("还没有真实上传记录");
+    expect(container.querySelector(".module-head h1:not(.sr-only)")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "上传队列" })).toHaveClass("sr-only");
+    expect(screen.getByRole("button", { name: "添加上传" })).toBeInTheDocument();
+    expect(screen.getByText(/后端采集于/)).toBeInTheDocument();
+  });
   it("uploads the selected bytes to the real endpoint", async () => {
     const upload = { id: "11111111-1111-4111-8111-111111111111", name: "release.zip", targetPath: "/", sizeBytes: 7, status: "completed", owner: "Admin", startedAt: "2026-07-14T00:00:00.000Z", completedAt: "2026-07-14T00:00:01.000Z", error: null };
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(empty), { status: 200 })).mockResolvedValueOnce(new Response(JSON.stringify({ message: "release.zip 上传完成", upload, entry: { id: "0123456789abcdef", name: "release.zip", path: "/release.zip", kind: "file", sizeBytes: 7, modifiedAt: "2026-07-14T00:00:01.000Z", owner: "uid:1000" } }), { status: 201 })).mockResolvedValueOnce(new Response(JSON.stringify({ ...empty, uploads: [upload] }), { status: 200 }));

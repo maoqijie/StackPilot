@@ -8,6 +8,19 @@ function response(payload: unknown, status = 200) { return new Response(JSON.str
 
 describe("files browser page", () => {
   afterEach(() => vi.unstubAllGlobals());
+  it.each([
+    ["files", "文件"],
+    ["files-www", "受管目录"],
+  ] as const)("removes the visible heading from %s while retaining actions and freshness", async (page, title) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(listPayload)));
+    const { container } = render(<FilesPage page={page} notify={vi.fn()} canWrite />);
+    expect((await screen.findAllByText("index.html")).length).toBeGreaterThan(0);
+    expect(container.querySelector(".module-head h1:not(.sr-only)")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: title })).toHaveClass("sr-only");
+    expect(screen.getByRole("button", { name: "创建文件夹" })).toBeInTheDocument();
+    expect(screen.getByText(/后端采集于/)).toBeInTheDocument();
+  });
   it("loads backend files and sends a recoverable delete mutation", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(response(listPayload)).mockResolvedValueOnce(response({ message: "文件项已移入回收站", trashEntry: { id: "11111111-1111-4111-8111-111111111111", name: "index.html", originalPath: "/index.html", kind: "file", sizeBytes: 18, deletedAt: "2026-07-14T00:00:00.000Z", expiresAt: "2026-07-21T00:00:00.000Z", owner: "uid:1000" } })).mockResolvedValueOnce(response({ ...listPayload, entries: [] }));
     vi.stubGlobal("fetch", fetchMock); const user = userEvent.setup(); const notify = vi.fn(); render(<FilesPage page="files" notify={notify} canWrite />);

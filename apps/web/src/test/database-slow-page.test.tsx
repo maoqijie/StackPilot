@@ -18,6 +18,16 @@ const initialPayload = {
 describe("database slow queries page", () => {
   beforeEach(() => { vi.mocked(fetchDatabaseSlowQueries).mockReset(); vi.mocked(fetchDatabaseSlowQueries).mockResolvedValue(initialPayload); });
 
+  it("removes the visible heading and summary while retaining export", () => {
+    const { container } = render(<DatabaseSlowQueriesPage page="databases-slow" notify={vi.fn()} initialPayload={initialPayload} />);
+
+    expect(container.querySelector(".module-head h1:not(.sr-only)")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "慢查询" })).toHaveClass("sr-only");
+    expect(screen.queryByText("慢查询中心")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出" })).toBeInTheDocument();
+  });
+
   it("renders real collection freshness and no fake mutation actions", () => {
     render(<DatabaseSlowQueriesPage page="databases-slow" notify={vi.fn()} initialPayload={initialPayload} />);
     expect(screen.getByText(/数据来自节点采集快照/)).toBeInTheDocument();

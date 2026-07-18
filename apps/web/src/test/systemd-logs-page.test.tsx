@@ -15,6 +15,16 @@ function service(overrides: Partial<SystemdServicesPayload["services"][number]> 
 describe("systemd logs page", () => {
   beforeEach(() => { vi.mocked(fetchSystemdServices).mockReset(); });
 
+  it("removes the visible heading and summary while retaining freshness", async () => {
+    vi.mocked(fetchSystemdServices).mockResolvedValue(payload([service()]));
+    const { container } = render(<SystemdPage page="systemd-logs" notify={vi.fn()} />);
+    await screen.findByRole("log", { name: "nginx.service journal 摘要" });
+    expect(container.querySelector(".page-head")).not.toBeInTheDocument();
+    expect(container.querySelector(".module-view-context")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "服务日志" })).toHaveClass("sr-only");
+    expect(screen.getAllByText(/采集时间/).length).toBeGreaterThan(0);
+  });
+
   it("renders real backend journal and freshness without manual refresh or mutations", async () => {
     vi.mocked(fetchSystemdServices).mockResolvedValue(payload([service(), service({ id: "22222222-2222-4222-8222-222222222222:mysql.service", nodeId: "22222222-2222-4222-8222-222222222222", unit: "mysql.service", host: "prod-real-02", activeState: "failed", subState: "failed", journal: [] })]));
     render(<SystemdPage page="systemd-logs" notify={vi.fn()} />);
